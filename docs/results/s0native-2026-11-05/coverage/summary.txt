@@ -1,0 +1,16 @@
+functions reachable from _start: 6002 of 9092
+native in the table: 1081 (reachable and native: 1065)
+frontier (not native, path from boot all native): 3
+
+kind     c             all  reached   native
+crt0     none            5        3        1
+ea       none          553      115        0
+game     draft         873      867      184
+game     matched      4639     4586      848
+game     none          127      126        0
+lg       none          324       32        0
+runtime  none          253       53       31
+rw       none          679       50        0
+rwa      none          702       51        0
+sce      draft           1        0        0
+sce      none          936      119        1

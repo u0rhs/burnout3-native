@@ -1,0 +1,146 @@
+# Translator cases (tools/decomp2host/eeasm.py --emit-cases -> build/eeasm_cases.h, run by tests/test_eeasm.cpp in both
+# float modes). Each `@case name` block is C++ in which every asm statement, written exactly as decomp source writes
+# it, is replaced by its translation. Inputs are small integers, so every result is exact in both modes (this checks
+# operand binding, dest masks, broadcasts, ACC/Q/I chains and MMI lanes; the rounding model has its own tests).
+# Helpers: V(x,y,z,w) builds a u_long128 of floats, I4(...) of words; EXPECT_V(q, x,y,z,w); EXPECT_I(q, w0..w3).
+
+@case vsub_partial_mask_keeps_fs_lanes
+u_long128 t, a = V(5, 6, 7, 8), b = V(1, 2, 3, 4);
+asm("vsub.xyz %0, %1, %2" : "=j"(t) : "j"(a), "j"(b));
+EXPECT_V(t, 4, 4, 4, 8);
+
+@case vadd_broadcast_into_inout
+u_long128 t = V(1, 2, 3, 4), z = V(10, 20, 30, 40);
+asm("vaddx.y %0, $vf0, %1x" : "+j"(t) : "j"(z));
+EXPECT_V(t, 1, 10, 3, 4);
+
+@case vsubw_x_lane
+u_long128 r = V(0, 0, 0, 0), a = V(9, 8, 7, 6);
+asm("vsubw.x %0, $vf0, %1w" : "+j"(r) : "j"(a));
+EXPECT_V(r, -6, 0, 0, 0);
+
+@case dot_product_acc_chain
+u_long128 a = V(1, 2, 3, 0), b = V(4, 5, 6, 0);
+float d;
+asm("vmul.xyz $vf1, %1, %2" "\n\t" "vaddy.x $vf1, $vf1, $vf1y" "\n\t" "vaddz.x $vf1, $vf1, $vf1z" "\n\t" "qmfc2 %0, $vf1" : "=r"(d) : "j"(a), "j"(b));
+CHECK(d == 32.0f);
+
+@case matrix_rows_acc_chain
+u_long128 r0 = V(1, 0, 0, 0), r1 = V(0, 2, 0, 0), r2 = V(0, 0, 3, 0), r3 = V(10, 20, 30, 1), p = V(1, 1, 1, 1), o;
+asm("vmulax.xyzw $ACC, %1, %5x" "\n\t" "vmadday.xyzw $ACC, %2, %5y" "\n\t" "vmaddaz.xyzw $ACC, %3, %5z" "\n\t" "vmaddw.xyzw %0, %4, $vf0w" : "=j"(o) : "j"(r0), "j"(r1), "j"(r2), "j"(r3), "j"(p));
+EXPECT_V(o, 11, 22, 33, 1);
+
+@case vmsub_from_acc
+u_long128 a = V(2, 2, 2, 2), b = V(3, 3, 3, 3), o = V(0, 0, 0, 0);
+asm("vmula.xyzw $ACC, %1, %2" "\n\t" "vmsubx.xy %0, %1, %2x" : "+j"(o) : "j"(a), "j"(b));
+EXPECT_V(o, 0, 0, 0, 0);
+
+@case cross_product_opmula_opmsub
+u_long128 a = V(1, 0, 0, 7), b = V(0, 1, 0, 9);
+u_long128 t;
+asm volatile("vopmula.xyz $ACC, %2, %1" "\n\t" "vopmsub.xyz %1, %1, %2" "\n\t" "qmfc2.i %0, %1" : "=r"(t), "+j"(b) : "j"(a));
+EXPECT_V(t, 0, 0, 1, 9);
+
+@case normalise_with_q_rsqrt
+u_long128 v = V(0, 3, 4, 5), l;
+asm("vmul.xyz $vf1, %0, %0" "\n\t" "vaddy.x $vf1, $vf1, $vf1y" "\n\t" "vaddz.x $vf1, $vf1, $vf1z" : : "j"(v));
+asm("vsqrt $Q, $vf1x" "\n\t" "vwaitq" "\n\t" "vaddq.x %0, $vf0, $Q" : "=j"(l));
+CHECK(b3asm::lane_f(l, 0) == 5.0f);
+asm("vrsqrt $Q, $vf0w, $vf1x" "\n\t" "vwaitq" "\n\t" "vmulq.xyz %0, %0, $Q" : "+j"(v));
+CHECK(b3asm::lane_f(v, 3) == 5.0f);
+
+@case vdiv_lanes
+u_long128 n = V(0, 8, 0, 0), d = V(0, 0, 2, 0), r = V(0, 0, 0, 0);
+asm("vdiv $Q, %1y, %2z" "\n\t" "vwaitq" "\n\t" "vaddq.w %0, $vf0, $Q" : "+j"(r) : "j"(n), "j"(d));
+EXPECT_V(r, 0, 0, 0, 5);
+
+@case ctc2_i_then_vmuli
+float k = 3.0f;
+u_long128 a = V(1, 2, 3, 4), o;
+asm("ctc2 %0, $vi21" : : "r"(k));
+asm("vmuli.xyzw %0, %1, $I" : "=j"(o) : "j"(a));
+EXPECT_V(o, 3, 6, 9, 12);
+
+@case qmtc2_float_and_broadcast
+u_long128 z, t = V(1, 1, 1, 1);
+asm("qmtc2.ni %1, %0" : "=j"(z) : "r"(2.0f));
+asm("vmulx.xyz %0, %0, %1x" : "+j"(t) : "j"(z));
+EXPECT_V(t, 2, 2, 2, 1);
+
+@case vmove_vmr32_vabs
+u_long128 a = V(-1, -2, -3, -4), m = V(0, 0, 0, 0), r = V(0, 0, 0, 0), s = V(0, 0, 0, 0);
+asm("vmove.zw %0, %1" : "+j"(m) : "j"(a));
+asm("vmr32.xyzw %0, %1" : "+j"(r) : "j"(a));
+asm("vabs.xy %0, %1" : "+j"(s) : "j"(a));
+EXPECT_V(m, 0, 0, -3, -4);
+EXPECT_V(r, -2, -3, -4, -1);
+EXPECT_V(s, 1, 2, 0, 0);
+
+@case vftoi_scaled
+u_long128 a = V(1.5f, -2.5f, 3, 0), o = I4(0, 0, 0, 0), p = I4(0, 0, 0, 0);
+asm("vftoi0.xyzw %0, %1" : "+j"(o) : "j"(a));
+asm("vftoi4.xy %0, %1" : "+j"(p) : "j"(a));
+EXPECT_I(o, 1, -2, 3, 0);
+EXPECT_I(p, 24, -40, 0, 0);
+
+@case vmax_vmini_lanes
+u_long128 a = V(1, 5, -3, 0), b = V(2, 4, -4, 0), x = V(0, 0, 0, 0), n = V(0, 0, 0, 0);
+asm("vmax.xyz %0, %1, %2" : "+j"(x) : "j"(a), "j"(b));
+asm("vminiw.x %0, %1, %2w" : "+j"(n) : "j"(a), "j"(b));
+EXPECT_V(x, 2, 5, -3, 0);
+EXPECT_V(n, 0, 0, 0, 0);
+
+@case lqc2_sqc2_through_pointer
+alignas(16) float src[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+alignas(16) float dst[4] = {0, 0, 0, 0};
+float* s = src;
+float* d = dst;
+asm("lqc2 $vf1, 0x10(%0)" "\n\t" "vaddw.x $vf1, $vf1, $vf1w" "\n\t" "sqc2 $vf1, 0(%1)" : : "r"(s), "r"(d) : "memory");
+CHECK(dst[0] == 13.0f && dst[1] == 6.0f && dst[3] == 8.0f);
+
+@case mmi_pextlw_pcpyld_pcpyud
+u_long128 a = I4(1, 2, 3, 4), b = I4(5, 6, 7, 8), r, q, u;
+asm("pextlw %0, %1, %2" : "=r"(r) : "r"(a), "r"(b));
+asm("pcpyld %0, %1, %2" : "=r"(q) : "r"(a), "r"(b));
+asm("pcpyud %0, %1, %2" : "=r"(u) : "r"(a), "r"(b));
+EXPECT_I(r, 5, 1, 6, 2);
+EXPECT_I(q, 5, 6, 1, 2);
+EXPECT_I(u, 3, 4, 7, 8);
+
+@case mmi_minmax_abs_sra
+u_long128 a = I4(-5, 7, (int)0x80000000, 0), b = I4(3, 9, 1, -1), mx, mn, ab, sr;
+asm("pmaxw %0, %1, %2" : "=r"(mx) : "r"(a), "r"(b));
+asm("pminw %0, %1, %2" : "=r"(mn) : "r"(a), "r"(b));
+asm("pabsw %0, %1" : "=r"(ab) : "r"(a));
+asm("psraw %0, %1, 31" : "=r"(sr) : "r"(a));
+EXPECT_I(mx, 3, 9, 1, 0);
+EXPECT_I(mn, -5, 7, (int)0x80000000, -1);
+EXPECT_I(ab, 5, 7, 0x7FFFFFFF, 0);
+EXPECT_I(sr, -1, 0, -1, 0);
+
+@case mmi_ppach_pextlh_int_scalar
+u_long128 a = I4(0x00010002, 0x00030004, 0x00050006, 0x00070008), b = I4(0x11112222, 0x33334444, 0x55556666, 0x77778888), p, e;
+asm("ppach %0, %1, %2" : "=r"(p) : "r"(a), "r"(b));
+asm("pextlh %0, %1, %2" : "=r"(e) : "r"(a), "r"(b));
+EXPECT_I(p, 0x44442222, 0x88886666, 0x00040002, 0x00080006);
+EXPECT_I(e, 0x00022222, 0x00011111, 0x00044444, 0x00033333);
+int x = -7;
+unsigned int z;
+asm("pextlw %0, $0, %1" : "=r"(z) : "r"(x));
+CHECK(z == 0xFFFFFFF9u);
+
+@case cop1_fpr_ops
+float f, g = -2.0f, h;
+u_long128 x = V(9, 0, 0, 0);
+asm("mtc1 %1, %0" : "=f"(f) : "r"(x));
+asm("abs.s %0, %1" : "=f"(h) : "f"(g));
+CHECK(f == 9.0f && h == 2.0f);
+float s;
+asm("sqrt.s %0, %1" : "=f"(s) : "f"(f));
+CHECK(s == 3.0f);
+
+@case input_register_overwritten_locally
+u_long128 v = V(3, 4, 0, 0), r;
+asm("vmul.xyz %1, %1, %1" "\n\t" "qmfc2.i %0, %1" : "=r"(r) : "j"(v));
+EXPECT_V(r, 9, 16, 0, 0);
+EXPECT_V(v, 3, 4, 0, 0);

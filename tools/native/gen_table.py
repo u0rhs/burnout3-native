@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""gen_table: the native backend's function table (docs/standalone.md §8), generated from a decomp snapshot.
+
+One row per retail function entry, from the decomp's asm (`nonmatching <name>, <size>` + the first instruction's
+address), outside assembly/asm/data. Columns: address, size, kind, C status, name.
+  kind:     game (assembly/asm/b3, assembly/asm/game), crt0, runtime (libc/libm/libgcc/mwrt), rw, rwa, sce, lg, ea
+  c status: matched (inside a proven unit, config/proven_units.txt), draft (src/nonmatching/<name>.cpp), none
+Writes <out>/functions.tsv and <out>/functions.h (a sorted C array for b3host::NativeBackend's reports). Generated
+into build/, never committed (names and addresses only; no disc bytes).
+
+  gen_table.py --decomp SNAPSHOT --out build/native
+"""
+import argparse
+import glob
+import os
+import re
+
+
+def load(decomp):
+    proven = []
+    for line in open(os.path.join(decomp, "config/proven_units.txt")):
+        if line.startswith("#") or not line.strip():
+            continue
+        p = line.strip().split(",")
+        proven.append((int(p[0], 16), int(p[1], 16)))
+    proven.sort()
+    # boot2: an `alabel D_<addr>` is a function entry when the decomp's C defines a function by that name
+    d_defs = set()
+    dre = re.compile(r"\bD_([0-9A-Fa-f]{8})\s*\([^;{}]*\)\s*\{")
+    for sf in glob.glob(os.path.join(decomp, "src/**/*.c*"), recursive=True):
+        txt = open(sf, errors="replace").read()
+        if "D_" in txt:
+            d_defs.update(int(x, 16) for x in dre.findall(txt))
+    drafts = {os.path.splitext(f)[0] for f in os.listdir(os.path.join(decomp, "src/nonmatching"))}
+    # boot2: long mangled names are archived under <prefix>_<hash>.cpp, and renamed symbols keep their archive's old
+    # name: the first line `// NONMATCHING: <name>` names the function (as decomp2host's nonmatching_file reads it)
+    for f in os.listdir(os.path.join(decomp, "src/nonmatching")):
+        with open(os.path.join(decomp, "src/nonmatching", f), errors="replace") as fh:
+            mm = re.match(r"// NONMATCHING: (\S+)", fh.readline())
+        if mm:
+            drafts.add(mm.group(1))
+    rows = {}
+    root = os.path.join(decomp, "assembly/asm")
+    for f in sorted(glob.glob(os.path.join(root, "**/*.s"), recursive=True)):
+        rel = os.path.relpath(f, root)
+        top = rel.split(os.sep)[0]
+        if top == "data":
+            continue
+        if top in ("b3", "game"):
+            kind = "game"
+        elif top == "runtime":
+            kind = "crt0" if rel.startswith("runtime/crt0") else "runtime"
+        else:
+            kind = top
+        name = None
+        parent = None
+        alts = []
+        for line in open(f, errors="replace"):
+            mm = re.match(r"^nonmatching (\S+), (0x[0-9A-Fa-f]+)", line)
+            if mm:
+                name, size = mm.group(1), int(mm.group(2), 16)
+                continue
+            if name:
+                ma = re.match(r"\s*/\* \w+ ([0-9A-F]{8}) ", line)
+                if ma:
+                    a = int(ma.group(1), 16)
+                    rows[a] = (size, kind, name)
+                    parent = (a, size)
+                    name = None
+                continue
+            # boot2: splat's alternate entries (`alabel func_0022E560` in unit_0022E200.s) are function entries too,
+            # sized to the next label or the parent's end (tools/decomp2host Decomp.alt_parent)
+            ml = re.match(r"^\s*alabel ((?:func|D)_([0-9A-Fa-f]{8}))\s*$", line)
+            if ml and parent and parent[0] < int(ml.group(2), 16) < parent[0] + parent[1] and \
+                    (ml.group(1).startswith("func_") or int(ml.group(2), 16) in d_defs):
+                alts.append((int(ml.group(2), 16), ml.group(1), parent))
+        for x, n, (pa, psz) in alts:
+            if x in rows:
+                continue
+            later = [b for b, _, (qa, _) in alts if qa == pa and b > x]
+            rows[x] = ((min(later) if later else pa + psz) - x, kind, n)
+    out = []
+    for a in sorted(rows):
+        size, kind, name = rows[a]
+        if any(lo <= a < lo + sz for lo, sz in proven):
+            c = "matched"
+        elif name in drafts:
+            c = "draft"
+        else:
+            c = "none"
+        out.append((a, size, kind, c, name))
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--decomp", required=True)
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args()
+    rows = load(a.decomp)
+    os.makedirs(a.out, exist_ok=True)
+    rev = ""
+    p = os.path.join(a.decomp, "SNAPSHOT_REV")
+    if os.path.exists(p):
+        rev = open(p).read().strip()[:10]
+    with open(os.path.join(a.out, "functions.tsv"), "w") as t:
+        t.write("# decomp %s\naddress\tsize\tkind\tc\tname\n" % rev)
+        for r in rows:
+            t.write("%08X\t%d\t%s\t%s\t%s\n" % r)
+    with open(os.path.join(a.out, "functions.h"), "w") as h:
+        h.write("// GENERATED by tools/native/gen_table.py from decomp %s. Do not edit.\n" % rev)
+        h.write("// X(address, size, kind, c_status, name), sorted by address.\n")
+        h.write("#define B3NATIVE_FUNCTIONS(X) \\\n")
+        for r in rows:
+            h.write('    X(0x%08Xu, %du, "%s", "%s", "%s") \\\n' % r)
+        h.write("\n")
+    print("%d functions -> %s" % (len(rows), a.out))
+
+
+if __name__ == "__main__":
+    main()

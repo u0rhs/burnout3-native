@@ -1,0 +1,16 @@
+Burnout 3 native port -- known issues in this test build (@VERSION@)
+(from the developers' open list; report them anyway when you hit them, with a bug report: F10 in the game)
+
+Gameplay / stability
+- Very rare crashes or hangs are still possible: a bug report right after one is the most useful thing you can send.
+
+Presentation
+- Cars far ahead fade in over the last stretch of the game's draw distance instead of popping in; tell us if any
+  still pop in.
+
+Performance
+- On slower PCs a race can fall behind real time, and the sound then stutters: lower the settings or try safe mode.
+
+Not in this build
+- Online play.
+- Mac and Linux builds (Windows only for now).

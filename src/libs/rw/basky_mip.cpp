@@ -1,0 +1,264 @@
+// RenderWare 3.6 sky2 driver: GS mipmap generation (RW 3.1 file name: driver/sky2/basky.c; reading aid only, 3.6
+// differs). Written from the retail asm (decomp assembly/asm/rw/renderware.s). Tags: [C] confirmed from the asm, [L],
+// [G]. boot2.
+
+#include "rw/skyglobals.h"
+
+// [C] the raster as this file reads it: +0xC width, +0x10 height.
+struct UnkStruct_mipRaster {
+    unsigned char pad_0[0xC];
+    unsigned int field_C;           // [C] width
+    unsigned int field_10;          // [C] height
+};
+
+// [C] the driver's raster extension at raster + skyRasterExt (offsets from the asm).
+struct UnkStruct_mipExt {
+    unsigned char pad_0[0x8];
+    unsigned int field_8;           // [C] TEX0 low word (TBP0 in bits 0-13)
+    unsigned int field_C;           // [C] TEX0 high word
+    unsigned char pad_10[0x6];
+    unsigned char field_16;         // [C] (levels - 1) << 2: the mip level count is field_16 >> 2
+    unsigned char pad_17[0x1];
+    unsigned int field_18;          // [C] MIPTBP1 low word
+    unsigned int field_1C;          // [C] MIPTBP1 high word
+    unsigned int field_20;          // [C] MIPTBP2 low word
+    unsigned int field_24;          // [C] MIPTBP2 high word
+};
+
+// [C] one 128-bit packet slot: low doubleword at +0 (the A+D data), high at +8 (the register address)
+struct UnkStruct_mipQword {
+    unsigned long long field_0;
+    unsigned long long field_8;
+};
+
+extern int skyRasterExt;                        // [C] gp 0x004E2858: the raster plugin's offset
+extern unsigned long long skyZbuf_1;            // [C] gp 0x004E1830 (ZBUF_1 shadow)
+extern unsigned long long skyTest_1;            // [C] gp 0x004E1840 (TEST_1 shadow)
+extern unsigned long long skyClamp_1;           // [C] gp 0x004E1858 (CLAMP_1 shadow)
+extern int skyTexCacheRestoreRequired;          // [C] gp 0x004E18B4
+extern "C" int _rwDMAOpenVIFPkt(unsigned int type, unsigned int nQW);
+
+// [C] the asm's packet write: sq {lo, hi} at farFogPlane, then farFogPlane += 0x10
+static inline void SkyGSMipGenerate_inl1(unsigned long long lo, unsigned long long hi)
+{
+    UnkStruct_mipQword *q = (UnkStruct_mipQword *)farFogPlane;
+
+    q->field_0 = lo;
+    q->field_8 = hi;
+    farFogPlane = farFogPlane + 0x10;
+}
+
+// [C] Does nothing when the raster has no mip levels (ext +0x16 >> 2 == 0). Otherwise a VIF packet is opened (type bit
+// 31) of levels * 9 + extra + 9 qwords, where extra = the sum over the levels of ((width >> 6) - 1) * 4 for the widths
+// still above 0x40 (width halved per level, at most `levels` terms), and a GIFtag {NLOOP = levels * 9 + extra + 8, EOP,
+// A+D, 0x845A << 45 flags} is written, then: 0x14 <- 0x60 (TEX1_1), 0x47 <- 0x30000 (TEST_1), 0x4E <- ZBUF_1 shadow |
+// 0x10000000, 8 <- 5 (CLAMP_1), 0x18 <- 0 (XYOFFSET_1). Then for each level i (width / height halved from the
+// raster's): TEX0_1 (6) built from the extension (+8, and +0xC with bits 3-4 replaced by 8); for i = 1..5 its low 20
+// bits replaced by the MIPTBP1/2 entry i - 1 plus the TBP0 and a constant added; FRAME_1 (0x4C) from the PSM bits of
+// TEX0 and the mip TBP / TBW (via the second jump table; the entry index is i for i < 6); SCISSOR_1 (0x40) from the
+// block placement of the format (PSMCT32/24: 8x4 blocks, PSMCT16S 0xA: 4x8, others none); then per 64-pixel step of
+// the previous level's width a BITBLTBUF (3) / TRXPOS (5) / BITBLTBUF (3) / TRXPOS (5) sequence (the A+D addresses as
+// the asm writes them), ended by 0x3F <- 0 and 0x4C <- 0x10000. Finally skyTexCacheRestoreRequired = 1 and TEST_1,
+// ZBUF_1, CLAMP_1 shadows are written back (0x47, 0x4E, 8).
+// [L] the register names (PSM / TBW / FBP meanings) from the bit positions; the asm writes only numbers.
+// 0x001FEC50
+extern "C" void SkyGSMipGenerate(UnkStruct_mipRaster *raster)
+{
+    UnkStruct_mipExt *ext = (UnkStruct_mipExt *)((unsigned char *)raster + skyRasterExt);
+    unsigned int levels = ext->field_16 >> 2;
+    unsigned int nlev;
+    unsigned int extra;
+    unsigned int t7;            // [C] the previous level's width
+    unsigned int t5;            // [C] the previous level's height
+    unsigned int tbp;
+    unsigned long long s1;
+    unsigned int i;
+    unsigned int v;
+    unsigned int n;
+    unsigned long long t0;
+    unsigned long long a3;
+    unsigned int a2;
+    unsigned int t1;
+    unsigned int t2;
+    unsigned int t3;
+    unsigned int t4;
+    unsigned int t6;
+    unsigned int t9;
+    unsigned int tA;
+    unsigned int psm;
+    unsigned int a1;
+    unsigned int s3;
+    unsigned int step;
+    unsigned int blk;
+    unsigned int q;
+    unsigned long long src;
+
+    if (levels == 0) {
+        return;
+    }
+    t7 = raster->field_C;
+    nlev = levels;
+    tbp = ext->field_8 & 0x3FFF;
+    extra = 0;
+    s1 = (unsigned long long)tbp | ((unsigned long long)tbp << 20) | ((unsigned long long)tbp << 40);
+    if (t7 > 0x40) {
+        v = t7 >> 6;
+        for (;;) {
+            nlev = nlev - 1;
+            v = (v - 1) << 2;
+            t7 = t7 >> 1;
+            extra = extra + v;
+            if (nlev == 0) {
+                break;
+            }
+            if (t7 <= 0x40) {
+                break;
+            }
+            v = t7 >> 6;
+        }
+    }
+    _rwDMAOpenVIFPkt(0x80000000, (ext->field_16 >> 2) * 9 + extra + 9);
+    n = (ext->field_16 >> 2) * 9 + (extra + 8);
+    SkyGSMipGenerate_inl1((unsigned long long)(n | 0x8000) | (0x845AULL << 45), 0xE);
+    SkyGSMipGenerate_inl1(0x60, 0x14);
+    SkyGSMipGenerate_inl1(0x30000, 0x47);
+    SkyGSMipGenerate_inl1(skyZbuf_1 | 0x10000000ULL, 0x4E);
+    SkyGSMipGenerate_inl1(5, 8);
+    SkyGSMipGenerate_inl1(0, 0x18);
+
+    t7 = raster->field_C;
+    i = 0;
+    t5 = raster->field_10;
+    if ((ext->field_16 >> 2) != 0) {
+        do {
+            t0 = (unsigned long long)ext->field_8 |
+                 ((unsigned long long)((ext->field_C & 0xFFFFFFE7u) | 8) << 32);
+            if (i < 6) {
+                // [C] jtbl_004B8F00
+                switch (i) {
+                case 0:
+                    break;
+                case 1:
+                    a3 = (unsigned long long)ext->field_18 + s1;
+                    t0 = (t0 & ~0xFFFFFULL) | (a3 & 0xFFFFF);
+                    t0 = t0 + 0xFFFFFFFFBC000000ULL;
+                    break;
+                case 2:
+                    a3 = ((unsigned long long)ext->field_18 | ((unsigned long long)ext->field_1C << 32)) + s1;
+                    t0 = (t0 & ~0xFFFFFULL) | ((a3 >> 20) & 0xFFFFF);
+                    t0 = t0 + 0xFFFFFFFF78000000ULL;
+                    break;
+                case 3:
+                    a3 = ((unsigned long long)ext->field_1C << 32) + s1;
+                    t0 = (t0 & ~0xFFFFFULL) | ((a3 >> 40) & 0xFFFFF);
+                    t0 = t0 + 0xFFFFFFFF34000000ULL;
+                    break;
+                case 4:
+                    a3 = (unsigned long long)ext->field_20 + s1;
+                    t0 = (t0 & ~0xFFFFFULL) | (a3 & 0xFFFFF);
+                    t0 = t0 + 0xFFFFFFFEF0000000ULL;
+                    break;
+                default:
+                    a3 = ((unsigned long long)ext->field_20 | ((unsigned long long)ext->field_24 << 32)) + s1;
+                    t0 = (t0 & ~0xFFFFFULL) | ((a3 >> 20) & 0xFFFFF);
+                    t0 = t0 + 0xFFFFFFFEAC000000ULL;
+                    break;
+                }
+            }
+            SkyGSMipGenerate_inl1(t0, 6);
+            // [C 0x1FEF3C] FRAME_1 base: TEX0 bits 20-25 (PSM) moved up by 4
+            t0 = (t0 & 0x3F00000ULL) << 4;
+            if (i < 6) {
+                // [C] jtbl_004B8F20: the same six sources (MIPTBP1 low, both, high; MIPTBP2 low, both, high) plus the TBP
+                switch (i) {
+                case 0:
+                    src = (unsigned long long)ext->field_18;
+                    break;
+                case 1:
+                    src = (unsigned long long)ext->field_18 | ((unsigned long long)ext->field_1C << 32);
+                    break;
+                case 2:
+                    src = (unsigned long long)ext->field_1C << 32;
+                    break;
+                case 3:
+                    src = (unsigned long long)ext->field_20;
+                    break;
+                case 4:
+                    src = (unsigned long long)ext->field_20 | ((unsigned long long)ext->field_24 << 32);
+                    break;
+                default:
+                    src = (unsigned long long)ext->field_24 << 32;
+                    break;
+                }
+                a3 = src + s1;
+                if (i == 0 || i == 3) {
+                    // [C 0x1FEFB0]
+                    t0 = t0 | (((a3 << 2) & 0x3F000ULL) | ((a3 >> 5) & 0x1FF));
+                    a2 = (unsigned int)(a3 & 0x1F);
+                } else if (i == 1 || i == 4) {
+                    // [C 0x1FF040] after the shifts 18 / 25 / 20
+                    t0 = t0 | (((a3 >> 18) & 0x3F000ULL) | ((a3 >> 25) & 0x1FF));
+                    a2 = (unsigned int)((a3 >> 20) & 0x1F);
+                } else {
+                    // [C 0x1FF01C] the shifts 38 / 45 / 40
+                    t0 = t0 | (((a3 >> 38) & 0x3F000ULL) | ((a3 >> 45) & 0x1FF));
+                    a2 = (unsigned int)((a3 >> 40) & 0x1F);
+                }
+            } else {
+                a2 = 0;
+            }
+            SkyGSMipGenerate_inl1(t0, 0x4C);
+            psm = (unsigned int)(t0 >> 24) & 0x3F;
+            if (psm < 2) {
+                // [C 0x1FF0A0]
+                t2 = (a2 & 1) | ((a2 & 2) << 2) | ((a2 & 4) >> 1) | ((a2 & 8) << 1) | ((a2 & 0x10) >> 2);
+                t1 = t2 & 0x38;
+                t2 = (t2 - t1) << 3;
+            } else if (psm == 0xA) {
+                // [C 0x1FF0F0]
+                t2 = ((a2 & 1) << 2) | ((a2 & 2) >> 1) | ((a2 & 4) << 2) | (a2 & 8) | ((a2 & 0x10) >> 3);
+                q = t2 >> 2;
+                t1 = q << 3;
+                t2 = (t2 - (q << 2)) << 4;
+            } else {
+                t1 = 0;
+                t2 = 0;
+            }
+            // [C 0x1FF148] SCISSOR_1
+            a1 = t7 >> 1;
+            s3 = t5 >> 1;
+            t4 = t1 + s3;
+            SkyGSMipGenerate_inl1((unsigned long long)t2 | ((unsigned long long)(t2 + a1 - 1) << 16) |
+                                      ((unsigned long long)t1 << 32) | ((unsigned long long)(t4 - 1) << 48),
+                                  0x40);
+            t3 = 0;
+            i = i + 1;
+            if (t7 != 0) {
+                step = (t7 < 0x41) ? t7 : 0x40;
+                t9 = t1 << 20;
+                tA = t4 << 20;     // [C] the asm reuses t5 for this
+                t4 = (step << 4) + 0x10;
+                t6 = 0x10;
+                do {
+                    SkyGSMipGenerate_inl1((unsigned long long)(t6 | 0x100000), 3);
+                    t1 = t2 + (t3 >> 1);
+                    SkyGSMipGenerate_inl1((unsigned long long)((t1 << 4) | t9), 5);
+                    SkyGSMipGenerate_inl1((unsigned long long)(t4 | ((t5 + 1) << 20)), 3);
+                    blk = (a1 < 0x40) ? (t1 + a1) : (t1 + 0x20);
+                    SkyGSMipGenerate_inl1((unsigned long long)((blk << 4) | tA), 5);
+                    t4 = t4 + 0x400;
+                    t3 = t3 + 0x40;
+                    t6 = t6 + 0x400;
+                } while (t3 < t7);
+            }
+            SkyGSMipGenerate_inl1(0, 0x3F);
+            t7 = a1;
+            t5 = s3;
+            SkyGSMipGenerate_inl1(0x10000, 0x4C);
+        } while ((int)i < (int)(ext->field_16 >> 2));
+    }
+    skyTexCacheRestoreRequired = 1;
+    SkyGSMipGenerate_inl1(skyTest_1, 0x47);
+    SkyGSMipGenerate_inl1(skyZbuf_1, 0x4E);
+    SkyGSMipGenerate_inl1(skyClamp_1, 8);
+}

@@ -1,0 +1,66 @@
+# The Mac download: tools/release/package_mac.sh on an Apple Silicon runner -- the release build of native_play,
+# libb3render.so, the launcher and b3modtool from the committed native bundle (gen/native), packaged as
+# "Burnout 3 Native.app" in a .dmg (SDL3 inside the app, ad-hoc signed, not notarized), then the package's smoke test
+# without game data: the image opened and the app copied out of it, its signature verified, the launcher's screenshot
+# checks (offscreen, every walk check PASS, SDL3 loaded from inside the app), otool (no Homebrew path), the privacy
+# scan. The strict race from the app's own native_play needs a disc and runs on a maintainer's Mac
+# (B3_GAME_DIR=<disc> SAVES=<card> SMOKE=1 tools/release/package_mac.sh; docs/mac.md section 10).
+# Not on every push (the build takes most of an hour): run it by hand (gh workflow run release-mac.yml) or push a v* tag.
+name: Release (macOS)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: macOS arm64 (package_mac.sh)
+    runs-on: macos-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        # GNU make 4 (gmake): the Makefile uses $(file ...), which Apple's make 3.81 lacks
+        run: brew install make sdl3 pkg-config
+      - name: Versions
+        run: |
+          sw_vers
+          uname -m
+          clang++ --version | head -1
+          gmake --version | head -1
+          echo "SDL3 $(pkg-config --modversion sdl3)"
+          tools/release/version_info.sh --print
+      - name: Package and smoke test
+        run: SMOKE=1 JOBS="$(sysctl -n hw.ncpu)" tools/release/package_mac.sh
+      - name: Upload the disk image
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: build/release/*.dmg
+          if-no-files-found: error
+          compression-level: 0   # a .dmg is compressed already
+      - name: Upload the symbols (dSYM; a crash report's offsets)
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dsym
+          path: build/release/debug/
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Upload the logs and the launcher's pages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-package-logs
+          path: |
+            build/mac-release/release-build.log
+            build/release/smoke-mac/*.log
+            build/release/smoke-mac/launcher-shots/
+          if-no-files-found: ignore

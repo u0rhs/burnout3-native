@@ -1,0 +1,11 @@
+build/
+__pycache__/
+# The game's disc files for b3view/b3replay (copy the disc's contents here); never committed.
+data/game
+gen/decomp.new/
+# the machine's own paths (local.env.example) and the default Windows build folder
+local.env
+build-win/
+examples/mods/*/bin/
+# game-derived captures stay local (tests: $B3_TEST_CAPTURE or data/scene/race2.b3scene)
+data/scene/

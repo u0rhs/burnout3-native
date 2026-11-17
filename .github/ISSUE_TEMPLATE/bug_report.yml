@@ -1,0 +1,67 @@
+name: Bug report
+description: Something in the game, the launcher or the tools does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please never attach game files, disc images or screenshots of copyrighted material
+        beyond what shows the problem. The bug report zip contains no game data.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version line, from the launcher's window title or its Play page (for example `1.0.0+1a2b3c4d`).
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: For example Windows 11 23H2, Ubuntu 24.04, macOS 15 on an M1.
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: Graphics card and driver
+      description: For example NVIDIA RTX 3060, driver 566.36; or Apple M1.
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: How you got the port
+      options:
+        - A release download
+        - Built from source
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Which mode, track or menu, and roughly when.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: If you can make it happen again, how.
+  - type: textarea
+    id: files
+    attributes:
+      label: Bug report zip and replay file
+      description: |
+        Drag the bug report zip here: press F10 in the game, or "Make a bug report" on the launcher's Play page,
+        right after the problem (also after a crash). It holds the logs and the pad recording that replays the
+        session exactly. If you recorded the session as a replay (`.b3replay`), attach it too (zip it first).
+        Your user name is taken out of the folder paths in the zip; the save is only in it if you asked for it.
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Mods you had on, settings you changed, whether it happens on another machine.

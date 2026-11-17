@@ -1,0 +1,872 @@
+// Sony EE library libmpeg (SDK 2.8.0 as retail links it): the reference / output images (record rotation, the pts /
+// dts / flags of the shown picture, the size check), the picture's way out (_cpr8: raw macroblocks through the
+// scratchpad; _csc_storeRefImage / _doCSC / _doCSC2: toIPU -> CSC -> fromIPU with the two DMAC handlers for transfers
+// over one DMA's limit), dmaRefImage (the macroblock reference fetch into the scratchpad), the toIPU chain kick
+// (func_0010AA98), setD3_CHCR / setD4_CHCR and sceIpuStopDMA / sceIpuRestartDMA. Written from the retail asm (decomp
+// assembly/asm/sce/libmpeg.s). Every hardware access is a b3hw_* call in the asm's order (include/b3hw/hw.h).
+// Registers [C EE User's Manual 6.0 ch. 5, 8]: fromIPU (ch 3) CHCR 0x1000B000 / MADR 0x1000B010 / QWC 0x1000B020;
+// toIPU (ch 4) CHCR 0x1000B400 / MADR 0x1000B410 / QWC 0x1000B420 / TADR 0x1000B430; fromSPR (ch 8) CHCR 0x1000D000 /
+// MADR 0x1000D010 / QWC 0x1000D020 / SADR 0x1000D080; toSPR (ch 9) CHCR 0x1000D400 / MADR 0x1000D410 / QWC 0x1000D420
+// / TADR 0x1000D430 / SADR 0x1000D480; D_STAT 0x1000E010 (write 1 clears a channel's bit); D_ENABLER 0x1000F520 /
+// D_ENABLEW 0x1000F590 (bit 16 suspends DMA); IPU_CMD 0x10002000, IPU_CTRL 0x10002010 (bit 31 BUSY, bit 14 ECD, bits
+// 4-7 IFC), IPU_BP 0x10002020. Structures: sce/mpeg_internal.h. Tags: [C] confirmed from the asm, [L], [G].
+// mpegB (movie2, 2026-11-07).
+//
+// The two DMAC handlers (func_00109590 fromIPU, func_00109898 toIPU) end with handwritten `sync; ei`: b3hw_ei here.
+// They are installed with AddDmacHandler2 by their retail addresses and get a stack block of their installer's frame,
+// so _doCSC2 / _csc_storeRefImage keep that block at retail's sp offset (decomp2host T27: B3_RETAIL_FRAME /
+// B3_FRAME_LOCAL).
+
+#include "sce/mpeg_internal.h"
+#include "b3hw/hw.h"
+
+extern char D_004B1DA8[];   // [C] "Too small buffer size for %dx%d picture\n"
+extern char D_004B1DD8[];   // [C] "CSC handler error\n"
+extern unsigned int _showCount[];        // [C] 0x00484000, 16 words: fields shown by flags bits 5-8 (2 / 3 / 4 / 6)
+extern unsigned long long D_004E3040[];  // [C] _sprtagdata.33 (.bss, 0x200 bytes): dmaRefImage's toSPR tag chain
+
+extern "C" int func_00114E60(void);   // [C] DIntr: returns 1 when interrupts were enabled
+extern "C" int EIntr(void);
+extern "C" int sprintf(char *buf, const char *fmt, ...);
+extern "C" void FlushCache(int mode);
+extern "C" int AddDmacHandler2(int channel, unsigned int handler, int next, void *arg);
+extern "C" int RemoveDmacHandler(int channel, int id);
+extern "C" int EnableDmac(int channel);
+extern "C" int DisableDmac(int channel);
+extern "C" void _sendIpuCommand(UnkStruct_sceMpegData *d, unsigned int cmd);
+extern "C" int _dispatchMpegCallback(UnkStruct_sceMpeg *mp, int *cbdata);
+extern "C" void _Error(UnkStruct_sceMpegData *d, const char *msg);
+extern "C" int _isOutSizeOK(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img);
+extern "C" void _cpr8(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img);
+extern "C" int func_00108E08(UnkStruct_sceMpegData *d);
+extern "C" void _getPtsDtsFlags(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img, long long *pts, long long *dts,
+                                unsigned long long *flags);
+extern "C" int _dispRefImage(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img, int n);
+extern "C" int _dispRefImageField(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *a, UnkStruct_sceMpegImage *b,
+                                  int n);
+extern "C" void _doCSC(UnkStruct_sceMpegData *d, unsigned int addr, int n);
+extern "C" void _doCSC2(UnkStruct_sceMpegData *d, unsigned int addr, int n);
+extern "C" void _csc_storeRefImage(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img);
+extern "C" void setD3_CHCR(unsigned int chcr);
+extern "C" void setD4_CHCR(unsigned int chcr);
+
+static_assert(sizeof(UnkStruct_sceMpegImage) == 0x68, "image record");
+static_assert(sizeof(UnkStruct_sceMpegMbBuf) == 0x140, "macroblock buffer");
+static_assert(__builtin_offsetof(UnkStruct_sceMpegData, field_13C) == 0x13C, "sequence fields");
+static_assert(__builtin_offsetof(UnkStruct_sceMpegData, field_19C) == 0x19C, "picture fields");
+static_assert(__builtin_offsetof(UnkStruct_sceMpegData, field_200) == 0x200, "image records");
+static_assert(__builtin_offsetof(UnkStruct_sceMpegData, field_5A8) == 0x5A8, "macroblock buffers");
+static_assert(__builtin_offsetof(UnkStruct_sceMpegData, field_838) == 0x838, "output flag");
+static_assert(__builtin_offsetof(UnkStruct_sceMpegData, field_858) == 0x858, "matrix flags");
+static_assert(__builtin_offsetof(UnkStruct_sceMpegData, field_10A0) == 0x10A0, "stop request");
+
+// [C] the fromIPU CSC handler's block (_doCSC2's sp + 0x20, 0x14 bytes).
+struct UnkStruct_sceMpegCsc2 {
+    int field_0;                        // [C] the interrupts counted
+    int field_4;                        // [C] 1 = an interrupt came with the transfer unfinished
+    int field_8;                        // [C] the macroblock count, then the last chunk's
+    unsigned int field_C;               // [C] the next chunk's fromIPU address
+    int field_10;                       // [C] the chunk count (n / 0x3FF + 1)
+};
+
+// [C] the toIPU handler's block (_csc_storeRefImage's sp + 0x20).
+struct UnkStruct_sceMpegToIpu {
+    unsigned int field_0;               // [C] the qwords left to send
+    unsigned int field_4;               // [C] the next address
+};
+
+// [C] sceIpuStopDMA's save area (9 words; the internal state's +0x68).
+struct UnkStruct_sceIpuDma {
+    unsigned int field_0;               // [C] toIPU MADR
+    unsigned int field_4;               // [C] toIPU TADR
+    unsigned int field_8;               // [C] toIPU QWC
+    unsigned int field_C;               // [C] toIPU CHCR
+    unsigned int field_10;              // [C] fromIPU MADR
+    unsigned int field_14;              // [C] fromIPU QWC
+    unsigned int field_18;              // [C] fromIPU CHCR
+    unsigned int field_1C;              // [C] IPU_BP
+    unsigned int field_20;              // [C] IPU_CTRL
+};
+
+// [C] the output of a decoded picture n (show nonzero): frame pictures show the forward reference (+0x1D0) or, for a
+// B picture, the B record (+0x1DC); field pictures the pairs +0x1E0 / +0x1F0 or (B) +0x1EC / +0x1FC. Then +0x110
+// 1 -> 2.
+// 0x00108790
+extern "C" void _outputFrame(UnkStruct_sceMpegData *d, int n, int show)
+{
+    if (show != 0) {
+        if (d->field_18C == 3) {
+            _dispRefImage(d, d->field_168 != 3 ? d->field_1D0 : d->field_1DC, n - 1);
+        } else if (d->field_168 != 3) {
+            _dispRefImageField(d, d->field_1E0, d->field_1F0, n - 1);
+        } else {
+            _dispRefImageField(d, d->field_1EC, d->field_1FC, n - 1);
+        }
+    }
+    if (d->field_110 == 1) {
+        d->field_110 = 2;
+    }
+}
+
+// [C] picks the current record for the picture and says whether its references are there (the result). B pictures
+// decode into the B records (+0x1D8 / +0x1E8 / +0x1F8 = +0x1DC / +0x1EC / +0x1FC); from the second B picture after
+// a GOP header (+0xB8 + +0xBC >= 2 for frames, 4 for fields) the GOP flags (+0x100, +0x1C0, +0x1BC) are cleared;
+// with +0x100 or broken_link (+0x1C0) set and closed_gop (+0x1BC) clear the forward references are invalidated;
+// +0x100 = +0x1C0 = 0; valid when both references are (frames +0x1D0 / +0x1D4, fields +0x1E0 & +0x1F0 /
+// +0x1E4 & +0x1F4) or closed_gop with the backward one. I / P pictures: unless second (the second field), the forward
+// and backward records swap (+0x1D0 <-> +0x1D4, +0x1E0 <-> +0x1E4, +0x1F0 <-> +0x1F4) and the new backward ones become
+// current; I always valid, P when its forward reference is (a second P field also by its first field). The current
+// record (by picture structure; none for another value: retail then writes from address 0) is invalidated and gets
+// the picture's pts / dts (+0x840 / +0x848), coding type, structure and display fields.
+// 0x00108820
+extern "C" int _updateRefImage(UnkStruct_sceMpegData *d, int second)
+{
+    UnkStruct_sceMpegImage *img;
+    UnkStruct_sceMpegImage *t;
+    UnkStruct_sceMpegImage *f0;
+    UnkStruct_sceMpegImage *b0;
+    UnkStruct_sceMpegImage *f1;
+    UnkStruct_sceMpegImage *b1;
+    UnkStruct_sceMpegImage *f2;
+    UnkStruct_sceMpegImage *b2;
+    int ps;
+    int type;
+    int need;
+    int ok;
+
+    ps = d->field_18C;
+    type = d->field_168;
+    need = ps == 3 ? 2 : 4;
+    ok = 0;
+    if (type == 3) {
+        d->field_1D8 = d->field_1DC;
+        d->field_1E8 = d->field_1EC;
+        d->field_1F8 = d->field_1FC;
+        if (!(d->field_B8 + d->field_BC < need)) {
+            d->field_100 = 0;
+            d->field_1C0 = 0;
+            d->field_1BC = 0;
+        }
+        if ((d->field_100 != 0 || d->field_1C0 != 0) && d->field_1BC == 0) {
+            d->field_1D0->field_28 = 0;
+            d->field_1E0->field_28 = 0;
+            d->field_1F0->field_28 = 0;
+            ps = d->field_18C;
+        }
+        d->field_100 = 0;
+        d->field_1C0 = 0;
+        if (ps == 3) {
+            if (d->field_1D0->field_28 == 1 || d->field_1BC != 0) {
+                ok = d->field_1D4->field_28 == 1;
+            }
+        } else if ((d->field_1E0->field_28 == 1 && d->field_1F0->field_28 == 1) || d->field_1BC != 0) {
+            if (d->field_1E4->field_28 == 1) {
+                ok = d->field_1F4->field_28 == 1;
+            }
+        }
+    } else {
+        if (second == 0) {
+            f0 = d->field_1D0;
+            b0 = d->field_1D4;
+            d->field_1D4 = f0;
+            f1 = d->field_1E0;
+            b1 = d->field_1E4;
+            d->field_1E4 = f1;
+            f2 = d->field_1F0;
+            b2 = d->field_1F4;
+            d->field_1D0 = b0;
+            d->field_1E0 = b1;
+            d->field_1F0 = b2;
+            d->field_1F4 = f2;
+        }
+        d->field_1D8 = d->field_1D4;
+        d->field_1E8 = d->field_1E4;
+        d->field_1F8 = d->field_1F4;
+        if (ps == 3) {
+            if (type != 2) {
+                ok = 1;
+            } else {
+                ok = d->field_1D0->field_28 == 1;
+            }
+        } else {
+            t = ps != 1 ? d->field_1E4 : d->field_1F4;
+            if (type != 2) {
+                ok = 1;
+            } else if (second != 0 && t->field_28 == 1) {
+                ok = 1;
+            } else {
+                ok = d->field_1E0->field_28 == 1 && d->field_1F0->field_28 == 1;
+            }
+        }
+    }
+    img = 0;
+    if (ps == 2) {
+        img = d->field_1F8;
+    } else if (ps == 1) {
+        img = d->field_1E8;
+    } else if (ps == 3) {
+        img = d->field_1D8;
+    }
+    img->field_28 = 0;
+    img->field_18 = d->field_840;
+    img->field_2C = d->field_168;
+    img->field_20 = d->field_848;
+    img->field_30 = d->field_18C;
+    img->field_34 = d->field_154;
+    img->field_38 = d->field_1A0;
+    img->field_3C = d->field_190;
+    img->field_40 = d->field_19C;
+    img->field_44 = d->field_1A4[0];
+    img->field_48 = d->field_1A4[1];
+    img->field_4C = d->field_1A4[2];
+    img->field_50 = d->field_1B0[0];
+    img->field_54 = d->field_1B0[1];
+    img->field_58 = d->field_1B0[2];
+    img->field_5C = d->field_160;
+    img->field_60 = d->field_164;
+    return ok;
+}
+
+// [C] the output buffer fits the picture: RAW8xy (+0xF8 nonzero) by width (+0xF4 >= +4) and height (+0xF8 >= +8),
+// else by macroblocks (+0xFC >= +0xC * +0x10); too small: "Too small buffer size for %dx%d picture" (formatted on
+// the stack) as an error. Returns 1 / 0.
+// 0x00108AD8
+extern "C" int _isOutSizeOK(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img)
+{
+    char buf[0x100];
+    int ok;
+
+    if (d->field_CC[11] != 0) {
+        ok = 0;
+        if (!(d->field_CC[10] < img->field_4)) {
+            ok = !(d->field_CC[11] < img->field_8);
+        }
+    } else {
+        ok = !(d->field_CC[12] < img->field_C * img->field_10);
+    }
+    if (ok == 0) {
+        sprintf(buf, D_004B1DA8, img->field_4, img->field_8);
+        _Error(d, buf);
+    }
+    return ok;
+}
+
+// [C] the raw macroblocks to the output buffer (+0xF0) through the scratchpad: per column of macroblocks (+0xC of
+// them), toSPR (SADR 0, the column's qwords, CHCR 0x101; wait) then fromSPR to the output (CHCR 0x100; wait for
+// CHCR.STR and QWC 0), each kick with interrupts off. The source column is +0x10 macroblocks (0x180 bytes each); the
+// output steps by the same, or by RAW8xy's height (+0xF8 / 16 * 0x180). A field picture into a RAW8xy buffer goes as
+// two halves (+0x10 / 2 macroblocks per column, output step +0xF8 / 16 * 0xC0, the second half +0xFC * 0xC0 bytes
+// further on).
+// 0x00108B78
+extern "C" void _cpr8(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img)
+{
+    unsigned int src;
+    unsigned int dst;
+    unsigned int dst0;
+    unsigned int next_src;
+    unsigned int next_dst;
+    int src_step;
+    int dst_step;
+    int qwc;
+    int n;
+    int f;
+    int i;
+    int was;
+
+    src = img->field_0 & 0x0FFFFFFF;
+    dst0 = d->field_CC[9] & 0x0FFFFFFF;
+    if (d->field_18C == 3 || d->field_CC[11] == 0) {
+        src_step = img->field_10 * 0x180;
+        qwc = src_step >> 4;
+        if (d->field_CC[11] != 0) {
+            dst_step = (d->field_CC[11] >> 4) * 0x180;
+        } else {
+            dst_step = src_step;
+        }
+        n = 1;
+    } else {
+        dst_step = (d->field_CC[11] >> 4) * 0xC0;
+        src_step = (img->field_10 >> 1) * 0x180;
+        n = 2;
+        qwc = src_step >> 4;
+    }
+    for (f = 0; f < n; f++) {
+        dst = dst0;
+        for (i = 0; i < img->field_C; i++) {
+            was = func_00114E60();
+            b3hw_write32(0x1000D480, 0);
+            b3hw_write32(0x1000D410, src);
+            b3hw_write32(0x1000D420, qwc);
+            b3hw_write32(0x1000D400, 0x101);
+            if (was) {
+                EIntr();
+            }
+            next_src = src + src_step;
+            next_dst = dst + dst_step;
+            while (b3hw_read32(0x1000D400) & 0x100) {
+            }
+            was = func_00114E60();
+            b3hw_write32(0x1000D080, 0);
+            b3hw_write32(0x1000D010, dst);
+            b3hw_write32(0x1000D020, qwc);
+            b3hw_write32(0x1000D000, 0x100);
+            if (was) {
+                EIntr();
+            }
+            while (b3hw_read32(0x1000D000) & 0x100) {
+            }
+            while (b3hw_read32(0x1000D020) != 0) {
+            }
+            dst = next_dst;
+            src = next_src;
+        }
+        dst0 = dst0 + d->field_CC[12] * 0xC0;
+    }
+}
+
+// [C] a picture went out: the first one (+8 != 2) sets +8 = 2 and +0xC4 = +0x130; +0x838 = 1. Returns 1.
+// 0x00108E08
+extern "C" int func_00108E08(UnkStruct_sceMpegData *d)
+{
+    if (d->field_8 != 2) {
+        int v = d->field_130;
+        d->field_8 = 2;
+        d->field_C4 = v;
+    }
+    d->field_838 = 1;
+    return 1;
+}
+
+// [C] the shown picture's pts / dts / flags: the record's pts (+0x18); with the time base on (+0x8C) and no pts but
+// a previous one (+0x98 >= 0): previous + (+0x90 * (int)+0xA0) / 2 (the 64-bit product's bits 1..32) + (both odd
+// and +0xA8 odd), +0xA8 counting the odd steps. A pending pts from func_0010A268 (+0x110 == 2, +0x108 >= 0) replaces
+// it (+0x110 = 0, +0x108 = -1). dts = the record's +0x20; flags = coding type | structure << 3 | rff << 5 | tff << 6 |
+// progressive_frame << 7 | progressive_sequence << 8.
+// 0x00108E30
+extern "C" void _getPtsDtsFlags(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img, long long *pts, long long *dts,
+                                unsigned long long *flags)
+{
+    long long p;
+    long long step;
+    unsigned long long prod;
+    int prev;
+    int cnt;
+    int odd;
+
+    if (d->field_8C != 0) {
+        p = img->field_18;
+        if (p >= 0) {
+            *pts = p;
+        } else {
+            prev = d->field_98;
+            if (prev < 0) {
+                *pts = p;
+            } else {
+                step = (long long)(int)d->field_A0;
+                cnt = d->field_A8;
+                odd = (int)(step & 1) & (cnt & 1) & (int)(d->field_90 & 1);
+                prod = d->field_90 * (unsigned long long)step;
+                *pts = (long long)(int)((unsigned int)prev + (unsigned int)(prod >> 1) + (unsigned int)odd);
+                if (((unsigned long long)(step & 1) & d->field_90) != 0) {
+                    d->field_A8 = cnt + 1;
+                }
+            }
+        }
+    } else {
+        *pts = img->field_18;
+    }
+    if (d->field_110 == 2 && d->field_108 >= 0) {
+        *pts = d->field_108;
+        d->field_110 = 0;
+        d->field_108 = -1;
+    }
+    *dts = img->field_20;
+    *flags = ((unsigned long long)(long long)img->field_34 << 8 | (unsigned long long)(long long)img->field_2C) |
+             ((unsigned long long)(long long)img->field_40 << 5 | (unsigned long long)(long long)img->field_3C << 6) |
+             ((unsigned long long)(long long)img->field_38 << 7 | (unsigned long long)(long long)img->field_30 << 3);
+}
+
+// [C] a frame picture out: pts / dts / flags into the public object (+0x10 / +0x18 / +0x20), +0x98 = the pts's low
+// word, +0xA0 = _showCount[flags bits 5-8], the display fields (+0xE4 / +0xE8 / +0xCC .. +0xE0 from the record's
+// +0x5C / +0x60 / +0x44 .. +0x58). When the buffer fits and the record is valid: CSC (+0xC8) or raw copy, then
+// func_00108E08. Returns 1.
+// 0x00108FA8
+extern "C" int _dispRefImage(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img, int n)
+{
+    UnkStruct_sceMpeg *mp;
+
+    mp = d->field_870;
+    _getPtsDtsFlags(d, img, &mp->field_10, &mp->field_18, &mp->field_20);
+    mp = d->field_870;
+    d->field_98 = (int)mp->field_10;
+    d->field_CC[6] = img->field_5C;
+    d->field_A0 = _showCount[(mp->field_20 >> 5) & 0xF];
+    d->field_CC[7] = img->field_60;
+    d->field_CC[0] = img->field_44;
+    d->field_CC[1] = img->field_48;
+    d->field_CC[2] = img->field_4C;
+    d->field_CC[3] = img->field_50;
+    d->field_CC[4] = img->field_54;
+    d->field_CC[5] = img->field_58;
+    if (_isOutSizeOK(d, img) == 0) {
+        return 1;
+    }
+    if (img->field_28 != 1) {
+        return 1;
+    }
+    if (d->field_C8 != 0) {
+        _csc_storeRefImage(d, img);
+    } else {
+        _cpr8(d, img);
+    }
+    return func_00108E08(d);
+}
+
+// [C] a field pair out (a = the top field's record, b = the bottom's; a bottom field picture (+0x18C == 2) has a
+// first): the first field's pts / dts / flags into +0x10 / +0x18 / +0x20, the second's into +0x28 / +0x30 / +0x38
+// (+0xA0 = 1, +0x98 = the pts's low word after each), top_field_first (0x40) or'ed into both flags when a is first;
+// the display fields from the first (+0xE4 / +0xE8 / +0xCC / +0xD8) and second (+0xD0 / +0xDC) field. When the
+// buffer fits and both are valid: a's record taken as a frame (+0x10 doubled), CSC or raw copy, +0x10 halved
+// (arithmetic), func_00108E08. Returns 1, or b's +0x28 when b is not valid.
+// 0x001090B8
+extern "C" int _dispRefImageField(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *a, UnkStruct_sceMpegImage *b,
+                                  int n)
+{
+    UnkStruct_sceMpeg *mp;
+    UnkStruct_sceMpegImage *first;
+    UnkStruct_sceMpegImage *second;
+    unsigned long long tff;
+
+    tff = 0;
+    if (d->field_18C == 2) {
+        first = a;
+        second = b;
+        tff = 0x40;
+    } else {
+        first = b;
+        second = a;
+    }
+    mp = d->field_870;
+    _getPtsDtsFlags(d, first, &mp->field_10, &mp->field_18, &mp->field_20);
+    mp = d->field_870;
+    d->field_A0 = 1;
+    d->field_98 = (int)mp->field_10;
+    _getPtsDtsFlags(d, second, &mp->field_28, &mp->field_30, &mp->field_38);
+    mp = d->field_870;
+    d->field_A0 = 1;
+    d->field_98 = (int)mp->field_28;
+    d->field_CC[6] = first->field_5C;
+    mp->field_20 = mp->field_20 | tff;
+    mp->field_38 = mp->field_38 | tff;
+    d->field_CC[7] = first->field_60;
+    d->field_CC[0] = first->field_44;
+    d->field_CC[1] = second->field_48;
+    d->field_CC[3] = first->field_50;
+    d->field_CC[4] = second->field_54;
+    if (_isOutSizeOK(d, a) == 0) {
+        return 1;
+    }
+    if (a->field_28 != 1) {
+        return 1;
+    }
+    if (b->field_28 != 1) {
+        return b->field_28;
+    }
+    a->field_10 = (int)((unsigned int)a->field_10 << 1);
+    if (d->field_C8 != 0) {
+        _csc_storeRefImage(d, a);
+    } else {
+        _cpr8(d, a);
+    }
+    a->field_10 = a->field_10 >> 1;
+    return func_00108E08(d);
+}
+
+// [C] the reference blocks of the current macroblock buffer (+0x5A8 + +0x828 * 0x140) into the scratchpad: per
+// entry two toSPR tags written through the uncached alias of _sprtagdata.33 (each qword's low dword; the high one
+// left): ref (id 3) of 0x30 qwords from +8[i], then 0x30 qwords from +0x18[i] as ref, or refe (id 0) for the last
+// entry. Then with interrupts off: SADR = the buffer's scratchpad address, TADR = the tags, QWC 0, CHCR 0x105
+// (chain, from memory, start).
+// 0x00109270
+extern "C" void dmaRefImage(UnkStruct_sceMpegData *d)
+{
+    UnkStruct_sceMpegMbBuf *mb;
+    unsigned long long *tag;
+    int n;
+    int i;
+    int was;
+
+    tag = (unsigned long long *)(((unsigned int)D_004E3040 & 0x0FFFFFFF) | 0x20000000);
+    mb = (UnkStruct_sceMpegMbBuf *)&d->field_5A8 + d->field_828;
+    n = mb->field_12C;
+    for (i = 0; i < n; i++) {
+        tag[0] = ((unsigned long long)(mb->field_8[i] & 0x0FFFFFFF) << 32) | 0x30000030;
+        tag[2] = ((unsigned long long)(mb->field_18[i] & 0x0FFFFFFF) << 32) |
+                 ((unsigned long long)(i == n - 1 ? 0 : 3) << 28) | 0x30;
+        tag += 4;
+    }
+    was = func_00114E60();
+    // sync
+    mb = (UnkStruct_sceMpegMbBuf *)&d->field_5A8 + d->field_828;
+    b3hw_write32(0x1000D480, mb->field_0);
+    b3hw_write32(0x1000D430, (unsigned int)D_004E3040);
+    b3hw_write32(0x1000D420, 0);
+    b3hw_write32(0x1000D400, 0x105);
+    if (was) {
+        EIntr();
+    }
+}
+
+// [C] fromIPU into the scratchpad: with interrupts off MADR = (addr & 0x0FFFFFFF) | 0x80000000 (SPR), QWC = size >> 4
+// (arithmetic), CHCR 0x100.
+// 0x001093E0
+extern "C" void receiveDataFromIPU(unsigned int addr, int size)
+{
+    int was;
+
+    was = func_00114E60();
+    b3hw_write32(0x1000B010, (addr & 0x0FFFFFFF) | 0x80000000);
+    b3hw_write32(0x1000B020, size >> 4);
+    b3hw_write32(0x1000B000, 0x100);
+    if (was) {
+        EIntr();
+    }
+}
+
+// [C] CSC of n (< 0x400) macroblocks into addr: wait for the IPU; fromIPU (MADR, QWC n * 0x40, CHCR 0x100, interrupts
+// off); CSC command (0x70000000 | n: RGB32, no dither); the background callback (type 4); wait for fromIPU's STR and
+// then the IPU.
+// 0x00109468
+extern "C" void _doCSC(UnkStruct_sceMpegData *d, unsigned int addr, int n)
+{
+    int cb[4];
+    int was;
+
+    while ((int)b3hw_read32(0x10002010) < 0) {
+    }
+    was = func_00114E60();
+    b3hw_write32(0x1000B010, addr & 0x0FFFFFFF);
+    b3hw_write32(0x1000B020, n << 6);
+    b3hw_write32(0x1000B000, 0x100);
+    if (was) {
+        EIntr();
+    }
+    _sendIpuCommand(d, n | 0x70000000);
+    cb[0] = 4;
+    _dispatchMpegCallback(d->field_870, cb);
+    while ((b3hw_read32(0x1000B000) >> 8) & 1) {
+    }
+    while ((int)b3hw_read32(0x10002010) < 0) {
+    }
+}
+
+// [C] the fromIPU DMAC handler of _doCSC2 (handwritten): D_STAT ch 3 cleared, one more interrupt counted. A transfer
+// still running (QWC != 0 or CHCR.STR) is an error (+4 = 1). Else before the last chunk: the next 0x3FF macroblocks
+// (MADR, QWC 0xFFC0, CHCR 0x100, CSC 0x700003FF), the address + 0xFFC00 (masked); at the last: the rest (+8 - count *
+// 0x3FF) the same way. Ends with `sync; ei`; returns 0.
+// 0x00109590
+extern "C" int func_00109590(int channel, UnkStruct_sceMpegCsc2 *a, void *addr)
+{
+    b3hw_write32(0x1000E010, 8);
+    a->field_0 = a->field_0 + 1;
+    if (b3hw_read32(0x1000B020) != 0 || (b3hw_read32(0x1000B000) & 0x100) != 0) {
+        a->field_4 = 1;
+        // sync
+        b3hw_ei();
+        return 0;
+    }
+    if (a->field_0 < a->field_10 - 1) {
+        b3hw_write32(0x1000B010, a->field_C);
+        b3hw_write32(0x1000B020, 0xFFC0);
+        b3hw_write32(0x1000B000, 0x100);
+        b3hw_write32(0x10002000, 0x700003FF);
+        a->field_C = (a->field_C + 0xFFC00) & 0x0FFFFFFF;
+    } else if (a->field_0 == a->field_10 - 1) {
+        a->field_8 = a->field_8 - a->field_0 * 0x3FF;
+        b3hw_write32(0x1000B010, a->field_C);
+        b3hw_write32(0x1000B020, a->field_8 << 6);
+        b3hw_write32(0x1000B000, 0x100);
+        b3hw_write32(0x10002000, a->field_8 | 0x70000000);
+    }
+    // sync
+    b3hw_ei();
+    return 0;
+}
+
+// [C] CSC of n (>= 0x400) macroblocks in chunks of 0x3FF (one CSC command's limit): the handler block (sp + 0x20:
+// count 0, error 0, n, addr + 0xFFC00 masked, n / 0x3FF + 1 chunks), wait for the IPU, func_00109590 installed on
+// ch 3, D_STAT ch 3 cleared, EnableDmac(3); the first chunk (fromIPU MADR, QWC 0xFFC0, CHCR 0x100 with interrupts
+// off; CSC 0x700003FF written to IPU_CMD directly); the background callback (type 4). The error flag is read before
+// the wait for the interrupt count to reach the chunk count ([C] 0x10980C: retail's order); set: an error. Wait for
+// the IPU, DisableDmac(3), the handler removed.
+// 0x001096D8
+extern "C" void _doCSC2(UnkStruct_sceMpegData *d, unsigned int addr, int n)
+{
+    B3_RETAIL_FRAME(0x80);
+    int *cb = B3_FRAME_LOCAL(int, 0);
+    UnkStruct_sceMpegCsc2 *a = B3_FRAME_LOCAL(UnkStruct_sceMpegCsc2, 0x20);
+    int total;
+    int id;
+    int was;
+    int err;
+
+    total = n / 0x3FF + 1;
+    a->field_8 = n;
+    a->field_C = (addr + 0xFFC00) & 0x0FFFFFFF;
+    a->field_4 = 0;
+    a->field_0 = 0;
+    a->field_10 = total;
+    while ((int)b3hw_read32(0x10002010) < 0) {
+    }
+    id = AddDmacHandler2(3, (unsigned int)func_00109590, 0, a);
+    b3hw_write32(0x1000E010, 8);
+    EnableDmac(3);
+    was = func_00114E60();
+    b3hw_write32(0x1000B010, addr & 0x0FFFFFFF);
+    b3hw_write32(0x1000B020, 0xFFC0);
+    b3hw_write32(0x1000B000, 0x100);
+    if (was) {
+        EIntr();
+    }
+    b3hw_write32(0x10002000, 0x700003FF);
+    cb[0] = 4;
+    _dispatchMpegCallback(d->field_870, cb);
+    err = a->field_4;
+    while (*(volatile int *)&a->field_0 < total) {
+    }
+    if (err != 0) {
+        _Error(d, D_004B1DD8);
+    }
+    while ((int)b3hw_read32(0x10002010) < 0) {
+    }
+    DisableDmac(3);
+    RemoveDmacHandler(3, id);
+}
+
+// [C] the toIPU DMAC handler of _csc_storeRefImage (handwritten): D_STAT ch 4 cleared; nothing left: `sync; ei`,
+// returns 1. Else the next piece (MADR, QWC min(left, 0xFFFF), CHCR 0x101), left and address updated (+0xFFFF0,
+// masked); `sync; ei`, returns 0.
+// 0x00109898
+extern "C" int func_00109898(int channel, UnkStruct_sceMpegToIpu *a, void *addr)
+{
+    b3hw_write32(0x1000E010, 0x10);
+    if (a->field_0 == 0) {
+        // sync
+        b3hw_ei();
+        return 1;
+    }
+    if (a->field_0 > 0xFFFF) {
+        b3hw_write32(0x1000B410, a->field_4);
+        b3hw_write32(0x1000B420, 0xFFFF);
+        b3hw_write32(0x1000B400, 0x101);
+        a->field_0 = a->field_0 - 0xFFFF;
+        a->field_4 = (a->field_4 + 0xFFFF0) & 0x0FFFFFFF;
+    } else {
+        b3hw_write32(0x1000B410, a->field_4);
+        b3hw_write32(0x1000B420, a->field_0);
+        b3hw_write32(0x1000B400, 0x101);
+        a->field_0 = 0;
+    }
+    // sync
+    b3hw_ei();
+    return 0;
+}
+
+// [C] a picture to RGB32 in the output buffer (+0xF0): the stop-DMA callback (type 2); an IPU error (IPU_CTRL.ECD)
+// resets the IPU; wait, BCLR 0, wait; the picture's macroblocks (+0xC * +0x10, 0x18 qwords each) by toIPU: over 0xFFFF
+// qwords with func_00109898 installed on ch 4 (D_STAT ch 4 cleared, EnableDmac(4); the first 0xFFFF qwords, then the
+// block advanced), else in one go; CSC by _doCSC (< 0x400 macroblocks) or _doCSC2; the handler removed
+// (DisableDmac(4)); the restart-DMA callback (type 3).
+// 0x00109970
+extern "C" void _csc_storeRefImage(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img)
+{
+    B3_RETAIL_FRAME(0xA0);
+    int *cb = B3_FRAME_LOCAL(int, 0);
+    UnkStruct_sceMpegToIpu *a = B3_FRAME_LOCAL(UnkStruct_sceMpegToIpu, 0x20);
+    unsigned int buf;
+    int n;
+    int small;
+    int id;
+    int was;
+
+    n = img->field_C * img->field_10;
+    cb[0] = 2;
+    _dispatchMpegCallback(d->field_870, cb);
+    if (b3hw_read32(0x10002010) & 0x4000) {
+        b3hw_write32(0x10002010, 0x40000000);
+    }
+    small = n < 0x400;
+    while ((int)b3hw_read32(0x10002010) < 0) {
+    }
+    _sendIpuCommand(d, 0);
+    buf = img->field_0;
+    while ((int)b3hw_read32(0x10002010) < 0) {
+    }
+    a->field_4 = buf & 0x0FFFFFFF;
+    a->field_0 = n * 0x18;
+    if (a->field_0 > 0xFFFF) {
+        id = AddDmacHandler2(4, (unsigned int)func_00109898, 0, a);
+        b3hw_write32(0x1000E010, 0x10);
+        EnableDmac(4);
+        was = func_00114E60();
+        b3hw_write32(0x1000B410, a->field_4);
+        b3hw_write32(0x1000B420, 0xFFFF);
+        b3hw_write32(0x1000B400, 0x101);
+        if (was) {
+            EIntr();
+        }
+        a->field_4 = (a->field_4 + 0xFFFF0) & 0x0FFFFFFF;
+        a->field_0 = a->field_0 - 0xFFFF;
+        if (small) {
+            _doCSC(d, d->field_CC[9], n);
+        } else {
+            _doCSC2(d, d->field_CC[9], n);
+        }
+        DisableDmac(4);
+        RemoveDmacHandler(4, id);
+    } else {
+        was = func_00114E60();
+        b3hw_write32(0x1000B410, img->field_0 & 0x0FFFFFFF);
+        b3hw_write32(0x1000B420, a->field_0);
+        b3hw_write32(0x1000B400, 0x101);
+        if (was) {
+            EIntr();
+        }
+        a->field_0 = 0;
+        if (small) {
+            _doCSC(d, d->field_CC[9], n);
+        } else {
+            _doCSC2(d, d->field_CC[9], n);
+        }
+    }
+    cb[0] = 3;
+    _dispatchMpegCallback(d->field_870, cb);
+}
+
+// [C] queues a buffer to the toIPU DMA as a tag chain in the internal state ((d + 0x88F) & ~0xF): pieces of at most
+// 0xFFF40 bytes, one tag each (ref, id 3; refe, id 0, for the last; QWC = (piece + 15) / 16; the address masked),
+// each tag's low dword stored, then `sync`. FlushCache(0); with interrupts off TADR = the chain (masked), QWC 0,
+// CHCR 0x105 (chain, from memory, start).
+// 0x0010AA98
+extern "C" void func_0010AA98(UnkStruct_sceMpegData *d, unsigned int addr, int size)
+{
+    unsigned long long *tag;
+    unsigned int base;
+    int left;
+    int n;
+    int qwc;
+    int was;
+
+    base = ((unsigned int)d + 0x88F) >> 4 << 4;
+    tag = (unsigned long long *)base;
+    left = size;
+    while (left > 0) {
+        n = 0xFFF40 < left ? 0xFFF40 : left;
+        qwc = (n + 15) / 16;
+        left -= n;
+        *tag = ((unsigned long long)(addr & 0x0FFFFFFF) << 32) | ((unsigned long long)(left != 0 ? 3 : 0) << 28) |
+               (unsigned int)qwc;
+        // sync
+        addr += n;
+        tag += 2;
+    }
+    FlushCache(0);
+    was = func_00114E60();
+    b3hw_write32(0x1000B430, base & 0x0FFFFFFF);
+    b3hw_write32(0x1000B420, 0);
+    b3hw_write32(0x1000B400, 0x105);
+    if (was) {
+        EIntr();
+    }
+}
+
+// [C] fromIPU CHCR = chcr with interrupts off and DMA suspended (D_ENABLEW = D_ENABLER | 0x10000, then
+// D_ENABLER & ~0x10000).
+// 0x0010B398
+extern "C" void setD3_CHCR(unsigned int chcr)
+{
+    int was;
+
+    was = func_00114E60();
+    b3hw_write32(0x1000F590, b3hw_read32(0x1000F520) | 0x10000);
+    b3hw_write32(0x1000B000, chcr);
+    b3hw_write32(0x1000F590, b3hw_read32(0x1000F520) & 0xFFFEFFFF);
+    if (was) {
+        EIntr();
+    }
+}
+
+// [C] toIPU CHCR = chcr the same way.
+// 0x0010B410
+extern "C" void setD4_CHCR(unsigned int chcr)
+{
+    int was;
+
+    was = func_00114E60();
+    b3hw_write32(0x1000F590, b3hw_read32(0x1000F520) | 0x10000);
+    b3hw_write32(0x1000B400, chcr);
+    b3hw_write32(0x1000F590, b3hw_read32(0x1000F520) & 0xFFFEFFFF);
+    if (was) {
+        EIntr();
+    }
+}
+
+// [C] stops both IPU DMA channels and saves them: toIPU CHCR = 1 (stopped), its MADR, TADR, QWC, CHCR read in that
+// order; wait for the IPU's input FIFO to drain (IPU_CTRL.IFC, bits 4-7); fromIPU CHCR = 0, its MADR, QWC, CHCR, then
+// IPU_BP and IPU_CTRL.
+// 0x0010B488
+extern "C" void sceIpuStopDMA(void *state)
+{
+    UnkStruct_sceIpuDma *s;
+
+    s = (UnkStruct_sceIpuDma *)state;
+    setD4_CHCR(1);
+    s->field_0 = b3hw_read32(0x1000B410);
+    s->field_4 = b3hw_read32(0x1000B430);
+    s->field_8 = b3hw_read32(0x1000B420);
+    s->field_C = b3hw_read32(0x1000B400);
+    while (b3hw_read32(0x10002010) & 0xF0) {
+    }
+    setD3_CHCR(0);
+    s->field_10 = b3hw_read32(0x1000B010);
+    s->field_14 = b3hw_read32(0x1000B020);
+    s->field_18 = b3hw_read32(0x1000B000);
+    s->field_1C = b3hw_read32(0x10002020);
+    s->field_20 = b3hw_read32(0x10002010);
+}
+
+// [C] restarts what sceIpuStopDMA saved: fromIPU (MADR, QWC, CHCR | 0x100) when both MADR and QWC were nonzero; wait
+// for the IPU, BCLR with the saved bit pointer (BP & 0x7F), wait; toIPU backed up by the qwords the IPU held (FP
+// + IFC from IPU_BP: MADR - 16 * them, QWC + them) and restarted (MADR, TADR, QWC, CHCR | 0x100) when both are
+// nonzero.
+// 0x0010B570
+extern "C" void sceIpuRestartDMA(void *state)
+{
+    UnkStruct_sceIpuDma *s;
+    unsigned int bp;
+    unsigned int held;
+    unsigned int qwc;
+    unsigned int madr;
+
+    s = (UnkStruct_sceIpuDma *)state;
+    bp = s->field_1C;
+    held = ((bp >> 16) & 3) + ((bp >> 8) & 0xF);
+    qwc = s->field_8 + held;
+    madr = s->field_0 - (held << 4);
+    if (s->field_10 != 0 && s->field_14 != 0) {
+        b3hw_write32(0x1000B010, s->field_10);
+        b3hw_write32(0x1000B020, s->field_14);
+        setD3_CHCR(s->field_18 | 0x100);
+    }
+    while ((int)b3hw_read32(0x10002010) < 0) {
+    }
+    b3hw_write32(0x10002000, bp & 0x7F);
+    while ((int)b3hw_read32(0x10002010) < 0) {
+    }
+    if (madr != 0 && qwc != 0) {
+        b3hw_write32(0x1000B410, madr);
+        b3hw_write32(0x1000B430, s->field_4);
+        b3hw_write32(0x1000B420, qwc);
+        setD4_CHCR(s->field_C | 0x100);
+    }
+}

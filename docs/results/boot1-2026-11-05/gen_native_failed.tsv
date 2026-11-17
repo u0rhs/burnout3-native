@@ -1,0 +1,3 @@
+source	reason
+src/b3/gamesource/Graphics/PopcornRenderer/Ps2/B3PopcornRendererPS2.cpp	B3PopcornRendererPS2.cpp: does not compile for the host: build/gen_native/units/B3PopcornRendererPS2.cpp:20:46: error: expected unqualified-id before ‘(’ token
+src/b3/gamesource/Camera/B3PlayerCameraManager.cpp	B3PlayerCameraManager.cpp: does not compile for the host: build/gen_native/units/B3PlayerCameraManager.cpp:77:47: error: ‘UnkStruct_002F8AA0_1’ was not declared in this scope; did you mean ‘UnkStruct_00217610_1’?

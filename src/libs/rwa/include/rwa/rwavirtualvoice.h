@@ -1,0 +1,60 @@
+// RWA virtual voices (rwavirtualvoice.o, rwavoicemanager.o): the types both objects use. Type and member names
+// [L Revenge stabs (build/audio1/revenge_rwa_types.h); offsets checked: _RwaVirtualVoiceCreate 0x297B50-0x297BC0,
+// _rwaVoiceManagerUpdate 0x295730-0x295AB4]. The listener calculation's blocks are not in the stabs (placeholders).
+#ifndef RWA_RWAVIRTUALVOICE_H
+#define RWA_RWAVIRTUALVOICE_H
+
+#include "rwa/rwacore.h"
+
+// RwaVirtualVoiceState [L], 0x64 bytes [C _RwaVirtualVoiceCreate 0x297B48 memset 0x64]: the object's state at +0x28.
+// Flags [C]: 1 = in the voice manager's used list (else its free list), 2 = started, 4 = looping (the real
+// voice gets parameter 0xA), 8 = keeps no play position (WavePosition not read back / not pushed), 0x10 = stop when it
+// loses its real voice, 0x20 = new wave pending (cleared by StartExecute); creation keeps 0x18 of the parameters' flags.
+struct RwaVirtualVoiceState {
+    RwLLLink link;                       // 0x00 in the voice manager's _freeList / _usedList
+    RwV3d Position;                      // 0x08 [C 0x2951B8 -> listener calculation]
+    RwV3d Velocity;                      // 0x14
+    RwV3d ListenerRelativePosition;      // 0x20 written back by the listener calculation
+    RwV3d ListenerRelativeVelocity;      // 0x2C
+    RwaObjHandle *RealVoice;             // 0x38 the real (hardware) voice's handle, or null
+    RwaWave *Wave;                       // 0x3C
+    struct RwaGainArray *GainArray;      // 0x40 [C 0x295AA4 -> real voice parameter 0xE]
+    RwUInt32 WavePosition;               // 0x44 play position, samples
+    RwUInt32 WaveStartPosition;          // 0x48
+    RwUInt32 LastPosTime;                // 0x4C time stamp (ms) of WavePosition
+    RwReal Frequency;                    // 0x50 Hz (22050 at creation)
+    RwReal MinDistance;                  // 0x54 (1)
+    RwReal MaxDistance;                  // 0x58 (10000)
+    RwUInt8 Priority;                    // 0x5C 0-255 (127)
+    RwUInt8 Gain;                        // 0x5D 0-255 (255)
+    RwUInt8 ReverbSendGain;              // 0x5E 0-255
+    RwUInt8 Bias;                        // 0x5F weight of priority against audible volume, 0-255 (127)
+    RwUInt8 Weight;                      // 0x60 the used list's sort key (127 at creation)
+    RwUInt8 NumRealVoices;               // 0x61 real voices it takes (wave channels; 2 for a 3D voice on a Dolby
+                                         //      SPU2 output)
+    RwUInt8 Flags;                       // 0x62 (above)
+    RwInt8 Pan;                          // 0x63 signed [C 0x2959C8 lb]
+};
+
+// RwaVirtualVoice [L], 0x8C bytes: object header, then the state (alignment 8: 0x28).
+// Revenge declares `RwaObj obj` first; B3's RwaObj struct (rwacore.h) runs to 0x2C, so only its definition is named.
+struct RwaVirtualVoice {
+    RwaObjDef *definition;        // 0x00
+    unsigned char pad_4[0x24];
+    RwaVirtualVoiceState state;   // 0x28
+};
+
+// The listener calculation's input (a caller's stack block) [C 0x2951E0-0x295208, 0x2B1454-0x2B1484].
+struct UnkStruct_002AE520_in {
+    RwV3d field_0;                // 0x00 position, then the listener-relative position
+    RwV3d field_C;                // 0x0C velocity, then the listener-relative velocity
+    RwReal field_18;              // 0x18 min distance
+    RwReal field_1C;              // 0x1C max distance
+};
+// Its output (a caller's stack block, at most 0x20 bytes [C ReInsertVoice frame 0x40-0x5F]).
+struct UnkStruct_002AE520_out {
+    RwReal field_0;               // 0x00 volume scale [C 0x295250 -> weight]
+    RwReal field_4[7];
+};
+
+#endif

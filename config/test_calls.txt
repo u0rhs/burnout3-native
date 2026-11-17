@@ -1,0 +1,4 @@
+# Generated for tests/test_calls.cpp only (Makefile: build/gen_calls), not the live selection: a non-leaf decomp
+# function and its callee, so the call stub path runs against retail in tests/r5900_mini.h.
+00147CB0 matched       # CB3AILane::GetAvgRightwardsVector: calls GetAvgForwardsVector with a local CGtV3d's address
+00147D00 nonmatching   # CB3AILane::GetAvgForwardsVector: the callee, as a native override (dispatch) or retail

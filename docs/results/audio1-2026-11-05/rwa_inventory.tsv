@@ -1,0 +1,706 @@
+# RW Audio EE side, 702 functions (audio1 2026-11-05). object: E map (research/retail_names.csv) [C], or by position between named neighbours [L].
+# class: direct-call closure reaches sif (sceSif*) / sema/thread / intr/cache (DIntr/EIntr, SyncDCache, sceGsSyncV) / rw (RenderWare: RwEngine*, RwStream, RwV*) / pure (none; function-pointer calls not followed)
+# called_races14: captured in the a1races14 discovery (boot, menus, races).
+address	name	size	object	object_tag	class	leaf	jalr_sites	game_call_sites	called_races14	external_callees
+00290B10	RwaSizeOf	348	librwacore.a rwabase.o	C	pure	1	0	0	0	
+00290C70	RwaCoreRegisterDefaultObjects	100	librwacore.a rwabase.o	C	pure	0	0	1	1	
+00290CE0	RwaCoreGetTickTime	8	librwacore.a rwabase.o	C	pure	1	0	0	0	
+00290CF0	RwaCoreUpdateFinish	56	librwacore.a rwabase.o	C	pure	0	0	2	1	
+00290D30	RwaCoreUpdateStart	60	librwacore.a rwabase.o	C	pure	0	0	2	1	
+00290D70	_rwaCoreOpen	112	librwacore.a rwabase.o	C	sif	0	0	1	1	
+00290DE0	_RwaCoreCloseModuleCallback	60	librwacore.a rwabase.o	C	pure	0	0	0	0	
+00290E20	_RwaCoreOpenModuleCallback	112	librwacore.a rwabase.o	C	rw	0	0	0	1	RwOsGetMemoryInterface
+00290E90	_RwaCoreOpenCodeModules	224	librwacore.a rwabase.o	C	pure	1	4	0	1	
+00290F70	_RwaCoreClosePlatform	68	librwacore.a rwabase.o	C	rw	1	0	0	0	RwEngineClose,RwEngineStop,RwEngineTerm
+00290FC0	_RwaCoreOpenPlatform	148	librwacore.a rwabase.o	C	rw	1	0	0	1	RwEngineClose,RwEngineInit,RwEngineOpen,RwEngineStart,RwEngineTerm
+00291060	RwaWaveByteSwap	276	librwacore.a rwawave.o	C	pure	0	0	0	0	memcpy
+00291180	RwaWaveUploadBusy	52	librwacore.a rwawave.o	C	pure	1	1	0	0	
+002911C0	RwaWaveUpload	400	librwacore.a rwawave.o	C	pure	0	2	0	0	memcpy
+00291350	_RwaWaveSetFixedUp	48	librwacore.a rwawave.o	C	pure	1	0	0	0	
+00291380	RwaWaveDestroy	216	librwacore.a rwawave.o	C	pure	0	1	0	1	
+00291460	RwaWaveCreateLoadedWave	276	librwacore.a rwawave.o	C	pure	0	0	0	1	
+00291580	_rwaWaveSetTargetFormat	396	librwacore.a rwawave.o	C	pure	0	0	0	1	memcpy
+00291710	RwaWaveCreate	700	librwacore.a rwawave.o	C	pure	0	1	0	1	memcpy
+002919D0	_rwaWaveCloseModule	36	librwacore.a rwawave.o	C	pure	0	0	0	0	
+00291A00	_rwaWaveOpenModule	80	librwacore.a rwawave.o	C	pure	0	0	0	1	
+00291A50	_rwaSymbolTableFindParamTypeByIndex	96	librwacore.a rwasymboltable.	C	pure	1	0	0	0	
+00291AB0	_rwaSymbolTableFindParamTypeFirstDepend	56	librwacore.a rwasymboltable.	C	pure	1	0	0	0	
+00291AF0	_rwaSymbolTableFindParamTypeByUUID	112	librwacore.a rwasymboltable.	C	pure	0	0	0	1	
+00291B60	_rwaSymbolTableRemoveParamType	88	librwacore.a rwasymboltable.	C	pure	1	0	0	0	
+00291BC0	_rwaSymbolTableAddParamType	60	librwacore.a rwasymboltable.	C	pure	1	0	0	1	
+00291C00	_rwaSymbolTableDestroy	20	librwacore.a rwasymboltable.	C	pure	1	0	0	0	
+00291C20	_rwaSymbolTableInit	20	librwacore.a rwasymboltable.	C	pure	1	0	0	1	
+00291C40	_rwaParamTypeCreateByTypeDefs	596	librwacore.a rwaparam.o	C	pure	0	0	0	1	
+00291EA0	_rwaParamTypeHandleRefreshType	92	librwacore.a rwaparam.o	C	pure	0	0	0	1	
+00291F00	_rwaParamTypeCloseModule	144	librwacore.a rwaparam.o	C	pure	0	0	0	0	
+00291F90	_rwaParamTypeOpenModule	312	librwacore.a rwaparam.o	C	pure	0	0	0	1	
+002920D0	RwaParamTypeDestroy	344	librwacore.a rwaparam.o	C	pure	0	0	0	0	
+00292230	RwaParamTypeCreateAlias	152	librwacore.a rwaparam.o	C	pure	0	0	0	1	
+002922D0	RwaParamTypeCreateAtomic	956	librwacore.a rwaparam.o	C	pure	0	0	0	1	memcpy
+00292690	RwaObjGetTopLevelObject	8	librwacore.a rwaobj.o	C	pure	1	0	0	0	
+002926A0	RwaObjDisconnectParamIndex	380	librwacore.a rwaobj.o	C	pure	0	0	0	0	
+00292820	_rwaObjFinishExecute	164	librwacore.a rwaobj.o	C	pure	1	2	0	1	
+002928D0	_rwaObjStartExecute	164	librwacore.a rwaobj.o	C	pure	1	2	0	1	
+00292980	RwaObjEnum	100	librwacore.a rwaobj.o	C	pure	1	1	0	1	
+002929F0	func_002929F0	40	librwacore.a rwaobj.o	L	pure	1	0	0	0	
+00292A20	RwaObjDestroy	332	librwacore.a rwaobj.o	C	pure	0	1	3	1	
+00292B70	_RwaObjInit	388	librwacore.a rwaobj.o	C	pure	1	0	0	0	
+00292D00	_rwaObjFindFixed	120	librwacore.a rwaobj.o	C	pure	1	0	0	0	
+00292D80	_rwaObjCalcSize	192	librwacore.a rwaobj.o	C	pure	1	0	0	0	
+00292E40	RwaObjCreate	1012	librwacore.a rwaobj.o	C	pure	0	3	0	1	
+00293240	_rwaObjCloseModule	64	librwacore.a rwaobj.o	C	pure	0	0	0	0	
+00293280	func_00293280	12	librwacore.a rwaobj.o	L	pure	1	0	0	1	
+00293290	_rwaObjOpenModule	156	librwacore.a rwaobj.o	C	pure	0	0	0	1	
+00293330	_rwaMemoryClose	8	librwacore.a rwamemory.o	C	pure	1	0	0	0	
+00293340	func_00293340	120	librwacore.a rwamemory.o	L	pure	1	0	0	1	memcpy
+002933C0	func_002933C0	76	librwacore.a rwamemory.o	L	pure	1	0	0	0	malloc,memset
+00293410	func_00293410	8	librwacore.a rwamemory.o	L	pure	1	0	0	0	realloc
+00293420	func_00293420	8	librwacore.a rwamemory.o	L	pure	1	0	0	0	malloc
+00293430	func_00293430	16	librwacore.a rwamemory.o	L	pure	1	0	0	0	
+00293440	func_00293440	16	librwacore.a rwamemory.o	L	pure	1	0	0	1	
+00293450	func_00293450	20	librwacore.a rwamemory.o	L	pure	1	0	0	0	
+00293470	func_00293470	68	librwacore.a rwamemory.o	L	pure	1	1	0	0	
+002934C0	func_002934C0	108	librwacore.a rwamemory.o	L	pure	1	0	0	1	
+00293530	RwaTimerGetFrequency	8	librwacore.a ostimer.o	C	pure	1	0	0	0	
+00293540	RwaTimerGetValue	12	librwacore.a ostimer.o	C	pure	1	0	0	1	
+00293550	func_00293550	12	librwacore.a ostimer.o	L	pure	1	0	0	0	
+00293560	func_00293560	24	librwacore.a ostimer.o	L	pure	1	0	0	1	
+00293580	_rwamemicmp	204	librwacore.a rwauuid.o	C	pure	1	0	0	0	
+00293650	_rwaUUIDSerialize	180	librwacore.a rwauuid.o	C	pure	0	0	0	1	memcpy
+00293710	_rwaUniqueIDInitialize	20	librwacore.a rwauuid.o	C	pure	1	0	0	1	
+00293730	_rwaUniqueIDFreeData	136	librwacore.a rwauuid.o	C	pure	0	0	0	1	
+002937C0	_rwaUniqueIDAssignUUID	116	librwacore.a rwauuid.o	C	pure	0	0	0	1	
+00293840	_rwaUniqueIDAssignName	116	librwacore.a rwauuid.o	C	pure	0	0	0	1	
+002938C0	_rwaUniqueIDModuleClose	36	librwacore.a rwauuid.o	C	pure	0	0	0	0	
+002938F0	_rwaUniqueIDModuleOpen	80	librwacore.a rwauuid.o	C	pure	0	0	0	1	
+00293940	RwaUniqueIDByteSwap	104	librwacore.a rwauuid.o	C	pure	0	0	0	0	memcpy
+002939B0	RwaUUIDByteSwap	120	librwacore.a rwauuid.o	C	pure	0	0	0	0	memcpy
+00293A30	RwaUUIDCompare	40	librwacore.a rwauuid.o	C	pure	1	0	0	1	memcmp
+00293A60	RwaObjInterfaceDefFindByUUID	128	librwacore.a rwaobjinterface	C	pure	0	0	0	1	
+00293AE0	RwaObjInterfaceDefDestroy	276	librwacore.a rwaobjinterface	C	pure	0	1	0	0	
+00293C00	RwaObjInterfaceDefCreate	168	librwacore.a rwaobjinterface	C	pure	0	0	0	1	
+00293CB0	RwaObjInterfaceDefAssignID	64	librwacore.a rwaobjinterface	C	pure	0	0	0	1	
+00293CF0	RwaObjInterfaceDefSetup	432	librwacore.a rwaobjinterface	C	pure	0	0	0	1	memset
+00293EA0	_rwaObjInterfaceDefSupported	408	librwacore.a rwaobjinterface	C	pure	0	0	0	1	
+00294040	RwaObjInterfaceRemove	108	librwacore.a rwaobjinterface	C	pure	0	0	0	1	
+002940B0	RwaObjInterfaceAttach	764	librwacore.a rwaobjinterface	C	pure	0	1	0	1	
+002943B0	_rwaObjInterfaceUnregister	112	librwacore.a rwaobjinterface	C	pure	1	1	0	0	
+00294420	_rwaObjInterfaceRegister	112	librwacore.a rwaobjinterface	C	pure	1	1	0	1	
+00294490	_rwaObjInterfaceCloseModule	88	librwacore.a rwaobjinterface	C	pure	0	0	0	0	
+002944F0	_rwaObjInterfaceOpenModule	92	librwacore.a rwaobjinterface	C	pure	0	0	0	1	
+00294550	RwaVoiceInterfaceRegister	112	librwacore.a rwavoice.o	C	pure	0	0	0	1	
+002945C0	RwaObjDefAliasDestroy	68	librwacore.a rwaobjdefalias.	C	pure	0	0	0	0	
+00294610	RwaObjHandleGetParamPointer	124	librwacore.a rwaintf.o	C	pure	1	1	0	1	
+00294690	RwaObjHandleGetParamUInt32	124	librwacore.a rwaintf.o	C	pure	1	1	1	1	
+00294710	RwaObjHandleGetParamInt32	124	librwacore.a rwaintf.o	C	pure	1	1	0	1	
+00294790	RwaObjHandleSetParamPointer	92	librwacore.a rwaintf.o	C	pure	1	1	0	1	
+002947F0	RwaObjHandleSetParamReal	100	librwacore.a rwaintf.o	C	pure	1	1	17	1	
+00294860	RwaObjHandleSetParamUInt32	100	librwacore.a rwaintf.o	C	pure	1	1	3	1	
+002948D0	RwaObjHandleSetParamInt32	100	librwacore.a rwaintf.o	C	pure	1	1	1	1	
+00294940	RwaObjHandleSetParamData	88	librwacore.a rwaintf.o	C	pure	1	1	5	1	
+002949A0	RwaObjHandleRelease	328	librwacore.a rwaintf.o	C	pure	0	0	0	0	
+00294AF0	RwaObjHandleCreateUsingObj	392	librwacore.a rwaintf.o	C	pure	0	0	0	1	
+00294C80	_rwaObjHandleCloseModule	76	librwacore.a rwaintf.o	C	pure	0	0	0	0	
+00294CD0	_rwaObjHandleOpenModule	92	librwacore.a rwaintf.o	C	pure	0	0	0	1	
+00294D30	RwaOutputInterfaceRegister	112	librwacore.a rwaoutput.o	C	pure	0	0	0	1	
+00294DA0	RwaVirtualVoiceInterfaceUnregister	12	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00294DB0	RwaVirtualVoiceInterfaceRegister	112	librwacore.a rwavirtualvoice	C	pure	0	0	0	1	
+00294E20	RwaVoiceManagerUpdateVoice	316	librwacore.a rwavoicemanager	C	rw	0	0	0	1	
+00294F60	_RwaVoiceManagerReInsertVoice	1072	librwacore.a rwavoicemanager	C	rw	0	0	0	1	
+00295390	_RwaVoiceManagerStopVoice	260	librwacore.a rwavoicemanager	C	pure	0	0	0	1	
+002954A0	RwaVoiceManagerRegisterVoice	60	librwacore.a rwavoicemanager	C	pure	1	0	0	1	
+002954E0	RwaVoiceManagerRegister	568	librwacore.a rwavoicemanager	C	pure	0	0	1	1	
+00295720	func_00295720	16	librwacore.a rwavoicemanager	L	pure	1	0	0	1	
+00295730	_rwaVoiceManagerUpdate	1024	librwacore.a rwavoicemanager	C	pure	0	0	0	1	
+00295B30	_rwaVoiceManagerUpdateTimeStamp	212	librwacore.a rwavoicemanager	C	pure	0	0	0	1	
+00295C10	_rwaVoiceManagerCloseModule	32	librwacore.a rwavoicemanager	C	pure	0	0	0	0	
+00295C30	_rwaVoiceManagerOpenModule	60	librwacore.a rwavoicemanager	C	pure	0	0	0	1	
+00295C70	func_00295C70	8	librwacore.a rwavoicemanager	L	pure	1	0	0	0	
+00295C80	_RwaObjDefInitParam	264	librwacore.a rwaobjdef.o	C	pure	0	0	0	0	
+00295D90	_RwaObjDefParamsFree	232	librwacore.a rwaobjdef.o	C	pure	0	0	0	0	
+00295E80	RwaObjDefSetupParams	484	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+00296070	_RwaObjDefFindByUUIDCallback	40	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+002960A0	_RwaObjDefBuildSupportedListCallback	148	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+00296140	_rwaObjDefEnum	276	librwacore.a rwaobjdef.o	C	pure	0	2	0	1	
+00296260	_rwaObjDefFindByUUID	100	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	memcpy
+002962D0	_rwaObjDefCreateSupported	52	librwacore.a rwaobjdef.o	C	pure	1	0	0	0	
+00296310	_rwaObjDefBuildSupportedList	72	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+00296360	_rwaObjDefFreeObj	276	librwacore.a rwaobjdef.o	C	pure	0	1	0	1	
+00296480	_rwaObjDefAllocObj	92	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+002964E0	_rwaObjDefCreateInstanceAllocator	224	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+002965C0	RwaObjDefGetDefaultCreationParams	60	librwacore.a rwaobjdef.o	C	pure	1	1	0	1	
+00296600	RwaObjDefAssignID	68	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+00296650	RwaObjDefSetInterface	88	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+002966B0	RwaObjDefDestroy	472	librwacore.a rwaobjdef.o	C	pure	0	1	0	0	
+00296890	_RwaObjDefInit	300	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+002969C0	RwaObjDefCreate	716	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	memset
+00296C90	_rwaObjDefUnregister	112	librwacore.a rwaobjdef.o	C	pure	1	1	0	0	
+00296D00	_rwaObjDefRegister	112	librwacore.a rwaobjdef.o	C	pure	1	1	0	1	
+00296D70	_rwaObjDefCloseModule	80	librwacore.a rwaobjdef.o	C	pure	0	0	0	0	
+00296DC0	_rwaObjDefOpenModule	324	librwacore.a rwaobjdef.o	C	pure	0	0	0	1	
+00296F10	func_00296F10	16	librwacore.a rwaobjdef.o	L	pure	1	0	0	0	
+00296F20	_RwaVirtualVoiceSetGainArray	68	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00296F70	func_00296F70	84	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00296FD0	_RwaVirtualVoiceSetReverbSendGain	144	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00297060	func_00297060	12	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297070	func_00297070	48	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+002970A0	_RwaVirtualVoiceSetPan	96	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00297100	func_00297100	16	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297110	_RwaVirtualVoiceSetWave	172	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+002971C0	func_002971C0	24	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+002971E0	_RwaVirtualVoiceSetLoop	100	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00297250	_RwaVirtualVoiceGetWavePos	120	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+002972D0	_RwaVirtualVoiceSetWavePos	72	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00297320	func_00297320	24	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297340	_RwaVirtualVoiceSetTrigger	84	librwacore.a rwavirtualvoice	C	rw	0	0	0	0	
+002973A0	func_002973A0	84	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297400	_RwaVirtualVoiceSetGain	144	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00297490	func_00297490	16	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+002974A0	_RwaVirtualVoiceSetFreq	72	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+002974F0	func_002974F0	16	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297500	_RwaVirtualVoiceSetMaxDistance	72	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00297550	func_00297550	16	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297560	_RwaVirtualVoiceSetMinDistance	72	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+002975B0	func_002975B0	32	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+002975D0	_RwaVirtualVoiceSetListenerRelativeVel	84	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00297630	func_00297630	32	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297650	_RwaVirtualVoiceSetListenerRelativePos	84	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+002976B0	func_002976B0	32	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+002976D0	_RwaVirtualVoiceSetVel	84	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00297730	func_00297730	32	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297750	_RwaVirtualVoiceSetPos	84	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+002977B0	func_002977B0	84	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297810	func_00297810	92	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297870	func_00297870	84	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+002978D0	func_002978D0	92	librwacore.a rwavirtualvoice	L	pure	1	0	0	0	
+00297930	_rwaVirtualVoiceSetWave	168	librwacore.a rwavirtualvoice	C	pure	0	0	3	1	
+002979E0	_rwaVirtualVoiceSetTrigger	76	librwacore.a rwavirtualvoice	C	rw	0	0	6	1	
+00297A30	func_00297A30	12	librwacore.a rwavirtualvoice	L	pure	1	0	0	1	
+00297A40	_RwaVirtualVoiceStartExecute	132	librwacore.a rwavirtualvoice	C	rw	0	0	0	1	
+00297AD0	_RwaVirtualVoiceDestroy	76	librwacore.a rwavirtualvoice	C	rw	0	0	0	0	
+00297B20	_RwaVirtualVoiceCreate	188	librwacore.a rwavirtualvoice	C	pure	0	0	0	1	memset
+00297BE0	RwaVirtualVoiceUnregister	72	librwacore.a rwavirtualvoice	C	pure	0	0	0	0	
+00297C30	_RwaVirtualVoiceRegisterCommon	720	librwacore.a rwavirtualvoice	C	pure	0	0	0	1	
+00297F00	RwaVirtualVoiceRegisterUsingInterface	204	librwacore.a rwavirtualvoice	C	pure	0	0	0	1	
+00297FD0	RwaVirtualVoiceCreate	36	librwacore.a rwavirtualvoice	C	pure	0	0	1	1	
+00298000	func_00298000	112	librwacore.a rwavirtualvoice	L	pure	0	0	0	1	
+00298070	RwaListenerInterfaceRegister	112	librwacore.a rwalistener.o	C	pure	0	0	0	1	
+002980E0	func_002980E0	16	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+002980F0	func_002980F0	28	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298110	func_00298110	16	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298120	func_00298120	28	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298140	func_00298140	16	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298150	func_00298150	28	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298170	func_00298170	32	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298190	func_00298190	32	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+002981B0	func_002981B0	128	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298230	func_00298230	32	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298250	func_00298250	124	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+002982D0	func_002982D0	80	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298320	func_00298320	92	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298380	func_00298380	32	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+002983A0	func_002983A0	44	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+002983D0	func_002983D0	32	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+002983F0	func_002983F0	44	librwacore.a rwalistener.o	L	pure	1	0	0	0	
+00298420	_rwaListenerCalculateVoiceAttributes	1208	librwacore.a rwalistenerobj.	C	rw	0	0	0	0	RwV3dNormalize,func_0011E328
+002988E0	_RwaListenerCreate	308	librwacore.a rwalistenerobj.	C	pure	1	0	0	1	
+00298A20	RwaListenerRegisterUsingInterface	856	librwacore.a rwalistenerobj.	C	pure	0	0	0	1	
+00298D80	RwaListenerCreate	32	librwacore.a rwalistenerobj.	C	pure	0	0	1	1	
+00298DA0	RwaFreeListFree	348	librwacore.a rwafreelist.o	C	pure	0	0	0	1	
+00298F00	RwaFreeListAlloc	420	librwacore.a rwafreelist.o	C	pure	0	0	0	1	memset
+002990B0	RwaFreeListDestroy	172	librwacore.a rwafreelist.o	C	pure	0	0	0	0	
+00299160	RwaFreeListCreate	504	librwacore.a rwafreelist.o	C	pure	0	0	0	1	memset
+00299360	_rwaFreeListModuleClose	356	librwacore.a rwafreelist.o	C	pure	0	0	0	0	
+002994D0	_rwaFreeListModuleOpen	128	librwacore.a rwafreelist.o	C	pure	0	0	0	1	
+00299550	RwaFindLSB	56	librwacore.a rwamath.o	C	pure	1	0	0	0	
+00299590	RwaMul32By32	216	librwacore.a rwamath.o	C	pure	1	0	0	0	
+00299670	RwaV3dLength	160	librwacore.a rwamath.o	C	pure	1	0	0	0	
+00299710	RwaEndianCopy	188	librwacore.a rwamath.o	C	pure	1	0	0	0	
+002997D0	RwaLListGetCount	48	librwacore.a rwallist.o	C	pure	1	0	0	1	
+00299800	RwaLListEmpty	132	librwacore.a rwallist.o	C	pure	0	0	0	1	
+00299890	RwaLLNodeByteSwap	104	librwacore.a rwallist.o	C	pure	0	0	0	0	memcpy
+00299900	RwaLListFindDataByIndex	60	librwacore.a rwallist.o	C	pure	1	0	0	0	
+00299940	RwaLListFindDataIndex	56	librwacore.a rwallist.o	C	pure	1	0	0	1	
+00299980	RwaLListRemoveData	140	librwacore.a rwallist.o	C	pure	0	0	0	1	
+00299A10	RwaLListAddData	104	librwacore.a rwallist.o	C	pure	0	0	0	1	
+00299A80	_rwaLListModuleClose	36	librwacore.a rwallist.o	C	pure	0	0	0	0	
+00299AB0	_rwaLListModuleOpen	80	librwacore.a rwallist.o	C	pure	0	0	0	1	
+00299B00	_rwaWaveConvXADPCMDecodeSample	220	librwacore.a rwawaveconv.o	C	pure	1	0	0	0	
+00299BE0	_rwaWaveConvXADPCMEncodeSample	348	librwacore.a rwawaveconv.o	C	pure	1	0	0	0	
+00299D40	_rwaWaveConvXADPCMDecodeStereo	368	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	
+00299EB0	_rwaWaveConvXADPCMEncodeMono	300	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	
+00299FE0	_rwaWaveConvXADPCMDecodeMono	268	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	
+0029A0F0	_RwaWaveConvXBoxADPCM	964	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	memcpy,memset
+0029A4C0	_RwaWaveConvVAGDecode	192	librwacore.a rwawaveconv.o	C	pure	1	0	0	0	
+0029A580	_RwaWaveConvVAGEncode	348	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	memcpy
+0029A6E0	_RwaWaveConvVAGEncodeBlock	928	librwacore.a rwawaveconv.o	C	pure	1	0	0	0	__floatdisf,fabsf
+0029AA80	_RwaWaveConvVAG	776	librwacore.a rwawaveconv.o	C	pure	0	0	0	1	memcpy,memset
+0029AD90	_RwaWaveConvVAGGCNADPCMTranscode	176	librwacore.a rwawaveconv.o	C	pure	1	0	0	0	
+0029AE40	_RwaWaveConvGCNADPCMDecode	620	librwacore.a rwawaveconv.o	C	pure	1	0	0	0	
+0029B0B0	_RwaWaveConvGCNADPCMEncode	1420	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	__floatdisf,fabsf,memcpy,memset
+0029B640	_RwaWaveConvGCNADPCMEncodeHeader	668	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	memset
+0029B8E0	_RwaWaveConvGCNADPCM	928	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	memcpy,memset
+0029BC80	_RwaWaveConvVAGGCNADPCM	244	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	memset
+0029BD80	_RwaWaveConvPCM	936	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	memcpy
+0029C130	_RwaWaveConvPCMFloat	360	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	
+0029C2A0	_RwaWaveConvBitDepthPCM	2580	librwacore.a rwawaveconv.o	C	pure	1	0	0	0	memcpy
+0029CCC0	_RwaWaveConvResamplePCM	2316	librwacore.a rwawaveconv.o	C	pure	1	0	0	0	memcpy
+0029D5D0	_RwaWaveConvChannelPCM	1836	librwacore.a rwawaveconv.o	C	pure	1	0	0	0	memcpy
+0029DD00	_rwaWaveConv	996	librwacore.a rwawaveconv.o	C	pure	0	2	0	0	memcpy
+0029E0F0	_rwaWaveConvGetTargetSize	12	librwacore.a rwawaveconv.o	C	pure	0	0	0	1	
+0029E100	_rwaWaveConvGetTargetOffset	44	librwacore.a rwawaveconv.o	C	pure	0	0	0	0	
+0029E130	_rwaWaveConvGetOffsetLength	556	librwacore.a rwawaveconv.o	C	pure	0	1	0	1	memcpy
+0029E360	_RwaWaveConvFindPath	976	librwacore.a rwawaveconv.o	C	pure	0	0	0	1	memcpy
+0029E730	RwaWaveDictSetWaveDataUploadBuffer	8	librwacore.a rwawavedict.o	C	pure	0	0	1	1	
+0029E740	RwaWaveDictFixup	440	librwacore.a rwawavedict.o	C	pure	0	0	0	0	
+0029E900	_rwaWaveDictUnfixWaveCallback	64	librwacore.a rwawavedict.o	C	pure	0	1	0	1	
+0029E940	_rwaWaveDictFixupWaveCallback	64	librwacore.a rwawavedict.o	C	pure	0	1	0	1	
+0029E980	RwaWaveDictFreeSRAM	160	librwacore.a rwawavedict.o	C	pure	0	1	0	1	
+0029EA20	_rwaWaveDictFreeSRAMCallback	48	librwacore.a rwawavedict.o	C	pure	1	1	0	0	
+0029EA50	_RwaWaveDictStreamHeaderByteSwap	288	librwacore.a rwawavedict.o	C	pure	0	0	0	0	memcpy
+0029EB70	RwaWaveDictReadAsync	456	librwacore.a rwawavedict.o	C	sif	0	0	1	1	
+0029ED40	func_0029ED40	68	librwacore.a rwawavedict.o	L	pure	0	0	0	1	
+0029ED90	_rwaWaveDictLoaderLoadData	360	librwacore.a rwawavedict.o	C	sif	0	1	0	1	
+0029EF00	_rwaWaveDictLoaderLoadWaves	736	librwacore.a rwawavedict.o	C	sif	0	1	0	1	memcpy
+0029F1E0	RwaWaveDictLoaderUpdate	296	librwacore.a rwawavedict.o	C	sif	0	0	1	1	
+0029F310	RwaWaveDictLoaderDestroy	56	librwacore.a rwawavedict.o	C	pure	0	0	1	0	
+0029F350	RwaWaveDictLoaderInitialise	60	librwacore.a rwawavedict.o	C	pure	1	0	1	1	
+0029F390	RwaWaveDictLoaderCreate	128	librwacore.a rwawavedict.o	C	pure	0	0	1	1	
+0029F410	RwaWaveFormatByteSwap	268	librwacore.a rwawavedef.o	C	pure	0	0	0	0	memcpy
+0029F520	RwaWaveFormatGetSamplesPerAudioFrame	420	librwacore.a rwawavedef.o	C	pure	0	0	0	1	memcpy
+0029F6D0	RwaWaveFormatGetSamples	328	librwacore.a rwawavedef.o	C	pure	0	0	2	1	
+0029F820	RwaWaveFormatGetUUIDFromIndex	24	librwacore.a rwawavedef.o	C	pure	1	0	0	0	
+0029F840	_rwaWaveDefIsTargetFormatSupported	300	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+0029F970	_rwaWaveFormatSerialize	804	librwacore.a rwawavedef.o	C	pure	0	0	0	1	memcpy,memset
+0029FCA0	_rwaWaveFormatGetSize	44	librwacore.a rwawavedef.o	C	pure	1	0	0	1	
+0029FCD0	RwaWaveDefAssignSupportedFormats	116	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+0029FD50	RwaWaveDefFormatWaveFormatCompare	188	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+0029FE10	_rwaWaveDefFormatCopyToWaveFormat	152	librwacore.a rwawavedef.o	C	pure	1	0	0	0	
+0029FEB0	_RwaWaveDefFindByUUIDCallback	120	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+0029FF30	RwaWaveDefFindByUUID	72	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+0029FF80	RwaWaveDefDestroy	196	librwacore.a rwawavedef.o	C	pure	0	1	0	0	
+002A0050	RwaWaveDefCreate	288	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+002A0170	RwaWaveDefAssignID	88	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+002A01D0	_rwaWaveFormatFreeMiscData	72	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+002A0220	RwaWaveFormatGetFrameSize	352	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+002A0380	RwaWaveFormatCompare	152	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+002A0420	_rwaWaveDefUnregister	112	librwacore.a rwawavedef.o	C	pure	1	1	0	0	
+002A0490	_rwaWaveDefRegister	112	librwacore.a rwawavedef.o	C	pure	1	1	0	1	
+002A0500	_RwaWaveDefDestroyCallback	240	librwacore.a rwawavedef.o	C	pure	0	1	0	0	
+002A05F0	_rwaWaveDefCloseModule	64	librwacore.a rwawavedef.o	C	pure	0	0	0	0	
+002A0630	_rwaWaveDefOpenModule	88	librwacore.a rwawavedef.o	C	pure	0	0	0	1	
+002A0690	_RwaNULLWaveDownload	60	librwacore.a rwanullwave.o	C	pure	1	0	0	0	memcpy
+002A06D0	_RwaNULLWaveUpload	56	librwacore.a rwanullwave.o	C	pure	1	0	0	0	memcpy
+002A0710	_RwaNULLWaveDestroy	40	librwacore.a rwanullwave.o	C	pure	0	0	0	0	
+002A0740	_RwaNULLWaveCreate	116	librwacore.a rwanullwave.o	C	pure	0	0	0	0	memcpy
+002A07C0	_rwaNULLWaveRegister	132	librwacore.a rwanullwave.o	C	pure	0	0	0	1	
+002A0850	RwaHeapBlockAlloc	224	librwacore.a rwaheap.o	C	pure	1	0	0	0	
+002A0930	RwaHeapFree	276	librwacore.a rwaheap.o	C	pure	0	0	0	1	
+002A0A50	RwaHeapAlloc	280	librwacore.a rwaheap.o	C	pure	0	0	0	0	
+002A0B70	RwaHeapDestroy	152	librwacore.a rwaheap.o	C	pure	0	0	0	0	
+002A0C10	RwaHeapCreate	476	librwacore.a rwaheap.o	C	pure	0	0	0	1	
+002A0DF0	_rwaHeapModuleClose	192	librwacore.a rwaheap.o	C	pure	0	0	0	0	
+002A0EB0	_rwaHeapModuleOpen	92	librwacore.a rwaheap.o	C	pure	0	0	0	1	
+002A0F10	_RwaOsWaveUploadForRenderer	60	librwacore.a oswave.o	C	sif	0	0	0	1	
+002A0F50	_rwaRwStreamCacheReadAsyncCall	1108	librwacore.a rwstream.o	C	sif	0	2	0	1	SignalSema,WaitSema,memcpy
+002A13B0	_rwaRwStreamCacheReadCancel	388	librwacore.a rwstream.o	C	sif	0	0	0	1	SignalSema,WaitSema
+002A1540	_rwaRwStreamCacheReadAsync	264	librwacore.a rwstream.o	C	sif	0	0	0	1	SignalSema,WaitSema
+002A1650	_rwaRwStreamCacheCloseModule	148	librwacore.a rwstream.o	C	sema/thread	1	0	0	0	DeleteSema,WaitSema
+002A16F0	_rwaRwStreamCacheOpenModule	152	librwacore.a rwstream.o	C	sema/thread	0	0	0	1	
+002A1790	_rwaRwStreamGetPos	8	librwacore.a rwstream.o	C	pure	1	0	0	1	
+002A17A0	_rwaRwStreamReadChunkHeader	36	librwacore.a rwstream.o	C	sif	0	0	0	1	
+002A17D0	_rwaRwStreamFindChunk	60	librwacore.a rwstream.o	C	sif	0	0	0	1	
+002A1810	_RwaRwStreamFindChunkCallback	368	librwacore.a rwstream.o	C	sif	0	4	0	1	func_001D8B88
+002A1980	func_002A1980	52	librwacore.a rwstream.o	L	sif	0	0	0	1	
+002A19C0	func_002A19C0	20	librwacore.a rwstream.o	L	sif	0	0	0	1	
+002A19E0	func_002A19E0	8	librwacore.a rwstream.o	L	sif	0	0	0	1	
+002A19F0	func_002A19F0	156	librwacore.a rwstream.o	L	sif	0	0	0	1	
+002A1A90	_rwaRwStreamOpen	180	librwacore.a rwstream.o	C	sif	0	0	0	1	
+002A1B50	_RwaRwStreamFileOpCallback	120	librwacore.a rwstream.o	C	sif	0	2	0	1	
+002A1BD0	_rwaStreamFileRequestQueueEmpty	112	librwacore.a rwastreamfilequ	C	sema/thread	1	0	0	1	SignalSema,WaitSema
+002A1C40	_rwaStreamFileRequestQueueGet	276	librwacore.a rwastreamfilequ	C	sema/thread	1	0	0	1	SignalSema,WaitSema
+002A1D60	_rwaStreamFileRequestQueueAdd	320	librwacore.a rwastreamfilequ	C	sema/thread	1	0	0	1	SignalSema,WaitSema
+002A1EA0	_rwaStreamFileRequestQueueDestroy	8	librwacore.a rwastreamfilequ	C	sema/thread	1	0	0	1	DeleteSema
+002A1EB0	_rwaStreamFileRequestQueueCreate	76	librwacore.a rwastreamfilequ	C	sema/thread	0	0	0	1	
+002A1F00	func_002A1F00	12	librwacore.a rwastreamfilequ	L	pure	0	0	0	0	
+002A1F10	func_002A1F10	112	librwacore.a rwastreamfilequ	L	pure	0	0	0	1	
+002A1F80	RwaThreadTerminate	64	librwacore.a osmultithread.o	C	sema/thread	0	0	0	0	DeleteThread,TerminateThread
+002A1FC0	_RwaThreadStart	68	librwacore.a osmultithread.o	C	sema/thread	1	0	0	1	_StartThread
+002A2010	_RwaThreadCreate	252	librwacore.a osmultithread.o	C	sema/thread	0	0	0	1	CreateThread
+002A2110	_RwaThreadFunc	92	librwacore.a osmultithread.o	C	sema/thread	1	1	0	1	ExitDeleteThread,SignalSema,SleepThread
+002A2170	_rwaSemaphorePoll	88	librwacore.a osmultithread.o	C	sema/thread	1	0	0	1	PollSema
+002A21D0	RwaSemaphoreCreate	76	librwacore.a osmultithread.o	C	sema/thread	1	0	0	1	CreateSema
+002A2220	_rwaLockedCountCompare	116	librwacore.a osmultithread.o	C	intr/cache	1	0	0	1	EIntr,func_00114E60
+002A22A0	_rwaLockedCountCreate	116	librwacore.a osmultithread.o	C	intr/cache	1	0	0	1	EIntr,func_00114E60
+002A2320	_RwaStreamGetSubStreamVoice	48	librwacore.a rwastream.o	C	pure	0	0	0	0	
+002A2350	_RwaStreamGetSubStreamInfo	212	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	SignalSema,WaitSema
+002A2430	_RwaStreamGetSegmentInfo	44	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	
+002A2460	_RwaStreamGetNoSegments	136	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	SignalSema,WaitSema
+002A24F0	func_002A24F0	16	librwacore.a rwastream.o	L	pure	1	0	0	0	
+002A2500	_RwaStreamSetPitch	120	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	SignalSema,WaitSema
+002A2580	func_002A2580	28	librwacore.a rwastream.o	L	pure	1	0	0	0	
+002A25A0	_RwaStreamSetStreamGain	124	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	SignalSema,WaitSema
+002A2620	func_002A2620	16	librwacore.a rwastream.o	L	pure	1	0	0	0	
+002A2630	func_002A2630	16	librwacore.a rwastream.o	L	pure	1	0	0	0	
+002A2640	func_002A2640	16	librwacore.a rwastream.o	L	pure	1	0	0	0	
+002A2650	_RwaStreamSetPlayState	116	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	SignalSema,WaitSema
+002A26D0	_RwaStreamSetMedia	228	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	SignalSema,WaitSema
+002A27C0	_RwaStreamSetLoopSegment	116	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	SignalSema,WaitSema
+002A2840	_RwaStreamGetStreamPos	44	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	
+002A2870	_RwaStreamSetStreamPos	44	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	
+002A28A0	func_002A28A0	20	librwacore.a rwastream.o	L	pure	0	0	2	1	
+002A28C0	func_002A28C0	580	librwacore.a rwastream.o	L	sema/thread	0	0	2	1	SignalSema,WaitSema
+002A2B10	func_002A2B10	112	librwacore.a rwastream.o	L	sema/thread	0	0	1	0	SignalSema,WaitSema
+002A2B80	func_002A2B80	116	librwacore.a rwastream.o	L	sema/thread	0	0	1	1	SignalSema,WaitSema
+002A2C00	_rwaStreamSetStreamGain	120	librwacore.a rwastream.o	C	sema/thread	0	0	1	1	SignalSema,WaitSema
+002A2C80	_rwaStreamGetStatus	8	librwacore.a rwastream.o	C	pure	1	0	9	0	
+002A2C90	_rwaStreamSetPlayState	112	librwacore.a rwastream.o	C	sema/thread	0	0	7	1	SignalSema,WaitSema
+002A2D00	_rwaStreamSetMedia	224	librwacore.a rwastream.o	C	sema/thread	0	0	2	1	SignalSema,WaitSema
+002A2DE0	_rwaStreamSetLoopSegment	112	librwacore.a rwastream.o	C	sema/thread	0	0	1	1	SignalSema,WaitSema
+002A2E50	_rwaStreamGetStreamPos	484	librwacore.a rwastream.o	C	sema/thread	0	0	4	1	SignalSema,WaitSema
+002A3040	_rwaStreamSetStreamPos	232	librwacore.a rwastream.o	C	sema/thread	0	0	1	1	SignalSema,WaitSema,memcpy,strlen,strncpy
+002A3130	func_002A3130	20	librwacore.a rwastream.o	L	pure	1	0	0	1	
+002A3150	_RwaStreamFinishExecute	44	librwacore.a rwastream.o	C	intr/cache	0	0	0	1	
+002A3180	_RwaStreamDestroy	100	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	SignalSema,WaitSema
+002A31F0	_RwaStreamCreate	76	librwacore.a rwastream.o	C	intr/cache	0	0	0	1	
+002A3240	RwaStreamUnregister	48	librwacore.a rwastream.o	C	sema/thread	0	0	0	0	DeleteSema
+002A3270	_RwaStreamRegisterCommon	808	librwacore.a rwastream.o	C	sema/thread	0	0	0	1	DeleteSema
+002A35A0	RwaStreamRegisterUsingInterface	196	librwacore.a rwastream.o	C	sema/thread	0	0	0	1	
+002A3670	RwaStreamCreate	36	librwacore.a rwastream.o	C	pure	0	0	1	1	
+002A36A0	func_002A36A0	140	librwacore.a rwastream.o	L	intr/cache	0	0	0	0	EIntr,func_00114E60
+002A3730	_RwaStreamContainerOpenStateMachine	728	librwacore.a rwastreamcontai	C	intr/cache	0	0	0	1	EIntr,func_00114E60
+002A3A10	_RwaStreamContainerSetDefaultRendererParams	264	librwacore.a rwastreamcontai	C	pure	0	0	0	1	
+002A3B20	_RwaStreamContainerInstantiateRenderChains	2700	librwacore.a rwastreamcontai	C	intr/cache	0	0	0	1	EIntr,func_00114E60,memcpy
+002A45B0	_RwaStreamContainerInstanceRenderer	232	librwacore.a rwastreamcontai	C	intr/cache	0	0	0	1	EIntr,func_00114E60
+002A46A0	_RwaStreamContainerPreinstanceChains	968	librwacore.a rwastreamcontai	C	pure	0	0	0	1	memcpy
+002A4A70	_RwaStreamContainerPreinstanceRenderers	384	librwacore.a rwastreamcontai	C	pure	0	0	0	1	memcpy
+002A4BF0	_RwaStreamContainerPreinstanceCodecs	1128	librwacore.a rwastreamcontai	C	pure	0	0	0	0	memcpy
+002A5060	_RwaStreamContainerFindRendererByWaveFormat	300	librwacore.a rwastreamcontai	C	pure	0	0	0	1	
+002A5190	_RwaStreamContainerInstantiateSource	948	librwacore.a rwastreamcontai	C	pure	0	1	0	1	func_002934D0
+002A5550	func_002A5550	16	librwacore.a rwastreamcontai	L	pure	0	0	0	1	
+002A5560	func_002A5560	16	librwacore.a rwastreamcontai	L	pure	0	0	0	1	
+002A5570	_rwaStreamContainerStateFinishExecute	1568	librwacore.a rwastreamcontai	C	intr/cache	0	0	0	1	EIntr,func_00114E60
+002A5B90	func_002A5B90	16	librwacore.a rwastreamcontai	L	pure	1	0	0	1	
+002A5BA0	_RwaStreamContainerGetStatus	416	librwacore.a rwastreamcontai	C	pure	0	0	0	1	
+002A5D40	_RwaStreamContainerGetRenderStatus	452	librwacore.a rwastreamcontai	C	pure	0	0	0	1	
+002A5F10	func_002A5F10	36	librwacore.a rwastreamcontai	L	pure	0	0	0	1	
+002A5F40	_rwaStreamContainerEnumRenderChains	212	librwacore.a rwastreamcontai	C	pure	0	1	0	1	
+002A6020	_rwaStreamContainerStateDestroy	196	librwacore.a rwastreamcontai	C	pure	0	0	0	0	
+002A60F0	_RwaStreamContainerNodeCreationComplete	240	librwacore.a rwastreamcontai	C	intr/cache	0	0	0	1	EIntr,func_00114E60
+002A61E0	_rwaStreamContainerStateCreate	308	librwacore.a rwastreamcontai	C	intr/cache	0	0	0	1	
+002A6320	_rwaStreamContainerGetSubStreamVoice	152	librwacore.a rwastreamcontai	C	pure	0	0	0	1	
+002A63C0	_rwaStreamContainerGetStreamPos	176	librwacore.a rwastreamcontai	C	pure	0	0	0	1	
+002A6470	_rwaStreamContainerExecute	224	librwacore.a rwastreamcontai	C	intr/cache	0	0	0	1	
+002A6550	_rwaStreamContainerCreate	84	librwacore.a rwastreamcontai	C	intr/cache	0	0	0	1	
+002A65B0	_rwaStreamContainerCommandSetPlayState	20	librwacore.a rwastreamcontai	C	pure	1	0	0	1	
+002A65D0	_rwaStreamContainerCommandSetLoopSegment	20	librwacore.a rwastreamcontai	C	pure	1	0	0	1	
+002A65F0	_rwaStreamContainerCommandSetStreamGain	84	librwacore.a rwastreamcontai	C	pure	1	0	0	0	
+002A6650	_rwaStreamContainerCommandSetPitch	52	librwacore.a rwastreamcontai	C	pure	1	0	0	0	
+002A6690	_rwaStreamContainerCommandSetStreamPos	20	librwacore.a rwastreamcontai	C	pure	1	0	0	1	
+002A66B0	_rwaStreamContainerCommandSetMedia	60	librwacore.a rwastreamcontai	C	pure	1	0	0	1	
+002A66F0	_rwaStreamContainerInitializeGains	48	librwacore.a rwastreamcontai	C	pure	1	0	0	1	
+002A6720	_rwaStreamContainerCommandInitialize	36	librwacore.a rwastreamcontai	C	pure	1	0	0	1	
+002A6750	func_002A6750	8	librwacore.a rwastreamcontai	L	pure	1	0	0	1	
+002A6760	_RwaStreamFanOutGetInputConnection	44	librwacore.a rwastreamfanout	C	pure	0	0	0	1	
+002A6790	_RwaStreamFanOutGetStatus	56	librwacore.a rwastreamfanout	C	pure	0	0	0	1	
+002A67D0	_RwaStreamFanOutSetOutputConnection	84	librwacore.a rwastreamfanout	C	pure	0	0	0	1	
+002A6830	_RwaStreamFanOutSetProcessState	56	librwacore.a rwastreamfanout	C	pure	0	0	0	1	
+002A6870	_RwaStreamFanOutPacketCompletionCallback	240	librwacore.a rwastreamfanout	C	pure	1	1	0	1	
+002A6960	_rwaStreamFanOutGetStreamPacket	444	librwacore.a rwastreamfanout	C	pure	0	0	0	1	
+002A6B20	_RwaStreamFanOutGetParams	76	librwacore.a rwastreamfanout	C	pure	0	0	0	1	
+002A6B70	func_002A6B70	8	librwacore.a rwastreamfanout	L	pure	1	0	0	1	
+002A6B80	func_002A6B80	244	librwacore.a rwastreamfanout	L	pure	1	0	0	1	
+002A6C80	_RwaStreamFanOutDestroy	92	librwacore.a rwastreamfanout	C	pure	0	1	0	1	
+002A6CE0	_RwaStreamFanOutCreate	608	librwacore.a rwastreamfanout	C	pure	0	1	0	1	memcpy
+002A6F40	func_002A6F40	12	librwacore.a rwastreamfanout	L	pure	0	0	0	0	
+002A6F50	_RwaStreamFanOutRegisterCommon	732	librwacore.a rwastreamfanout	C	pure	0	0	0	1	
+002A7230	RwaStreamFanOutRegister	152	librwacore.a rwastreamfanout	C	pure	0	0	0	1	
+002A72D0	_RwaStreamSourceSetFlush	64	librwacore.a rwastreamsource	C	sif	0	0	0	1	
+002A7310	_RwaStreamSourceSetOutputConnection	80	librwacore.a rwastreamsource	C	pure	0	0	0	1	
+002A7360	func_002A7360	16	librwacore.a rwastreamsource	L	pure	1	0	0	0	
+002A7370	func_002A7370	20	librwacore.a rwastreamsource	L	pure	1	0	0	0	
+002A7390	func_002A7390	56	librwacore.a rwastreamsource	L	pure	1	0	0	1	
+002A73D0	_RwaStreamSourceGetStreamPos	208	librwacore.a rwastreamsource	C	pure	0	0	0	0	
+002A74A0	_RwaStreamSourceSetStreamPos	44	librwacore.a rwastreamsource	C	sif	0	0	0	1	
+002A74D0	_rwaStreamSourceSetStreamPos	348	librwacore.a rwastreamsource	C	sif	0	0	0	1	
+002A7630	_rwaStreamSourceGetStreamPacket	384	librwacore.a rwastreamsource	C	sema/thread	0	0	0	1	
+002A77B0	_RwaSourceStreamPacketCompletionCallback	128	librwacore.a rwastreamsource	C	sema/thread	0	0	0	1	
+002A7830	_RwaStreamSourceGetParams	176	librwacore.a rwastreamsource	C	pure	0	0	0	0	
+002A78E0	_RwaStreamSourceStartExecute	484	librwacore.a rwastreamsource	C	sif	0	0	0	1	
+002A7AD0	_RwaStreamSourceOpenFunc	196	librwacore.a rwastreamsource	C	pure	0	0	0	1	
+002A7BA0	_RwaStreamSourceDestroy	96	librwacore.a rwastreamsource	C	sif	0	0	0	1	
+002A7C00	_RwaStreamSourceCreate	384	librwacore.a rwastreamsource	C	sif	0	0	0	1	
+002A7D80	RwaStreamSourceUnregister	52	librwacore.a rwastreamsource	C	pure	0	0	0	0	
+002A7DC0	_RwaStreamSourceRegisterCommon	740	librwacore.a rwastreamsource	C	pure	0	0	0	1	
+002A80B0	RwaStreamSourceRegister	196	librwacore.a rwastreamsource	C	pure	0	0	0	1	
+002A8180	__rwaStreamSourceGetSamplePosUsingPos	152	librwacore.a rwastreamsource	C	pure	0	0	0	1	
+002A8220	__rwaStreamSourceFlush	448	librwacore.a rwastreamsource	C	sif	0	0	0	1	SignalSema,WaitSema
+002A83E0	__rwaStreamSourceSeek	700	librwacore.a rwastreamsource	C	sema/thread	0	0	0	1	SignalSema,WaitSema
+002A86A0	_RwaStreamSourceGetLastBlockSize	264	librwacore.a rwastreamsource	C	pure	0	0	0	1	
+002A87B0	__rwaStreamSourceRead	1000	librwacore.a rwastreamsource	C	sema/thread	0	0	0	1	SignalSema,WaitSema
+002A8BA0	__rwaStreamSourceUnlockStreamBlock	368	librwacore.a rwastreamsource	C	sema/thread	1	0	0	1	SignalSema,WaitSema
+002A8D10	__rwaStreamSourceLockStreamBlock	680	librwacore.a rwastreamsource	C	sema/thread	1	0	0	1	SignalSema,WaitSema
+002A8FC0	_RwaStreamSourceReinterleave	1924	librwacore.a rwastreamsource	C	sif	0	0	0	0	SignalSema,WaitSema
+002A9750	_RwaStreamSourceExecuteRequest	320	librwacore.a rwastreamsource	C	sif	0	0	0	1	
+002A9890	__rwaStreamSourceProcess	460	librwacore.a rwastreamsource	C	sif	0	0	0	1	
+002A9A60	__rwaStreamSourceGetSegmentIndexByName	148	librwacore.a rwastreamsource	C	pure	1	1	0	0	
+002A9B00	__rwaStreamSourceGetSegmentIndexByUUID	144	librwacore.a rwastreamsource	C	pure	0	0	0	0	
+002A9B90	__rwaStreamSourceSetSegmentByName	172	librwacore.a rwastreamsource	C	pure	1	1	0	0	
+002A9C40	__rwaStreamSourceSetSegmentByUUID	164	librwacore.a rwastreamsource	C	pure	0	0	0	0	
+002A9CF0	_RwaStreamSourceFileOpCallback	3748	librwacore.a rwastreamsource	C	sif	0	20	0	1	SignalSema,WaitSema,func_001D8B88,sceSifAllocSysMemory
+002AABA0	__rwaStreamSourceDestroy	8	librwacore.a rwastreamsource	C	sif	0	0	0	1	
+002AABB0	_RwaStreamSourceFree	448	librwacore.a rwastreamsource	C	sif	0	1	0	1	DeleteSema,sceSifFreeSysMemory
+002AAD70	__rwaStreamSourceCreate	668	librwacore.a rwastreamsource	C	sif	0	2	0	1	func_002934D0
+002AB010	__rwaStreamSourceCreationParamsInit	92	librwacore.a rwastreamsource	C	pure	1	0	0	0	
+002AB070	func_002AB070	92	librwacore.a rwastreamsource	L	pure	1	0	0	1	
+002AB0D0	func_002AB0D0	140	librwacore.a rwastreamsource	L	pure	1	0	0	1	printf
+002AB160	_RwaWaveRendererSetFlush	108	librwacore.a rwawaverenderer	C	pure	0	1	0	1	
+002AB1D0	_RwaWaveRendererGetStatus	56	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002AB210	_RwaWaveRendererSetOutputConnection	44	librwacore.a rwawaverenderer	C	pure	0	0	0	0	
+002AB240	_RwaWaveRendererGetStreamPos	200	librwacore.a rwawaverenderer	C	pure	0	0	0	1	memcpy
+002AB310	func_002AB310	104	librwacore.a rwawaverenderer	L	pure	1	0	0	1	
+002AB380	func_002AB380	20	librwacore.a rwawaverenderer	L	pure	1	0	0	0	
+002AB3A0	_RwaWaveRendererSetGain	84	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002AB400	func_002AB400	32	librwacore.a rwawaverenderer	L	pure	1	0	0	0	
+002AB420	_RwaWaveRendererSetFreq	108	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002AB490	_RwaWaveRendererGetParams	92	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002AB4F0	func_002AB4F0	8	librwacore.a rwawaverenderer	L	pure	1	0	0	0	
+002AB500	_RwaWaveRendererFinishExecute	648	librwacore.a rwawaverenderer	C	sif	0	0	0	1	
+002AB790	_RwaWaveRendererDestroy	236	librwacore.a rwawaverenderer	C	pure	0	1	0	1	
+002AB880	_RwaWaveRendererCreate	352	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002AB9E0	func_002AB9E0	12	librwacore.a rwawaverenderer	L	pure	0	0	0	0	
+002AB9F0	_RwaWaveRendererRegisterCommon	752	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002ABCE0	RwaWaveRendererRegister	172	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002ABD90	_RwaWaveRendererDestroyAudioFeeds	180	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002ABE50	_RwaWaveRendererCreateAudioFeeds	792	librwacore.a rwawaverenderer	C	pure	0	0	0	1	memcpy
+002AC170	_RwaWaveRendererStop	108	librwacore.a rwawaverenderer	C	pure	1	0	0	1	
+002AC1E0	_RwaWaveRendererPause	152	librwacore.a rwawaverenderer	C	pure	1	0	0	1	
+002AC280	_RwaWaveRendererStart	496	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002AC470	_RwaWaveRendererStateInitialise	208	librwacore.a rwawaverenderer	C	pure	1	0	0	1	
+002AC540	_RwaWaveRendererStateHasPlayedLastValidPacket	60	librwacore.a rwawaverenderer	C	pure	1	0	0	1	
+002AC580	_RwaWaveRendererStateHasPlayedLastPacket	116	librwacore.a rwawaverenderer	C	pure	1	0	0	0	
+002AC600	_RwaWaveRendererStateGotLastPacket	16	librwacore.a rwawaverenderer	C	pure	1	0	0	0	
+002AC610	_RwaWaveRendererStateUploadNextBlock	716	librwacore.a rwawaverenderer	C	sif	0	0	0	1	memcpy
+002AC8E0	_RwaWaveRendererStateUpdatePackets	560	librwacore.a rwawaverenderer	C	pure	0	1	0	1	
+002ACB10	func_002ACB10	28	librwacore.a rwawaverenderer	L	pure	1	0	0	1	
+002ACB30	func_002ACB30	28	librwacore.a rwawaverenderer	L	pure	1	0	0	1	
+002ACB50	_RwaWaveRendererStateForAllAudioFeeds	124	librwacore.a rwawaverenderer	C	pure	1	1	0	1	
+002ACBD0	_RwaWaveRendererStateWavesUploading	148	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002ACC70	_RwaWaveRendererStateGetFreeBufferSpace	152	librwacore.a rwawaverenderer	C	pure	1	0	0	1	
+002ACD10	_RwaWaveRendererStateDestroyNULLPacket	8	librwacore.a rwawaverenderer	C	pure	1	0	0	1	
+002ACD20	_RwaWaveRendererStateCreateNULLPacket	144	librwacore.a rwawaverenderer	C	pure	1	0	0	1	printf
+002ACDB0	_RwaWaveRendererStateDestroyTrackingBuffer	8	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002ACDC0	_RwaWaveRendererStateCreateTrackingBuffer	64	librwacore.a rwawaverenderer	C	pure	0	0	0	1	
+002ACE00	_RwaWaveRendererStateUpdatePacketTracking	268	librwacore.a rwawaverenderer	C	pure	1	0	0	1	
+002ACF10	_RwaWaveRendererStateGetPlayingPacketIndex	76	librwacore.a rwawaverenderer	C	pure	1	0	0	1	
+002ACF60	_RwaWaveRendererDestroyVoiceCallback	152	librwacore.a rwawaverenderer	C	pure	0	1	0	1	memset
+002AD000	_RwaWaveRendererCreateVoiceCallback	168	librwacore.a rwawaverenderer	C	pure	0	1	0	1	
+002AD0B0	_RwaWaveRendererSubCreateGlobalNULLPacket	116	librwacore.a rwawaverenderer	C	sif	0	0	0	1	sceSifAllocSysMemory
+002AD130	RwaStreamSourceInterfaceUnregister	12	librwacore.a rwastreamsource	C	pure	0	0	0	0	
+002AD140	RwaStreamSourceInterfaceRegister	112	librwacore.a rwastreamsource	C	pure	0	0	0	1	
+002AD1B0	func_002AD1B0	12	librwacore.a rwastreamsource	L	pure	0	0	0	0	
+002AD1C0	func_002AD1C0	112	librwacore.a rwastreamsource	L	pure	0	0	0	1	
+002AD230	RwaStreamPacketQueueFree	48	librwacore.a rwastreamnodety	C	pure	1	0	0	1	
+002AD260	RwaStreamPacketQueueAlloc	92	librwacore.a rwastreamnodety	C	pure	1	0	0	1	
+002AD2C0	RwaStreamPacketQueueInitialize	24	librwacore.a rwastreamnodety	C	pure	1	0	0	1	
+002AD2E0	RwaObjIntGetParamUInt32	52	librwacore.a rwastreamnodety	C	pure	1	1	0	1	
+002AD320	RwaObjIntSetParamReal	52	librwacore.a rwastreamnodety	C	pure	1	1	0	1	
+002AD360	RwaObjIntSetParamUInt32	52	librwacore.a rwastreamnodety	C	pure	1	1	0	1	
+002AD3A0	RwaObjIntSetParamBool	52	librwacore.a rwastreamnodety	C	pure	1	1	0	1	
+002AD3E0	RwaObjIntGetParamPointer	52	librwacore.a rwastreamnodety	C	pure	1	1	0	1	
+002AD420	func_002AD420	32	librwacore.a rwastreamnodety	L	pure	1	0	0	1	
+002AD440	func_002AD440	32	librwacore.a rwastreamnodety	L	pure	1	0	0	1	
+002AD460	func_002AD460	24	librwacore.a rwastreamnodety	L	pure	1	0	0	1	
+002AD480	func_002AD480	108	librwacore.a rwastreamnodety	L	pure	1	2	0	1	
+002AD4F0	_rwaStreamNodeObjGetInputConnection	16	librwacore.a rwastreamnodety	C	pure	1	0	0	1	
+002AD500	_rwaStreamNodeObjSetOutputConnection	44	librwacore.a rwastreamnodety	C	pure	1	0	0	1	
+002AD530	_rwaStreamNodeObjSetProcessState	176	librwacore.a rwastreamnodety	C	pure	1	0	0	1	
+002AD5E0	func_002AD5E0	20	librwacore.a rwastreamnodety	L	pure	1	0	0	1	
+002AD600	_rwaStreamNodeGetStatus	12	librwacore.a rwastreamnodety	C	pure	1	0	0	1	
+002AD610	func_002AD610	8	librwacore.a rwastreamnodety	L	pure	1	0	0	0	
+002AD620	_RwaStreamNodeDestroy	8	librwacore.a rwastreamnodety	C	pure	0	0	0	1	
+002AD630	_RwaStreamNodeGetParams	44	librwacore.a rwastreamnodety	C	pure	1	0	0	1	
+002AD660	_rwaStreamNodeProcessComplete	120	librwacore.a rwastreamnodety	C	pure	1	0	0	1	
+002AD6E0	_RwaStreamNodeCreationComplete	140	librwacore.a rwastreamnodety	C	pure	1	1	0	1	
+002AD770	_RwaStreamNodeCreate	196	librwacore.a rwastreamnodety	C	pure	0	0	0	1	
+002AD840	func_002AD840	8	librwacore.a rwastreamnodety	L	pure	0	0	0	1	
+002AD850	func_002AD850	12	librwacore.a rwastreamnodety	L	pure	0	0	0	1	
+002AD860	func_002AD860	12	librwacore.a rwastreamnodety	L	pure	0	0	0	0	
+002AD870	func_002AD870	112	librwacore.a rwastreamnodety	L	pure	0	0	0	1	
+002AD8E0	_rwaStreamFormatCreateFromPack	1264	librwacore.a rwastreamcreate	C	pure	0	4	0	1	
+002ADDD0	_rwaWaveDictRemoveAllWave	88	librwacore.a rwawavedictcomm	C	pure	0	0	0	1	
+002ADE30	RwaWaveDictGetCurrent	8	librwacore.a rwawavedictcomm	C	pure	1	0	0	1	
+002ADE40	RwaWaveDictAddWave	116	librwacore.a rwawavedictcomm	C	pure	0	0	0	1	
+002ADEC0	RwaWaveDictGetWaveCount	8	librwacore.a rwawavedictcomm	C	pure	0	0	1	1	
+002ADED0	RwaWaveDictFindWaveByIndex	8	librwacore.a rwawavedictcomm	C	pure	0	0	1	1	
+002ADEE0	RwaWaveDictUsingAllWaveDef	80	librwacore.a rwawavedictcomm	C	pure	1	0	0	0	
+002ADF30	RwaWaveDictForAllWaves	104	librwacore.a rwawavedictcomm	C	pure	1	1	0	1	
+002ADFA0	RwaWaveDictDestroy	488	librwacore.a rwawavedictcomm	C	pure	0	0	1	1	
+002AE190	_rwaWaveDictCreate	180	librwacore.a rwawavedictcomm	C	pure	0	0	0	1	
+002AE250	_rwaWaveDictCloseModule	152	librwacore.a rwawavedictcomm	C	pure	0	0	0	0	
+002AE2F0	_rwaWaveDictOpenModule	200	librwacore.a rwawavedictcomm	C	pure	0	0	0	1	
+002AE3C0	_RwaListenerManagerTransformVoice	344	librwacore.a rwalistenermana	C	rw	1	0	0	0	RwV3dNormalize
+002AE520	_rwaListenerManagerCalculateVoiceAttributes	360	librwacore.a rwalistenermana	C	rw	0	1	0	1	
+002AE690	RwaListenerManagerSetFixedModeListener	68	librwacore.a rwalistenermana	C	pure	1	0	1	1	
+002AE6E0	RwaListenerManagerSetMode	8	librwacore.a rwalistenermana	C	pure	1	0	3	1	
+002AE6F0	RwaListenerManagerRegisterVirtualListener	44	librwacore.a rwalistenermana	C	pure	1	0	1	1	
+002AE720	_rwaListenerManagerCloseModule	32	librwacore.a rwalistenermana	C	pure	0	0	0	0	
+002AE740	_rwaListenerManagerOpenModule	48	librwacore.a rwalistenermana	C	pure	0	0	0	1	
+002AE770	func_002AE770	32	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE790	func_002AE790	32	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE7B0	func_002AE7B0	128	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE830	func_002AE830	32	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE850	func_002AE850	124	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE8D0	func_002AE8D0	80	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE920	func_002AE920	92	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE980	func_002AE980	32	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE9A0	func_002AE9A0	44	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE9D0	func_002AE9D0	32	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AE9F0	func_002AE9F0	44	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AEA20	func_002AEA20	40	librwacore.a rwalistenermana	L	pure	1	0	0	0	
+002AEA50	_RwaVirtualListenerCreate	256	librwacore.a rwavirtualliste	C	pure	1	0	0	1	
+002AEB50	RwaVirtualListenerUnregister	72	librwacore.a rwavirtualliste	C	pure	0	0	0	0	
+002AEBA0	RwaVirtualListenerRegisterUsingInterface	860	librwacore.a rwavirtualliste	C	pure	0	0	0	1	
+002AEF00	RwaVirtualListenerCreate	36	librwacore.a rwavirtualliste	C	pure	0	0	1	1	
+002AEF30	RwaVirtualListenerInterfaceUnregister	12	librwacore.a rwavirtualliste	C	pure	0	0	0	0	
+002AEF40	RwaVirtualListenerInterfaceRegister	112	librwacore.a rwavirtualliste	C	pure	0	0	0	1	
+002AEFB0	RwaRPCDmaBusy	8	librwaspu2.a rwarpc.o	C	pure	1	0	0	1	
+002AEFC0	RwaRPCTransfer	724	librwaspu2.a rwarpc.o	C	sif	1	0	0	1	SignalSema,WaitSema,printf,sceSifSendCmd
+002AF2A0	_RwaRPCUpdateThread	160	librwaspu2.a rwarpc.o	C	sif	0	0	0	1	WaitSema
+002AF340	_RwaRPCSifIntHandler	116	librwaspu2.a rwarpc.o	C	sema/thread	1	0	0	1	iSignalSema,memcpy
+002AF3C0	_RwaRPCProcessSystemCommand	560	librwaspu2.a rwarpc.o	C	sif	1	4	0	1	sceSifDmaStat,sceSifSendCmd
+002AF5F0	RwaRPCClose	124	librwaspu2.a rwarpc.o	C	sif	0	0	0	0	DeleteSema,SignalSema,WaitSema,sceSifRemoveCmdHandler
+002AF670	RwaRPCOpen	808	librwaspu2.a rwarpc.o	C	sif	0	0	0	1	ChangeThreadPriority,DeleteSema,FlushCache,GetThreadId,SignalSema,WaitSema,sceGsSyncV,sceSifRemoveCmdHandler
+002AF9A0	RwaSifCmdInit	128	librwaspu2.a rwarpc.o	C	sif	1	0	0	1	EIntr,func_00114E60,sceSifAddCmdHandler,sceSifInitCmd,sceSifSetCmdBuffer
+002AFA20	_rwaSPU2InputAreaRAMFreeBlocks	76	librwaspu2.a rwaspu2wave.o	C	intr/cache	1	0	0	0	EIntr,func_00114E60
+002AFA70	_rwaSPU2InputAreaRAMReserveBlocks	80	librwaspu2.a rwaspu2wave.o	C	intr/cache	1	0	0	0	EIntr,func_00114E60
+002AFAC0	_rwaSPU2WaveGetSamples	252	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	0	
+002AFBC0	_rwaSPU2WaveRAMGetAddress	80	librwaspu2.a rwaspu2wave.o	C	pure	1	0	0	1	
+002AFC10	RwaSPU2WaveRAMGetFree	72	librwaspu2.a rwaspu2wave.o	C	pure	0	1	1	1	
+002AFC60	_rwaSPU2WaveRAMFree	88	librwaspu2.a rwaspu2wave.o	C	intr/cache	0	1	0	0	EIntr,func_00114E60
+002AFCC0	_rwaSPU2WaveRAMAlloc	104	librwaspu2.a rwaspu2wave.o	C	intr/cache	0	1	0	0	EIntr,func_00114E60
+002AFD30	RwaSPU2HWResourceRAMUnlock	28	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	0	
+002AFD50	RwaSPU2HWResourceRAMLock	52	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	1	
+002AFD90	_rwaSPU2WaveRAMClose	56	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	0	
+002AFDD0	_rwaSPU2WaveRAMOpen	76	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	1	
+002AFE20	_RwaSPU2WaveReadToSRAM	348	librwaspu2.a rwaspu2wave.o	C	sif	0	0	0	1	
+002AFF80	_RwaSPU2WaveFreeSRAM	160	librwaspu2.a rwaspu2wave.o	C	intr/cache	0	1	0	1	EIntr,func_00114E60
+002B0020	_RwaSPU2WaveFixupSRAM	180	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	1	
+002B00E0	_RwaSPU2WaveAllocateSRAM	60	librwaspu2.a rwaspu2wave.o	C	intr/cache	0	0	0	1	
+002B0120	func_002B0120	8	librwaspu2.a rwaspu2wave.o	L	pure	1	0	0	0	
+002B0130	func_002B0130	8	librwaspu2.a rwaspu2wave.o	L	pure	0	0	0	0	
+002B0140	func_002B0140	556	librwaspu2.a rwaspu2wave.o	L	sif	0	0	0	0	SyncDCache,memcpy
+002B0370	_RwaSPU2WaveDestroy	160	librwaspu2.a rwaspu2wave.o	C	intr/cache	0	1	0	1	EIntr,func_00114E60
+002B0410	_RwaSPU2WaveCreate	428	librwaspu2.a rwaspu2wave.o	C	intr/cache	0	1	0	1	EIntr,func_00114E60,memcpy
+002B05C0	RwaSPU2WaveUnregister	36	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	0	
+002B05F0	RwaSPU2WaveRegister	276	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	1	
+002B0710	RwaSPU2WaveDestroy	8	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	1	
+002B0720	RwaSPU2WaveCreate	44	librwaspu2.a rwaspu2wave.o	C	pure	0	0	0	1	
+002B0750	RwaSPU2RegisterUsingInterface	172	librwaspu2.a rwaspu2.o	C	pure	0	0	1	1	
+002B0800	RwaSPU2OutputInterfaceUnregister	12	librwaspu2.a rwaspu2outint.o	C	pure	0	0	0	0	
+002B0810	RwaSPU2OutputInterfaceRegister	112	librwaspu2.a rwaspu2outint.o	C	pure	0	0	0	1	
+002B0880	func_002B0880	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0890	func_002B0890	12	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B08A0	func_002B08A0	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B08B0	func_002B08B0	28	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B08D0	func_002B08D0	24	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B08F0	func_002B08F0	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0900	func_002B0900	44	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0930	func_002B0930	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0940	func_002B0940	84	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B09A0	func_002B09A0	24	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B09C0	func_002B09C0	60	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0A00	func_002B0A00	20	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0A20	func_002B0A20	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0A40	func_002B0A40	52	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0A80	func_002B0A80	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0AA0	func_002B0AA0	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0AB0	func_002B0AB0	28	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0AD0	func_002B0AD0	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0AE0	func_002B0AE0	28	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0B00	func_002B0B00	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0B10	func_002B0B10	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0B20	func_002B0B20	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0B30	func_002B0B30	16	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0B40	func_002B0B40	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0B60	func_002B0B60	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0B80	func_002B0B80	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0BA0	func_002B0BA0	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0BC0	func_002B0BC0	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0BE0	func_002B0BE0	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0C00	func_002B0C00	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0C20	func_002B0C20	32	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	1	
+002B0C40	func_002B0C40	56	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0C80	func_002B0C80	40	librwaspu2.a rwaspu2outint.o	L	pure	1	0	0	0	
+002B0CB0	_RwaSPU2VoiceSetLRVol	624	librwaspu2.a rwaspu2voice.o	C	pure	1	0	0	0	
+002B0F20	_rwaSPU2VoiceSetPan	40	librwaspu2.a rwaspu2voice.o	C	pure	1	0	3	1	
+002B0F50	_rwaSPU2VoiceSetWave	80	librwaspu2.a rwaspu2voice.o	C	pure	1	0	2	1	
+002B0FA0	_rwaSPU2VoiceSetLoop	56	librwaspu2.a rwaspu2voice.o	C	pure	1	0	1	1	
+002B0FE0	func_002B0FE0	24	librwaspu2.a rwaspu2voice.o	L	pure	1	0	0	1	
+002B1000	_RwaSPU2VoiceFinishExecute	3068	librwaspu2.a rwaspu2voice.o	C	rw	0	0	0	1	RwV2dLength,RwV2dNormalize
+002B1C00	func_002B1C00	8	librwaspu2.a rwaspu2voice.o	L	intr/cache	0	0	0	1	
+002B1C10	func_002B1C10	496	librwaspu2.a rwaspu2voice.o	L	intr/cache	0	0	0	1	
+002B1E00	RwaSPU2VoiceUnregister	72	librwaspu2.a rwaspu2voice.o	C	pure	0	0	0	0	
+002B1E50	_RwaSPU2VoiceRegisterCommon	732	librwaspu2.a rwaspu2voice.o	C	pure	0	0	0	1	
+002B2130	RwaSPU2VoiceRegisterUsingInterface	224	librwaspu2.a rwaspu2voice.o	C	pure	0	0	0	1	
+002B2210	RwaSPU2VoiceCreate	36	librwaspu2.a rwaspu2voice.o	C	pure	0	0	2	1	
+002B2240	RwaSPU2VoiceInterfaceUnregister	12	librwaspu2.a rwaspu2voiceint	C	pure	0	0	0	0	
+002B2250	RwaSPU2VoiceInterfaceRegister	112	librwaspu2.a rwaspu2voiceint	C	pure	0	0	0	1	
+002B22C0	func_002B22C0	168	librwaspu2.a rwaspu2voiceint	L	pure	1	0	0	1	
+002B2370	func_002B2370	52	librwaspu2.a rwaspu2voiceint	L	pure	1	0	0	1	
+002B23B0	_RwaSPU2OutputSetMixerCallback	44	librwaspu2.a rwaspu2out.o	C	sif	0	0	0	0	
+002B23E0	func_002B23E0	16	librwaspu2.a rwaspu2out.o	L	pure	1	0	0	1	
+002B23F0	func_002B23F0	16	librwaspu2.a rwaspu2out.o	L	pure	1	0	0	0	
+002B2400	_RwaSPU2OutputGetEnvironment	52	librwaspu2.a rwaspu2out.o	C	pure	1	0	0	0	memcpy
+002B2440	_RwaSPU2OutputSetEnvironment	44	librwaspu2.a rwaspu2out.o	C	pure	0	0	0	0	
+002B2470	func_002B2470	16	librwaspu2.a rwaspu2out.o	L	pure	1	0	0	1	
+002B2480	func_002B2480	12	librwaspu2.a rwaspu2out.o	L	pure	1	0	0	0	
+002B2490	func_002B2490	48	librwaspu2.a rwaspu2out.o	L	pure	1	0	0	0	
+002B24C0	func_002B24C0	40	librwaspu2.a rwaspu2out.o	L	pure	1	0	0	0	
+002B24F0	func_002B24F0	48	librwaspu2.a rwaspu2out.o	L	pure	1	0	0	0	
+002B2520	func_002B2520	48	librwaspu2.a rwaspu2out.o	L	pure	1	0	0	0	
+002B2550	RwaSPU2HWResourceDMAChannelLock	80	librwaspu2.a rwaspu2out.o	C	sif	0	0	1	1	GetThreadId,SleepThread
+002B25A0	_rwaSPU2OutputSetMixerCallback	324	librwaspu2.a rwaspu2out.o	C	sif	0	0	0	0	FlushCache
+002B26F0	_RwaSPU2OutputFreeHWVoice	524	librwaspu2.a rwaspu2out.o	C	intr/cache	1	0	0	1	EIntr,func_00114E60
+002B2900	_RwaSPU2OutputAllocateHWVoiceNumber	440	librwaspu2.a rwaspu2out.o	C	intr/cache	1	0	0	0	EIntr,func_00114E60
+002B2AC0	_RwaSPU2OutputAttachHWVoice	212	librwaspu2.a rwaspu2out.o	C	intr/cache	1	0	0	0	EIntr,func_00114E60
+002B2BA0	_RwaSPU2OutputAllocateHWVoice	732	librwaspu2.a rwaspu2out.o	C	intr/cache	1	0	0	1	EIntr,func_00114E60
+002B2E80	_rwaSPU2OutputSetEnvironment	620	librwaspu2.a rwaspu2out.o	C	pure	1	0	1	1	func_0011E388,memcpy
+002B30F0	func_002B30F0	28	librwaspu2.a rwaspu2out.o	L	pure	1	0	0	0	
+002B3110	_RwaSPU2OutputFinishExecute	320	librwaspu2.a rwaspu2out.o	C	sif	0	0	0	1	SyncDCache,memcpy
+002B3250	_RwaSPU2OutputDestroy	280	librwaspu2.a rwaspu2out.o	C	sif	0	0	0	0	FlushCache,GetThreadId,SleepThread
+002B3370	_RwaSPU2OutputCreate	704	librwaspu2.a rwaspu2out.o	C	sif	0	0	0	1	FlushCache,SyncDCache
+002B3630	RwaSPU2OutputUnregister	72	librwaspu2.a rwaspu2out.o	C	pure	0	0	0	0	
+002B3680	_RwaSPU2OutputRegisterCommon	736	librwaspu2.a rwaspu2out.o	C	sif	0	0	0	1	
+002B3960	RwaSPU2OutputRegisterUsingInterface	204	librwaspu2.a rwaspu2out.o	C	sif	0	0	0	1	
+002B3A30	RwaSPU2OutputCreate	32	librwaspu2.a rwaspu2out.o	C	pure	0	0	1	1	
+002B3A50	RwaSPU2OutputTickUpdate	248	librwaspu2.a rwaspu2out.o	C	sif	0	2	0	0	FlushCache
+002B3B50	RwaSPU2OutputCmdHandler	1572	librwaspu2.a rwaspu2out.o	C	sif	0	2	0	1	EIntr,SyncDCache,WakeupThread,func_00114E60
+002B4180	RwaPS2SetIOPFileInterface	84	librwaspu2.a rwaspu2out.o	C	sif	0	0	1	1	GetThreadId,SleepThread
+002B41E0	_rwaMemoryBitmapHandleGetOffset	40	librwaspu2.a rwaallocbitmap.	C	pure	1	0	0	1	
+002B4210	_rwaMemoryBitmapHandleGetNewHandleFromOffset	76	librwaspu2.a rwaallocbitmap.	C	pure	1	0	0	1	
+002B4260	_rwaMemoryBitmapReserve	36	librwaspu2.a rwaallocbitmap.	C	pure	0	0	0	1	
+002B4290	_rwaMemoryBitmapAlloc	36	librwaspu2.a rwaallocbitmap.	C	pure	0	0	0	1	
+002B42C0	_rwaMemoryBitmapDestroy	172	librwaspu2.a rwaallocbitmap.	C	pure	0	0	0	0	
+002B4370	_rwaMemoryBitmapCreate	224	librwaspu2.a rwaallocbitmap.	C	pure	0	0	0	1	
+002B4450	_rwaAllocBitmapGetFree	132	librwaspu2.a rwaallocbitmap.	C	pure	1	0	0	1	
+002B44E0	_rwaAllocBitmapReserve	248	librwaspu2.a rwaallocbitmap.	C	pure	1	0	0	1	
+002B45E0	_rwaAllocBitmapFree	44	librwaspu2.a rwaallocbitmap.	C	pure	0	0	0	1	
+002B4610	_rwaAllocBitmapAlloc	332	librwaspu2.a rwaallocbitmap.	C	pure	0	0	0	1	
+002B4760	_rwaAllocBitmapCreate	412	librwaspu2.a rwaallocbitmap.	C	pure	0	0	0	1	memset
+002B4900	_rwaOsStreamContainerStateUpdateCurrentStatus	244	librwaspu2.a osstreamcontain	C	pure	0	0	0	1	memcpy,strlen,strncpy
+002B4A00	_rwaSPU2RemoteIOPFopsHasIOPFileBeenOpened	40	librwaspu2.a rwaspu2remoteio	C	pure	1	0	0	1	
+002B4A30	RwaSPU2RemoteIOPFopsSetWaveDataUploadBuffer	12	librwaspu2.a rwaspu2remoteio	C	pure	1	0	0	1	
+002B4A40	RwaSPU2RemoteIOPFopsCreateWaveDataUploadBuffer	56	librwaspu2.a rwaspu2remoteio	C	sif	1	0	0	0	sceSifAllocSysMemory
+002B4A80	RwaSPU2RemoteIOPFopsPreviousOperationComplete	124	librwaspu2.a rwaspu2remoteio	C	pure	1	0	0	1	
+002B4B00	RwaSPU2RemoteIOPFopsSeek	252	librwaspu2.a rwaspu2remoteio	C	sif	0	0	0	1	SyncDCache
+002B4C00	RwaSPU2RemoteIOPFopsReadToEE	276	librwaspu2.a rwaspu2remoteio	C	sif	0	0	0	1	SyncDCache
+002B4D20	RwaSPU2RemoteIOPFopsRead	288	librwaspu2.a rwaspu2remoteio	C	sif	0	0	0	1	SyncDCache
+002B4E40	RwaSPU2RemoteIOPFopsSetCloseCallback	44	librwaspu2.a rwaspu2remoteio	C	pure	1	0	0	1	
+002B4E70	RwaSPU2RemoteIOPFopsClose	172	librwaspu2.a rwaspu2remoteio	C	sif	0	0	0	1	SyncDCache
+002B4F20	RwaSPU2RemoteIOPFopsRegisterForOpen	156	librwaspu2.a rwaspu2remoteio	C	pure	1	0	0	1	strcpy
+002B4FC0	_rwaSPU2RemoteIOPFopsEECallback	404	librwaspu2.a rwaspu2remoteio	C	intr/cache	1	2	0	1	FlushCache,memcpy
+002B5160	_RwaSPU2WaveIOPReinterleave	124	librwaspu2.a rwaspu2waveuplo	C	sif	0	0	0	0	SyncDCache
+002B51E0	_RwaSPU2WaveGetUploadFromIOPPending	8	librwaspu2.a rwaspu2waveuplo	C	pure	1	0	0	0	
+002B51F0	_RwaSPU2WaveUploadFromIOP	200	librwaspu2.a rwaspu2waveuplo	C	sif	0	0	0	1	SyncDCache
+002B52C0	func_002B52C0	8	librwaspu2.a rwaspu2waveuplo	L	pure	1	0	0	1	

@@ -1,0 +1,7 @@
+# mod kit Phase 2a (docs/modding/hooks.md "What a hook sees"): game functions whose definitions route calls that do
+# not come through dispatch (a direct C++ link from another generated unit: a member of a class from a shared decomp
+# header) through dispatch while a hook is on them, so a hook (src/native/hook_table.h) sees every call. decomp2host
+# adds b3host/hook_route.h's two-line prologue to each listed definition; with no hook on the function the cost is one
+# load and branch. One guest address a line, `#` comments, the function's name and why after it. An empty list changes
+# nothing in the generated code. Restrictions (the generator stops on them): the definition needs a return type (no
+# constructor or destructor) and no struct parameter by value. After an edit: make native-bundle, commit gen/native.

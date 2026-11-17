@@ -1,0 +1,31 @@
+Third-party software in this build (Burnout 3 native port, @VERSION@)
+
+The license texts are beside this file.
+
+SDL 3 (Simple DirectMedia Layer) @SDL_VERSION@ -- zlib license                          SDL3-LICENSE.txt
+  SDL3.dll (used by Burnout3Launcher.exe), and linked into b3render.dll.
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+
+zlib -- zlib license                                                                       zlib-LICENSE.txt
+  Linked into native_play.exe, b3render.dll and Burnout3Launcher.exe.
+  Copyright (C) 1995-2024 Jean-loup Gailly and Mark Adler
+
+stb_truetype (Sean Barrett) -- public domain / MIT, either                               stb_truetype-LICENSE.txt
+  Linked into Burnout3Launcher.exe (its text, drawn from the system's fonts).
+
+dr_mp3, dr_flac, dr_wav (David Reid) -- public domain / MIT-0, either             dr_libs-LICENSE.txt
+  minimp3 (lieff) inside dr_mp3 -- CC0                                                    minimp3-LICENSE.txt
+  stb_vorbis (Sean Barrett) -- public domain / MIT, either                              stb_vorbis-LICENSE.txt
+  Linked into native_play.exe: your own music folder's MP3 / FLAC / WAV / Ogg Vorbis files.
+
+Lua 5.4.9 (Lua.org, PUC-Rio) -- MIT license                                              Lua-LICENSE.txt
+  Linked into native_play.exe: the scripting language of script mods.
+  Copyright (C) 1994-2026 Lua.org, PUC-Rio
+
+MinGW-w64 runtime, winpthreads -- MIT / BSD-style and public domain notices              mingw-w64-runtime-COPYING.txt,
+  The C runtime start-up code and POSIX threads for Windows, in every program.            winpthreads-COPYING.txt
+
+GCC runtime libraries (libstdc++, libgcc) -- GPL 3 with the GCC Runtime Library          GCC-RUNTIME-LIBRARY-EXCEPTION.txt
+  Exception, which allows them in programs under any license. Linked into every program.
+
+The game itself (Burnout 3: Takedown) is not included; its code and data come from your own disc at run time.

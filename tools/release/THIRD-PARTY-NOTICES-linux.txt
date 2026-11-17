@@ -1,0 +1,27 @@
+Third-party software in this build (Burnout 3 native port, @VERSION@, Linux x86-64)
+
+The license texts are beside this file.
+
+SDL 3 (Simple DirectMedia Layer) @SDL_VERSION@ -- zlib license                          SDL3-LICENSE.txt
+  libSDL3.so.0 (used by b3launcher and libb3render.so).
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+
+stb_truetype (Sean Barrett) -- public domain / MIT, either                               stb_truetype-LICENSE.txt
+  Linked into b3launcher (its text, drawn from the system's fonts).
+
+dr_mp3, dr_flac, dr_wav (David Reid) -- public domain / MIT-0, either             dr_libs-LICENSE.txt
+  minimp3 (lieff) inside dr_mp3 -- CC0                                                    minimp3-LICENSE.txt
+  stb_vorbis (Sean Barrett) -- public domain / MIT, either                              stb_vorbis-LICENSE.txt
+  Linked into native_play: your own music folder's MP3 / FLAC / WAV / Ogg Vorbis files.
+
+Lua 5.4.9 (Lua.org, PUC-Rio) -- MIT license                                              Lua-LICENSE.txt
+  Linked into native_play: the scripting language of script mods.
+  Copyright (C) 1994-2026 Lua.org, PUC-Rio
+
+GCC runtime libraries (libstdc++, libgcc) -- GPL 3 with the GCC Runtime Library          GCC-RUNTIME-LIBRARY-EXCEPTION.txt
+  Exception, which allows them in programs under any license. Linked into native_play, libb3render.so and b3launcher.
+
+From your system, not included: the C library (glibc), zlib (libz.so.1), the Vulkan loader and your graphics driver,
+and the X11 / Wayland / PipeWire / PulseAudio / ALSA libraries SDL uses when they are there.
+
+The game itself (Burnout 3: Takedown) is not included; its code and data come from your own disc at run time.

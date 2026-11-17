@@ -1,0 +1,2 @@
+boot: main = func_0012EB30(argc, argv): MISSING no native function at 001E2FF8 RwEngineInit [rw, none]; a0-a3 00000000 00000001 00000100 00000000 f12 00000000 sp 01FFFD60; chain: 0012EB30 func_0012EB30 > 00133BB0 Construct__7CB3GameFv > 00228160 func_00228160 > 00227ED0 OpenRenderWare__18CB3Graphics
+stub log: SetupThread (1 call): boot arguments modelled: argc 1, argv[0] = "cdrom0:\SLUS_210.50;1" (SYSTEM.CNF BOOT2) at 0x1D9CE80 [L: the OSD's disc boot]

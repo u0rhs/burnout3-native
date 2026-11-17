@@ -1,0 +1,5 @@
+native_boot: 1083 native functions in the table; ELF $B3_WIN/perf/install/game/SLUS_210.50
+boot: _InitSys: ok (v0 00000000)
+boot: FlushCache(0): ok (v0 00000000)
+boot: main = func_0012EB30(argc, argv): MISSING no native function at 0012EB30 func_0012EB30 [game, draft]; a0-a3 00000000 01D9CE84 00000000 00000000 f12 00000000 sp 01FFFD60; chain: (top)
+stub log: _InitSys (1 call): libkernl data 0x484140-0x485840 / bss 0x4E3240-0x4EAF40 not initialised (retail: timer, alarm, thread, TLB tables)

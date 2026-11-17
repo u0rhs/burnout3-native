@@ -1,0 +1,10 @@
+# gen1: constant folds MWCC made and the host would not (decided 2026-11-07: by retail evidence, never by host constness).
+# MWCC folds a float expression of constants at compile time, rounding to nearest. Where the generated code instead
+# computes it at run time in ps2f (PS2 chop), because the constants pass through an inline helper's ps2f parameters,
+# decomp2host replaces the exact source text below with the expression spelled out in the helper's own operation order,
+# using retail's folded constant. A plain literal pair (`1.0f / 255.0f`) needs no entry: C++ folds it to nearest too.
+# Each entry applies exactly once in the unit of its function, or the generation fails.
+# Found by tools/decomp2host/fold_scan.py (retail constants = nearest(a op b) of the unit's literals, != chop).
+# address	retail_pc	constant	find	replace
+001D1130	001D1388	3F7851EC	func_001D1130_inl7(0.03f, 1.0f, attr.field_4)	(ps2f(0.03f) + attr.field_4 * ps2f(b3fp::flt(0x3F7851ECu)))
+00260210	002602BC	3F8CCCCD	func_00260210_inl3(0.15f, 1.25f, t)	(0.0f + ps2f(0.15f) + ps2f(b3fp::flt(0x3F8CCCCDu)) * t)

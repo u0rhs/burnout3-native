@@ -1,0 +1,4 @@
+#!/bin/sh
+# Drop Co-Authored-By trailers (the project's commits carry their author only).
+sed -i -E '/^Co-Authored-By:/Id' "$1"
+exit 0

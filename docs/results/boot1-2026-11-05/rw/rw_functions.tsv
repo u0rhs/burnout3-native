@@ -1,0 +1,681 @@
+# rw_census: every RW function (0x1D8260-0x211C30); layer from the RW 3.1 PS2 tree's file of its name (reading aid); boot = static closure; race = entered from reference captures (rw_trace)
+address	size	name	layer	file	boot	from_game	race_entries	race_captures	first_root
+001D8260	68	ChunkIsComplex	core	src/babinary.c		0	0	0	
+001D82A8	528	RwStreamFindChunk	core	src/babinary.c		0	0	0	
+001D84B8	376	RwStreamReadChunkHeaderInfo	core	src/babinary.c		0	0	0	
+001D8630	88	_rwStreamWriteVersionedChunkHeader	core	src/babinary.c		0	0	0	
+001D8688	152	RwStreamWriteReal	core	src/babinary.c		0	0	0	
+001D8720	40	RwStreamWriteInt32	core	src/babinary.c	yes	0	0	0	
+001D8748	40	RwStreamWriteInt16	core	src/babinary.c		0	0	0	
+001D8770	80	RwStreamReadReal	core	src/babinary.c		0	0	0	
+001D87C0	80	RwStreamReadInt32	core	src/babinary.c	yes	0	0	0	
+001D8810	80	RwStreamReadInt16	core	src/babinary.c		0	0	0	
+001D8860	292	_rwStreamReadChunkHeader	core	src/babinary.c		0	0	0	
+001D8988	20	func_001D8988	core	name:core:neighbour layer	yes	0	0	0	
+001D89A0	20	func_001D89A0	core	name:core:neighbour layer	yes	0	0	0	
+001D89B8	60	_rwerror	core	src/baerr.c	yes	0	0	0	
+001D89F8	48	func_001D89F8	core	src/baerr.c (neighbours)	yes	0	0	0	
+001D8A28	20	func_001D8A28	core	name:core:neighbour layer	yes	0	0	0	
+001D8A40	60	func_001D8A40	core	name:core:neighbour layer		0	0	0	
+001D8A80	100	RwErrorSet	core	src/baerr.c	yes	0	0	0	
+001D8AE8	148	_rwFileSystemOpen	core	src/bafsys.c	yes	0	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001D8B80	8	_rwFileSystemClose	core	src/bafsys.c	yes	0	0	0	
+001D8B88	12	func_001D8B88	core	src/bafsys.c (neighbours)	yes	1	1	1	00212CB0 InstallToRenderWare__13CGTFileSystemFv
+001D8B98	88	rwfexist	core	src/bafsys.c	yes	0	0	0	
+001D8BF0	604	func_001D8BF0	core	name:core:neighbour layer	yes	0	0	0	
+001D8E50	1212	MatrixOrthoNormalize	core	src/bamatrix.c		0	0	0	
+001D9310	556	MatrixInvertGeneric	core	src/bamatrix.c		0	0	0	
+001D9540	372	MatrixQueryRotateDegenerateUnitAxis	core	src/bamatrix.c		0	0	0	
+001D96B8	728	MatrixQueryRotate	core	src/bamatrix.c		0	0	0	
+001D9990	544	RwMatrixOptimize	core	src/bamatrix.c	yes	0	16	10	00134A20 Render__17CB3OnePlayerStageFv
+001D9BB0	648	RwMatrixRotateOneMinusCosineSine	core	src/bamatrix.c		0	0	0	
+001D9E38	372	RwMatrixInvert	core	src/bamatrix.c		0	0	0	
+001D9FB0	572	RwMatrixScale	core	src/bamatrix.c		0	0	0	
+001DA1F0	444	RwMatrixTranslate	core	src/bamatrix.c		0	0	0	
+001DA3B0	48	func_001DA3B0	core	name:core:neighbour layer		0	0	0	
+001DA3E0	48	RwEngineSetMatrixTolerances	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001DA410	12	func_001DA410	core	name:core:neighbour layer		0	0	0	
+001DA420	56	RwMatrixDestroy	core	src/bamatrix.c		0	0	0	
+001DA458	144	RwMatrixCreate	core	src/bamatrix.c		0	0	0	
+001DA4E8	128	RwMatrixMultiply	core	src/bamatrix.c	yes	0	0	0	
+001DA568	448	RwMatrixTransform	core	src/bamatrix.c		0	0	0	
+001DA728	28	RwMatrixOrthoNormalize	core	src/bamatrix.c		0	0	0	
+001DA748	244	RwMatrixRotate	core	src/bamatrix.c		0	0	0	
+001DA840	28	RwMatrixQueryRotate	core	src/bamatrix.c		0	0	0	
+001DA860	28	RwMatrixUpdate	core	src/bamatrix.c	yes	1	8	8	00134A20 Render__17CB3OnePlayerStageFv
+001DA880	124	func_001DA880	core	src/bamatrix.c (neighbours)		0	0	0	
+001DA900	168	func_001DA900	core	name:core:neighbour layer		0	0	0	
+001DA9A8	148	func_001DA9A8	core	name:core:neighbour layer		0	0	0	
+001DAA40	176	func_001DAA40	core	name:core:neighbour layer		0	0	0	
+001DAAF0	28	func_001DAAF0	core	name:core:neighbour layer		0	0	0	
+001DAB10	44	_rwMatrixSetMultFn	core	src/bamatrix.c		0	0	0	
+001DAB40	180	_rwMatrixOpen	core	src/bamatrix.c	yes	0	0	0	
+001DABF8	104	_rwMatrixClose	core	src/bamatrix.c	yes	0	0	0	
+001DAC60	872	RwFreeListCreate	core	src/bamemory.c	yes	0	0	0	
+001DAFC8	880	RwFreeListCreateAndPreallocateSpace	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001DB338	676	_rwFreeListAllocReal	core	src/bamemory.c	yes	0	0	0	
+001DB5E0	436	RwFreeListPurgeAllFreeLists	core	src/bamemory.c		0	0	0	
+001DB798	12	RwOsGetMemoryInterface	core	src/bamemory.c	yes	2	3	3	0028B580 func_0028B580
+001DB7A8	216	RwFreeListDestroy	core	src/bamemory.c	yes	0	0	0	
+001DB880	28	func_001DB880	core	src/bamemory.c (neighbours)		0	0	0	
+001DB8A0	8	func_001DB8A0	core	name:core:neighbour layer		0	0	0	
+001DB8A8	408	_rwFreeListFreeReal	core	src/bamemory.c	yes	0	0	0	
+001DBA40	376	RwFreeListPurge	core	src/bamemory.c		0	0	0	
+001DBBB8	588	RwFreeListForAllUsed	core	src/bamemory.c	yes	0	0	0	
+001DBE08	76	_rwMemoryClose	core	src/bamemory.c	yes	0	0	0	
+001DBE58	256	_rwMemoryOpen	core	src/bamemory.c	yes	0	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001DBF58	8	_rwFreeListEnable	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001DBF60	188	_RwFreeListFree	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001DC020	876	FreeListCreate	core	src/bamemory.c	yes	0	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001DC390	28	HMalloc	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	28	28	0019EE40 Construct__22CB3GraphicsManagerBaseFv
+001DC3B0	28	HRealloc	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault) (neighbours)	yes	0	0	0	
+001DC3D0	28	HCalloc	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001DC3F0	312	_rwResourcesOpen	core	src/baresour.c	yes	0	0	0	
+001DC528	488	RwResourcesAllocateResEntry	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DC710	260	RwResourcesSetArenaSize	core	src/baresour.c		0	0	0	
+001DC818	288	RwResourcesEmptyArena	core	src/baresour.c	yes	0	0	0	
+001DC938	24	func_001DC938	core	src/baresour.c (neighbours)		0	0	0	
+001DC950	76	func_001DC950	core	name:core:neighbour layer		0	0	0	
+001DC9A0	160	RwResourcesFreeResEntry	core	src/baresour.c		0	0	0	
+001DCA40	132	_rwResourcesPurge	core	src/baresour.c	yes	0	2	2	002270B0 PresentDrawBuffer__18CB3GraphicsManagerFv
+001DCAC8	116	_rwResourcesClose	core	src/baresour.c	yes	0	0	0	
+001DCB40	648	_rwStreamInitialize	core	src/bastream.c		0	0	0	
+001DCDC8	412	RwStreamRead	core	src/bastream.c	yes	0	0	0	
+001DCF68	512	RwStreamWrite	core	src/bastream.c	yes	0	0	0	
+001DD168	328	RwStreamSkip	core	src/bastream.c		0	0	0	
+001DD2B0	12	func_001DD2B0	core	src/bastream.c (neighbours)		0	0	0	
+001DD2C0	176	RwStreamOpen	core	src/bastream.c		0	0	0	
+001DD370	276	RwStreamClose	core	src/bastream.c		0	0	0	
+001DD488	120	_rwStreamModuleOpen	core	src/bastream.c	yes	0	0	0	
+001DD500	84	_rwStreamModuleClose	core	src/bastream.c	yes	0	0	0	
+001DD558	400	_rwPluginRegistryReadDataChunks	core	src/batkbin.c		0	0	0	
+001DD6E8	60	_rwPluginRegistryAddPluginStream	core	src/batkbin.c	yes	0	0	0	
+001DD728	52	func_001DD728	core	src/batkbin.c (neighbours)		0	0	0	
+001DD760	52	func_001DD760	core	name:core:neighbour layer		0	0	0	
+001DD798	316	_rwPluginRegistryWriteDataChunks	core	src/batkbin.c		0	0	0	
+001DD8D8	164	_rwPluginRegistrySkipDataChunks	core	src/batkbin.c		0	0	0	
+001DD980	116	_rwPluginRegistryGetSize	core	src/batkbin.c		0	0	0	
+001DD9F8	108	_rwPluginRegistryInvokeRights	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DDA68	304	_rwPluginRegistryClose	core	src/batkreg.c	yes	0	0	0	
+001DDB98	864	_rwPluginRegistryAddPlugin	core	src/batkreg.c	yes	0	3	3	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001DDEF8	76	_rwPluginRegistryOpen	core	src/batkreg.c	yes	0	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001DDF48	12	func_001DDF48	core	src/batkreg.c (neighbours)		0	0	0	
+001DDF58	68	_rwPluginRegistrySetStaticPluginsSize	core	src/batkreg.c	yes	0	0	0	
+001DDFA0	48	func_001DDFA0	core	src/batkreg.c (neighbours)		0	0	0	
+001DDFD0	152	_rwPluginRegistryInitObject	core	src/batkreg.c	yes	0	0	0	
+001DE068	96	_rwPluginRegistryDeInitObject	core	src/batkreg.c	yes	0	0	0	
+001DE0C8	112	_rwPluginRegistryCopyObject	core	src/batkreg.c		0	0	0	
+001DE138	72	rwDestroyEntry	core	src/batkreg.c	yes	0	0	0	
+001DE180	8	func_001DE180	core	name:core:neighbour layer	yes	0	0	0	
+001DE188	8	func_001DE188	core	name:core:neighbour layer	yes	0	0	0	
+001DE190	8	func_001DE190	core	name:core:neighbour layer	yes	0	0	0	
+001DE198	196	RwV3dNormalize	core	src/bavector.c		0	75	23	001568C0 ConfirmTradePaint__8CB3ScoreFP17CB3RaceCarPhysicsP17CB3RaceCarPhysicsfb
+001DE260	44	RwV3dLength	core	src/bavector.c	yes	2	38	6	002F49A0 Construct__14CB3DebrisArrayF15EDebrisGeometry
+001DE290	32	RwV2dLength	core	src/bavector.c		0	0	0	
+001DE2B0	172	RwV2dNormalize	core	src/bavector.c		0	0	0	
+001DE360	60	RwV3dTransformPoint	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DE3A0	60	RwV3dTransformPoints	core	src/bavector.c	yes	0	0	0	
+001DE3E0	60	RwV3dTransformVector	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DE420	60	RwV3dTransformVectors	core	src/bavector.c		0	0	0	
+001DE460	128	_rwV3dNormalize	core	src/bavector.c		0	52	13	00134A20 Render__17CB3OnePlayerStageFv
+001DE4E0	84	func_001DE4E0	core	src/bavector.c (neighbours)	yes	0	0	0	
+001DE538	20	func_001DE538	core	name:core:neighbour layer	yes	0	0	0	
+001DE550	88	_rwVectorSetMultFn	core	src/bavector.c		0	0	0	
+001DE5A8	536	func_001DE5A8	core	name:core:neighbour layer	yes	0	0	0	
+001DE7C0	152	func_001DE7C0	core	name:core:neighbour layer	yes	0	0	0	
+001DE858	464	func_001DE858	core	name:core:neighbour layer	yes	0	0	0	
+001DEA28	128	func_001DEA28	core	name:core:neighbour layer	yes	0	0	0	
+001DEAA8	300	_rwResHeapAlloc	core	src/resmem.c		0	0	0	
+001DEBD8	872	_rwResHeapRealloc	core	src/resmem.c		0	0	0	
+001DEF40	84	_rwResHeapInit	core	src/resmem.c	yes	0	0	0	
+001DEF98	8	_rwResHeapClose	core	src/resmem.c	yes	0	0	0	
+001DEFA0	76	_rwResHeapCalloc	core	src/resmem.c		0	0	0	
+001DEFF0	184	_rwResHeapFree	core	src/resmem.c	yes	0	0	0	
+001DF0A8	192	func_001DF0A8	core	name:core:neighbour layer		0	0	0	
+001DF168	120	_rwChunkGroupOpen	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001DF1E0	84	_rwChunkGroupClose	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001DF238	12	func_001DF238	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault) (neighbours)		0	0	0	
+001DF248	92	RwChunkGroupCreate	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DF2A8	60	RwChunkGroupDestroy	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DF2E8	188	RwChunkGroupBeginStreamRead	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DF3A8	8	func_001DF3A8	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault) (neighbours)		0	0	0	
+001DF3B0	152	RwChunkGroupBeginStreamWrite	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DF448	84	RwChunkGroupEndStreamWrite	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DF4A0	32	RwChunkGroupStreamGetSize	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DF4C0	124	RwChunkGroupSetName	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001DF540	260	_rwStringOpen	core	src/rwstring.c	yes	0	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001DF648	1016	_rwStringStreamFindAndRead	core	src/babintex.c		0	0	0	
+001DFA40	8	_rwStringClose	core	src/rwstring.c	yes	0	0	0	
+001DFA48	40	_rwStringDestroy	core	src/babintex.c		0	0	0	
+001DFA70	56	_rwStringStreamGetSize	core	src/babintex.c		0	0	0	
+001DFAA8	160	_rwStringStreamWrite	core	src/babintex.c		0	0	0	
+001DFB48	112	func_001DFB48	?		yes	0	0	0	
+001DFBB8	68	func_001DFBB8	?		yes	0	0	0	
+001DFC00	68	func_001DFC00	?		yes	0	0	0	
+001DFC48	52	func_001DFC48	?		yes	0	0	0	
+001DFC80	52	func_001DFC80	?		yes	0	0	0	
+001DFCB8	72	_rwpathisabsolute	os	os/sky/osintf.c	yes	0	0	0	
+001DFD00	8	func_001DFD00	?			0	0	0	
+001DFD08	240	RwBBoxCalculate	core	src/babbox.c	yes	0	16	10	00134A20 Render__17CB3OnePlayerStageFv
+001DFDF8	56	func_001DFDF8	core	name:core:neighbour layer		0	0	0	
+001DFE30	156	func_001DFE30	core	name:core:neighbour layer		0	0	0	
+001DFED0	136	func_001DFED0	core	name:core:neighbour layer		0	0	0	
+001DFF58	328	RwTextureStreamWrite	core	src/babintex.c		0	0	0	
+001E00A0	540	RwTextureStreamRead	core	src/babintex.c		0	0	0	
+001E02C0	392	RwTexDictionaryStreamWrite	core	src/babintex.c		0	0	0	
+001E0448	740	RwTexDictionaryStreamRead	core	src/babintex.c		0	0	0	
+001E0730	56	RwTextureRegisterPluginStream	core	src/babintex.c	yes	0	0	0	
+001E0768	40	func_001E0768	core	src/babintex.c (neighbours)		0	0	0	
+001E0790	92	RwTextureStreamGetSize	core	src/babintex.c		0	0	0	
+001E07F0	56	func_001E07F0	core	src/babintex.c (neighbours)		0	0	0	
+001E0828	40	func_001E0828	core	name:core:neighbour layer		0	0	0	
+001E0850	116	RwTexDictionaryStreamGetSize	core	src/babintex.c		0	0	0	
+001E08C8	212	_rwTextureChunkInfoRead	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001E09A0	140	addNativeTextureSize	core	src/babintex.c		0	0	0	
+001E0A30	20	func_001E0A30	core	src/babintex.c (neighbours)		0	0	0	
+001E0A48	216	writeNativeTexture	core	src/babintex.c		0	0	0	
+001E0B20	40	destroyTexture	core	src/babintex.c		0	0	0	
+001E0B48	2244	CameraBuildPerspClipPlanes	core	src/bacamera.c	yes	0	16	10	00134A20 Render__17CB3OnePlayerStageFv
+001E1410	472	CameraBuildPerspViewMatrix	core	src/bacamera.c	yes	0	16	10	00134A20 Render__17CB3OnePlayerStageFv
+001E15E8	1344	CameraBuildParallelClipPlanes	core	src/bacamera.c	yes	0	0	0	
+001E1B28	468	CameraBuildParallelViewMatrix	core	src/bacamera.c	yes	0	0	0	
+001E1D00	332	RwCameraCreate	core	src/bacamera.c	yes	1	5	5	0019EE40 Construct__22CB3GraphicsManagerBaseFv
+001E1E50	352	RwCameraClone	core	src/bacamera.c		0	0	0	
+001E1FB0	32	RwCameraBeginUpdate	core	src/bacamera.c	yes	1	20	20	00132600 func_00132600
+001E1FD0	32	RwCameraEndUpdate	core	src/bacamera.c	yes	2	2	2	0019EA30 CloseViewport__22CB3GraphicsManagerBaseFv
+001E1FF0	52	func_001E1FF0	core	src/bacamera.c (neighbours)	yes	4	2	2	001312D0 func_001312D0
+001E2028	48	RwCameraShowRaster	core	src/bacamera.c	yes	1	2	2	002270B0 PresentDrawBuffer__18CB3GraphicsManagerFv
+001E2058	12	func_001E2058	core	src/bacamera.c (neighbours)		0	0	0	
+001E2068	92	RwCameraDestroy	core	src/bacamera.c	yes	1	0	0	
+001E20C8	72	RwCameraSetViewOffset	core	src/bacamera.c		0	0	0	
+001E2110	100	RwCameraSetViewWindow	core	src/bacamera.c	yes	2	10	10	00134A20 Render__17CB3OnePlayerStageFv
+001E2178	272	RwCameraSetProjection	core	src/bacamera.c		0	0	0	
+001E2288	204	RwCameraSetNearClipPlane	core	src/bacamera.c	yes	4	7	7	00134A20 Render__17CB3OnePlayerStageFv
+001E2358	204	RwCameraSetFarClipPlane	core	src/bacamera.c	yes	4	7	7	00134A20 Render__17CB3OnePlayerStageFv
+001E2428	68	RwCameraRegisterPlugin	core	src/bacamera.c	yes	0	0	0	
+001E2470	36	func_001E2470	core	src/bacamera.c (neighbours)		0	0	0	
+001E2498	8	func_001E2498	core	name:core:neighbour layer		0	0	0	
+001E24A0	136	func_001E24A0	core	name:core:neighbour layer		0	0	0	
+001E2528	104	_rwCameraClose	core	src/bacamera.c	yes	0	0	0	
+001E2590	124	_rwCameraOpen	core	src/bacamera.c	yes	0	0	0	
+001E2610	108	CameraSync	core	src/bacamera.c	yes	0	16	10	00134A20 Render__17CB3OnePlayerStageFv
+001E2680	88	CameraEndUpdate	core	src/bacamera.c	yes	0	2	2	0019EA30 CloseViewport__22CB3GraphicsManagerBaseFv
+001E26D8	96	CameraBeginUpdate	core	src/bacamera.c	yes	0	20	20	00132600 func_00132600
+001E2738	492	CorePluginAttach	core	src/badevice.c	yes	0	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001E2928	76	RwEngineGetNumSubSystems	core	src/badevice.c		0	0	0	
+001E2978	64	RwEngineGetCurrentSubSystem	core	src/badevice.c		0	0	0	
+001E29B8	112	RwEngineGetNumVideoModes	core	src/badevice.c		0	0	0	
+001E2A28	112	RwEngineGetCurrentVideoMode	core	src/badevice.c		0	0	0	
+001E2A98	104	RwEngineSetVideoMode	core	src/badevice.c	yes	2	0	0	
+001E2B00	112	RwEngineGetTextureMemorySize	core	src/badevice.c		0	0	0	
+001E2B70	112	RwEngineGetMaxTextureSize	core	src/badevice.c		0	0	0	
+001E2BE0	104	RwEngineSetFocus	core	src/badevice.c		0	0	0	
+001E2C48	196	RwEngineStop	core	src/badevice.c		0	0	0	
+001E2D10	268	RwEngineStart	core	src/badevice.c	yes	1	0	0	
+001E2E20	136	RwEngineClose	core	src/badevice.c	yes	1	0	0	
+001E2EA8	316	RwEngineOpen	core	src/badevice.c	yes	1	0	0	
+001E2FE8	12	func_001E2FE8	core	src/badevice.c (neighbours)		0	0	0	
+001E2FF8	340	RwEngineInit	core	src/badevice.c	yes	1	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001E3150	60	RwEngineRegisterPlugin	core	src/badevice.c	yes	0	1	1	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001E3190	36	func_001E3190	core	src/badevice.c (neighbours)		0	0	0	
+001E31B8	76	RwEngineTerm	core	src/badevice.c	yes	1	0	0	
+001E3208	184	RwEngineGetSubSystemInfo	core	src/badevice.c		0	0	0	
+001E32C0	132	RwEngineSetSubSystem	core	src/badevice.c		0	0	0	
+001E3348	120	RwEngineGetVideoModeInfo	core	src/badevice.c		0	0	0	
+001E33C0	12	func_001E33C0	core	src/badevice.c (neighbours)		0	0	0	
+001E33D0	260	_rwDeviceSystemRequest	core	src/badevice.c	yes	0	0	0	
+001E34D8	8	_rwGetNumEngineInstances	core	src/badevice.c	yes	0	3	3	00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+001E34E0	36	MallocWrapper	core	src/badevice.c	yes	0	7	7	0019EE40 Construct__22CB3GraphicsManagerBaseFv
+001E3508	52	FreeWrapper	core	src/badevice.c	yes	0	0	0	
+001E3540	332	rwFrameCloneRecurse	core	src/baframe.c		0	0	0	
+001E3690	216	_rwFrameInit	core	src/baframe.c	yes	0	0	0	
+001E3768	120	RwFrameForAllObjects	core	src/baframe.c		0	0	0	
+001E37E0	124	RwFrameTranslate	core	src/baframe.c		0	0	0	
+001E3860	124	RwFrameRotate	core	src/baframe.c		0	0	0	
+001E38E0	124	RwFrameScale	core	src/baframe.c		0	0	0	
+001E3960	124	RwFrameTransform	core	src/baframe.c		0	0	0	
+001E39E0	128	RwFrameOrthoNormalize	core	src/baframe.c		0	0	0	
+001E3A60	180	func_001E3A60	core	src/baframe.c (neighbours)		0	0	0	
+001E3B18	196	RwFrameCloneHierarchy	core	src/baframe.c		0	0	0	
+001E3BE0	168	RwFrameDestroyHierarchy	core	src/baframe.c		0	0	0	
+001E3C88	108	RwFrameForAllChildren	core	src/baframe.c		0	0	0	
+001E3CF8	244	RwFrameRemoveChild	core	src/baframe.c	yes	0	0	0	
+001E3DF0	272	RwFrameAddChild	core	src/baframe.c		0	0	0	
+001E3F00	136	RwFrameAddChildNoUpdate	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)		0	0	0	
+001E3F88	8	func_001E3F88	core	name:core:neighbour layer		0	0	0	
+001E3F90	64	RwFrameGetLTM	core	src/baframe.c		0	0	0	
+001E3FD0	92	RwFrameUpdateObjects	core	src/baframe.c	yes	1	32	16	00134A20 Render__17CB3OnePlayerStageFv
+001E4030	12	func_001E4030	core	src/baframe.c (neighbours)		0	0	0	
+001E4040	88	RwFrameCreate	core	src/baframe.c	yes	1	0	0	
+001E4098	52	RwFrameInit	core	src/baframe.c		0	0	0	
+001E40D0	160	RwFrameDeInit	core	src/baframe.c		0	0	0	
+001E4170	192	RwFrameDestroy	core	src/baframe.c	yes	1	0	0	
+001E4230	156	_rwFrameDeInit	core	src/baframe.c		0	0	0	
+001E42D0	16	func_001E42D0	core	src/baframe.c (neighbours)		0	0	0	
+001E42E0	76	RwFrameCount	core	src/baframe.c		0	0	0	
+001E4330	48	RwFrameSetStaticPluginsSize	core	src/baframe.c	yes	1	0	0	
+001E4360	68	func_001E4360	core	src/baframe.c (neighbours)		0	0	0	
+001E43A8	36	func_001E43A8	core	name:core:neighbour layer		0	0	0	
+001E43D0	8	func_001E43D0	core	name:core:neighbour layer		0	0	0	
+001E43D8	68	_rwFrameCloneAndLinkClones	core	src/baframe.c		0	0	0	
+001E4420	144	_rwFramePurgeClone	core	src/baframe.c		0	0	0	
+001E44B0	104	_rwFrameClose	core	src/baframe.c	yes	0	0	0	
+001E4518	136	_rwFrameOpen	core	src/baframe.c	yes	0	0	0	
+001E45A0	88	rwSetHierarchyRoot	core	src/baframe.c	yes	0	0	0	
+001E45F8	164	rwFrameDestroyRecurse	core	src/baframe.c		0	0	0	
+001E46A0	416	_rwImageOpen	core	src/baimage.c	yes	0	0	0	
+001E4840	304	_rwImageClose	core	src/baimage.c	yes	0	0	0	
+001E4970	688	RwImageResize	core	src/baimage.c		0	0	0	
+001E4C20	548	RwImageMakeMask	core	src/baimage.c	yes	0	0	0	
+001E4E48	1240	RwImageApplyMask	core	src/baimage.c	yes	0	0	0	
+001E5320	772	ImagePathForAllFullNames	core	src/baimage.c	yes	0	0	0	
+001E5628	292	RwImageRead	core	src/baimage.c	yes	0	0	0	
+001E5750	400	RwImageRegisterImageFormat	core	src/baimage.c		0	0	0	
+001E58E0	444	RwImageReadMaskedImage	core	src/baimage.c	yes	0	0	0	
+001E5AA0	936	ImageConvertDepth	core	src/baimage.c	yes	0	0	0	
+001E5E48	640	RwImageStreamRead	core	src/baimage.c		0	0	0	
+001E60C8	516	RwImageGammaCorrect	core	src/baimage.c	yes	0	0	0	
+001E62D0	12	func_001E62D0	core	src/baimage.c (neighbours)		0	0	0	
+001E62E0	12	func_001E62E0	core	name:core:neighbour layer		0	0	0	
+001E62F0	160	RwImageCreate	core	src/baimage.c	yes	0	0	0	
+001E6390	108	RwImageDestroy	core	src/baimage.c	yes	0	0	0	
+001E6400	272	RwImageAllocatePixels	core	src/baimage.c	yes	0	0	0	
+001E6510	76	RwImageFreePixels	core	src/baimage.c	yes	0	0	0	
+001E6560	284	RwImageCopy	core	src/baimage.c	yes	0	0	0	
+001E6680	220	RwImageWrite	core	src/baimage.c		0	0	0	
+001E6760	24	func_001E6760	core	src/baimage.c (neighbours)		0	0	0	
+001E6778	224	RwImageSetPath	core	src/baimage.c		0	0	0	
+001E6858	52	func_001E6858	core	src/baimage.c (neighbours)		0	0	0	
+001E6890	48	func_001E6890	core	name:core:neighbour layer		0	0	0	
+001E68C0	56	RwRGBASetFromPixel	core	src/baimage.c		0	0	0	
+001E68F8	496	RwImageSetGamma	core	src/baimage.c	yes	0	0	0	
+001E6AE8	24	func_001E6AE8	core	src/baimage.c (neighbours)		0	0	0	
+001E6B00	88	func_001E6B00	core	name:core:neighbour layer		0	0	0	
+001E6B58	68	func_001E6B58	core	name:core:neighbour layer		0	0	0	
+001E6BA0	36	func_001E6BA0	core	name:core:neighbour layer		0	0	0	
+001E6BC8	8	func_001E6BC8	core	name:core:neighbour layer		0	0	0	
+001E6BD0	48	RwImageFindFileType	core	src/baimage.c	yes	0	0	0	
+001E6C00	48	func_001E6C00	core	src/baimage.c (neighbours)		0	0	0	
+001E6C30	264	RwImageStreamWrite	core	src/baimage.c		0	0	0	
+001E6D38	124	func_001E6D38	core	src/baimage.c (neighbours)		0	0	0	
+001E6DB8	124	func_001E6DB8	core	name:core:neighbour layer		0	0	0	
+001E6E38	96	ImageAttempRead	core	src/baimage.c	yes	0	0	0	
+001E6E98	228	ImageDetermineExtender	core	src/baimage.c	yes	0	0	0	
+001E6F80	332	RwRasterRead	core	src/baimras.c		0	0	0	
+001E70D0	100	RwImageSetFromRaster	core	src/baimras.c	yes	0	0	0	
+001E7138	100	RwRasterSetFromImage	core	src/baimras.c	yes	0	0	0	
+001E71A0	268	RwRGBAGetRasterPixel	core	src/baimras.c		0	0	0	
+001E72B0	176	RwRasterReadMaskedRaster	core	src/baimras.c		0	0	0	
+001E7360	164	RwImageFindRasterFormat	core	src/baimras.c	yes	0	0	0	
+001E7408	216	_rwRasterOpen	core	src/baraster.c	yes	0	0	0	
+001E74E0	12	func_001E74E0	core	src/baraster.c (neighbours)		0	0	0	
+001E74F0	252	RwRasterCreate	core	src/baraster.c	yes	1	0	0	
+001E75F0	112	RwRasterDestroy	core	src/baraster.c	yes	1	0	0	
+001E7660	24	func_001E7660	core	src/baraster.c (neighbours)		0	0	0	
+001E7678	80	RwRasterGetNumLevels	core	src/baraster.c	yes	0	0	0	
+001E76C8	156	RwRasterSubRaster	core	src/baraster.c	yes	1	12	6	0019E8C0 SetViewportsSinglePlayer__22CB3GraphicsManagerBaseFv
+001E7768	64	RwRasterRenderFast	core	src/baraster.c		0	0	0	
+001E77A8	64	RwRasterRender	core	src/baraster.c		0	0	0	
+001E77E8	52	RwRasterRenderScaled	core	src/baraster.c		0	0	0	
+001E7820	116	RwRasterPushContext	core	src/baraster.c		0	0	0	
+001E7898	108	RwRasterPopContext	core	src/baraster.c		0	0	0	
+001E7908	36	func_001E7908	core	src/baraster.c (neighbours)		0	0	0	
+001E7930	120	RwRasterClear	core	src/baraster.c		0	0	0	
+001E79A8	48	func_001E79A8	core	src/baraster.c (neighbours)		0	0	0	
+001E79D8	100	RwRasterShowRaster	core	src/baraster.c	yes	0	2	2	002270B0 PresentDrawBuffer__18CB3GraphicsManagerFv
+001E7A40	64	RwRasterLock	core	src/baraster.c	yes	0	0	0	
+001E7A80	60	RwRasterUnlock	core	src/baraster.c	yes	0	0	0	
+001E7AC0	56	RwRasterLockPalette	core	src/baraster.c		0	0	0	
+001E7AF8	72	RwRasterUnlockPalette	core	src/baraster.c		0	0	0	
+001E7B40	68	RwRasterRegisterPlugin	core	src/baraster.c	yes	1	2	2	00251680 AttachPlugins__10CGtTextureFv
+001E7B88	36	func_001E7B88	core	src/baraster.c (neighbours)		0	0	0	
+001E7BB0	8	func_001E7BB0	core	name:core:neighbour layer		0	0	0	
+001E7BB8	104	_rwRasterClose	core	src/baraster.c	yes	0	0	0	
+001E7C20	764	ImageResampleGetSpan	core	src/baresamp.c	yes	0	0	0	
+001E7F20	636	ImageResampleGetAvgPixel	core	src/baresamp.c	yes	0	0	0	
+001E81A0	840	RwImageResample	core	src/baresamp.c	yes	0	0	0	
+001E84E8	276	RwImageCreateResample	core	src/baresamp.c	yes	0	0	0	
+001E8600	480	FrameSyncHierarchy	core	src/basync.c	yes	0	16	10	00134A20 Render__17CB3OnePlayerStageFv
+001E87E0	100	_rwFrameSyncDirty	core	src/basync.c	yes	0	20	20	00132600 func_00132600
+001E8848	200	_rwFrameSyncHierarchyLTM	core	src/basync.c		0	0	0	
+001E8910	196	FrameSyncHierarchyRecurse	core	src/basync.c	yes	0	0	0	
+001E89D8	136	FrameSyncHierarchyRecurseNoLTM	core	src/basync.c	yes	0	0	0	
+001E8A60	132	FrameSyncHierarchyLTMRecurse	core	src/basync.c		0	0	0	
+001E8AE8	912	PalettizeMipmaps	core	src/batextur.c	yes	0	0	0	
+001E8E78	1084	TextureImageReadAndSize	core	src/batextur.c	yes	0	0	0	
+001E92B8	628	TextureDefaultNormalRead	core	src/batextur.c	yes	0	0	0	
+001E9530	1760	TextureDefaultMipmapRead	core	src/batextur.c	yes	0	0	0	
+001E9C10	1472	TextureRasterDefaultBuildMipmaps	core	src/batextur.c	yes	0	0	0	
+001EA1D0	324	RwTextureRead	core	src/batextur.c		0	0	0	
+001EA318	408	_rwTextureClose	core	src/batextur.c	yes	0	0	0	
+001EA4B0	508	_rwTextureOpen	core	src/batextur.c	yes	0	0	0	
+001EA6B0	28	RwTextureSetMipmapping	core	src/batextur.c		0	0	0	
+001EA6D0	24	RwTextureGetMipmapping	core	src/batextur.c		0	0	0	
+001EA6E8	28	RwTextureSetAutoMipmapping	core	src/batextur.c		0	0	0	
+001EA708	24	RwTextureGetAutoMipmapping	core	src/batextur.c		0	0	0	
+001EA720	28	func_001EA720	core	src/batextur.c (neighbours)		0	0	0	
+001EA740	24	func_001EA740	core	name:core:neighbour layer		0	0	0	
+001EA758	28	func_001EA758	core	name:core:neighbour layer		0	0	0	
+001EA778	24	func_001EA778	core	name:core:neighbour layer		0	0	0	
+001EA790	64	RwTextureGenerateMipmapName	core	src/batextur.c	yes	0	0	0	
+001EA7D0	52	RwTextureRasterGenerateMipmaps	core	src/batextur.c		0	0	0	
+001EA808	32	func_001EA808	core	src/batextur.c (neighbours)		0	0	0	
+001EA828	24	func_001EA828	core	name:core:neighbour layer		0	0	0	
+001EA840	24	func_001EA840	core	name:core:neighbour layer		0	0	0	
+001EA858	28	func_001EA858	core	name:core:neighbour layer		0	0	0	
+001EA878	24	func_001EA878	core	name:core:neighbour layer		0	0	0	
+001EA890	28	func_001EA890	core	name:core:neighbour layer		0	0	0	
+001EA8B0	156	RwTextureSetName	core	src/batextur.c	yes	0	0	0	
+001EA950	156	RwTextureSetMaskName	core	src/batextur.c	yes	0	0	0	
+001EA9F0	12	func_001EA9F0	core	src/batextur.c (neighbours)		0	0	0	
+001EAA00	180	RwTexDictionaryCreate	core	src/batextur.c		0	0	0	
+001EAAB8	156	RwTexDictionaryDestroy	core	src/batextur.c		0	0	0	
+001EAB58	12	func_001EAB58	core	src/batextur.c (neighbours)		0	0	0	
+001EAB68	136	RwTextureCreate	core	src/batextur.c	yes	0	0	0	
+001EABF0	176	RwTextureDestroy	core	src/batextur.c	yes	0	0	0	
+001EACA0	76	RwTextureSetRaster	core	src/batextur.c		0	0	0	
+001EACF0	80	RwTexDictionaryAddTexture	core	src/batextur.c		0	0	0	
+001EAD40	52	func_001EAD40	core	src/batextur.c (neighbours)		0	0	0	
+001EAD78	236	RwTexDictionaryFindNamedTexture	core	src/batextur.c	yes	0	0	0	
+001EAE68	24	func_001EAE68	core	src/batextur.c (neighbours)		0	0	0	
+001EAE80	28	func_001EAE80	core	name:core:neighbour layer		0	0	0	
+001EAEA0	112	RwTexDictionaryForAllTextures	core	src/batextur.c	yes	0	0	0	
+001EAF10	116	RwTexDictionaryForAllTexDictionaries	core	src/batextur.c		0	0	0	
+001EAF88	68	RwTextureRegisterPlugin	core	src/batextur.c	yes	0	0	0	
+001EAFD0	68	func_001EAFD0	core	src/batextur.c (neighbours)		0	0	0	
+001EB018	36	func_001EB018	core	name:core:neighbour layer		0	0	0	
+001EB040	36	func_001EB040	core	name:core:neighbour layer		0	0	0	
+001EB068	8	func_001EB068	core	name:core:neighbour layer		0	0	0	
+001EB070	8	func_001EB070	core	name:core:neighbour layer		0	0	0	
+001EB078	156	TextureDefaultMipmapName	core	src/batextur.c	yes	0	0	0	
+001EB118	72	TextureDefaultRead	core	src/batextur.c	yes	0	0	0	
+001EB160	136	TextureDefaultFind	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001EB1E8	108	_rwObjectHasFrameSetFrame	core	src/batypehf.c	yes	2	0	0	
+001EB258	48	_rwObjectHasFrameReleaseFrame	core	src/batypehf.c	yes	0	0	0	
+001EB288	796	_rwImageFindAlphaType	core	driver/common/imrascnv.c		0	0	0	
+001EB5A8	1160	_rwRasterSetFromImage8888	core	driver/common/imrascnv.c		0	0	0	
+001EBA30	1056	_rwRasterSetFromImage888	core	driver/common/imrascnv.c		0	0	0	
+001EBE50	1008	_rwRasterSetFromImage4444	core	driver/common/imrascnv.c		0	0	0	
+001EC240	1052	_rwRasterSetFromImage1555	core	driver/common/imrascnv.c		0	0	0	
+001EC660	1144	func_001EC660	core	driver/common/imrascnv.c (neighbours)		0	0	0	
+001ECAD8	568	_rwRGBAFromImage8	core	driver/common/imrascnv.c		0	0	0	
+001ECD10	496	_rwRGBAFromImage32	core	driver/common/imrascnv.c		0	0	0	
+001ECF00	664	_rwImageFindNearestPaletteColor	core	driver/common/imrascnv.c		0	0	0	
+001ED198	432	_rwImageSetFromRaster8888	core	driver/common/imrascnv.c		0	0	0	
+001ED348	416	_rwImageSetFromRaster888	core	driver/common/imrascnv.c		0	0	0	
+001ED4E8	404	_rwImageSetFromRaster4444	core	driver/common/imrascnv.c		0	0	0	
+001ED680	672	_rwImageSetFromRaster1555	core	driver/common/imrascnv.c		0	0	0	
+001ED920	568	_rwImageSetFromRaster565	core	driver/common/imrascnv.c		0	0	0	
+001EDB58	824	_rwMipmapRasterSetFromImage8888	core	driver/common/imrascnv.c		0	0	0	
+001EDE90	792	_rwMipmapRasterSetFromImage888	core	driver/common/imrascnv.c		0	0	0	
+001EE1A8	544	_rwMipmapRasterSetFromImage4444	core	driver/common/imrascnv.c		0	0	0	
+001EE3C8	560	_rwMipmapRasterSetFromImage1555	core	driver/common/imrascnv.c		0	0	0	
+001EE5F8	824	_rwMipmapRasterSetFromImage565	core	driver/common/imrascnv.c		0	0	0	
+001EE930	308	LeafAddPixel	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001EEA68	268	LeafCalcStats	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001EEB78	324	StatsAdd	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001EECC0	296	StatsSub	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001EEDE8	248	RepresentativeColor	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001EEEE0	1244	RwPalQuantAddImage	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001EF3C0	572	assignindex	core	driver/common/palquant.c	yes	0	0	0	
+001EF600	684	addvolume	core	driver/common/palquant.c	yes	0	0	0	
+001EF8B0	1568	nCut	core	driver/common/palquant.c	yes	0	0	0	
+001EFED0	2596	RwPalQuantResolvePalette	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001F08F8	1684	RwPalQuantMatchImage	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001F0F90	12	func_001F0F90	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault) (neighbours)		0	0	0	
+001F0FA0	8	func_001F0FA0	core	name:core:neighbour layer		0	0	0	
+001F0FA8	292	RwPalQuantInit	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001F10D0	288	RwPalQuantTerm	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001F11F0	468	CalcNodeWeights	core	driver/common/palquant.c	yes	0	0	0	
+001F13C8	256	CountLeafs	core	driver/common/palquant.c	yes	0	0	0	
+001F14C8	324	ExtractNodes	core	driver/common/palquant.c (neighbours)	yes	0	0	0	
+001F1610	68	GetIndex	core	driver/common/palquant.c	yes	0	0	0	
+001F1658	284	DeleteOctTree	core	driver/common/palquant.c	yes	0	0	0	
+001F1778	1392	rwDMAHandler	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	0	0	0	
+001F1CE8	612	rwDMAVSYNCHandler	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001F1F50	1204	_rwDMAClosePkt	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	0	11	11	00132600 func_00132600
+001F2408	536	_rwDMAForceBufferSwap	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	2	7	7	00132600 func_00132600
+001F2620	372	_rwDMAAddPkt	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	0	4	4	00222260 func_00222260
+001F2798	456	_rwDMAAddPkt2	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001F2960	404	_rwDMAReqFlip	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	4	4	00222260 func_00222260
+001F2AF8	1412	_rwDMAOpenGIFPkt	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	0	0	0	
+001F3080	1348	_rwDMAOpenVIFPkt	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	66	243	126	001312D0 func_001312D0
+001F35C8	416	func_001F35C8	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z]) (neighbours)		0	0	0	
+001F3768	680	_rwDMADMAPktAllocHigh	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	0	11	11	0019DD00 func_0019DD00
+001F3A10	504	_rwDMAAddImageUpload	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	1	14	14	0019DD00 func_0019DD00
+001F3C08	304	_rwDMAHook	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001F3D38	608	_rwDMAUnhook	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001F3F98	752	_rwDMADmaOpen	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001F4288	8	_rwDMAYieldCallbackSet	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	2	0	0	
+001F4290	8	func_001F4290	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z]) (neighbours)	yes	2	3	3	00131100 func_00131100
+001F4298	116	_rwDMACallbackRestart	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001F4310	160	_rwDMAAddPURef	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	1	0	0	
+001F43B0	220	func_001F43B0	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z]) (neighbours)	yes	3	22	21	001312D0 func_001312D0
+001F4490	228	_rwDMADMAAlloca	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001F4578	72	_rwDMADmaClose	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001F45C0	64	_rwDMAPreAlloc	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	2	0	0	
+001F4600	100	_rwSkyInitConfigSystem	driver	driver/sky2/baevent.c		0	0	0	
+001F4668	2708	_rwSkySetRenderState	driver	driver/sky2/basky.c		0	26	13	00134A20 Render__17CB3OnePlayerStageFv
+001F5100	1036	SkyGetRenderState	driver	driver/sky2/basky.c		0	0	0	
+001F5510	500	RpSkyRenderStateSet	driver	driver/sky2/basky.c	yes	3	18	18	00134A20 Render__17CB3OnePlayerStageFv
+001F5708	2556	SkyCameraBeginUpdate	driver	driver/sky2/basky.c		0	20	20	00132600 func_00132600
+001F6108	1148	SkyCameraClear	driver	driver/sky2/basky.c		0	2	2	001312D0 func_001312D0
+001F6588	1404	SkyGetRasterFormat	driver	driver/sky2/basky.c		0	0	0	
+001F6B08	4860	calcOffsets	driver	driver/sky2/basky.c		0	0	0	
+001F7E08	6972	SkyRasterCreate	driver	driver/sky2/basky.c		0	0	0	
+001F9948	1140	_skyRasterRecreateDMATags	driver	driver/sky2/basky.c (neighbours)		0	0	0	
+001F9DC0	932	func_001F9DC0	driver	name:driver:neighbour layer		0	12	6	0019E8C0 SetViewportsSinglePlayer__22CB3GraphicsManagerBaseFv
+001FA168	532	SkyRasterDestroy	driver	driver/sky2/basky.c		0	0	0	
+001FA380	740	SkyRasterLock_32to8	driver	driver/sky2/basky.c		0	0	0	
+001FA668	952	SkyRasterLock_16to4	driver	driver/sky2/basky.c		0	0	0	
+001FAA20	732	SkyRasterUnlock_8to32	driver	driver/sky2/basky.c		0	0	0	
+001FAD00	944	SkyRasterUnlock_4to16	driver	driver/sky2/basky.c		0	0	0	
+001FB0B0	2224	SkyRasterLock	driver	driver/sky2/basky.c		0	0	0	
+001FB960	524	SkyRasterUnlock	driver	driver/sky2/basky.c		0	0	0	
+001FBB70	744	writeTEXToStream	driver	driver/sky2/basky.c		0	0	0	
+001FBE58	836	readTEXFromStream	driver	driver/sky2/basky.c		0	0	0	
+001FC1A0	240	SkyNativeTextureWrite	driver	driver/sky2/basky.c		0	0	0	
+001FC290	560	SkyNativeTextureRead	driver	driver/sky2/basky.c		0	0	0	
+001FC4C0	376	setInitialRenderState	driver	driver/sky2/basky.c		0	0	0	
+001FC638	752	SkyOpen	driver	driver/sky2/basky.c		0	0	0	
+001FC928	236	SkyFinalizeStart	driver	driver/sky2/basky.c		0	0	0	
+001FCA18	1824	setUpFSAA0	driver	name:driver:neighbour layer		0	0	0	
+001FD138	852	skyCustomModeIsOk	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001FD490	3344	SkyStart	driver	driver/sky2/basky.c		0	0	0	
+001FE1A0	928	SkySystem	driver	driver/sky2/basky.c		0	0	0	
+001FE540	308	RpSkyResume	driver	driver/sky2/basky.c		0	0	0	
+001FE678	304	_rpSkyFrameBufferRastersUpdate	driver	driver/sky2/basky.c		0	0	0	
+001FE7A8	476	SkyCreateFBRaster	driver	driver/sky2/basky.c		0	0	0	
+001FE988	492	SkyCreateDBRaster	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001FEB78	212	_rpSkyCreateFrameBufferRasters	driver	driver/sky2/basky.c		0	0	0	
+001FEC50	1808	SkyGSMipGenerate	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+001FF360	12	_rwDeviceGetHandle	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001FF370	88	_rpSkyDestroyFrameBufferRasters	driver	driver/sky2/basky.c		0	0	0	
+001FF3C8	12	RpSkyGetModeStructurePtr	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	2	0	0	
+001FF3D8	44	_rwSkyFindMSB	driver	driver/sky2/basky.c		0	0	0	
+001FF408	76	func_001FF408	driver	driver/sky2/basky.c (neighbours)		0	0	0	
+001FF458	56	RpSkySuspend	driver	driver/sky2/basky.c		0	0	0	
+001FF490	24	func_001FF490	driver	driver/sky2/basky.c (neighbours)		0	0	0	
+001FF4A8	100	_skyRasterSetTwiddling	driver	driver/sky2/basky.c		0	0	0	
+001FF510	64	RpSkySelectDeepZBuffer	driver	driver/sky2/basky.c	yes	1	0	0	
+001FF550	100	func_001FF550	driver	driver/sky2/basky.c (neighbours)		0	0	0	
+001FF5B8	44	func_001FF5B8	driver	name:driver:neighbour layer		0	0	0	
+001FF5E8	48	func_001FF5E8	driver	name:driver:neighbour layer		0	0	0	
+001FF618	16	func_001FF618	driver	name:driver:neighbour layer		0	0	0	
+001FF628	112	func_001FF628	driver	name:driver:neighbour layer		0	0	0	
+001FF698	72	func_001FF698	driver	name:driver:neighbour layer		0	0	0	
+001FF6E0	84	func_001FF6E0	driver	name:driver:neighbour layer		0	0	0	
+001FF738	48	func_001FF738	driver	name:driver:neighbour layer		0	0	0	
+001FF768	12	RpSkySelectTrueTSClipper	driver	driver/sky2/basky.c	yes	1	0	0	
+001FF778	8	func_001FF778	driver	driver/sky2/basky.c (neighbours)		0	0	0	
+001FF780	12	func_001FF780	driver	name:driver:neighbour layer		0	0	0	
+001FF790	8	func_001FF790	driver	name:driver:neighbour layer		0	0	0	
+001FF798	172	RpSkyRenderStateGet	driver	driver/sky2/basky.c	yes	2	16	8	0021C010 func_0021C010
+001FF848	8	func_001FF848	?			0	0	0	
+001FF850	8	func_001FF850	?			0	0	0	
+001FF858	184	_rwDeviceRegisterPlugin	core	name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)	yes	0	0	0	
+001FF910	116	skyReadTexCB	driver	driver/sky2/basky.c	yes	0	0	0	
+001FF988	88	skyWriteTexCB	driver	driver/sky2/basky.c	yes	0	0	0	
+001FF9E0	28	func_001FF9E0	driver	driver/sky2/basky.c (neighbours)	yes	0	0	0	
+001FFA00	180	SkyCameraEndUpdate	driver	driver/sky2/basky.c		0	2	2	0019EA30 CloseViewport__22CB3GraphicsManagerBaseFv
+001FFAB8	148	SkyRasterShowRaster	driver	driver/sky2/basky.c		0	4	4	00222260 func_00222260
+001FFB50	12	func_001FFB50	driver	driver/sky2/basky.c (neighbours)		0	0	0	
+001FFB60	180	SkyRasterLockPalette	driver	driver/sky2/basky.c		0	0	0	
+001FFC18	256	SkyRasterUnlockPalette	driver	driver/sky2/basky.c		0	0	0	
+001FFD18	92	func_001FFD18	driver	driver/sky2/basky.c (neighbours)		0	0	0	
+001FFD78	140	SkyNativeTextureGetSize	driver	driver/sky2/basky.c		0	0	0	
+001FFE08	8	func_001FFE08	driver	name:driver:neighbour layer		0	0	0	
+001FFE10	8	func_001FFE10	driver	name:driver:neighbour layer		0	0	0	
+001FFE18	116	func_001FFE18	driver	name:driver:neighbour layer		0	0	0	
+001FFE90	92	func_001FFE90	driver	name:driver:neighbour layer		0	0	0	
+001FFEF0	144	func_001FFEF0	driver	name:driver:neighbour layer		0	0	0	
+001FFF80	84	func_001FFF80	driver	name:driver:neighbour layer		0	0	0	
+001FFFD8	136	func_001FFFD8	driver	name:driver:neighbour layer		0	0	0	
+00200060	600	spriteSetup	driver	driver/sky2/skyblit.c		0	0	0	
+002002B8	376	spriteUV	driver	driver/sky2/skyblit.c		0	0	0	
+00200430	324	spriteUnsetup	driver	driver/sky2/skyblit.c		0	0	0	
+00200578	1056	_rwSkyRasterClearRect	driver	driver/sky2/skyblit.c		0	0	0	
+00200998	320	unScaledSpriteClip	driver	driver/sky2/skyblit.c		0	0	0	
+00200AD8	484	scaledSpriteClip	driver	driver/sky2/skyblit.c		0	0	0	
+00200CC0	1092	skyRasterSetupForUpload	driver	driver/sky2/skyblit.c		0	0	0	
+00201108	7092	_rwSkyRasterRender	driver	driver/sky2/skyblit.c		0	0	0	
+00202CC0	5728	_rwSkyRasterRenderScaled	driver	driver/sky2/skyblit.c		0	0	0	
+00204320	6676	_rwSkyRasterRenderFast	driver	driver/sky2/skyblit.c		0	0	0	
+00205D38	108	_rwSkyRasterFinaliseStart	driver	driver/sky2/skyblit.c		0	0	0	
+00205DA8	64	_rwSkyRasterInitiateStop	driver	driver/sky2/skyblit.c		0	0	0	
+00205DE8	68	_rwSkyRasterClear	driver	driver/sky2/skyblit.c		0	0	0	
+00205E30	52	func_00205E30	driver	name:driver:neighbour layer		0	0	0	
+00205E68	392	_rwSkyImageFindRasterFormat	driver	driver/sky2/skyconv.c		0	0	0	
+00205FF0	3892	_rwSkyImageGetRaster	driver	driver/sky2/skyconv.c		0	0	0	
+00206F28	1140	copyRGBAPalette	driver	driver/sky2/skyconv.c		0	0	0	
+002073A0	916	SkyRasterSetImageNormalPalettised	driver	driver/sky2/skyconv.c		0	0	0	
+00207738	1784	SkyRasterSetImageNormal	driver	driver/sky2/skyconv.c		0	0	0	
+00207E30	244	func_00207E30	driver	driver/sky2/skyconv.c (neighbours)		0	0	0	
+00207F28	232	func_00207F28	driver	name:driver:neighbour layer		0	0	0	
+00208010	272	_rwSkyRasterSetImage	driver	driver/sky2/skyconv.c		0	0	0	
+00208120	432	func_00208120	driver	name:driver:neighbour layer		0	0	0	
+002082D0	904	openVU1SetupPkt	driver	driver/sky2/skyinst.c		0	0	0	
+00208658	748	openVU1SetupPktNew	driver	driver/sky2/skyinst.c		0	0	0	
+00208948	104	closeAndDispatchVU1Packet	driver	driver/sky2/skyinst.c		0	0	0	
+002089B0	920	initVu1DispatchStuff	driver	driver/sky2/skyinst.c		0	0	0	
+00208D48	356	addCopyVU1Line	driver	driver/sky2/skyinst.c		0	0	0	
+00208EB0	432	addCopyVU1Triangle	driver	driver/sky2/skyinst.c		0	0	0	
+00209060	908	addCopyVU1PrimLineList	driver	driver/sky2/skyinst.c		0	0	0	
+002093F0	916	addCopyVU1PrimPolyLine	driver	driver/sky2/skyinst.c		0	0	0	
+00209788	644	func_00209788	driver	driver/sky2/skyinst.c (neighbours)		0	0	0	
+00209A10	684	addCopyVU1PrimTriStrip	driver	driver/sky2/skyinst.c		0	0	0	
+00209CC0	648	addCopyVU1PrimTriFan	driver	driver/sky2/skyinst.c		0	0	0	
+00209F48	940	addCopyVU1IndPrimLineList	driver	driver/sky2/skyinst.c		0	0	0	
+0020A2F8	940	addCopyVU1IndPrimPolyLine	driver	driver/sky2/skyinst.c		0	0	0	
+0020A6A8	700	func_0020A6A8	driver	driver/sky2/skyinst.c (neighbours)		0	0	0	
+0020A968	716	addCopyVU1IndPrimTriStrip	driver	driver/sky2/skyinst.c		0	0	0	
+0020AC38	692	addCopyVU1IndPrimTriFan	driver	driver/sky2/skyinst.c		0	0	0	
+0020AEF0	760	_rwSkyPipeSetupForCamera	driver	driver/sky2/skyinst.c		0	13	13	00134A20 Render__17CB3OnePlayerStageFv
+0020B1E8	80	_rwSkyOverloadPipelines	driver	driver/sky2/skyinst.c		0	0	0	
+0020B238	8	_rwSkyUnOverloadPipelines	driver	driver/sky2/skyinst.c		0	0	0	
+0020B240	84	func_0020B240	driver	name:driver:neighbour layer		0	0	0	
+0020B298	92	func_0020B298	driver	name:driver:neighbour layer		0	0	0	
+0020B2F8	112	func_0020B2F8	driver	name:driver:neighbour layer		0	0	0	
+0020B368	104	func_0020B368	driver	name:driver:neighbour layer		0	0	0	
+0020B3D0	632	_SkyBuildPktForUpLoadAlignedContiguousRectangle	driver	driver/sky2/texcache.c		0	0	0	
+0020B648	504	skyPrepareUploadRaster	driver	driver/sky2/texcache.c		0	0	0	
+0020B840	564	_SkyDdispatchUpLoadAlignedContiguousRectangle	driver	driver/sky2/texcache.c		0	0	0	
+0020BA78	860	_SkyUpLoadAlignedRectangle	driver	driver/sky2/texcache.c		0	0	0	
+0020BDD8	2320	skyTexCacheMemRasterToGs	driver	driver/sky2/texcache.c		0	0	0	
+0020C6E8	1312	_skyTexCacheUploadRaster	driver	driver/sky2/texcache.c		0	0	0	
+0020CC08	256	skyTexCacheOpenCache	driver	driver/sky2/texcache.c		0	0	0	
+0020CD08	304	skyTexCacheCloseCache	driver	driver/sky2/texcache.c		0	0	0	
+0020CE38	940	skyTexCacheUploadPalette	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])		0	0	0	
+0020D1E8	1020	RpSkyTexCacheAccessRaster	driver	driver/sky2/texcache.c	yes	5	0	0	
+0020D5E8	508	RpSkyTexCacheReleaseRaster	driver	driver/sky2/texcache.c		0	0	0	
+0020D7E8	724	RpSkyTexCacheRasterLock	driver	driver/sky2/texcache.c		0	0	0	
+0020DAC0	580	RpSkyTexCacheRestore	driver	driver/sky2/texcache.c		0	7	7	00134A20 Render__17CB3OnePlayerStageFv
+0020DD08	308	RpSkyTexCacheSetStartAddress	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	2	0	0	
+0020DE40	208	RpSkyTexCacheAccessSpeculate	driver	driver/sky2/texcache.c	yes	5	22	22	0019DD00 func_0019DD00
+0020DF10	156	RpSkyTexCacheRasterUnlockAll	driver	driver/sky2/texcache.c	yes	1	0	0	
+0020DFB0	160	RpSkyTexCacheFlush	driver	driver/sky2/texcache.c	yes	4	4	4	00222260 func_00222260
+0020E050	48	RpSkyTexCacheDisable	driver	driver/sky2/texcache.c	yes	2	0	0	
+0020E080	12	func_0020E080	driver	driver/sky2/texcache.c (neighbours)		0	0	0	
+0020E090	12	func_0020E090	driver	name:driver:neighbour layer		0	0	0	
+0020E0A0	16	RpSkyTexCacheSetCallBack	driver	driver/sky2/texcache.c	yes	1	1	1	00222120 Construct__15CGtTextureCacheFUiii
+0020E0B0	12	func_0020E0B0	driver	name:driver:neighbour layer		0	0	0	
+0020E0C0	16	RpSkyTexCacheSetReleaseCallBack	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	1	1	1	00222120 Construct__15CGtTextureCacheFUiii
+0020E0D0	12	func_0020E0D0	driver	name:driver:neighbour layer		0	0	0	
+0020E0E0	20	func_0020E0E0	driver	name:driver:neighbour layer		0	0	0	
+0020E0F8	24	func_0020E0F8	driver	name:driver:neighbour layer		0	0	0	
+0020E110	32	func_0020E110	driver	name:driver:neighbour layer		0	0	0	
+0020E130	116	func_0020E130	driver	name:driver:neighbour layer		0	0	0	
+0020E1A8	24	func_0020E1A8	driver	name:driver:neighbour layer		0	0	0	
+0020E1C0	32	func_0020E1C0	driver	name:driver:neighbour layer		0	0	0	
+0020E1E0	32	func_0020E1E0	driver	name:driver:neighbour layer		0	0	0	
+0020E200	48	func_0020E200	driver	name:driver:neighbour layer		0	0	0	
+0020E230	48	func_0020E230	driver	name:driver:neighbour layer		0	0	0	
+0020E260	40	RpSkyUploadPixelData	driver	driver/sky2/texcache.c		0	0	0	
+0020E288	132	RpSkyTexCacheUploadRaster	driver	driver/sky2/texcache.c		0	0	0	
+0020E310	12	RpSkyTexCacheGetStartAddress	driver	name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])	yes	3	0	0	
+0020E320	8	skyTexCacheEndFrame	driver	driver/sky2/texcache.c		0	4	4	00222260 func_00222260
+0020E328	436	func_0020E328	?			0	0	0	
+0020E4E0	8	func_0020E4E0	?			0	0	0	
+0020E4E8	396	RwIm3DRenderIndexedPrimitive	core	src/pipe/p2/baim3d.c		0	0	0	
+0020E678	392	RwIm3DRenderPrimitive	core	src/pipe/p2/baim3d.c		0	0	0	
+0020E800	660	RwIm3DSetRenderPipeline	core	src/pipe/p2/baim3d.c		0	0	0	
+0020EA98	188	_rwIm3DOpen	core	src/pipe/p2/baim3d.c	yes	0	0	0	
+0020EB58	92	_rwIm3DClose	core	src/pipe/p2/baim3d.c	yes	0	0	0	
+0020EBB8	20	func_0020EBB8	core	src/pipe/p2/baim3d.c (neighbours)		0	0	0	
+0020EBD0	168	RwIm3DTransform	core	src/pipe/p2/baim3d.c		0	0	0	
+0020EC78	76	RwIm3DEnd	core	src/pipe/p2/baim3d.c		0	0	0	
+0020ECC8	244	RwIm3DRenderLine	core	src/pipe/p2/baim3d.c		0	0	0	
+0020EDC0	276	RwIm3DRenderTriangle	core	src/pipe/p2/baim3d.c		0	0	0	
+0020EED8	24	func_0020EED8	core	src/pipe/p2/baim3d.c (neighbours)		0	0	0	
+0020EEF0	252	RwIm3DGetRenderPipeline	core	src/pipe/p2/baim3d.c		0	0	0	
+0020EFF0	80	func_0020EFF0	core	name:core:neighbour layer		0	0	0	
+0020F040	48	_rwRenderPipelineOpen	core	src/bapipcom.c	yes	0	0	0	
+0020F070	40	_rwRenderPipelineClose	core	src/bapipcom.c	yes	0	0	0	
+0020F098	8	_rwPipeAttach	core	src/bapipcom.c	yes	0	0	0	
+0020F0A0	8	_rwPipeInitForCamera	core	src/bapipcom.c	yes	0	13	13	00134A20 Render__17CB3OnePlayerStageFv
+0020F0A8	424	_rxEmbeddedPacketBetweenPipelines	core	src/pipe/p2/p2altmdl.c		0	0	0	
+0020F250	680	_rxEmbeddedPacketBetweenNodes	core	src/pipe/p2/p2altmdl.c		0	0	0	
+0020F4F8	752	_rxPacketDestroy	core	src/pipe/p2/p2altmdl.c		0	0	0	
+0020F7E8	180	_rxPipelineOpen	core	src/pipe/p2/p2core.c	yes	0	0	0	
+0020F8A0	1048	PipelineNodeDestroy	core	src/pipe/p2/p2core.c		0	0	0	
+0020FCB8	312	RxClusterLockWrite	core	src/pipe/p2/p2core.c		0	0	0	
+0020FDF0	12	func_0020FDF0	core	src/pipe/p2/p2core.c (neighbours)		0	0	0	
+0020FE00	92	_rxPipelineClose	core	src/pipe/p2/p2core.c	yes	0	0	0	
+0020FE60	144	RxPipelineCreate	core	src/pipe/p2/p2core.c		0	0	0	
+0020FEF0	320	_rxPipelineDestroy	core	src/pipe/p2/p2core.c		0	0	0	
+00210030	8	RxHeapGetGlobalHeap	core	src/pipe/p2/p2core.c		0	0	0	
+00210038	208	RxPipelineExecute	core	src/pipe/p2/p2core.c		0	0	0	
+00210108	52	func_00210108	core	src/pipe/p2/p2core.c (neighbours)		0	0	0	
+00210140	12	func_00210140	core	name:core:neighbour layer		0	0	0	
+00210150	148	RxClusterSetExternalData	core	src/pipe/p2/p2core.c		0	0	0	
+002101E8	148	RxClusterSetData	core	src/pipe/p2/p2core.c		0	0	0	
+00210280	152	RxClusterInitializeData	core	src/pipe/p2/p2core.c		0	0	0	
+00210318	116	RxClusterResizeData	core	src/pipe/p2/p2core.c		0	0	0	
+00210390	80	RxClusterDestroyData	core	src/pipe/p2/p2core.c		0	0	0	
+002103E0	8	func_002103E0	core	src/pipe/p2/p2core.c (neighbours)		0	0	0	
+002103E8	64	RxPipelineNodeSendConfigMsg	core	src/pipe/p2/p2core.c		0	0	0	
+00210428	260	RxPipelineNodeForAllConnectedOutputs	core	src/pipe/p2/p2core.c		0	0	0	
+00210530	80	func_00210530	core	name:core:neighbour layer		0	0	0	
+00210580	24	func_00210580	core	name:core:neighbour layer		0	0	0	
+00210598	24	func_00210598	core	name:core:neighbour layer		0	0	0	
+002105B0	24	func_002105B0	core	name:core:neighbour layer		0	0	0	
+002105C8	24	func_002105C8	core	name:core:neighbour layer		0	0	0	
+002105E0	116	func_002105E0	core	name:core:neighbour layer		0	0	0	
+00210658	596	HeapSuperBlockReset	core	src/pipe/p2/p2heap.c	yes	0	0	0	
+002108B0	408	HeapReallocLarger	core	src/pipe/p2/p2heap.c		0	0	0	
+00210A48	584	HeapRealloc	core	src/pipe/p2/p2heap.c		0	0	0	
+00210C90	748	RxHeapFree	core	src/pipe/p2/p2heap.c		0	0	0	
+00210F80	1092	RxHeapAlloc	core	src/pipe/p2/p2heap.c		0	0	0	
+002113C8	404	RxHeapCreate	core	src/pipe/p2/p2heap.c	yes	0	0	0	
+00211560	156	RxHeapDestroy	core	src/pipe/p2/p2heap.c	yes	0	0	0	
+00211600	172	_rxHeapReset	core	src/pipe/p2/p2heap.c (neighbours)		0	0	0	
+002116B0	28	RxHeapRealloc	core	src/pipe/p2/p2heap.c		0	0	0	
+002116D0	360	RxRenderStateVectorSetDefaultRenderStateVector	core	src/pipe/p2/p2renderstate.c	yes	0	0	0	
+00211838	484	RxRenderStateVectorLoadDriverState	core	src/pipe/p2/p2renderstate.c		0	0	0	
+00211A20	92	RxRenderStateVectorGetDefaultRenderStateVector	core	src/pipe/p2/p2renderstate.c		0	0	0	
+00211A80	316	RxRenderStateVectorCreate	core	src/pipe/p2/p2renderstate.c		0	0	0	
+00211BC0	80	RxRenderStateVectorDestroy	core	src/pipe/p2/p2renderstate.c		0	0	0	
+00211C10	8	_rwIm3DCreatePlatformTransformPipeline	driver	src/pipe/p2/sky2/im3dpipe.c	yes	0	0	0	
+00211C18	8	_rwIm3DCreatePlatformRenderPipelines	driver	src/pipe/p2/sky2/im3dpipe.c	yes	0	0	0	
+00211C20	8	func_00211C20	driver	src/pipe/p2/sky2/im3dpipe.c (neighbours)	yes	0	0	0	
+00211C28	8	_rwIm3DDestroyPlatformRenderPipelines	driver	src/pipe/p2/sky2/im3dpipe.c	yes	0	0	0	

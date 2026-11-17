@@ -1,0 +1,172 @@
+// b3replay --live: the native renderer fed live from a running game session (docs/native-renderer.md §13). The game
+// process's scene hook (src/gameview/scene_capture.cpp, B3PORT_SCENE_LIVE=<name>) publishes every retail poll into
+// the shared-memory ring <name> (include/b3live/ring.h); this process reads it, rebuilds the same guest image and ticks
+// a capture file would give (capture.h), follows the session's races (route and car matching as each track loads), and
+// draws through the same view path as the offline replay (view.h), uncapped, interpolated between the 60 Hz ticks.
+#ifndef B3REPLAY_LIVE_H
+#define B3REPLAY_LIVE_H
+
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "b3live/inproc.h"
+#include "b3live/ring.h"
+#include "capture.h"
+#include "view.h"
+#include "b3settings/settings.h"
+
+namespace b3replay {
+
+// The ring reader: keeps the decoded ticks of the last ~30 s with absolute indices (one per received poll) and the
+// current race segment.
+class LiveFeed : public Timeline {
+public:
+    explicit LiveFeed(std::string name) : name_(std::move(name)) {}
+    ~LiveFeed() { if (inproc) inproc->release(pending_); }
+    LiveFeed(const LiveFeed&) = delete;
+    LiveFeed& operator=(const LiveFeed&) = delete;
+
+    enum class State { kNoWriter, kWaitKey, kSynced, kEnded };
+    State state() const { return state_; }
+    const std::string& name() const { return name_; }
+
+    // Opens the ring if needed and decodes every published record (at most `max_records`). Returns the records taken.
+    int drain(int max_records = 1 << 30);
+    // speedrun1: called with each tick as it is kept (in order, every tick, before older ones are let go), so a reader
+    // that must see every tick does even when a drain takes more than the ticks kept. Unset: nothing is called.
+    std::function<void(const Tick&)> on_push;
+    // inproc1 (§23): the records come from this in-process feed (b3render.dll inside the game process) instead of the
+    // shared-memory ring `name`. Set before the first drain.
+    b3live::Inproc* inproc = nullptr;
+
+    // Timeline: the received ticks still kept.
+    std::size_t first() const override { return base_; }
+    std::size_t last() const override { return base_ + ticks_.size() - 1; }
+    const Tick& at(std::size_t i) const override { return ticks_[i - base_]; }
+    bool empty() const { return ticks_.empty(); }
+    std::uint64_t arrival_ns(std::size_t i) const { return ns_[i - base_]; }
+    // lat1: the tick's schedule stamp (the host time its input was latched; b3r_submit_at), 0 if the producer sent none
+    std::uint64_t sched_ns(std::size_t i) const { return sched_[i - base_]; }
+    // The tick index holding `poll` (-1 if not kept).
+    long index_of_poll(std::uint32_t poll) const;
+
+    // The race segment the latest ticks belong to (as the offline reader cuts segments: track on, camera, race car;
+    // gaps up to 60 ticks filled with the last race tick; a route change or a resync starts a new one).
+    struct Seg {
+        bool active = false;      // a race is on (or in a gap of at most 60 ticks)
+        std::uint64_t id = 0;     // increments with every new segment
+        std::size_t first = 0, last_race = 0;
+        std::uint32_t route_size = 0;
+        int route_units = 0;
+        std::size_t race_ticks = 0;
+    };
+    const Seg& segment() const { return seg_; }
+
+    const Capture& models() const { return cap_; }
+    std::uint64_t records = 0, keyframes = 0, resyncs = 0, ticks_total = 0;
+    // perf (2026-11-12): host time per decoded record (ms; the first 4M), the decode's cost on the reader's thread;
+    // negative for race ticks (capture.h race_tick)
+    std::vector<float> decode_ms;
+    // --verify: every decoded tick compared with the file reader's tick of the same poll (capture.h same_tick)
+    const Capture* verify = nullptr;
+    std::map<std::uint32_t, std::size_t> verify_index;   // poll -> index into verify->ticks
+    std::uint64_t verified = 0, verify_differ = 0, verify_missing = 0;
+
+private:
+    void push(Tick&& t, std::uint64_t ns, std::uint64_t sched);
+    int drain_inproc(int max_records);
+    bool decode(std::uint32_t kind, const std::uint8_t* body, std::size_t n, std::uint64_t ns, std::uint64_t sched = 0);
+
+    std::string name_;
+    State state_ = State::kNoWriter;
+    b3live::Mapping map_;
+    std::uint64_t pos_ = 0, request_at_ = 0;
+    std::uint64_t next_open_ns_ = 0, next_alive_ns_ = 0;
+    Image image_;
+    Capture cap_;   // model table (heads) and counters; its ticks stay empty
+    std::deque<Tick> ticks_;
+    std::deque<std::uint64_t> ns_, sched_;
+    std::size_t base_ = 0;
+    Seg seg_;
+    std::string body_;
+    bool warned_unbound_ = false;
+    b3live::InprocRecord* pending_ = nullptr;   // inproc: taken, not yet decoded (oldest first)
+};
+
+struct LiveOptions {
+    std::string name, game, driver, out_dir;
+    int msaa = 4, w = 1600, h = 900, car_lod = -1;   // car_lod -1: the game's choice
+    bool size_set = false, vsync = false, fullscreen = false, fog = true, specular = true, effects = true;
+    bool coronas = true;                 // --no-coronas / L (corona1)
+    bool particles = true;               // --no-particles / O (fx2: scrapes, sparks, popcorn)
+    bool sun = true, sun_test = true;    // --no-sun / X, --no-sun-test / B (water1)
+    bool blur = true;                    // --no-blur / N (post1 §25: the zoom blur the game picks; water1 §21's radial one)
+    bool blur_radial = false;            // --blur-radial (captures before post1)
+    bool bloom = true;                   // --no-bloom / T (post1)
+    float radial_scale = 0.5f;           // --radial-blur S (gsoff1 §25.8)
+    bool post_game = false;              // --post game | pc / Z (post1)
+    bool hud = true;   // --no-hud / U (hud1)
+    bool movies = true;   // --no-movies / M (menu1): movie pictures, else the placeholder
+    bool room = true, reflection = true, fe_shadow = true;   // --no-showroom / R, --no-reflection, --no-fe-shadow (fe2)
+    bool globe = true;                   // --no-globe (fe2)
+    bool room_env = true;                // --no-room-env (fe2)
+    bool hud_wide = true;   // --hud-layout wide|43 / Y (hud2)
+    int fe_layout = 2;      // --fe-layout panels (fe3) | 43 (wide1: the centred 4:3 picture) | edges (hud2)
+    bool movie_fill = true; // --movie-fill blur | black (fe3)
+    bool whole_track = true; // --track-units all | resident (mac5)
+    bool hud_sharp = true;  // --hud-filter sharp|game / J (hud2)
+    bool hud_reproject = true;  // --hud-markers frame|tick / K (hud4): world-anchored markers projected per frame
+    double delay = 1.5;                  // display delay behind the latest tick, in ticks (the game's own tick rate)
+    bool clock_old = false;              // --clock-db55faa: the display clock before live2 (comparisons; §20)
+    double max_fps = 0;                  // window: frame cap (0 = uncapped; a cap leaves GPU time to the game's own renderer)
+    std::vector<std::pair<std::uint32_t, float>> shots;   // offscreen: (poll, alpha) frames to write as PNG
+    int bench_w = 0, bench_h = 0;        // offscreen: also render continuously at this size and report frame times
+    double wait_writer_s = 0;            // offscreen: give up if no writer after this long (0 = wait forever)
+    std::string verify;                  // offscreen: the same session's capture file, to compare every tick with
+    b3live::Inproc* inproc = nullptr;    // inproc1 (§23): the in-process feed instead of the ring `name`
+    int bloom_warmup = 24;               // offscreen shots: the bloom warmed over this many ticks before (as --offscreen; inproc1)
+    bool activate = false;               // --activate (inproc1): the window takes the focus when shown (the only window: GS off)
+    bool native_pad = false;             // --native-pad (play1): keys / gamepads as the native game's pad (nativepad.h)
+    bool native_audio = false;           // --native-audio (play1): the native game's sound (nativeaudio.h; window only)
+    bool fps_counter = false;            // --fps-counter (gsoff1): the frame-rate panel always (else as the FPS COUNTER setting says)
+    bool route_header = true;            // --no-route-header (gsoff1): the route only from 30 race ticks of samples (before §28.6)
+    std::optional<b3settings::Settings> settings;   // --settings (settings1): our PC settings at start; HSET records follow
+    std::string settings_path;   // mac5: --settings' file, where the PC SETTINGS page saves (native: a default in the user's prefs)
+    std::string controls_path;   // remap1: --controls' file (controls.ini; native window: in the user's prefs; empty: defaults)
+    std::string ghost_dir;       // ghost1 (ghost.h): where Time Attack ghosts are kept (empty: none recorded or shown)
+    std::string speedrun_dir;    // speedrun1 (speedrun.h): where best times are kept (empty: this run's only, in memory)
+    // mac5: safe mode (include/b3settings/safemode.h): the window says so for a few seconds and in its title
+    bool safe_mode = false;
+    bool safe_forced = false;   // asked for (--safe-mode), not two unclean runs
+    int mods_safe_off = 0;      // modkit1b: safe mode left this many mods off (native_play): the notice says so
+    // lat1: --latency low|smooth|newest. low (default): the display follows the ticks'
+    // latch stamps with an adaptive margin (clock.h step_sched; `delay` without stamps), 1 GPU frame in flight, the
+    // swapchain waited for before the clock is sampled. smooth: the arrival clock with `delay` and SDL's frame queue (before
+    // lat1). newest: the newest tick at once, not blended.
+    std::string latency = "low";
+    double margin_ms = 1.0;              // --margin MS: the schedule clock's least margin
+    double lead = 0.0;                   // --lead T: low mode's extrapolation past the newest tick, 0..1 ticks (mac5: 0)
+    float dither = 0.0f;                 // --dither (perf1, §33.8): the present pass's ordered dither, output steps (0 = off)
+    double blend_ms = 0.0;               // --blend MS (perf1, §33): low mode's correction blend time constant (0 = off, the
+                                         // default: measured in the renderer it made the motion worse, §33.3)
+    int frames_in_flight = 1;            // --frames-in-flight N (low / newest; 0: SDL's default 2)
+    std::string latency_log;             // --latency-log <csv> (lat1)
+};
+
+int run_live_window(const LiveOptions& o);
+int run_live_offscreen(const LiveOptions& o);
+
+// nofallback1 (b3r_game_stopped, from native_play's game thread): the native game stopped on a function this build has
+// no native code for ("<address> <name>"). The window then stays when the feed ends, with the message and F10's bug
+// report, until it is closed (instead of closing 3 s after the end). Empty: not stopped.
+void set_game_stopped(const std::string& function);
+std::string game_stopped();
+
+}  // namespace b3replay
+
+#endif

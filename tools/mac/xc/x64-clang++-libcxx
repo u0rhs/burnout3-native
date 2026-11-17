@@ -1,0 +1,10 @@
+#!/bin/sh
+# host x86-64 clang 21 with LLVM libc++ (Apple's C++ library family) instead of libstdc++: LIBCXX_VER=21 (default) or
+# 17 (headers only, closer to Xcode's; use with -fsyntax-only). Unpacked debs: ../ext/a64tc (clang), ../ext/libcxx.
+WS=${B3_WORKSPACE:-$(dirname "$(dirname "$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir)")")}   # the folder that holds this repo (its main checkout)
+T=${A64TC:-$WS/ext/a64tc}
+L=${LIBCXX:-$WS/ext/libcxx}/usr
+V=${LIBCXX_VER:-21}
+export LD_LIBRARY_PATH=$T/usr/lib/x86_64-linux-gnu:$T/usr/lib/llvm-21/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+exec "$T/usr/lib/llvm-21/bin/clang++" -fuse-ld=lld -Wno-unused-command-line-argument -stdlib=libc++ -nostdinc++ \
+  -isystem "$L/lib/llvm-$V/include/c++/v1" -L"$L/lib/x86_64-linux-gnu" -Wl,-rpath,"$L/lib/x86_64-linux-gnu" "$@"

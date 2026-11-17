@@ -1,0 +1,4 @@
+depth	address	name	kind	c	reached_by	from
+1	00115108	_InitSys	sce	none	call	00100008 _start
+1	001213B8	exit	runtime	none	call	00100008 _start
+1	0012EB30	func_0012EB30	game	draft	call	00100008 _start

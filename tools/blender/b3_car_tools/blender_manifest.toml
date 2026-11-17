@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "b3_car_tools"
+version = "0.1.0"
+name = "B3 Car Tools"
+tagline = "Burnout 3 car mods from your disc, through b3modtool"
+maintainer = "Burnout 3 port mod kit"
+type = "add-on"
+tags = ["Import-Export"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:MIT"]
+
+[permissions]
+files = "Run b3modtool on your disc, write car exports and mods"

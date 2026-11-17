@@ -1,0 +1,362 @@
+
+probe2.o:     file format elf32-tradlittlemips
+
+
+Disassembly of section .text:
+
+00000000 <t_a__F1A>:
+   0:	27bdffe0 	addiu	sp,sp,-32
+   4:	ffa40018 	sd	a0,24(sp)
+   8:	ffbf0000 	sd	ra,0(sp)
+   c:	0c000000 	jal	0 <t_a__F1A>
+			c: R_MIPS_26	sinkf__Ff
+  10:	c7ac001c 	lwc1	$f12,28(sp)
+  14:	dfbf0000 	ld	ra,0(sp)
+  18:	03e00008 	jr	ra
+  1c:	27bd0020 	addiu	sp,sp,32
+
+Disassembly of section .text:
+
+00000000 <t_b__F1B>:
+   0:	08000000 	j	0 <t_b__F1B>
+			0: R_MIPS_26	sinkf__Ff
+   4:	c48c0004 	lwc1	$f12,4(a0)
+
+Disassembly of section .text:
+
+00000000 <t_c__F1C>:
+   0:	08000000 	j	0 <t_c__F1C>
+			0: R_MIPS_26	sinkf__Ff
+   4:	c48c0004 	lwc1	$f12,4(a0)
+
+Disassembly of section .text:
+
+00000000 <t_d__F1D>:
+   0:	08000000 	j	0 <t_d__F1D>
+			0: R_MIPS_26	sinkf__Ff
+   4:	c48c0004 	lwc1	$f12,4(a0)
+
+Disassembly of section .text:
+
+00000000 <t_fi__F2FI>:
+   0:	27bdffe0 	addiu	sp,sp,-32
+   4:	ffa40018 	sd	a0,24(sp)
+   8:	ffbf0000 	sd	ra,0(sp)
+   c:	0c000000 	jal	0 <t_fi__F2FI>
+			c: R_MIPS_26	sinkf__Ff
+  10:	c7ac0018 	lwc1	$f12,24(sp)
+  14:	0c000000 	jal	0 <t_fi__F2FI>
+			14: R_MIPS_26	sink__Fi
+  18:	8fa4001c 	lw	a0,28(sp)
+  1c:	dfbf0000 	ld	ra,0(sp)
+  20:	03e00008 	jr	ra
+  24:	27bd0020 	addiu	sp,sp,32
+
+Disassembly of section .text:
+
+00000000 <t_if__F2IF>:
+   0:	27bdffe0 	addiu	sp,sp,-32
+   4:	ffa40018 	sd	a0,24(sp)
+   8:	ffbf0000 	sd	ra,0(sp)
+   c:	0c000000 	jal	0 <t_if__F2IF>
+			c: R_MIPS_26	sinkf__Ff
+  10:	c7ac001c 	lwc1	$f12,28(sp)
+  14:	0c000000 	jal	0 <t_if__F2IF>
+			14: R_MIPS_26	sink__Fi
+  18:	8fa40018 	lw	a0,24(sp)
+  1c:	dfbf0000 	ld	ra,0(sp)
+  20:	03e00008 	jr	ra
+  24:	27bd0020 	addiu	sp,sp,32
+
+Disassembly of section .text:
+
+00000000 <t_ff_mixed__Fi3FF4f>:
+   0:	27bdffd0 	addiu	sp,sp,-48
+   4:	ffbf0010 	sd	ra,16(sp)
+   8:	e7b50004 	swc1	$f21,4(sp)
+   c:	e7b40000 	swc1	$f20,0(sp)
+  10:	46006546 	mov.s	$f21,$f12
+  14:	0c000000 	jal	0 <t_ff_mixed__Fi3FF4f>
+			14: R_MIPS_26	sink__Fi
+  18:	46006d06 	mov.s	$f20,$f13
+  1c:	0c000000 	jal	0 <t_ff_mixed__Fi3FF4f>
+			1c: R_MIPS_26	sinkf__Ff
+  20:	4600ab06 	mov.s	$f12,$f21
+  24:	0c000000 	jal	0 <t_ff_mixed__Fi3FF4f>
+			24: R_MIPS_26	sinkf__Ff
+  28:	4600a306 	mov.s	$f12,$f20
+  2c:	dfbf0010 	ld	ra,16(sp)
+  30:	c7b50004 	lwc1	$f21,4(sp)
+  34:	c7b40000 	lwc1	$f20,0(sp)
+  38:	03e00008 	jr	ra
+  3c:	27bd0030 	addiu	sp,sp,48
+
+Disassembly of section .text:
+
+00000000 <t_q__F1Q>:
+   0:	27bdffe0 	addiu	sp,sp,-32
+   4:	ffbf0000 	sd	ra,0(sp)
+   8:	0c000000 	jal	0 <t_q__F1Q>
+			8: R_MIPS_26	sinkq__F1
+   c:	78840000 	lq	a0,0(a0)
+  10:	dfbf0000 	ld	ra,0(sp)
+  14:	03e00008 	jr	ra
+  18:	27bd0020 	addiu	sp,sp,32
+
+Disassembly of section .text:
+
+00000000 <t_s3__F2S3>:
+   0:	27bdffe0 	addiu	sp,sp,-32
+   4:	afa4001c 	sw	a0,28(sp)
+   8:	ffbf0000 	sd	ra,0(sp)
+   c:	0c000000 	jal	0 <t_s3__F2S3>
+			c: R_MIPS_26	sink__Fi
+  10:	83a4001e 	lb	a0,30(sp)
+  14:	dfbf0000 	ld	ra,0(sp)
+  18:	03e00008 	jr	ra
+  1c:	27bd0020 	addiu	sp,sp,32
+
+Disassembly of section .text:
+
+00000000 <t_9f1i__Ffffffffffi>:
+   0:	27bdffe0 	addiu	sp,sp,-32
+   4:	c7ac0020 	lwc1	$f12,32(sp)
+   8:	ffbf0010 	sd	ra,16(sp)
+   c:	7fb00000 	sq	s0,0(sp)
+  10:	0c000000 	jal	0 <t_9f1i__Ffffffffffi>
+			10: R_MIPS_26	sinkf__Ff
+  14:	0080802d 	move	s0,a0
+  18:	0c000000 	jal	0 <t_9f1i__Ffffffffffi>
+			18: R_MIPS_26	sink__Fi
+  1c:	0200202d 	move	a0,s0
+  20:	dfbf0010 	ld	ra,16(sp)
+  24:	7bb00000 	lq	s0,0(sp)
+  28:	03e00008 	jr	ra
+  2c:	27bd0020 	addiu	sp,sp,32
+
+Disassembly of section .text:
+
+00000000 <t_mix__Fifififififififififif>:
+   0:	27bdfff0 	addiu	sp,sp,-16
+   4:	ffbf0000 	sd	ra,0(sp)
+   8:	0c000000 	jal	0 <t_mix__Fifififififififififif>
+			8: R_MIPS_26	sink__Fi
+   c:	8fa40010 	lw	a0,16(sp)
+  10:	0c000000 	jal	0 <t_mix__Fifififififififififif>
+			10: R_MIPS_26	sinkf__Ff
+  14:	c7ac0018 	lwc1	$f12,24(sp)
+  18:	0c000000 	jal	0 <t_mix__Fifififififififififif>
+			18: R_MIPS_26	sink__Fi
+  1c:	8fa40020 	lw	a0,32(sp)
+  20:	0c000000 	jal	0 <t_mix__Fifififififififififif>
+			20: R_MIPS_26	sinkf__Ff
+  24:	c7ac0028 	lwc1	$f12,40(sp)
+  28:	dfbf0000 	ld	ra,0(sp)
+  2c:	03e00008 	jr	ra
+  30:	27bd0010 	addiu	sp,sp,16
+
+Disassembly of section .text:
+
+00000000 <t_q10__Fiiiiiiiii1i>:
+   0:	27bdfff0 	addiu	sp,sp,-16
+   4:	ffbf0000 	sd	ra,0(sp)
+   8:	0c000000 	jal	0 <t_q10__Fiiiiiiiii1i>
+			8: R_MIPS_26	sink__Fi
+   c:	8fa40010 	lw	a0,16(sp)
+  10:	0c000000 	jal	0 <t_q10__Fiiiiiiiii1i>
+			10: R_MIPS_26	sinkq__F1
+  14:	7ba40020 	lq	a0,32(sp)
+  18:	0c000000 	jal	0 <t_q10__Fiiiiiiiii1i>
+			18: R_MIPS_26	sink__Fi
+  1c:	8fa40030 	lw	a0,48(sp)
+  20:	dfbf0000 	ld	ra,0(sp)
+  24:	03e00008 	jr	ra
+  28:	27bd0010 	addiu	sp,sp,16
+
+Disassembly of section .text:
+
+00000000 <t_i2s__Fiiiiiiii2I2i>:
+   0:	27bdfff0 	addiu	sp,sp,-16
+   4:	ffbf0000 	sd	ra,0(sp)
+   8:	0c000000 	jal	0 <t_i2s__Fiiiiiiii2I2i>
+			8: R_MIPS_26	sink__Fi
+   c:	8fa40014 	lw	a0,20(sp)
+  10:	0c000000 	jal	0 <t_i2s__Fiiiiiiii2I2i>
+			10: R_MIPS_26	sink__Fi
+  14:	8fa40018 	lw	a0,24(sp)
+  18:	dfbf0000 	ld	ra,0(sp)
+  1c:	03e00008 	jr	ra
+  20:	27bd0010 	addiu	sp,sp,16
+
+Disassembly of section .text:
+
+00000000 <c_va__Ffix>:
+   0:	27bdffd0 	addiu	sp,sp,-48
+   4:	ffbf0020 	sd	ra,32(sp)
+   8:	7fb10010 	sq	s1,16(sp)
+   c:	7fb00000 	sq	s0,0(sp)
+  10:	0080882d 	move	s1,a0
+  14:	0c000000 	jal	0 <c_va__Ffix>
+			14: R_MIPS_26	fptodp
+  18:	00a0802d 	move	s0,a1
+  1c:	3c033ff8 	lui	v1,0x3ff8
+  20:	3c040000 	lui	a0,0x0
+			20: R_MIPS_HI16	@147
+  24:	0220302d 	move	a2,s1
+  28:	0200382d 	move	a3,s0
+  2c:	24840000 	addiu	a0,a0,0
+			2c: R_MIPS_LO16	@147
+  30:	0003403c 	dsll32	t0,v1,0x0
+  34:	0040282d 	move	a1,v0
+  38:	0c000000 	jal	0 <c_va__Ffix>
+			38: R_MIPS_26	vsink
+  3c:	24090063 	li	t1,99
+  40:	dfbf0020 	ld	ra,32(sp)
+  44:	7bb10010 	lq	s1,16(sp)
+  48:	7bb00000 	lq	s0,0(sp)
+  4c:	03e00008 	jr	ra
+  50:	27bd0030 	addiu	sp,sp,48
+
+Disassembly of section .text:
+
+00000000 <r_b__Fi>:
+   0:	28820004 	slti	v0,a0,4
+   4:	03e00008 	jr	ra
+   8:	38420001 	xori	v0,v0,0x1
+
+Disassembly of section .text:
+
+00000000 <r_s__Fi>:
+   0:	00041040 	sll	v0,a0,0x1
+   4:	00441021 	addu	v0,v0,a0
+   8:	0002143c 	dsll32	v0,v0,0x10
+   c:	03e00008 	jr	ra
+  10:	0002143f 	dsra32	v0,v0,0x10
+
+Disassembly of section .text:
+
+00000000 <r_uc__Fi>:
+   0:	24820001 	addiu	v0,a0,1
+   4:	03e00008 	jr	ra
+   8:	304200ff 	andi	v0,v0,0xff
+
+Disassembly of section .text:
+
+00000000 <c_ret__Fv>:
+   0:	27bdfff0 	addiu	sp,sp,-16
+   4:	ffbf0000 	sd	ra,0(sp)
+   8:	0c000000 	jal	0 <c_ret__Fv>
+			8: R_MIPS_26	r_b__Fi
+   c:	24040001 	li	a0,1
+  10:	10400006 	beqz	v0,2c <c_ret__Fv+0x2c>
+  14:	00000000 	nop
+  18:	0c000000 	jal	0 <c_ret__Fv>
+			18: R_MIPS_26	r_s__Fi
+  1c:	24040002 	li	a0,2
+  20:	0002243c 	dsll32	a0,v0,0x10
+  24:	0c000000 	jal	0 <c_ret__Fv>
+			24: R_MIPS_26	sink__Fi
+  28:	0004243f 	dsra32	a0,a0,0x10
+  2c:	0c000000 	jal	0 <c_ret__Fv>
+			2c: R_MIPS_26	r_uc__Fi
+  30:	24040003 	li	a0,3
+  34:	0c000000 	jal	0 <c_ret__Fv>
+			34: R_MIPS_26	sink__Fi
+  38:	304400ff 	andi	a0,v0,0xff
+  3c:	dfbf0000 	ld	ra,0(sp)
+  40:	03e00008 	jr	ra
+  44:	27bd0010 	addiu	sp,sp,16
+
+Disassembly of section .text:
+
+00000000 <c_q__Fv>:
+   0:	27bdffc0 	addiu	sp,sp,-64
+   4:	ffbf0000 	sd	ra,0(sp)
+   8:	27a40010 	addiu	a0,sp,16
+   c:	0c000000 	jal	0 <c_q__Fv>
+			c: R_MIPS_26	t_q__F1Q
+  10:	7fa00010 	sq	zero,16(sp)
+  14:	3c033f80 	lui	v1,0x3f80
+  18:	3c024000 	lui	v0,0x4000
+  1c:	afa30038 	sw	v1,56(sp)
+  20:	afa2003c 	sw	v0,60(sp)
+  24:	0c000000 	jal	0 <c_q__Fv>
+			24: R_MIPS_26	t_a__F1A
+  28:	dfa40038 	ld	a0,56(sp)
+  2c:	3c034040 	lui	v1,0x4040
+  30:	3c024080 	lui	v0,0x4080
+  34:	afa30030 	sw	v1,48(sp)
+  38:	27a40028 	addiu	a0,sp,40
+  3c:	afa30028 	sw	v1,40(sp)
+  40:	afa20034 	sw	v0,52(sp)
+  44:	0c000000 	jal	0 <c_q__Fv>
+			44: R_MIPS_26	t_c__F1C
+  48:	afa2002c 	sw	v0,44(sp)
+  4c:	dfbf0000 	ld	ra,0(sp)
+  50:	03e00008 	jr	ra
+  54:	27bd0040 	addiu	sp,sp,64
+
+Disassembly of section .text:
+
+00000000 <__dt__1CFv>:
+   0:	27bdffe0 	addiu	sp,sp,-32
+   4:	ffbf0010 	sd	ra,16(sp)
+   8:	7fb00000 	sq	s0,0(sp)
+   c:	0080802d 	move	s0,a0
+  10:	12000007 	beqz	s0,30 <__dt__1CFv+0x30>
+  14:	00000000 	nop
+  18:	0005143c 	dsll32	v0,a1,0x10
+  1c:	0002143f 	dsra32	v0,v0,0x10
+  20:	18400003 	blez	v0,30 <__dt__1CFv+0x30>
+  24:	00000000 	nop
+  28:	0c000000 	jal	0 <__dt__1CFv>
+			28: R_MIPS_26	__dl__FPv
+  2c:	00000000 	nop
+  30:	0200102d 	move	v0,s0
+  34:	dfbf0010 	ld	ra,16(sp)
+  38:	7bb00000 	lq	s0,0(sp)
+  3c:	03e00008 	jr	ra
+  40:	27bd0020 	addiu	sp,sp,32
+
+Disassembly of section .text:
+
+00000000 <c_mix__Fv>:
+   0:	27bdffd0 	addiu	sp,sp,-48
+   4:	24020009 	li	v0,9
+   8:	ffbf0020 	sd	ra,32(sp)
+   c:	24040001 	li	a0,1
+  10:	ffa20000 	sd	v0,0(sp)
+  14:	24050002 	li	a1,2
+  18:	3c024110 	lui	v0,0x4110
+  1c:	24060003 	li	a2,3
+  20:	afa20008 	sw	v0,8(sp)
+  24:	24070004 	li	a3,4
+  28:	2402000a 	li	v0,10
+  2c:	24080005 	li	t0,5
+  30:	ffa20010 	sd	v0,16(sp)
+  34:	24090006 	li	t1,6
+  38:	3c024120 	lui	v0,0x4120
+  3c:	240a0007 	li	t2,7
+  40:	afa20018 	sw	v0,24(sp)
+  44:	3c023f80 	lui	v0,0x3f80
+  48:	44826000 	mtc1	v0,$f12
+  4c:	3c024000 	lui	v0,0x4000
+  50:	44826800 	mtc1	v0,$f13
+  54:	3c024040 	lui	v0,0x4040
+  58:	44827000 	mtc1	v0,$f14
+  5c:	3c024080 	lui	v0,0x4080
+  60:	44827800 	mtc1	v0,$f15
+  64:	3c0240a0 	lui	v0,0x40a0
+  68:	44828000 	mtc1	v0,$f16
+  6c:	3c0240c0 	lui	v0,0x40c0
+  70:	44828800 	mtc1	v0,$f17
+  74:	3c0240e0 	lui	v0,0x40e0
+  78:	44829000 	mtc1	v0,$f18
+  7c:	3c024100 	lui	v0,0x4100
+  80:	44829800 	mtc1	v0,$f19
+  84:	0c000000 	jal	0 <c_mix__Fv>
+			84: R_MIPS_26	t_mix__Fifififififififififif
+  88:	240b0008 	li	t3,8
+  8c:	dfbf0020 	ld	ra,32(sp)
+  90:	03e00008 	jr	ra
+  94:	27bd0030 	addiu	sp,sp,48

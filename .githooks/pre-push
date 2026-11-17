@@ -1,0 +1,8 @@
+#!/bin/sh
+# Push only to the project's own remotes (u0rhs/burnout3-retail-decomp, u0rhs/burnout3-native; the old name burnout3-port redirects); anything else is refused.
+# $1 = remote name, $2 = remote URL.
+if printf '%s\n' "$2" | grep -Eq '^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)u0rhs/(burnout3-retail-decomp|burnout3-native|burnout3-port)(\.git)?/?$'; then
+  exit 0
+fi
+echo "pre-push: refused, $2 is not one of the allowed remotes (u0rhs/burnout3-retail-decomp, burnout3-native)." >&2
+exit 1

@@ -1,0 +1,55 @@
+RW 3.6 in retail: 679 functions, 234612 bytes (0x1D8260-0x211C30)
+entry points called from game code (static): 50
+
+layer      all fn/bytes      boot-static     race-dynamic           either
+core        485  116600     201    57988      43    10684     203    58312
+os            1      72       1       72       0        0       1       72
+driver      183  117120      34    10876      24    15368      44    20300
+?            10     820       5      352       0        0       5      352
+
+by source file (RW 3.1 path; functions, bytes, reached):
+  ?        ?                                                  10     820    5
+  core     driver/common/imrascnv.c                           19   13980    0
+  core     driver/common/palquant.c                            8    4224    8
+  core     name:core:^(_?rw|_?Rw|H[MRC]alloc|Leaf|Stats|Representative|TextureDefault)   38   11120   22
+  core     name:core:neighbour layer                          62    4644   12
+  core     src/babbox.c                                        1     240    1
+  core     src/babinary.c                                     11    1824    2
+  core     src/babintex.c                                     17    4048    1
+  core     src/bacamera.c                                     24    6956   19
+  core     src/badevice.c                                     26    3532   12
+  core     src/baerr.c                                         3     208    3
+  core     src/baframe.c                                      32    4188    9
+  core     src/bafsys.c                                        4     256    4
+  core     src/baimage.c                                      31   10012   18
+  core     src/baimras.c                                       6    1140    3
+  core     src/bamatrix.c                                     21    7004    5
+  core     src/bamemory.c                                     12    4820    9
+  core     src/bapipcom.c                                      4     104    4
+  core     src/baraster.c                                     23    2020   10
+  core     src/baresamp.c                                      4    2516    4
+  core     src/baresour.c                                      7    1292    4
+  core     src/bastream.c                                      9    2568    4
+  core     src/basync.c                                        6    1244    4
+  core     src/batextur.c                                     35    9420   17
+  core     src/batkbin.c                                       6    1108    1
+  core     src/batkreg.c                                      10    1804    7
+  core     src/batypehf.c                                      2     156    2
+  core     src/bavector.c                                      9     864    5
+  core     src/pipe/p2/baim3d.c                               12    2788    2
+  core     src/pipe/p2/p2altmdl.c                              3    1856    0
+  core     src/pipe/p2/p2core.c                               18    3352    2
+  core     src/pipe/p2/p2heap.c                                9    4188    3
+  core     src/pipe/p2/p2renderstate.c                         5    1332    1
+  core     src/resmem.c                                        6    1524    3
+  core     src/rwstring.c                                      2     268    2
+  driver   driver/sky2/baevent.c                               1     100    0
+  driver   driver/sky2/basky.c                                50   40272   12
+  driver   driver/sky2/skyblit.c                              13   23988    0
+  driver   driver/sky2/skyconv.c                               7    8640    0
+  driver   driver/sky2/skyinst.c                              19   12100    1
+  driver   driver/sky2/texcache.c                             21   10364    8
+  driver   name:driver:^(_?rwDMA|_rwSky|RpSky|RwSky|[Ss]ky[A-Z])   31   16316   18
+  driver   name:driver:neighbour layer                        37    5308    1
+  driver   src/pipe/p2/sky2/im3dpipe.c                         4      32    4
+  os       os/sky/osintf.c                                     1      72    1

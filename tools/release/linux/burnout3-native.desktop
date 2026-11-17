@@ -1,0 +1,15 @@
+[Desktop Entry]
+# The Linux tester package's menu entry (tools/release/package_linux.sh). In the unpacked folder it starts the
+# launcher beside it (%k: this file's own path); ./add-to-menu.sh installs a copy with this folder's absolute paths
+# into ~/.local/share/applications.
+Type=Application
+Version=1.0
+Name=Burnout 3 Native (test build)
+GenericName=Racing game
+Comment=Burnout 3: Takedown, native PC port (test build; your own disc's data)
+Exec=sh -c "cd \\"\\$(dirname \\"\\$1\\")\\" && exec ./b3launcher" sh %k
+Icon=burnout3-native
+Terminal=false
+Categories=Game;RacingGame;
+StartupNotify=true
+StartupWMClass=b3port.launcher

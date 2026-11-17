@@ -1,0 +1,76 @@
+// font.h -- the launcher's text: a TrueType face of the system (stb_truetype, third_party/stb_truetype.h) baked per
+// size into SDL textures at the window's pixel scale; SDL's 8 x 8 debug font when no face is found. Coordinates are
+// the renderer's logical units (SDL_SetRenderScale = the UI scale).
+#ifndef B3LAUNCHER_FONT_H
+#define B3LAUNCHER_FONT_H
+
+#include <SDL3/SDL.h>
+
+#include <map>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace b3launcher {
+
+struct GameFont;
+
+// The font files tried (regular, bold), the first that exists wins: $B3LAUNCHER_FONT / $B3LAUNCHER_FONT_BOLD, then the
+// system's (Segoe UI, Arial, Noto Sans, DejaVu Sans, Liberation Sans, ...).
+std::vector<std::pair<std::string, std::string>> font_candidates();
+
+class Text {
+public:
+    explicit Text(SDL_Renderer* r);
+    ~Text();
+    Text(const Text&) = delete;
+    Text& operator=(const Text&) = delete;
+
+    // The face (false: none found, the debug font draws). `scale`: pixels per logical unit (the atlases are rebuilt).
+    bool load();
+    void set_scale(float scale);
+    bool have_face() const { return !regular_.empty(); }
+    const std::string& face_path() const { return regular_path_; }
+
+    // The game's own fonts (gameart.h; their textures made by the caller): text then draws in GlobalFont as the menus do
+    // (outlined; `bold` = the menus' italic) whenever the font has every character of it, else in the TrueType face.
+    // nullptr: off.
+    void set_game_fonts(const GameFont* menu, SDL_Texture* menu_tex, const GameFont* head, SDL_Texture* head_tex);
+    bool game() const { return menu_ != nullptr; }
+    // A heading: HeadFont's italic capitals when it has every letter, else the menu font's italic
+    float head(std::string_view s, float x, float y, float size, SDL_FColor c, bool measure_only = false);
+
+    float width(std::string_view s, float size, bool bold = false);
+    float line_height(float size) const { return size * 1.32f; }
+    // Draws `s` with its top at y (the line box of line_height); returns its width.
+    float draw(std::string_view s, float x, float y, float size, SDL_FColor c, bool bold = false);
+    // Words wrapped to `max_w` (an explicit '\n' breaks too)
+    std::vector<std::string> wrap(std::string_view s, float size, float max_w, bool bold = false);
+    // `s` cut with "..." to fit `max_w`
+    std::string elide(std::string_view s, float size, float max_w, bool bold = false);
+
+private:
+    struct Baked;
+    Baked* baked(float size, bool bold);
+    bool game_usable(const GameFont* f, std::string_view s) const;
+    float game_text(const GameFont& f, SDL_Texture* tex, std::string_view s, float x, float y, float size, SDL_FColor c, bool italic,
+                    bool measure_only);
+
+    const GameFont* menu_ = nullptr;
+    const GameFont* head_ = nullptr;
+    SDL_Texture* menu_tex_ = nullptr;
+    SDL_Texture* head_tex_ = nullptr;
+
+    SDL_Renderer* r_;
+    float scale_ = 1;
+    std::vector<unsigned char> regular_, bold_;
+    std::string regular_path_;
+    struct FaceInfo;
+    std::unique_ptr<FaceInfo> face_regular_, face_bold_;
+    std::map<std::pair<int, bool>, std::unique_ptr<Baked>> cache_;
+};
+
+}  // namespace b3launcher
+
+#endif

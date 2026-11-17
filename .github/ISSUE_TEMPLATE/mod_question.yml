@@ -1,0 +1,34 @@
+name: Mod or SDK question
+description: A question about making a mod, b3modtool, the file formats or the mod SDK.
+labels: [modding]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The modding docs are in [docs/modding](https://github.com/u0rhs/burnout3-native/blob/main/docs/modding/README.md):
+        getting started, tutorials, the `b3modtool` reference and the file formats. Please don't attach the game's
+        files: describe them by their disc path (for example `DATA/FRONTEND.TXD`).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The port's version line (the launcher's window title or Play page).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Installing or ordering mods
+        - b3modtool (textures, text, patches, packing)
+        - File formats
+        - Code mods / SDK
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What you are trying to make, what you tried (commands, your mod.ini), and what happened.
+    validations:
+      required: true

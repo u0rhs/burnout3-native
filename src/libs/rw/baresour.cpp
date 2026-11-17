@@ -1,0 +1,306 @@
+// RenderWare 3.6 core: resources (RW 3.1 file name: src/baresour.c; reading aid only).
+// Written from the retail asm (decomp assembly/asm/rw/renderware.s). Tags: [C] confirmed from the asm, [L], [G].
+
+extern int resourcesModule;            // [C] gp-relative 0x004E2770 (8 bytes): +0 the resources globals' offset in ourGlobals
+extern int D_004E2774;                 // [C] gp-relative 0x004E2774 = resourcesModule + 4: the module's open count
+
+// [C] the RW globals block (0x4000 bytes at 0x00670BD0), the fields these functions read.
+struct UnkStruct_ourGlobals {
+    unsigned char pad_0[0x134];
+    void *(*field_134)(unsigned int, unsigned int);  // [C] (size, hint) ([L] rwmalloc)
+    void (*field_138)(void *);                       // [C] ([L] rwfree)
+    unsigned char pad_13C[0x14];
+    unsigned int field_150;                          // [C] compared with 3 by RxRenderStateVectorSetDefaultRenderStateVector
+    unsigned int field_154;                          // [C] the resource arena size ([L] resArenaInitSize), 0 = none
+};
+extern UnkStruct_ourGlobals ourGlobals;
+
+// [C] an error: {plugin ID 1, _rwerror(code)} ([L] RwError).
+struct UnkStruct_RwErrorSet {
+    int field_0;
+    int field_4;
+};
+
+struct UnkStruct_resLink;
+
+// [C] a resource-list link, 8 bytes ([L] RwLLLink: next, prev). The two list heads sit at +0x10 and +0x18 of the globals.
+struct UnkStruct_resLink {
+    UnkStruct_resLink *field_0;        // [C] next
+    UnkStruct_resLink *field_4;        // [C] previous
+};
+
+// [C] a resource entry as RwResourcesEmptyArena walks it ([L] RwResEntry); the pointer passed is the payload start
+// (the block header sits 0x20 below, see _rwResHeapFree).
+struct UnkStruct_RwResEntry {
+    UnkStruct_RwResEntry *field_0;     // [C] next; 0 = not in the resource heap (freed with rwfree)
+    UnkStruct_RwResEntry *field_4;     // [C] previous
+    int field_8;                       // [C] size, subtracted from globals +4
+    int field_C;
+    UnkStruct_RwResEntry **field_10;   // [C] back-reference, cleared when set ([L] owner)
+    void (*field_14)(UnkStruct_RwResEntry *);   // [C] destroy notify ([L] destroyNotify)
+};
+
+// [C] the resources globals at ourGlobals + resourcesModule ([L] rwResourcesGlobals).
+struct UnkStruct_resourcesModule {
+    unsigned int field_0;              // [C] the arena size as given (ourGlobals +0x154)
+    int field_4;                       // [C] bytes in use, decreased by RwResourcesEmptyArena
+    int field_8;                       // [C] 0
+    unsigned char *field_C;            // [C] the arena block (rwmalloc, hint 0x4040B) or 0
+    UnkStruct_resLink field_10;        // [C] list head A ([L] usedEntries)
+    UnkStruct_resLink field_18;        // [C] list head B ([L] unusedEntries)
+    UnkStruct_resLink *field_20;       // [C] set to &field_18
+    UnkStruct_resLink *field_24;       // [C] set to &field_10
+};
+
+// [C] a resource heap block header, 0x20 bytes below the payload ([L] rwResHeapBlock).
+struct UnkStruct_resHeapBlock {
+    struct UnkStruct_resHeapBlock *field_0;   // [C] in the first block: the arena start; else the owner's block ([L])
+    struct UnkStruct_resHeapBlock *field_4;   // [C] previous block
+    struct UnkStruct_resHeapBlock *field_8;   // [C] next block
+    unsigned int field_C;              // [C] size
+    unsigned int field_10;             // [C] flags, bit 0 = in use
+};
+
+extern "C" int _rwerror(int code);
+extern "C" UnkStruct_RwErrorSet *RwErrorSet(UnkStruct_RwErrorSet *code);
+
+// [C] list heads at both +0x10 (A) and +0x18 (B) of the globals; the heap header is kept 0x20-aligned.
+// [C] frees the block whose payload starts at p: header b = p - 0x20, owner o = b->field_0, prev = b->field_4,
+// next = b->field_8; b->field_10 = 0; the owner's +4 (lowest free block) = b when it is 0 or b is below it; then
+// a free neighbour next (flag bit 0 clear) absorbs b (next->field_4 = prev, prev->field_8 = next when prev, next size
+// += 0x20 + b size, b = next); then a free prev (flag bit 0 clear) absorbs b (b->field_4 = prev->field_4, that
+// block's field_8 = b when set, b size += 0x20 + prev size). Returns nothing.
+// 0x001DEFF0
+extern "C" void _rwResHeapFree(void *payload)
+{
+    UnkStruct_resHeapBlock *b = (UnkStruct_resHeapBlock *)((unsigned char *)payload - 0x20);
+    UnkStruct_resHeapBlock *owner = b->field_0;
+    UnkStruct_resHeapBlock *low = owner->field_4;
+    UnkStruct_resHeapBlock *next = b->field_8;
+    UnkStruct_resHeapBlock *prev = b->field_4;
+
+    b->field_10 = 0;
+    if (low == 0 || b < low) {
+        owner->field_4 = b;
+    }
+    if (next != 0 && (~next->field_10 & 1) != 0) {
+        next->field_4 = prev;
+        if (prev != 0) {
+            prev->field_8 = next;
+        }
+        next->field_C = next->field_C + 0x20 + b->field_C;
+        b = next;
+    }
+    if (prev != 0 && (~prev->field_10 & 1) != 0) {
+        UnkStruct_resHeapBlock *pp;
+
+        b->field_4 = prev->field_4;
+        pp = prev->field_4;
+        if (pp != 0) {
+            pp->field_8 = b;
+        }
+        b->field_C = b->field_C + 0x20 + prev->field_C;
+    }
+}
+
+// [C] a stub: returns 1 ([L] _rwResHeapClose).
+// 0x001DEF98
+extern "C" int _rwResHeapClose(void *block)
+{
+    return 1;
+}
+
+// [C] block = the arena as allocated, size its size: s = (block + 0x27) & ~0x1F (the first header), end =
+// (block + size) & ~0x1F, n = end - s - 0x20; if n < 0x20 returns 0. Else s->field_4 = 0, s->field_8 = 0,
+// block->field_4 = s, s->field_C = n, s->field_0 = block, s->field_10 = 0, block->field_0 = s; returns 1.
+// 0x001DEF40
+extern "C" int _rwResHeapInit(UnkStruct_resHeapBlock *block, int size)
+{
+    unsigned long s = ((unsigned long)block + 0x27) & ~0x1FUL;
+    unsigned long end = ((unsigned long)block + size) & ~0x1FUL;
+    int n = (int)(end - s) - 0x20;
+    UnkStruct_resHeapBlock *first = (UnkStruct_resHeapBlock *)s;
+
+    if (n < 0x20) {
+        return 0;
+    }
+    first->field_4 = 0;
+    first->field_8 = 0;
+    block->field_4 = first;
+    first->field_C = (unsigned int)n;
+    first->field_0 = block;
+    first->field_10 = 0;
+    block->field_0 = first;
+    return 1;
+}
+
+// [C] head A's last link's next = head B's first (so the walk below passes from A into B and ends at B's head). Then
+// for each entry e from A's first until B's head: next = e->field_0 (read first); the notify e->field_14, when set, is
+// called with e; e->field_10, when set, is cleared through (*e->field_10 = 0); if e->field_0 != 0 the entry lives in the
+// resource heap: prev->field_0 = next, globals +4 -= e->field_8, next->field_4 = prev, _rwResHeapFree(e); else
+// rwfree(e). Finally both heads are reset to empty (next = prev = itself), globals +8 = 0. Returns 1.
+// 0x001DC818
+extern "C" int RwResourcesEmptyArena(void)
+{
+    UnkStruct_resourcesModule *globals = (UnkStruct_resourcesModule *)((unsigned char *)&ourGlobals + resourcesModule);
+    UnkStruct_resLink *headA = &globals->field_10;
+    UnkStruct_resLink *headB = &globals->field_18;
+    UnkStruct_RwResEntry *e;
+    UnkStruct_RwResEntry *next;
+
+    headA->field_4->field_0 = headB->field_0;
+    next = (UnkStruct_RwResEntry *)headA->field_0;
+    if ((UnkStruct_resLink *)next != headB) {
+        e = next;
+        do {
+            next = e->field_0;
+            if (e->field_14 != 0) {
+                e->field_14(e);
+            }
+            if (e->field_10 != 0) {
+                *e->field_10 = 0;
+            }
+            if (e->field_0 != 0) {
+                UnkStruct_RwResEntry *nx = e->field_0;
+                UnkStruct_RwResEntry *pv;
+                UnkStruct_resourcesModule *g2;
+                int size;
+
+                pv = e->field_4;
+                g2 = (UnkStruct_resourcesModule *)((unsigned char *)&ourGlobals + resourcesModule);
+                pv->field_0 = nx;
+                size = e->field_8;
+                g2->field_4 = g2->field_4 - size;
+                nx = e->field_0;
+                pv = e->field_4;
+                _rwResHeapFree(e);
+                nx->field_4 = pv;
+            } else {
+                ourGlobals.field_138(e);
+            }
+            e = next;
+        } while ((UnkStruct_resLink *)next != headB);
+    }
+    globals = (UnkStruct_resourcesModule *)((unsigned char *)&ourGlobals + resourcesModule);
+    globals->field_10.field_4 = &globals->field_10;
+    globals->field_10.field_0 = &globals->field_10;
+    globals->field_18.field_4 = &globals->field_18;
+    globals->field_8 = 0;
+    globals->field_18.field_0 = &globals->field_18;
+    return 1;
+}
+
+// [C] resourcesModule = offset; s1 = ourGlobals +0x154 (the arena size). If s1 != 0: globals +0xC = rwmalloc(s1,
+// 0x4040B); on failure error {1, _rwerror(0x80000013)} is set and 0 returned; else _rwResHeapInit(+0xC, s1), and on
+// failure rwfree(+0xC), error {1, _rwerror(0xC)}, return 0. If s1 == 0: +0xC = 0. Then the globals are set: +0 = s1,
+// +4 = 0, +8 = 0, the lists A (+0x10) and B (+0x18) empty (next = prev = themselves). The open count (resourcesModule+4)
+// += 1; returns the instance.
+// 0x001DC3F0
+extern "C" void *_rwResourcesOpen(void *instance, int offset, int size)
+{
+    UnkStruct_resourcesModule *globals;
+    unsigned int arenaSize;
+    UnkStruct_RwErrorSet err;
+
+    resourcesModule = offset;
+    globals = (UnkStruct_resourcesModule *)((unsigned char *)&ourGlobals + offset);
+    arenaSize = ourGlobals.field_154;
+    if (arenaSize != 0) {
+        globals->field_C = (unsigned char *)ourGlobals.field_134(arenaSize, 0x4040B);
+        if (globals->field_C == 0) {
+            err.field_0 = 1;
+            err.field_4 = _rwerror(0x80000013);
+            RwErrorSet(&err);
+            return 0;
+        }
+        if (_rwResHeapInit((UnkStruct_resHeapBlock *)globals->field_C, (int)arenaSize) == 0) {
+            ourGlobals.field_138(globals->field_C);
+            err.field_0 = 1;
+            err.field_4 = _rwerror(0xC);
+            RwErrorSet(&err);
+            return 0;
+        }
+    } else {
+        globals->field_C = 0;
+    }
+    globals->field_24 = &globals->field_10;
+    globals->field_20 = &globals->field_18;
+    globals->field_0 = arenaSize;
+    globals->field_10.field_0 = &globals->field_10;
+    globals->field_10.field_4 = &globals->field_10;
+    globals->field_18.field_0 = &globals->field_18;
+    globals->field_18.field_4 = &globals->field_18;
+    globals->field_4 = 0;
+    globals->field_8 = 0;
+    D_004E2774 = D_004E2774 + 1;
+    return instance;
+}
+
+// [C] RwResourcesEmptyArena(); _rwResHeapClose(+0xC); rwfree(+0xC) (called even when 0); the open count
+// (resourcesModule+4) -= 1; +0xC = 0; returns the instance.
+// 0x001DCAC8
+extern "C" void *_rwResourcesClose(void *instance, int offset, int size)
+{
+    UnkStruct_resourcesModule *globals;
+
+    RwResourcesEmptyArena();
+    globals = (UnkStruct_resourcesModule *)((unsigned char *)&ourGlobals + resourcesModule);
+    _rwResHeapClose(globals->field_C);
+    globals = (UnkStruct_resourcesModule *)((unsigned char *)&ourGlobals + resourcesModule);
+    ourGlobals.field_138(globals->field_C);
+    globals = (UnkStruct_resourcesModule *)((unsigned char *)&ourGlobals + resourcesModule);
+    D_004E2774 = D_004E2774 - 1;
+    globals->field_C = 0;
+    return instance;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// boot2 additions (track rw): _rwResourcesPurge.
+
+// [C] the globals fields _rwResourcesPurge swaps: two list-head pointers at +0x20 / +0x24 (see the module struct above),
+// and +8 (cleared).
+struct UnkStruct_resourcesPurge {
+    unsigned char pad_0[0x8];
+    int field_8;                       // [C] cleared
+    unsigned char pad_C[0x14];
+    UnkStruct_resLink *field_20;       // [C] list head pointer
+    UnkStruct_resLink *field_24;       // [C] list head pointer
+};
+
+// [C] a = globals +0x20, b = globals +0x24. If a's list is not empty (a->next != a): when b's list is empty (b->next ==
+// b) b takes a's whole chain (b->next = a->next, a->next->prev = b, b->prev = a->prev, a->prev->next = b); else a's
+// chain is appended after b's last element (b->prev->next = a->next, a->next->prev = b->prev, then a->prev->next = b,
+// b->prev = a->prev); then a is made empty (next = prev = a). Finally (globals re-read) +0x24 = a, +0x20 = b and +8 = 0
+// (the two list-head pointers are swapped).
+// 0x001DCA40
+extern "C" void _rwResourcesPurge(void)
+{
+    UnkStruct_resourcesPurge *globals = (UnkStruct_resourcesPurge *)((unsigned char *)&ourGlobals + resourcesModule);
+    UnkStruct_resLink *a = globals->field_20;
+    UnkStruct_resLink *b = globals->field_24;
+    UnkStruct_resLink *first = a->field_0;
+    UnkStruct_resLink *last;
+
+    if (first != a) {
+        if (b->field_0 != b) {
+            last = b->field_4;
+            last->field_0 = first;
+            first->field_4 = last;
+            last = a->field_4;
+            last->field_0 = b;
+            b->field_4 = last;
+        } else {
+            b->field_0 = first;
+            first->field_4 = b;
+            last = a->field_4;
+            b->field_4 = last;
+            last->field_0 = b;
+        }
+        a->field_0 = a;
+        a->field_4 = a;
+    }
+    globals = (UnkStruct_resourcesPurge *)((unsigned char *)&ourGlobals + resourcesModule);
+    globals->field_24 = a;
+    globals->field_20 = b;
+    globals->field_8 = 0;
+}

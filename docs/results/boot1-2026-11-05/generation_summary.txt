@@ -1,0 +1,3 @@
+      3 compile_fail
+    374 gen_fail
+   5272 ok

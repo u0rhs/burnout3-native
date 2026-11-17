@@ -1,0 +1,36 @@
+name: Feature request
+description: An idea for the port, the launcher, the PC settings or the tools.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [docs/remaster-features.md](https://github.com/u0rhs/burnout3-native/blob/main/docs/remaster-features.md)
+        and the README's feature list first: it may be planned already. Remember the project rule: features never
+        change gameplay by default; anything that would is an opt-in setting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What you would like
+      description: The feature, and what it would let you do.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: The problem it solves or the situation where you would use it.
+  - type: dropdown
+    id: gameplay
+    attributes:
+      label: Does it change gameplay?
+      description: Physics, AI, timing, what the game reads from the controller.
+      options:
+        - "No: presentation, tools or convenience only"
+        - "Yes: it would be an opt-in setting"
+        - Not sure
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: How other versions of the game do it, pictures of a mock-up, links.

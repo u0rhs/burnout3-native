@@ -1,0 +1,300 @@
+
+probe3.o:     file format elf32-tradlittlemips
+
+
+Disassembly of section .text:
+
+00000000 <t_mix__Fifififififififififif>:
+   0:	3c030110 	lui	v1,0x110
+   4:	ac640000 	sw	a0,0(v1)
+   8:	c7a10008 	lwc1	$f1,8(sp)
+   c:	ac650004 	sw	a1,4(v1)
+  10:	c7a00018 	lwc1	$f0,24(sp)
+  14:	ac660008 	sw	a2,8(v1)
+  18:	ac67000c 	sw	a3,12(v1)
+  1c:	ac680010 	sw	t0,16(v1)
+  20:	ac690014 	sw	t1,20(v1)
+  24:	ac6a0018 	sw	t2,24(v1)
+  28:	8fa50000 	lw	a1,0(sp)
+  2c:	ac6b001c 	sw	t3,28(v1)
+  30:	8fa40010 	lw	a0,16(sp)
+  34:	ac650020 	sw	a1,32(v1)
+  38:	ac640024 	sw	a0,36(v1)
+  3c:	e46c0100 	swc1	$f12,256(v1)
+  40:	e46d0104 	swc1	$f13,260(v1)
+  44:	e46e0108 	swc1	$f14,264(v1)
+  48:	e46f010c 	swc1	$f15,268(v1)
+  4c:	e4700110 	swc1	$f16,272(v1)
+  50:	e4710114 	swc1	$f17,276(v1)
+  54:	e4720118 	swc1	$f18,280(v1)
+  58:	e473011c 	swc1	$f19,284(v1)
+  5c:	e4610120 	swc1	$f1,288(v1)
+  60:	03e00008 	jr	ra
+  64:	e4600124 	swc1	$f0,292(v1)
+
+Disassembly of section .text:
+
+00000000 <t_structs__F2I21V2I3if>:
+   0:	27bdffd0 	addiu	sp,sp,-48
+   4:	3c030110 	lui	v1,0x110
+   8:	ffa40008 	sd	a0,8(sp)
+   c:	c4c20000 	lwc1	$f2,0(a2)
+  10:	c4a60000 	lwc1	$f6,0(a1)
+  14:	8fa80008 	lw	t0,8(sp)
+  18:	c4a50004 	lwc1	$f5,4(a1)
+  1c:	8fa4000c 	lw	a0,12(sp)
+  20:	c4a40008 	lwc1	$f4,8(a1)
+  24:	c4a3000c 	lwc1	$f3,12(a1)
+  28:	c4c10004 	lwc1	$f1,4(a2)
+  2c:	c4c00008 	lwc1	$f0,8(a2)
+  30:	e7a20020 	swc1	$f2,32(sp)
+  34:	e7a60010 	swc1	$f6,16(sp)
+  38:	e7a50014 	swc1	$f5,20(sp)
+  3c:	e7a40018 	swc1	$f4,24(sp)
+  40:	e7a10024 	swc1	$f1,36(sp)
+  44:	ac680000 	sw	t0,0(v1)
+  48:	e7a00028 	swc1	$f0,40(sp)
+  4c:	ac640004 	sw	a0,4(v1)
+  50:	e7a3001c 	swc1	$f3,28(sp)
+  54:	8fa60020 	lw	a2,32(sp)
+  58:	8fa50024 	lw	a1,36(sp)
+  5c:	8fa40028 	lw	a0,40(sp)
+  60:	ac660008 	sw	a2,8(v1)
+  64:	ac65000c 	sw	a1,12(v1)
+  68:	ac640010 	sw	a0,16(v1)
+  6c:	ac670014 	sw	a3,20(v1)
+  70:	e4660100 	swc1	$f6,256(v1)
+  74:	e4650104 	swc1	$f5,260(v1)
+  78:	e4640108 	swc1	$f4,264(v1)
+  7c:	e463010c 	swc1	$f3,268(v1)
+  80:	e46c0110 	swc1	$f12,272(v1)
+  84:	03e00008 	jr	ra
+  88:	27bd0030 	addiu	sp,sp,48
+
+Disassembly of section .text:
+
+00000000 <t_q10__Fiiiiiiiii1i>:
+   0:	8fa60000 	lw	a2,0(sp)
+   4:	3c030110 	lui	v1,0x110
+   8:	8fa50020 	lw	a1,32(sp)
+   c:	7ba40010 	lq	a0,16(sp)
+  10:	ac660000 	sw	a2,0(v1)
+  14:	ac650004 	sw	a1,4(v1)
+  18:	03e00008 	jr	ra
+  1c:	7c640200 	sq	a0,512(v1)
+
+Disassembly of section .text:
+
+00000000 <t_ll__Fxi>:
+   0:	0004103c 	dsll32	v0,a0,0x0
+   4:	3c030110 	lui	v1,0x110
+   8:	0002103f 	dsra32	v0,v0,0x0
+   c:	0004303f 	dsra32	a2,a0,0x0
+  10:	ac620000 	sw	v0,0(v1)
+  14:	0005103c 	dsll32	v0,a1,0x0
+  18:	ac660004 	sw	a2,4(v1)
+  1c:	0002103f 	dsra32	v0,v0,0x0
+  20:	ac650008 	sw	a1,8(v1)
+  24:	03e00008 	jr	ra
+  28:	0082102d 	daddu	v0,a0,v0
+
+Disassembly of section .text:
+
+00000000 <r_v__Fif>:
+   0:	27bdfff0 	addiu	sp,sp,-16
+   4:	3c034000 	lui	v1,0x4000
+   8:	44830800 	mtc1	v1,$f1
+   c:	44850000 	mtc1	a1,$f0
+  10:	00000000 	nop
+  14:	460c0842 	mul.s	$f1,$f1,$f12
+  18:	3c033f80 	lui	v1,0x3f80
+  1c:	afa3000c 	sw	v1,12(sp)
+  20:	46800020 	cvt.s.w	$f0,$f0
+  24:	e48c0000 	swc1	$f12,0(a0)
+  28:	e4810004 	swc1	$f1,4(a0)
+  2c:	e4800008 	swc1	$f0,8(a0)
+  30:	e7ac0000 	swc1	$f12,0(sp)
+  34:	ac83000c 	sw	v1,12(a0)
+  38:	e7a00008 	swc1	$f0,8(sp)
+  3c:	e7a10004 	swc1	$f1,4(sp)
+  40:	03e00008 	jr	ra
+  44:	27bd0010 	addiu	sp,sp,16
+
+Disassembly of section .text:
+
+00000000 <r_f__Fff>:
+   0:	3c023f80 	lui	v0,0x3f80
+   4:	44820800 	mtc1	v0,$f1
+   8:	44800000 	mtc1	zero,$f0
+   c:	00000000 	nop
+  10:	46010018 	adda.s	$f0,$f1
+  14:	03e00008 	jr	ra
+  18:	460d601c 	madd.s	$f0,$f12,$f13
+
+Disassembly of section .text:
+
+00000000 <r_b__Fi>:
+   0:	28820004 	slti	v0,a0,4
+   4:	03e00008 	jr	ra
+   8:	38420001 	xori	v0,v0,0x1
+
+Disassembly of section .text:
+
+00000000 <w_ptr__FP1VPi>:
+   0:	3c033fc0 	lui	v1,0x3fc0
+   4:	ac830000 	sw	v1,0(a0)
+   8:	3c034020 	lui	v1,0x4020
+   c:	ac830004 	sw	v1,4(a0)
+  10:	3c034060 	lui	v1,0x4060
+  14:	ac830008 	sw	v1,8(a0)
+  18:	3c034090 	lui	v1,0x4090
+  1c:	ac83000c 	sw	v1,12(a0)
+  20:	8ca30000 	lw	v1,0(a1)
+  24:	24630007 	addiu	v1,v1,7
+  28:	03e00008 	jr	ra
+  2c:	aca30000 	sw	v1,0(a1)
+
+Disassembly of section .text:
+
+00000000 <Get__1KFi>:
+   0:	8c820010 	lw	v0,16(a0)
+   4:	03e00008 	jr	ra
+   8:	00a21021 	addu	v0,a1,v0
+
+Disassembly of section .text:
+
+00000000 <t_vcall__FP1Ki>:
+   0:	27bdfff0 	addiu	sp,sp,-16
+   4:	ffbf0000 	sd	ra,0(sp)
+   8:	8c99000c 	lw	t9,12(a0)
+   c:	8f390008 	lw	t9,8(t9)
+  10:	0320f809 	jalr	t9
+  14:	00000000 	nop
+  18:	dfbf0000 	ld	ra,0(sp)
+  1c:	00021040 	sll	v0,v0,0x1
+  20:	03e00008 	jr	ra
+  24:	27bd0010 	addiu	sp,sp,16
+
+Disassembly of section .text:
+
+00000000 <c_mix__Fv>:
+   0:	27bdffd0 	addiu	sp,sp,-48
+   4:	24020009 	li	v0,9
+   8:	ffbf0020 	sd	ra,32(sp)
+   c:	24040001 	li	a0,1
+  10:	ffa20000 	sd	v0,0(sp)
+  14:	24050002 	li	a1,2
+  18:	3c024110 	lui	v0,0x4110
+  1c:	24060003 	li	a2,3
+  20:	afa20008 	sw	v0,8(sp)
+  24:	24070004 	li	a3,4
+  28:	2402000a 	li	v0,10
+  2c:	24080005 	li	t0,5
+  30:	ffa20010 	sd	v0,16(sp)
+  34:	24090006 	li	t1,6
+  38:	3c024120 	lui	v0,0x4120
+  3c:	240a0007 	li	t2,7
+  40:	afa20018 	sw	v0,24(sp)
+  44:	3c023f80 	lui	v0,0x3f80
+  48:	44826000 	mtc1	v0,$f12
+  4c:	3c024000 	lui	v0,0x4000
+  50:	44826800 	mtc1	v0,$f13
+  54:	3c024040 	lui	v0,0x4040
+  58:	44827000 	mtc1	v0,$f14
+  5c:	3c024080 	lui	v0,0x4080
+  60:	44827800 	mtc1	v0,$f15
+  64:	3c0240a0 	lui	v0,0x40a0
+  68:	44828000 	mtc1	v0,$f16
+  6c:	3c0240c0 	lui	v0,0x40c0
+  70:	44828800 	mtc1	v0,$f17
+  74:	3c0240e0 	lui	v0,0x40e0
+  78:	44829000 	mtc1	v0,$f18
+  7c:	3c024100 	lui	v0,0x4100
+  80:	44829800 	mtc1	v0,$f19
+  84:	0c000000 	jal	0 <c_mix__Fv>
+			84: R_MIPS_26	ext_mix__Fifififififififififif
+  88:	240b0008 	li	t3,8
+  8c:	dfbf0020 	ld	ra,32(sp)
+  90:	03e00008 	jr	ra
+  94:	27bd0030 	addiu	sp,sp,48
+
+Disassembly of section .text:
+
+00000000 <c_structs__Fv>:
+   0:	27bdffc0 	addiu	sp,sp,-64
+   4:	2402000b 	li	v0,11
+   8:	afa20038 	sw	v0,56(sp)
+   c:	27a50010 	addiu	a1,sp,16
+  10:	2402000c 	li	v0,12
+  14:	ffbf0000 	sd	ra,0(sp)
+  18:	afa2003c 	sw	v0,60(sp)
+  1c:	27a60028 	addiu	a2,sp,40
+  20:	3c023f00 	lui	v0,0x3f00
+  24:	dfa40038 	ld	a0,56(sp)
+  28:	afa20010 	sw	v0,16(sp)
+  2c:	3c023e80 	lui	v0,0x3e80
+  30:	afa20014 	sw	v0,20(sp)
+  34:	3c023e00 	lui	v0,0x3e00
+  38:	afa20018 	sw	v0,24(sp)
+  3c:	3c024000 	lui	v0,0x4000
+  40:	afa2001c 	sw	v0,28(sp)
+  44:	2402000d 	li	v0,13
+  48:	afa20028 	sw	v0,40(sp)
+  4c:	2402000e 	li	v0,14
+  50:	afa2002c 	sw	v0,44(sp)
+  54:	2402000f 	li	v0,15
+  58:	afa20030 	sw	v0,48(sp)
+  5c:	3c024188 	lui	v0,0x4188
+  60:	44826000 	mtc1	v0,$f12
+  64:	0c000000 	jal	0 <c_structs__Fv>
+			64: R_MIPS_26	ext_structs__F2I21V2I3if
+  68:	24070010 	li	a3,16
+  6c:	dfbf0000 	ld	ra,0(sp)
+  70:	03e00008 	jr	ra
+  74:	27bd0040 	addiu	sp,sp,64
+
+Disassembly of section .text:
+
+00000000 <c_rv__Fv>:
+   0:	27bdffd0 	addiu	sp,sp,-48
+   4:	3c024040 	lui	v0,0x4040
+   8:	44826000 	mtc1	v0,$f12
+   c:	ffbf0000 	sd	ra,0(sp)
+  10:	27a40010 	addiu	a0,sp,16
+  14:	0c000000 	jal	0 <c_rv__Fv>
+			14: R_MIPS_26	ext_rv__Fif
+  18:	24050015 	li	a1,21
+  1c:	c7a30010 	lwc1	$f3,16(sp)
+  20:	3c030110 	lui	v1,0x110
+  24:	c7a20014 	lwc1	$f2,20(sp)
+  28:	c7a10018 	lwc1	$f1,24(sp)
+  2c:	c7a0001c 	lwc1	$f0,28(sp)
+  30:	e7a30020 	swc1	$f3,32(sp)
+  34:	e7a20024 	swc1	$f2,36(sp)
+  38:	e7a10028 	swc1	$f1,40(sp)
+  3c:	e4630100 	swc1	$f3,256(v1)
+  40:	e4620104 	swc1	$f2,260(v1)
+  44:	e4610108 	swc1	$f1,264(v1)
+  48:	e460010c 	swc1	$f0,268(v1)
+  4c:	dfbf0000 	ld	ra,0(sp)
+  50:	e7a0002c 	swc1	$f0,44(sp)
+  54:	03e00008 	jr	ra
+  58:	27bd0030 	addiu	sp,sp,48
+
+Disassembly of section .text:
+
+00000000 <c_nest__Ff>:
+   0:	27bdfff0 	addiu	sp,sp,-16
+   4:	3c024000 	lui	v0,0x4000
+   8:	44826800 	mtc1	v0,$f13
+   c:	ffbf0000 	sd	ra,0(sp)
+  10:	0c000000 	jal	0 <c_nest__Ff>
+			10: R_MIPS_26	ext_f__Fff
+  14:	00000000 	nop
+  18:	3c023f00 	lui	v0,0x3f00
+  1c:	dfbf0000 	ld	ra,0(sp)
+  20:	44820800 	mtc1	v0,$f1
+  24:	00000000 	nop
+  28:	46000800 	add.s	$f0,$f1,$f0
+  2c:	03e00008 	jr	ra
+  30:	27bd0010 	addiu	sp,sp,16

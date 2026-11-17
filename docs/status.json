@@ -1,0 +1,30 @@
+{
+  "_comment": "Headline numbers for README.md (tools/readme_status.py renders them). Update after a verified run; each value must be backed by the run named in 'run' or its own *_source.",
+  "run": "the scenario runs and golden compare of CONTRIBUTING.md (Checks a change must pass)",
+  "decomp_fallback": {
+    "functions_total": 5652,
+    "functions_matched": 4655,
+    "bytes_total": 2709480,
+    "bytes_matched": 1331924,
+    "functions_complete": 997,
+    "functions_partial": 0,
+    "bytes_complete": 1377556,
+    "bytes_partial": 0
+  },
+  "native_functions": 6915,
+  "native_named": 3673,
+  "native_placeholders": 3242,
+  "native_source": "gen/native/manifest.tsv (6,915 rows at 288c070b; names matching ^func_[0-9A-Fa-f]{8}(_inl[0-9]+)?$ are placeholders)",
+  "libs_functions": 1261,
+  "libs_placeholders": 292,
+  "libs_named": 969,
+  "libs_source": "src/libs/{rw,rwa,sce,lg}: 263+582+385+31 '// 0x' markers; placeholder = func_XXXXXXXX in the definition that follows",
+  "strict_modes": 20,
+  "strict_label": "native_play: 20 scenarios (every race mode and front-end path) with no retail fallback and identical run to run (2026-11-12)",
+  "scenarios_total": 20,
+  "scenarios_deterministic": 20,
+  "scenarios_source": "tools/golden/baseline.sh + compare.sh against the golden recording rec_det (2026-11-12): verdict, shots, time trace, DMA / SIF / RW Audio logs and guest RAM equal in all 20 scenarios (140 items)",
+  "races_fps": "~760",
+  "races_fps_label": "in a race on a Windows desktop, in a window",
+  "races_fps_source": "perf1 (docs/release/fact-sheet.md, Platforms: menus ~460 fps, races ~760 fps on a Windows desktop in a window)"
+}

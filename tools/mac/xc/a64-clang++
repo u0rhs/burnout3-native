@@ -1,0 +1,6 @@
+#!/bin/sh
+# aarch64-linux cross clang 21 (Ubuntu debs unpacked into ../ext/a64tc, no install): static binaries for qemu-aarch64.
+WS=${B3_WORKSPACE:-$(dirname "$(dirname "$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir)")")}   # the folder that holds this repo (its main checkout)
+T=${A64TC:-$WS/ext/a64tc}
+export LD_LIBRARY_PATH=$T/usr/lib/x86_64-linux-gnu:$T/usr/lib/llvm-21/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+exec "$T/usr/lib/llvm-21/bin/clang++" --target=aarch64-linux-gnu --sysroot="$T" --gcc-toolchain="$T/usr" -fuse-ld=lld -static -Wno-unused-command-line-argument "$@"

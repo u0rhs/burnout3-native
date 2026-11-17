@@ -1,0 +1,82 @@
+# CI: the unit tests (`make test`) on every push and pull request. No game data, no decomp: the tests that need the
+# disc, the retail executable or a save card skip themselves (CONTRIBUTING.md lists them), and the committed generated
+# code (gen/) is used as it is. The in-game checks (race_check.sh scenarios, the golden compare) need a disc and are
+# run by the maintainers.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (make test)
+    runs-on: ubuntu-latest
+    # Ubuntu 26.04 in a container: the same GCC (15) and Python as the maintainers' machines, and the only Ubuntu
+    # release whose archive has SDL 3 (libsdl3-dev 3.4.2, the version the port builds against). The tests use SDL's
+    # headers only (test_input_keys_sdl, test_inproc, test_photomode); no SDL library is linked.
+    container: ubuntu:26.04
+    timeout-minutes: 60
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git make g++ python3 pkgconf zlib1g-dev libsdl3-dev
+      - uses: actions/checkout@v4
+      - name: Versions
+        run: |
+          g++ --version | head -1
+          python3 --version
+          echo "SDL3 $(pkg-config --modversion sdl3)"
+      - name: make test
+        run: make test -j"$(nproc)" NPROC="$(nproc)"
+      - name: Upload the build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-test-logs
+          path: |
+            build/*.log
+            build/*.txt
+          if-no-files-found: ignore
+
+  macos:
+    name: macOS (make mac-tests)
+    runs-on: macos-latest
+    # The Mac subset of the tests (Makefile MAC_TESTS, what tools/mac/test.sh runs) with Apple clang and Homebrew's
+    # SDL 3. A case-insensitive disk (APFS's default), as players' Macs have: the tests probe for it.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        # GNU make 4 (gmake): the Makefile uses $(file ...), which Apple's make 3.81 lacks
+        run: brew install make sdl3 pkg-config
+      - name: Versions
+        run: |
+          clang++ --version | head -1
+          gmake --version | head -1
+          echo "SDL3 $(pkg-config --modversion sdl3)"
+      - name: make mac-tests
+        run: gmake CXX=clang++ -j"$(sysctl -n hw.ncpu)" NPROC="$(sysctl -n hw.ncpu)" mac-tests
+      - name: Build the launcher
+        # b3launcher compiles and links on macOS (tools/mac/native.sh LAUNCHER=1 builds it beside native_play)
+        run: gmake CXX=clang++ -j"$(sysctl -n hw.ncpu)" build/b3launcher
+      - name: Upload the test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-test-logs
+          path: build/mac-tests/
+          if-no-files-found: ignore
+
+# Windows is not built here: its build is a cross build from WSL with a hash-pinned MSYS2 MinGW toolchain kept in a
+# local folder (tools/native/build_win.sh, docs/BUILDING.md), and the unit tests run on the Linux and macOS hosts.

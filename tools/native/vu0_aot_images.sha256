@@ -1,0 +1,8 @@
+# vu0_aot.py: SHA-256 of each VU0 image's program words (pairs 0..n-1, lower then upper word, little-endian), as
+# load_textbin decodes them from the decomp's assembly/assets/vu/game_<addr>.textbin.bin or from SLUS_210.50's DMA chain
+# at <addr> (--elf). The generated C++ (gen/native/vu0/vu0_aot_gen.cpp, committed) carries these hashes and the
+# translated programs, not the microcode words; Vu0Unit matches the micro memory by them. Fields: address, pairs, sha256.
+004787D0 452 da242c7e206da5f8089f44ad17d5c14cdc4e247746836820e165d61aa0e2a61f
+00479610 327 17052fc0fb77c0dbf2d600646c58860742cee7b9749329fea40bf10b94814538
+0047F6D0 417 533b554f6d0dbbaed2be4ea38294c37254bb1df8bd75318cde6ca13a67a9d2f3
+004839E0 150 72fe9d33a9507ee60af0ae1152bd5b2a8318b49743870238e01baa4b7e413088

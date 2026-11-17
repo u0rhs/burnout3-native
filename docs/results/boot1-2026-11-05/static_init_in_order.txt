@@ -1,0 +1,58 @@
+native_boot: 5336 native functions in the table; ELF $B3_WIN/perf/install/game/SLUS_210.50
+  diff 004B7A6C retail 3D1D89D9 native 00000000
+  diff 004B7DAC retail 3D1D89D9 native 00000000
+  diff 004B9D8C retail 43000000 native 00000000
+  diff 004B9DCC retail 43000000 native 00000000
+  diff 004BB75C retail 43000000 native 00000000
+  diff 004C1BBC retail 43968FCD native 00000000
+  diff 004C1BDC retail 43968FCD native 00000000
+  diff 004C1CDC retail 43968FCD native 00000000
+  diff 004C376C retail 43968FCD native 00000000
+  diff 004C384C retail 3ECCCCCD native 00000000
+  diff 004C387C retail 3F000000 native 00000000
+  diff 004C3FFC retail 43968FCD native 00000000
+  diff 004C426C retail C09CCCCD native 00000000
+  diff 004C495C retail C09CCCCD native 00000000
+  diff 004C498C retail 3F800000 native 00000000
+  diff 004C499C retail BF800000 native 00000000
+  diff 004C4A1C retail C09CCCCD native 00000000
+  diff 004C71AC retail 3F800000 native 00000000
+  diff 004C9BCC retail 3F2AAAAB native 00000000
+  diff 004C9CCC retail 3F800000 native 00000000
+  diff 004C9CDC retail 3F800000 native 00000000
+  diff 004C9CEC retail 3F800000 native 00000000
+  diff 004CA0EC retail 43500000 native 00000000
+  diff 004CA0FC retail 3F800000 native 00000000
+  diff 004CA14C retail 43500000 native 00000000
+  diff 004CA15C retail 3F800000 native 00000000
+  diff 004CACFC retail 3F800000 native 00000000
+  diff 004CAD0C retail 3F800000 native 00000000
+  diff 004CAD1C retail 3F800000 native 00000000
+  diff 004CAD2C retail 3F800000 native 00000000
+  diff 004CAD3C retail 3F780000 native 00000000
+  diff 004CAD4C retail 3F800000 native 00000000
+  diff 004CAD5C retail 3F800000 native 00000000
+  diff 004CAD6C retail 3F800000 native 00000000
+  diff 004CAD7C retail 3F800000 native 00000000
+  diff 004CAD8C retail 3F800000 native 00000000
+  diff 004CAD9C retail 3F800000 native 00000000
+  diff 004CADAC retail 3F800000 native 00000000
+  diff 004CADBC retail 3F800000 native 00000000
+  diff 004CADCC retail 3F800000 native 00000000
+  diff 004CADDC retail 3F800000 native 00000000
+  diff 004D158C retail 4244090F native 00000000
+  diff 004D159C retail 40200000 native 00000000
+  diff 004D15CC retail 3EC00000 native 00000000
+  diff 004D15DC retail 3E000000 native 00000000
+  diff 004D39FC retail 3F800000 native 00000000
+  diff 004D3A0C retail 3ECCCCCD native 00000000
+  diff 004D3A1C retail 3F800000 native 00000000
+  diff 004D3A2C retail 3F800000 native 00000000
+  diff 004D3A3C retail 3F000000 native 00000000
+static init vs retail (all 158 in order, RAM below the stack): DIFF 50 words, first 004B7A6C
+boot: _InitSys: ok (v0 00000000)
+boot: FlushCache(0): ok (v0 00000000)
+boot: static init = func_00100240 (main's first call): ok (v0 00000000)
+boot: exit: program ended: exit(0)
+ran natively: 179 distinct table functions entered through dispatch (1334 calls; game:matched 78, game:nonmatching 97, libm 2, platform 2) [lower bound: direct C++ links not counted]
+stub log: _InitSys (1 call): libkernl data 0x484140-0x485840 / bss 0x4E3240-0x4EAF40 not initialised (retail: timer, alarm, thread, TLB tables)

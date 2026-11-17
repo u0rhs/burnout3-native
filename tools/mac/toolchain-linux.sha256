@@ -1,0 +1,23 @@
+# Linux cross check (tools/mac/cross_check.sh): Ubuntu 26.04 packages fetched with `apt-get download` (signed archive
+# indices) and unpacked with `dpkg-deb -x`, never installed: qemu-user -> ../ext/qemu-user; clang/lld/libclang-rt +
+# the arm64 cross glibc/libstdc++ -> ../ext/a64tc; libc++ 21 + 17 -> ../ext/libcxx. (mac1, 2026-11-07)
+a00c7fdf34c913b799f8d1cc556d3fdd9f9fd695167a17baf86123a9cfaefb22  qemu-user_1%3a10.2.1+ds-1ubuntu3.3_amd64.deb
+792701d9c82e5f237879cc0bda552d8a127ea24b0c7d520e815aff14bd314b03  clang-21_1%3a21.1.8-6ubuntu1_amd64.deb
+53687c45a0a4d9eac7dc1f70b2c098a9b4994f2c12d66518b26fc7f7a09bba49  libclang-cpp21_1%3a21.1.8-6ubuntu1_amd64.deb
+9e758998dcb4aa27abbe64f2dee7bc490d9eb0721afa334a82a2b1bf6c7648f9  libllvm21_1%3a21.1.8-6ubuntu1_amd64.deb
+c7188f593d77017a4ebb6fea76bb4b5180a3e5a1e7b9f0e3dbd5f5abf7e7183e  libclang-common-21-dev_1%3a21.1.8-6ubuntu1_amd64.deb
+1addf72593c6a53aa1ed9e373af88fb625610ffffa050d23fa871cea95f32f4a  libclang-rt-21-dev_1%3a21.1.8-6ubuntu1_amd64.deb
+eb4f4208329364938c91d958fcdc3226db032c88ae3529adce13c4f3983c0603  lld-21_1%3a21.1.8-6ubuntu1_amd64.deb
+43dc16e207bfc1423088240c8ce7b6387acc48a21057b998d8f7bb95dca20253  libc6-arm64-cross_2.43-2ubuntu2cross1_all.deb
+5057ab46f4bf3f4e2aa9f84745f903c26301c541fcce1704bc511aa4aadf7a1a  libc6-dev-arm64-cross_2.43-2ubuntu2cross1_all.deb
+3752af8900d16be48d042b232b0dac75e47411305ecb486b544ac77eb8759ac4  linux-libc-dev-arm64-cross_7.0.0-13.13cross1_all.deb
+b5064dd69c4ca98f319084186530265f0cfbf4b97dabcebab2bb003928562dbf  libgcc-15-dev-arm64-cross_15.2.0-16ubuntu1cross1_all.deb
+3e274aeaf7e731520de6cfe1fae0b9c2b16f382e037892cd3f99f993d20cc903  libgcc-s1-arm64-cross_16-20260322-1ubuntu1cross1_all.deb
+a88bc813f2bb86ca21b57018c405510bd3cc3d93202ae16d44561b619e16d66d  libstdc++-15-dev-arm64-cross_15.2.0-16ubuntu1cross1_all.deb
+8ac715b2727a65ad55e6ffb282e3b44152ed5414fcaf93d314281db2b6091bc3  libstdc++6-arm64-cross_16-20260322-1ubuntu1cross1_all.deb
+6ab03d1a149599f5d6aec9a8712838e348c50878edd1a6cfe5c48bc240fa7cc9  libc++-21-dev_1%3a21.1.8-6ubuntu1_amd64.deb
+115bff1d52f9547e8acf36e651cda351974f16327fe79931406ec2b771d0c61c  libc++abi-21-dev_1%3a21.1.8-6ubuntu1_amd64.deb
+e548e151203722ffcf84946fde7a400755ad0e002232144196f90d7f7abdd76e  libc++1_1%3a22.1.2-1ubuntu1_amd64.deb
+8937a1365813dafbc4c8b57f3bd0fe26b944be4113cc9d920d96d0d192a670e3  libc++abi1_1%3a22.1.2-1ubuntu1_amd64.deb
+61bdc00a884e45ab1bd42b1fbc8a94cf12dedba72897eb298195d24505d0190d  libc++-17-dev_1%3a17.0.6-23ubuntu7_amd64.deb
+f79e50e74c757c03b88bfdb0708f298ef42d2ca4bbd1393cdb3f19498c650de1  libc++abi-17-dev_1%3a17.0.6-23ubuntu7_amd64.deb

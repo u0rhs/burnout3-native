@@ -1,0 +1,948 @@
+# boot1: native_check over port7-disc (946 captures) on the boot1 native set (5,336 entries); the s0native verdict from docs/results/s0native-2026-11-05/check/port7-disc_native_crt.tsv
+entry	name	verdict	detail	s0native_verdict
+0012EF50	PadIsValid__20CB3ControllerMappingFv [game, matched]	PASS		MISSING
+0012F160	func_0012F160 [game, matched]	PASS		PASS
+0012F240	func_0012F240 [game, matched]	PASS		PASS
+0012F330	func_0012F330 [game, matched]	PASS		MISSING
+0012F4E0	func_0012F4E0 [game, matched]	PASS		MISSING
+0012F610	func_0012F610 [game, matched]	PASS		PASS
+0012F6B0	func_0012F6B0 [game, matched]	PASS		MISSING
+0012F720	func_0012F720 [game, matched]	PASS		PASS
+0012F850	func_0012F850 [game, matched]	PASS		PASS
+0012F970	GetBrake__20CB3ControllerMappingFv [game, matched]	PASS		PASS
+0012FA40	GetAccelerator__20CB3ControllerMappingFv [game, matched]	PASS		PASS
+0012FB10	func_0012FB10 [game, matched]	PASS		MISSING
+0012FDA0	func_0012FDA0 [game, matched]	PASS		MISSING
+0012FE90	Update__20CB3ControllerMappingFv [game, matched]	PASS		MISSING
+0012FFA0	Prepare__20CB3ControllerMappingFv [game, matched]	PASS		MISSING
+0012FFB0	Construct__20CB3ControllerMappingFUi [game, matched]	PASS		MISSING
+001308B0	RenderWorld__15CB3DebugManagerFv [game, matched]	PASS		MISSING
+001309C0	Update__15CB3DebugManagerFv [game, matched]	PASS		MISSING
+00130B00	Prepare__15CB3DebugManagerFv [game, matched]	PASS		MISSING
+00135AA0	func_00135AA0 [game, matched]	PASS		MISSING
+001372B0	func_001372B0 [game, draft]	PASS		MISSING
+00137A40	func_00137A40 [game, matched]	PASS		MISSING
+00137C40	func_00137C40 [game, matched]	PASS		MISSING
+00137E00	func_00137E00 [game, matched]	PASS		MISSING
+00137F20	func_00137F20 [game, matched]	PASS		MISSING
+00137FE0	WillPlayerCarUnlock__10CB3ProfileFi [game, matched]	PASS		MISSING
+00138530	func_00138530 [game, draft]	PASS		MISSING
+00139C00	Evaluate__10CB3ProfileFv [game, matched]	MISSING	001383B0 EvaluateTrackUnlocking__10CB3ProfileFv [game, matched]	MISSING
+0013A760	IsTrackUnlocked__10CB3ProfileFUl [game, matched]	PASS		MISSING
+0013B200	func_0013B200 [game, matched]	PASS		PASS
+0013C170	func_0013C170 [game, matched]	PASS		MISSING
+0013C400	func_0013C400 [game, matched]	PASS		MISSING
+0013C620	func_0013C620 [game, matched]	PASS		MISSING
+0013D250	Update__17CAsyncLoadManagerFv [game, draft]	PASS		MISSING
+0013DD30	CalcRiskOfPosition__17CB3AIAvoidanceMapCFPC9CB3AILaneUsQ29GtMathPs26CGtV3dPfPfPf [game, matched]	PASS		PASS
+0013DF60	CheckNoGoZones__17CB3AIAvoidanceMapFv [game, matched]	PASS		PASS
+0013ED50	CheckTraffic__17CB3AIAvoidanceMapFv [game, matched]	PASS		PASS
+0013EED0	CheckRaceCar__17CB3AIAvoidanceMapFv [game, matched]	PASS		PASS
+00140850	Update__17CB3AIAvoidanceMapFb [game, matched]	MISSING	0013E920 CheckCrashingTraffic__17CB3AIAvoidanceMapFv [game, draft]	MISSING
+00141890	Update__14CB3AIAvoidanceFv [game, matched]	PASS		PASS
+001418F0	Prepare__14CB3AIAvoidanceFv [game, matched]	DIFF	6 words: mem 0064F05C 4004122E vs 00000000; mem 0064F06C 4004122E vs 00000000; mem 0064F07C 4004122E vs 00000000; mem 0064F08C 4004122E vs 00000000; mem 0064F4BC 4004122E vs 00000000; mem 0064F4CC 4004122E vs 00000000	DIFF
+00142350	PrepareSound__8CB3AICarFv [game, matched]	PASS		MISSING
+00143860	func_00143860 [game, matched]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+00143A80	StopCrashing__8CB3AICarFv [game, matched]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+00143AD0	Release__8CB3AICarFv [game, matched]	DIFF	62 words: mem 00654C7C 00008FD2 vs 3F800000; mem 00654C8C 00008FD2 vs 3F800000; mem 00654D4C 3F800000 vs 00000000; mem 00654D5C 44E40000 vs 00000000; mem 00654D6C 00008FD2 vs 00000000; mem 00654D8C 3F800000 vs 00000000	MISSING
+00143B10	Update__8CB3AICarFv [game, matched]	MISSING	00152770 Update__10CB3RaceCarFv [game, matched]	MISSING
+00143E80	Construct__8CB3AICarFi [game, matched]	PASS		MISSING
+00143FA0	CalcCatchupSpeed__11CB3AIDriverFf [game, matched]	PASS		MISSING
+00144180	CalcSpeedMatchSpeed__11CB3AIDriverFf [game, draft]	PASS		PASS
+001446B0	GetCurrentMaxSpeed__11CB3AIDriverFv [game, matched]	PASS		PASS
+00144810	GetCurrentMinSpeed__11CB3AIDriverFv [game, matched]	PASS		PASS
+00144970	GenerateProfile__11CB3AIDriverFv [game, draft]	DIFF	32 words: mem 0064F564 40E00000 vs 00000000; mem 0064F568 40E00000 vs 00000000; mem 0064F584 41000000 vs 00000000; mem 0064F588 41000000 vs 00000000; mem 0064F5A4 40C00000 vs 00000000; mem 0064F5A8 40C00000 vs 00000000	MISSING
+00144E70	func_00144E70 [game, draft]	PASS		MISSING
+001459E0	Release__11CB3AIDriverFv [game, matched]	PASS		MISSING
+00145D10	Prepare__11CB3AIDriverFv [game, matched]	MISSING	00125338 qsort [runtime, none]	MISSING
+00145E30	Construct__11CB3AIDriverFv [game, matched]	PASS		MISSING
+00146040	GetFwdFrac__9CB3AILaneCFUsQ29GtMathPs26CGtV3d [game, matched]	PASS		PASS
+00146540	WalkLanesToFindPosition__9CB3AILaneFPUsQ29GtMathPs26CGtV3d [game, matched]	PASS		PASS
+00146770	GetTotalLeftFrac__9CB3AILaneCFUsQ29GtMathPs26CGtV3d [game, draft]	PASS		MISSING
+00147670	GetDistFromStartOfSegment__9CB3AILaneCFQ29GtMathPs26CGtV3dUs [game, draft]	PASS		PASS
+00147CB0	GetAvgRightwardsVector__9CB3AILaneCFUsPQ29GtMathPs26CGtV3d [game, matched]	PASS		PASS
+00147E90	GetAvgLeftwardsVector__9CB3AILaneCFUsPQ29GtMathPs26CGtV3d [game, matched]	PASS		PASS
+00149140	ResetTarget__11CB3AITargetFv [game, matched]	DIFF	2 words: mem 0064EFCC 00000000 vs 3F800000; mem 0064EFFC 437FFD71 vs 3F800000	MISSING
+001495C0	CalculateSplineVectors__17CB3AITargetSplineFv [game, matched]	PASS		MISSING
+0014A1C0	GetDesiredDirection__11CB3AITargetCFPQ29GtMathPs26CGtV3d [game, matched]	PASS		PASS
+0014A290	LanesAreSideBySide__11CB3AITargetCFPC9CB3AILanePC9CB3AILaneUsUs [game, matched]	PASS		PASS
+0014A940	GetCurrentFwdFrac__11CB3AITargetCFv [game, matched]	PASS		PASS
+0014BB80	CalculateNextTargetPosition__11CB3AITargetFv [game, draft]	MISSING	0014A980 CalculateEdgePosition__11CB3AITargetFUsUsiPQ29GtMathPs26CGtV3dPUcPUs [game, draft]	MISSING
+0014C5E0	FillInTargetPosition__11CB3AITargetFv [game, draft]	PASS		PASS
+0014D280	func_0014D280 [game, matched]	PASS		MISSING
+0014D410	Release__11CB3AITargetFv [game, matched]	PASS		MISSING
+0014D420	Update__11CB3AITargetFv [game, draft]	MISSING	0014CA20 UpdateCurrentSegment__11CB3AITargetFv [game, draft]	MISSING
+0014DC70	Prepare__11CB3AITargetFv [game, matched]	DIFF	28 words: mem 0064EDBC 001124C0 vs 3F800000; mem 0064EDCC 001124C0 vs 3F800000; mem 0064EDDC 001124C0 vs 3F800000; mem 0064EDEC 001124C0 vs 3F800000; mem 0064EDFC 001124C0 vs 3F800000; mem 0064EE0C 001124C0 vs 3F800000	MISSING
+0014DD40	Construct__11CB3AITargetFv [game, matched]	PASS		MISSING
+0014DDE0	SetInfiniteBoost__7CB3BurnFb [game, matched]	PASS		PASS
+0014DEB0	StopBurn__7CB3BurnFv [game, matched]	PASS		MISSING
+0014DEF0	StartBurn__7CB3BurnFP17CB3RaceCarPhysics [game, matched]	PASS		MISSING
+0014E060	RemoveSegment__7CB3BurnFv [game, matched]	PASS		PASS
+0014E250	RemoveBurn__7CB3BurnFf [game, matched]	PASS		PASS
+0014E2D0	AddBurn__7CB3BurnFf [game, matched]	PASS		MISSING
+0014E3A0	Update__7CB3BurnFP10CB3RaceCar [game, matched]	PASS		MISSING
+0014E500	Prepare__7CB3BurnF15EB3BoostBarSize [game, matched]	PASS		MISSING
+0014E8C0	Draw__11CB3GameDataFi [game, matched]	PASS		MISSING
+0014EBD0	SetGameDataFileName__11CB3GameDataFPc [game, matched]	PASS		PASS
+0014EF60	Update__11CB3GameDataFv [game, matched]	PASS		PASS
+0014FF70	Construct__11CB3GameDataFv [game, matched]	PASS		MISSING
+00150240	Construct__13CB3NetworkCarFi [game, matched]	PASS		MISSING
+00150280	func_00150280 [game, matched]	DIFF	3 words: mem 0064ED7C 437FFD71 vs 00000000; mem 0064EFCC 00000000 vs 3F800000; mem 0064EFFC 437FFD71 vs 3F800000	MISSING
+00150300	func_00150300 [game, matched]	PASS		PASS
+00150460	func_00150460 [game, matched]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+00150640	StopCrashing__12CB3PlayerCarFv [game, matched]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+001507D0	StartCrashing__12CB3PlayerCarFP17CB3CrashStartInfo [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+00150820	PrepareSound__12CB3PlayerCarFv [game, matched]	MISSING	002AFC10 RwaSPU2WaveRAMGetFree [rwa, none]	MISSING
+001508C0	func_001508C0 [game, matched]	MISSING	00152770 Update__10CB3RaceCarFv [game, matched]	MISSING
+00150BE0	Prepare__12CB3PlayerCarFv [game, matched]	MISSING	00152AF0 Prepare__10CB3RaceCarFv [game, draft]	MISSING
+00150CB0	Construct__12CB3PlayerCarFi [game, matched]	PASS		MISSING
+00151160	RepositionCarInLane__10CB3RaceCarFv [game, draft]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+001515E0	CalcRaceDistFromRaceCars__10CB3RaceCarFv [game, matched]	PASS		PASS
+00151A40	Draw__10CB3RaceCarFv [game, matched]	MISSING	00221A70 AccessTexture__15CGtTextureCacheFP10CGtTexturef29EGtTextureCachePS2_FilterModebb [game, draft]	MISSING
+00151DC0	UpdateAggressiveReaction__10CB3RaceCarFv [game, draft]	PASS		PASS
+00154350	Draw__15CB3RacePositionFi [game, draft]	MISSING	00217E70 func_00217E70 [game, matched]	MISSING
+001549F0	func_001549F0 [game, matched]	PASS		MISSING
+00154A30	Prepare__15CB3RacePositionFv [game, matched]	PASS		MISSING
+00155020	NextFrame__15CB3ReplaySystemFP16CDrivingControlsb [game, matched]	PASS		MISSING
+001553F0	OnTakeDown__8CB3ScoreFP10CB3RaceCar [game, matched]	MISSING	003856D0 Start__17CGtSoundRealVoiceFPC19CGtSoundVoiceParams [game, matched]	MISSING
+00155910	OnTradePaint__8CB3ScoreFP17CB3RaceCarPhysicsP17CB3RaceCarPhysicsfb [game, draft]	PASS		MISSING
+00156260	AddScore__8CB3ScoreFii [game, matched]	PASS		MISSING
+00156320	CalculateSlamType__8CB3ScoreFP17CB3RaceCarPhysicsP17CB3RaceCarPhysicsf [game, draft]	PASS		PASS
+00156EF0	HandlePropHit__8CB3ScoreFv [game, matched]	PASS		MISSING
+00157180	HandleCrashReset__8CB3ScoreFv [game, matched]	PASS		MISSING
+00157260	HandleCrashStart__8CB3ScoreFP17CB3CrashStartInfo [game, matched]	PASS		MISSING
+001576B0	func_001576B0 [game, draft]	PASS		PASS
+001578E0	CalculateScoreForTakedowns__8CB3ScoreFv [game, matched]	PASS		PASS
+00157B00	CalculateScoreForDrift__8CB3ScoreFf [game, matched]	PASS		PASS
+00157D50	CalculateScoreForOncoming__8CB3ScoreFf [game, matched]	PASS		PASS
+00157FA0	CalculateScoreForAir__8CB3ScoreFf [game, matched]	PASS		PASS
+00158EB0	DetectAndScoreTailgating__8CB3ScoreFv [game, draft]	PASS		PASS
+00159390	DetectAndScoreCrashEscape__8CB3ScoreFv [game, draft]	PASS		PASS
+001598F0	DetectAndScoreNearMiss__8CB3ScoreFv [game, matched]	PASS		PASS
+0015CAC0	Construct__8CB3ScoreFv [game, matched]	PASS		MISSING
+0015E650	Prepare__22CB3SplitTimeCheckpointFP22CB3PlanarTriggerStruct [game, matched]	PASS		MISSING
+0015E710	Construct__22CB3SplitTimeCheckpointFv [game, matched]	PASS		MISSING
+0015E7C0	Prepare__18CB3StartFinishLineFP22CB3PlanarTriggerStructb [game, matched]	PASS		MISSING
+0015E890	Construct__18CB3StartFinishLineFv [game, matched]	PASS		MISSING
+0015F0D0	FixUp__35CB3StreamedTrackLODAndCollisionDataFi [game, matched]	PASS		MISSING
+00160A60	GetParamInfoFromSplitter__15CB3TrafficParamFP14CB3TrafficLanei [game, matched]	PASS		PASS
+00160C30	GetParamInfoFromValve__15CB3TrafficParamFP14CB3TrafficLanebb [game, matched]	PASS		PASS
+00160F10	FindLaneChange__15CB3TrafficParamFPP14CB3TrafficLanePfPfbb [game, matched]	PASS		MISSING
+00161B20	CalculateTargetParamMatrix__15CB3TrafficParamFv [game, matched]	MISSING	001618C0 func_001618C0 [game, draft]	MISSING
+00162BE0	func_00162BE0 [game, matched]	PASS		MISSING
+00162BF0	UpdateNodes__15CB3TrafficParamFv [game, matched]	PASS		PASS
+00162E80	Update__15CB3TrafficParamFb [game, matched]	MISSING	001618C0 func_001618C0 [game, draft]	MISSING
+001631B0	Prepare__15CB3TrafficParamFv [game, matched]	PASS		MISSING
+001631E0	func_001631E0 [game, matched]	PASS		MISSING
+00163700	UseNextTriggerData__16CB3TrafficSystemFf [game, draft]	PASS		MISSING
+00163DD0	AddToDeadTrafficParamList__16CB3TrafficSystemFP15CB3TrafficParam [game, matched]	PASS		MISSING
+00163E90	func_00163E90 [game, matched]	MISSING	001B84A0 RemoveTrafficVehicle__17CB3PhysicsManagerFP17CB3TrafficVehicle [game, matched]	MISSING
+001640A0	DoFiller__16CB3TrafficSystemFP22CB3TrafficFillerStructP18CB3StartFinishLineii [game, draft]	PASS		MISSING
+001645E0	UpdateHulls__16CB3TrafficSystemFifi [game, draft]	MISSING	001B84A0 RemoveTrafficVehicle__17CB3PhysicsManagerFP17CB3TrafficVehicle [game, matched]	MISSING
+00166160	Update__16CB3TrafficSystemFv [game, draft]	MISSING	001618C0 func_001618C0 [game, draft]	MISSING
+00167B90	Construct__16CB3TrafficSystemFv [game, matched]	DIFF	254 words: mem 00539C7C 00000000 vs 3F800000; mem 00539DFC 00000000 vs 3F800000; mem 00539F7C 00000000 vs 3F800000; mem 0053A0FC 00000000 vs 3F800000; mem 0053A27C 00000000 vs 3F800000; mem 0053A3FC 00000000 vs 3F800000	MISSING
+00167D10	func_00167D10 [game, matched]	PASS		MISSING
+001710E0	ApplyNiceOncomingBehaviour__17CB3TrafficVehicleFP21CB3TrafficRaceCarInfoif [game, matched]	MISSING	001618C0 func_001618C0 [game, draft]	MISSING
+001717D0	DoTrafficBehaviour__17CB3TrafficVehicleFP21CB3TrafficRaceCarInfoi [game, matched]	PASS		PASS
+00171A00	ChangeLane__17CB3TrafficVehicleFP14CB3TrafficLanef [game, matched]	MISSING	001618C0 func_001618C0 [game, draft]	MISSING
+00171E90	ResetMemberVariables__17CB3TrafficVehicleFv [game, matched]	DIFF	1 words: mem 00539C7C 00000000 vs 3F800000	DIFF
+00172070	UpdateTrailerPosition__17CB3TrafficVehicleFv [game, draft]	PASS		PASS
+00172860	InitaliseTrailerPosition__17CB3TrafficVehicleFv [game, draft]	MISSING	00274C90 IntersectLineTriangle__14GtIntersectionFRC7CGtLineQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dPfPfPf [game, matched]	MISSING
+00173950	InitalisePosition__17CB3TrafficVehicleFv [game, draft]	MISSING	00274C90 IntersectLineTriangle__14GtIntersectionFRC7CGtLineQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dPfPfPf [game, matched]	MISSING
+00173D30	func_00173D30 [game, matched]	MISSING	001B84A0 RemoveTrafficVehicle__17CB3PhysicsManagerFP17CB3TrafficVehicle [game, matched]	MISSING
+001864F0	Create__17CB3TrafficVehicleF25ETrafficVehicleCategoriesUc [game, draft]	PASS		PASS
+001996D0	Prepare__17CB3TrafficVehicleFv [game, matched]	PASS		PASS
+00199710	Construct__17CB3TrafficVehicleFv [game, matched]	DIFF	1 words: mem 00539C7C 00000000 vs 3F800000	MISSING
+00199DC0	UpdateSound__8CB3WorldFv [game, matched]	MISSING	002B2E80 _rwaSPU2OutputSetEnvironment [rwa, none]	MISSING
+00199E00	SetTrackID__8CB3WorldFUl [game, matched]	PASS		PASS
+0019B6E0	Render__15CB3WrongWayWallFv [game, matched]	PASS		PASS
+0019B770	func_0019B770 [game, draft]	PASS		MISSING
+0019D440	Prepare__15CB3WrongWayWallFv [game, matched]	PASS		PASS
+0019D5E0	CalculateCatchup__15CB3AIArbitratorFv [game, matched]	PASS		MISSING
+0019D6A0	Release__15CB3AIArbitratorFv [game, matched]	PASS		MISSING
+0019D6D0	Update__15CB3AIArbitratorFb [game, matched]	MISSING	0014CA20 UpdateCurrentSegment__11CB3AITargetFv [game, draft]	MISSING
+0019DC40	Prepare__15CB3AIArbitratorFv [game, matched]	DIFF	35 words: mem 0064EDBC 001124C0 vs 3F800000; mem 0064EDCC 001124C0 vs 3F800000; mem 0064EDDC 001124C0 vs 3F800000; mem 0064EDEC 001124C0 vs 3F800000; mem 0064EDFC 001124C0 vs 3F800000; mem 0064EE0C 001124C0 vs 3F800000	MISSING
+0019DCB0	Construct__15CB3AIArbitratorFv [game, matched]	PASS		MISSING
+0019E8C0	SetViewportsSinglePlayer__22CB3GraphicsManagerBaseFv [game, matched]	MISSING	001E76C8 RwRasterSubRaster [rw, none]	MISSING
+0019E990	func_0019E990 [game, matched]	MISSING	001E76C8 RwRasterSubRaster [rw, none]	MISSING
+0019EA30	CloseViewport__22CB3GraphicsManagerBaseFv [game, matched]	MISSING	001E1FD0 RwCameraEndUpdate [rw, none]	MISSING
+0019EA70	AttachCameraToViewport__22CB3GraphicsManagerBaseF20EB3ViewportSelectionP9CGtCamera [game, matched]	PASS		MISSING
+0019EAC0	UpdateViewport__22CB3GraphicsManagerBaseF20EB3ViewportSelection [game, matched]	MISSING	001DA860 RwMatrixUpdate [rw, none]	MISSING
+0019EB60	Update__22CB3GraphicsManagerBaseFv [game, matched]	PASS		PASS
+0019EBF0	Prepare__22CB3GraphicsManagerBaseFv [game, matched]	PASS		MISSING
+0019F4B0	UpdateTransition__15CB3HUDComponentFfb8EHUDMode8EHUDMode [game, matched]	PASS		MISSING
+001A00B0	SetHUDMode__6CB3HUDF8EHUDMode [game, matched]	PASS		MISSING
+001A03A0	Update__6CB3HUDFf [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+001A0560	func_001A0560 [game, matched]	MISSING	001D51C0 Clean__10CGt2dFrameFv [game, matched]	MISSING
+001A0790	Render__13CB3HUDManagerFv [game, matched]	MISSING	001D4780 func_001D4780 [game, matched]	MISSING
+001A08D0	func_001A08D0 [game, matched]	PASS		MISSING
+001A0930	Update__13CB3HUDManagerFf [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+001A09A0	PrepareCrashComponents__13CB3HUDManagerFv [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+001A2260	Update__11CB3HUDScoreFf [game, matched]	MISSING	001A2700 UpdateSmallMessage__11CB3HUDScoreFf [game, draft]	MISSING
+001A37A0	Prepare__11CB3HUDScoreFi9EHUDAlignii [game, matched]	DIFF	1 words: mem 0066AE00 00010101 vs 00010100	MISSING
+001A3F40	UpdateTransition__14CB3HUDBoostBarFfb8EHUDMode8EHUDMode [game, matched]	PASS		MISSING
+001A4150	func_001A4150 [game, matched]	MISSING	001A45F0 UpdateBoostMessage__14CB3HUDBoostBarFQ214CB3HUDBoostBar12EMessageTypePC16CB3ScoreCategoryff [game, matched]	MISSING
+001A41B0	MessagesUpdate__14CB3HUDBoostBarFf [game, draft]	MISSING	001A45F0 UpdateBoostMessage__14CB3HUDBoostBarFQ214CB3HUDBoostBar12EMessageTypePC16CB3ScoreCategoryff [game, matched]	MISSING
+001A4900	BarUpdate__14CB3HUDBoostBarFf [game, draft]	PASS		MISSING
+001A8540	Construct__17CB3NetworkMessageFv [game, matched]	PASS		MISSING
+001A8610	func_001A8610 [game, matched]	PASS		MISSING
+001AA1A0	func_001AA1A0 [game, draft]	PASS		MISSING
+001AD380	func_001AD380 [game, draft]	PASS		PASS
+001AE500	StartTrafficCrashing__22CB3CrashActionDirectorFP17CB3TrafficPhysicsi [game, matched]	PASS		MISSING
+001B0E10	DebugCrashEffect__22CB3CrashActionDirectorFP17CB3RaceCarPhysicsP17CGtAxisAlignedBoxPQ29GtMathPs212CGtMatrix3x4Ui [game, matched]	PASS		PASS
+001B1CC0	Update__22CB3CrashActionDirectorFf [game, draft]	PASS		MISSING
+001B2A40	StopRaceCarBodyPartsCrashing__17CB3PhysicsManagerFi [game, draft]	PASS		MISSING
+001B3F90	ClearCrashingBodies__17CB3PhysicsManagerFi [game, matched]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+001B41D0	CrashTrafficBody__17CB3PhysicsManagerFP13CB3ActiveBodyiibbb [game, matched]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+001B4530	DynamisePropBody__17CB3PhysicsManagerFP13CB3ActiveBody [game, draft]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+001B85F0	AddTrafficVehicle__17CB3PhysicsManagerFP17CB3TrafficVehicle [game, matched]	PASS		MISSING
+001B86A0	func_001B86A0 [game, matched]	DIFF	1 words: mem 00631ADC 3EB28E03 vs 3F800000	MISSING
+001B89D0	AddRaceCar__17CB3PhysicsManagerFP10CB3RaceCari [game, matched]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+001B8EF0	PostEffectsUpdate__17CB3PhysicsManagerFv [game, matched]	MISSING	001B7F30 UpdateActiveBodyList__17CB3PhysicsManagerFv [game, draft]	MISSING
+001BA280	Construct__17CB3PhysicsManagerFv [game, matched]	MISSING	002524E0 Construct__24CB3VehiclePhysicsAttribsFv [game, matched]	MISSING
+001BA950	GetInteractionTypeAgainst__13CB3ActiveBodyCFP13CB3ActiveBody [game, matched]	PASS		PASS
+001BAA30	GetNetworkCollBodyType__13CB3ActiveBodyCFv [game, matched]	PASS		PASS
+001BAD40	StopCrashing__19CB3PlayerCarPhysicsFv [game, matched]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+001BB250	StartCrashing__19CB3PlayerCarPhysicsFiP17CB3CrashStartInfo [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+001BD020	GetDrivingControls__19CB3PlayerCarPhysicsFv [game, matched]	MISSING	001C0F00 GetDrivingControls__17CB3RaceCarPhysicsFv [game, draft]	MISSING
+001BDE50	Prepare__19CB3PlayerCarPhysicsFP10CB3RaceCar [game, matched]	DIFF	43 words: mem 0057BDA4 00000000 vs 0013008C; mem 0057BDA8 00000000 vs 00130000; mem 0057BDAC 00000000 vs 0012E64C; mem 0057C80C 00000000 vs 3F800000; mem 0057C81C 00000000 vs 3F800000; mem 0057C82C 00000000 vs 3F800000	MISSING
+001BDF10	Construct__19CB3PlayerCarPhysicsFv [game, matched]	PASS		MISSING
+001BDF60	CollideWithWorld__14CB3PropPhysicsFv [game, draft]	MISSING	00301B00 func_00301B00 [game, matched]	MISSING
+001BE250	Update__14CB3PropPhysicsFf [game, draft]	DIFF	3 words: mem 0062296C 3ECD66EC vs 00000000; mem 0062299C 40339D5C vs 00000000; mem 006229AC 3EBD5DFD vs 00000000	DIFF
+001BE3C0	func_001BE3C0 [game, draft]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+001BE8F0	Construct__14CB3PropPhysicsFv [game, matched]	DIFF	3 words: mem 006228BC 00000000 vs 6C0103F5; mem 006228CC 00000000 vs 6C0103F5; mem 006228DC 00000000 vs 6C0103F5	MISSING
+001BF030	DoPhysicalEffects__17CB3RaceCarPhysicsF19EB3CollisionSurface [game, matched]	PASS		PASS
+001BFC70	StartCrashing__17CB3RaceCarPhysicsFiP17CB3CrashStartInfo [game, matched]	PASS		MISSING
+001BFE80	ResetOnTrack__17CB3RaceCarPhysicsFbP17CB3RaceCarPhysics [game, draft]	ERROR	b3host::guest_address: host pointer 0x7ffef1ba6478 is not in guest memory (RAM 0x7506083be010 + 2000000, scratchpad 0x63c461651f00)	MISSING
+001C8870	UpdateHingedPart__17CB3VehiclePhysicsFif [game, draft]	PASS		PASS
+001CAD30	UpdateCrashSteering__17CB3VehiclePhysicsFf [game, draft]	PASS		PASS
+001CC580	FireAirRamWithDirection__17CB3VehiclePhysicsFUifQ29GtMathPs26CGtV3db [game, matched]	MISSING	0027B4C0 AirRam__20CB3SoundCrashManagerFQ29GtMathPs26CGtV3dfb [game, matched]	MISSING
+001CFC00	Prepare__17CB3VehiclePhysicsFv [game, matched]	DIFF	5 words: mem 00591CBC 00000000 vs 3F800000; mem 00591CCC 00000000 vs 3F800000; mem 00591CDC 00000000 vs 3F800000; mem 00591E4C 00000000 vs 3F800000; mem 00591E5C 00000000 vs 3F800000	DIFF
+001D0930	func_001D0930 [game, draft]	PASS		PASS
+001D0A90	func_001D0A90 [game, matched]	PASS		PASS
+001D0B50	func_001D0B50 [game, matched]	PASS		MISSING
+001D0E00	func_001D0E00 [game, matched]	DIFF	9 words: mem 0058720C 43963231 vs BEB28D99; mem 0058721C 43963231 vs BEB28D99; mem 0058722C 43963231 vs BEB28D99; mem 0058723C 43963231 vs BEB28D99; mem 0058724C 43963231 vs BEB28D99; mem 0058727C 43963231 vs 00000000	MISSING
+001D0F50	func_001D0F50 [game, matched]	PASS		MISSING
+001D1670	UpdateStickySpeedMatch__15CB3AICarPhysicsFv [game, matched]	MISSING	001CB780 IsVehicleTouchingHorizontalSurface__17CB3VehiclePhysicsFbf [game, matched]	MISSING
+001D1FD0	func_001D1FD0 [game, draft]	PASS		MISSING
+001D2790	GetDrivingControls__15CB3AICarPhysicsFv [game, matched]	MISSING	001C0F00 GetDrivingControls__17CB3RaceCarPhysicsFv [game, draft]	MISSING
+001D2960	func_001D2960 [game, draft]	MISSING	001D1130 func_001D1130 [game, matched]	MISSING
+001D2C10	Prepare__15CB3AICarPhysicsFP10CB3RaceCar [game, matched]	DIFF	43 words: mem 0057BDA4 00000000 vs 0013008C; mem 0057BDA8 00000000 vs 00130000; mem 0057BDAC 00000000 vs 0012E64C; mem 0057C80C 00000000 vs 3F800000; mem 0057C81C 00000000 vs 3F800000; mem 0057C82C 00000000 vs 3F800000	MISSING
+001D2D10	Construct__15CB3AICarPhysicsFv [game, matched]	PASS		MISSING
+001D3050	Sync__13CGtFilePS2DVDFi [game, matched]	PASS		PASS
+001D30B0	SetPosition__13CGtFilePS2DVDFl15EFileMoveMethod [game, matched]	MISSING	0010BE60 WaitSema [sce, none]	MISSING
+001D3280	Read__13CGtFilePS2DVDFPvUi [game, matched]	MISSING	0010C718 SyncDCache [sce, none]	MISSING
+001D3670	Close__13CGtFilePS2DVDFv [game, matched]	MISSING	0010BE60 WaitSema [sce, none]	MISSING
+001D36E0	Open__13CGtFilePS2DVDFP13CGTFileSystemPCcUi [game, matched]	MISSING	00212B80 GetFileNameFromDeviceName__13CGTFileSystemFPCc [game, draft]	MISSING
+001D3EE0	SetFrontendFrameRate__7CB3GameFb [game, matched]	MISSING	001F4290 func_001F4290 [rw, none]	MISSING
+001D45B0	ConstructHardware__7CB3GameFv [game, matched]	ORACLE	r5900_mini: unsupported COP0 at pc 0x00114EC4 (insn 0x42000038)	MISSING
+001D4680	func_001D4680 [game, matched]	PASS		MISSING
+001D5CE0	func_001D5CE0 [game, matched]	PASS		MISSING
+001D5D60	ConstructChild__10CGt2dFrameFv [game, matched]	PASS		MISSING
+00211C30	SetSubRaster__11CGtViewportFP11CGtViewportP6RwRect [game, matched]	MISSING	001E76C8 RwRasterSubRaster [rw, none]	MISSING
+00211CC0	SetFOV__11CGtViewportFf [game, matched]	MISSING	001E2110 RwCameraSetViewWindow [rw, none]	MISSING
+00211DD0	Construct__11CGtViewportFiii [game, matched]	MISSING	001E1D00 RwCameraCreate [rw, none]	MISSING
+00213F00	func_00213F00 [game, matched]	PASS		PASS
+00214050	func_00214050 [game, matched]	MISSING	00215A10 scePad2GetState [sce, none]	MISSING
+00214380	func_00214380 [game, matched]	PASS		MISSING
+002144B0	Prepare__15CB3InputManagerFv [game, matched]	MISSING	00443CC8 lgDevEnumerate [lg, none]	MISSING
+00214560	Construct__15CB3InputManagerFv [game, matched]	MISSING	00215F70 sceDbcInit [sce, none]	MISSING
+00214610	UpdatePort__22CGtInputManagerPS2Pad2F15EGtPS2InputPort [game, matched]	MISSING	00215A10 scePad2GetState [sce, none]	MISSING
+00214870	BindToPort__22CGtInputManagerPS2Pad2FP21CGtInputDevicePS2Pad215EGtPS2InputPort [game, matched]	PASS		MISSING
+00214A80	Update__22CGtInputManagerPS2Pad2Fv [game, matched]	MISSING	00215A10 scePad2GetState [sce, none]	MISSING
+00214B70	Construct__22CGtInputManagerPS2Pad2Fb [game, matched]	MISSING	00215F70 sceDbcInit [sce, none]	MISSING
+00214CD0	Update__27CGtInputDevicePS2DualShock2Fv [game, matched]	MISSING	00215B50 scePad2GetButtonInfo [sce, none]	MISSING
+00215620	Prepare__27CGtInputDevicePS2DualShock2Fv [game, matched]	PASS		MISSING
+00217070	UpdateVibration__26CGtInputDevicePS2DualShockFv [game, matched]	PASS		MISSING
+00217610	StateEnter__6CGtFSMFP8CGtStatePv [game, matched]	PASS		PASS
+00217650	StateLeave__6CGtFSMFP8CGtStatePv [game, matched]	PASS		PASS
+002176D0	ApplyEvent__6CGtFSMFUiPv [game, matched]	MISSING	00212E30 _FormatString__10CGtUnicodeFPUsPCUsPCUsPCUsPCUsPCUs [game, none]	MISSING
+00217710	Update__6CGtFSMFv [game, matched]	PASS		PASS
+002177C0	Construct__6CGtFSMFPvPC14CGtStateOffsetP8CGtTimer [game, matched]	MISSING	003999E0 func_003999E0 [game, matched]	MISSING
+0021A5F0	Update__12CB3MenuInputFfP20CB3ControllerMapping [game, matched]	PASS		MISSING
+0021AD60	func_0021AD60 [game, matched]	PASS		PASS
+0021B010	Release__9CGtCameraFv [game, matched]	PASS		PASS
+0021B440	Update__9CGtCameraFf [game, matched]	PASS		PASS
+0021B4E0	func_0021B4E0 [game, matched]	PASS		MISSING
+0021B5E0	func_0021B5E0 [game, matched]	PASS		MISSING
+0021B830	Prepare__Q27GtComms16CGtCommsToolBaseFPCcP13CGTFileSystemPCc [game, matched]	MISSING	00212B80 GetFileNameFromDeviceName__13CGTFileSystemFPCc [game, draft]	MISSING
+0021C010	func_0021C010 [game, matched]	MISSING	001FF798 RpSkyRenderStateGet [rw, none]	MISSING
+0021C120	RenderAfterSpecular__16CB3StreamedTrackFv [game, matched]	MISSING	001FF798 RpSkyRenderStateGet [rw, none]	MISSING
+0021C590	RenderAfterVehicles__16CB3StreamedTrackFv [game, matched]	MISSING	001FF798 RpSkyRenderStateGet [rw, none]	MISSING
+0021D080	DoUnitFrustumTesting__16CB3StreamedTrackFv [game, matched]	MISSING	00274AF0 IntersectFrustum__14GtIntersectionFRC10CGtFrustumRC14CGtExtrudedBox [game, matched]	MISSING
+0021D550	RenderWater__14CB3StaticTrackFfRC17CB3BackdropObjectPC17CB3BackdropObject [game, matched]	MISSING	00274BC0 IntersectFrustum__14GtIntersectionFRC10CGtFrustumRC16CGtOrthogonalBox [game, matched]	MISSING
+0021D770	RenderStaticObject__14CB3StaticTrackFRC20CB3StaticTrackObject [game, matched]	MISSING	00274BC0 IntersectFrustum__14GtIntersectionFRC10CGtFrustumRC16CGtOrthogonalBox [game, matched]	MISSING
+0021DDD0	EndRender__18CB3SkyDomeRendererFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+0021E100	Prepare__18CB3SkyDomeRendererFP10CGtTextureP10CGtTextureP10CGtTexture [game, matched]	MISSING	00226A90 Copy8BitTextureAsPSMT8H__18CB3GraphicsManagerFP10CGtTextureUiQ218CB3GraphicsManager7EClutIDUi [game, none]	MISSING
+0021E3D0	Construct__18CB3SkyDomeRendererFv [game, matched]	MISSING	0021E490 Construct__Q218CB3SkyDomeRenderer26CB3SkyDomeHemisphereParamsFQ222CB3SkyDomeRendererBase13ESkyComponent [game, matched]	MISSING
+0021FF60	SetTexture__18CB3VehicleRendererFP10CGtTexturei [game, matched]	MISSING	00221A70 AccessTexture__15CGtTextureCacheFP10CGtTexturef29EGtTextureCachePS2_FilterModebb [game, draft]	MISSING
+00220170	FrustumTestDamagedVehicle__18CB3VehicleRendererFP25CB3VehicleEssentialParamsP16CB3VehicleParams [game, matched]	PASS		PASS
+00220270	FrustumTestUndamagedVehicle__18CB3VehicleRendererFP25CB3VehicleEssentialParams [game, matched]	PASS		PASS
+002204C0	EndVehicleRendering__18CB3VehicleRendererFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+00220B70	FixUpVehicleData__18CB3VehicleRendererFP14CB3VehicleData [game, matched]	MISSING	00220DB0 FixUp__21CB3VehicleLODDataBaseFv [game, matched]	MISSING
+00221580	ForceBufferSwap__15CGtTextureCacheFv [game, matched]	PASS		MISSING
+00221850	AddRasterToCurrentDoubleBuffer__15CGtTextureCacheFP8RwRaster [game, matched]	MISSING	001F3A10 _rwDMAAddImageUpload [rw, none]	MISSING
+002220E0	Destruct__15CGtTextureCacheFv [game, matched]	PASS		MISSING
+00222260	func_00222260 [game, matched]	MISSING	0020DFB0 RpSkyTexCacheFlush [rw, none]	MISSING
+002222E0	func_002222E0 [game, matched]	MISSING	001F3A10 _rwDMAAddImageUpload [rw, none]	MISSING
+00222CA0	func_00222CA0 [game, draft]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002253C0	SendRegistersToGS__13CB3CameraDataCFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002260D0	CopyTextureAs32Bit__18CB3GraphicsManagerFP10CGtTextureUiUi [game, matched]	MISSING	001E1FB0 RwCameraBeginUpdate [rw, none]	MISSING
+002270B0	PresentDrawBuffer__18CB3GraphicsManagerFv [game, matched]	MISSING	001E2028 RwCameraShowRaster [rw, none]	MISSING
+00227360	OpenViewport__18CB3GraphicsManagerF20EB3ViewportSelection [game, matched]	MISSING	001E1FB0 RwCameraBeginUpdate [rw, none]	MISSING
+00228070	Prepare__18CB3GraphicsManagerFv [game, matched]	MISSING	00226A90 Copy8BitTextureAsPSMT8H__18CB3GraphicsManagerFP10CGtTextureUiQ218CB3GraphicsManager7EClutIDUi [game, none]	MISSING
+0022B8E0	func_0022B8E0 [game, matched]	PASS		MISSING
+0022BA70	ResetDeadInputTime__15CB3InputManagerFSc [game, matched]	PASS		MISSING
+0022BB80	GenericUpdate__15CB3InputManagerFv [game, matched]	PASS		MISSING
+0022BBF0	GenericPrepare__15CB3InputManagerFv [game, matched]	PASS		MISSING
+0022BC60	GenericConstruct__15CB3InputManagerFv [game, matched]	PASS		MISSING
+0022BE00	func_0022BE00 [game, matched]	PASS		MISSING
+0022BEE0	func_0022BEE0 [game, matched]	PASS		PASS
+0022C050	func_0022C050 [game, matched]	PASS		MISSING
+0022C2F0	func_0022C2F0 [game, matched]	PASS		MISSING
+0022C9C0	GetMenuKeyboardCapsLock__15CB3InputManagerFSc [game, matched]	PASS		MISSING
+0022CA40	GetMenuKeyboardShift__15CB3InputManagerFSc [game, matched]	PASS		MISSING
+0022CB40	GetStartButton__15CB3InputManagerFbSc [game, matched]	PASS		MISSING
+0022CCE0	GetMenuBuddies__15CB3InputManagerFSc [game, matched]	PASS		MISSING
+0022CD60	GetMenuRight__15CB3InputManagerFSc [game, matched]	PASS		MISSING
+0022CDE0	GetMenuLeft__15CB3InputManagerFSc [game, matched]	PASS		MISSING
+0022CE60	GetMenuDown__15CB3InputManagerFSc [game, matched]	PASS		MISSING
+0022CEE0	GetMenuUp__15CB3InputManagerFSc [game, matched]	PASS		MISSING
+0022CF60	GetMenuBack__15CB3InputManagerFSc [game, matched]	PASS		MISSING
+0022D0A0	AreLockedPlayersConnected__15CB3InputManagerFv [game, matched]	PASS		PASS
+0022D1E0	func_0022D1E0 [game, matched]	PASS		MISSING
+0022D2B0	func_0022D2B0 [game, matched]	PASS		MISSING
+0022D330	func_0022D330 [game, matched]	PASS		PASS
+0022E200	func_0022E200 [game, draft]	MISSING	0010BD40 SleepThread [sce, none]	MISSING
+0022E6A0	SetNetworkConfigFileLocation__12CGtPS2LibNetFPCc [game, matched]	PASS		PASS
+0022E6C0	func_0022E6C0 [game, matched]	PASS		PASS
+0022F800	func_0022F800 [game, matched]	MISSING	00114E60 func_00114E60 [sce, none]	MISSING
+00230570	func_00230570 [game, matched]	PASS		PASS
+00234C40	func_00234C40 [game, matched]	PASS		MISSING
+00236EA0	func_00236EA0 [game, matched]	PASS		MISSING
+00237090	func_00237090 [game, matched]	MISSING	0010CCD0 iWakeupThread [sce, none]	MISSING
+00237120	SleepThreadTillVBlank__12CGtThreadMgrFv [game, matched]	MISSING	00114E60 func_00114E60 [sce, none]	MISSING
+0023F860	func_0023F860 [game, matched]	PASS		MISSING
+00240A60	func_00240A60 [game, matched]	PASS		MISSING
+00240C90	func_00240C90 [game, matched]	PASS		MISSING
+00240E90	func_00240E90 [game, matched]	PASS		MISSING
+00240EC0	func_00240EC0 [game, matched]	PASS		MISSING
+00240F30	RestoreRenderstates__6CB3FogFPC13CB3CameraData [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+00240FD0	SetRenderstates__6CB3FogFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002413E0	GenerateClut__6CB3FogFff [game, draft]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002416E0	ZGreen2FBAlpha__6CB3FogFUiUiUiUiUiUiUi [game, draft]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002419C0	Render__6CB3FogFQ29GtMathPs26CGtV3dff [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+0024CDF0	RenderBlob__14CB3SunRendererFv [game, draft]	PASS		PASS
+002502D0	StopCrashing__17CB3TrafficPhysicsFv [game, matched]	DIFF	37 words: mem 00591F24 00000000 vs 0013008C; mem 00591F28 00000000 vs 00130000; mem 00591F2C 00000000 vs 0012E64C; mem 005929BC 00000000 vs 3F800000; mem 005929CC 0041D001 vs 3F800000; mem 005929DC 00000000 vs 3F800000	MISSING
+00250350	func_00250350 [game, draft]	MISSING	001CE470 Update__17CB3VehiclePhysicsFf [game, draft]	MISSING
+002510F0	Prepare__17CB3TrafficPhysicsFP17CB3TrafficVehiclei [game, matched]	MISSING	001AB610 func_001AB610 [game, draft]	MISSING
+002513F0	Prepare__17CB3TrafficPhysicsFv [game, matched]	DIFF	5 words: mem 00591CBC 00000000 vs 3F800000; mem 00591CCC 00000000 vs 3F800000; mem 00591CDC 00000000 vs 3F800000; mem 00591E4C 00000000 vs 3F800000; mem 00591E5C 00000000 vs 3F800000	DIFF
+00251460	Construct__17CB3TrafficPhysicsFv [game, matched]	DIFF	3 words: mem 00591CBC 00000000 vs 6C0103F5; mem 00591CCC 00000000 vs 6C0103F5; mem 00591CDC 00000000 vs 6C0103F5	MISSING
+00251680	AttachPlugins__10CGtTextureFv [game, matched]	MISSING	001E7B40 RwRasterRegisterPlugin [rw, none]	MISSING
+002516C0	CreateCopy__10CGtTextureFUi [game, matched]	MISSING	002515A0 FixDown__10CGtTextureFv [game, matched]	MISSING
+00251800	Update__11CB3ViewportFv [game, matched]	MISSING	001DA860 RwMatrixUpdate [rw, none]	MISSING
+00251840	Construct__11CB3ViewportFiii [game, matched]	MISSING	001E1D00 RwCameraCreate [rw, none]	MISSING
+00251B90	GetCarCount__14CB3VehicleListF17EB3MenuCarClasses [game, matched]	MISSING	00127520 func_00127520 [runtime, none]	MISSING
+002540E0	Construct__24CB3RaceCarPhysicsAttribsFv [game, matched]	MISSING	002524E0 Construct__24CB3VehiclePhysicsAttribsFv [game, matched]	MISSING
+00254F20	Prepare__16CB3ParticleArrayFv [game, matched]	PASS		PASS
+00255240	Construct__16CB3ParticleArrayF16EParticleArrayID [game, matched]	MISSING	002558A0 Construct__Q216CB3ParticleArray15CB3ParticleBankFUi [game, draft]	MISSING
+00255C90	func_00255C90 [game, matched]	PASS		PASS
+00256690	RenderLightCoronas__17CB3EffectsManagerFRC25CB3VehicleEssentialParamsb [game, draft]	PASS		PASS
+00257230	func_00257230 [game, draft]	PASS		PASS
+00257E10	UpdateBodyPartDustTrail__17CB3EffectsManagerFP18CB3BodyPartPhysics [game, draft]	MISSING	0025F0C0 func_0025F0C0 [game, draft]	MISSING
+0025C3C0	HandleObjectObjectCollisionEffects__17CB3EffectsManagerFPC16CB3CollidingPair [game, draft]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+0025CA50	UpdateCollisionEffects__17CB3EffectsManagerFv [game, draft]	PASS		PASS
+002620C0	RenderPreFogEffects__17CB3EffectsManagerFi [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002621A0	RenderTrafficImmediateEffects__17CB3EffectsManagerFP17CB3TrafficVehicle [game, matched]	PASS		PASS
+002621D0	ActuallyRenderRaceCarImmediateEffects__17CB3EffectsManagerFP10CB3RaceCar [game, matched]	PASS		PASS
+00262240	EndCoronaSubmit__17CB3EffectsManagerFv [game, matched]	PASS		PASS
+002622A0	func_002622A0 [game, draft]	DIFF	6 words: mem 01D9D22C 31DBDAD0 vs 01DBDAD0; mem 01D9D230 31DBEA90 vs 01DBEA90; mem 01D9D260 31DC15B0 vs 01DC15B0; mem 01D9D264 31DC1EB0 vs 01DC1EB0; mem 01D9D294 31DC3BB0 vs 01DC3BB0; mem 01D9D298 31DC44B0 vs 01DC44B0	MISSING
+002623F0	EndUpdate__17CB3EffectsManagerFv [game, matched]	MISSING	00254C90 EndUpdate__16CB3ParticleArrayFfRCQ29GtMathPs26CGtV2d [game, matched]	MISSING
+00262520	BeginUpdate__17CB3EffectsManagerFv [game, matched]	PASS		MISSING
+00262770	Prepare__17CB3EffectsManagerFv [game, draft]	ERROR	b3host: guest pointer outside RAM/scratchpad dereferenced	MISSING
+00262CD0	Construct__17CB3EffectsManagerFv [game, draft]	MISSING	00263C10 Construct__16CB3SparkRendererFv [game, matched]	MISSING
+002638C0	BeginRender__16CB3SparkRendererFib [game, matched]	PASS		PASS
+00263F80	Prepare__13CB3SparkArrayFv [game, matched]	PASS		MISSING
+00264040	Construct__13CB3SparkArrayF13ESparkArrayID [game, matched]	MISSING	0010C718 SyncDCache [sce, none]	MISSING
+00264170	Construct__Q213CB3SparkArray10CSparkBankFPC19CB3SparkArrayParamsb [game, draft]	MISSING	0010C718 SyncDCache [sce, none]	MISSING
+002659C0	Render__8CB3BloomFbb [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+00265C80	StopCars__15CB3TrafficLightFv [game, matched]	PASS		PASS
+00266010	Update__15CB3TrafficLightFf [game, matched]	PASS		PASS
+002664B0	ApplyNewFormation__15CB3TrafficValveFi [game, draft]	PASS		MISSING
+00266AE0	FillLaneSection__15CB3TrafficValveFiiiiP18CB3StartFinishLineib [game, draft]	PASS		PASS
+00267800	UpdateGeneration__15CB3TrafficValveFiiUsf [game, draft]	PASS		PASS
+00267EC0	Update__15CB3TrafficValveFiUsfbb [game, matched]	PASS		PASS
+00268490	Prepare__15CB3TrafficValveFP29CB3TrafficValvePositionStruct [game, matched]	PASS		MISSING
+002685B0	Construct__15CB3TrafficValveFv [game, matched]	PASS		PASS
+00269CF0	Construct__20CB3NetworkCarPhysicsFv [game, matched]	DIFF	3 words: mem 0058B1DC 00000000 vs 6C0103F5; mem 0058B1EC 00000000 vs 6C0103F5; mem 0058B1FC 00000000 vs 6C0103F5	MISSING
+00269D20	Fixup__16CB3TriggerStructFUi [game, matched]	PASS		MISSING
+00269FA0	Fixup__20CB3TrafficDataStructFUi [game, matched]	PASS		MISSING
+0026B2B0	EndMaterial__16CB3TrackRendererFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+0026B8E0	PrepareRenderStatesForRenderingTrack__16CB3TrackRendererFv [game, draft]	MISSING	001FF798 RpSkyRenderStateGet [rw, none]	MISSING
+0026BD40	func_0026BD40 [game, matched]	PASS		MISSING
+0026DD00	RegisterPlayerCarCrash__17CB3NetworkManagerFv [game, matched]	PASS		PASS
+00270E10	func_00270E10 [game, matched]	PASS		PASS
+00270ED0	Update__17CB3NetworkManagerFv [game, matched]	PASS		PASS
+00271730	Construct__17CB3NetworkManagerFv [game, matched]	MISSING	0022F660 func_0022F660 [game, matched]	MISSING
+00271A20	Prepare__10CB3StringsFPvPCci [game, matched]	PASS		MISSING
+00272D50	func_00272D50 [game, matched]	PASS		MISSING
+00275EF0	func_00275EF0 [game, matched]	MISSING	001E2288 RwCameraSetNearClipPlane [rw, none]	MISSING
+00276300	Render__8CB3WorldFi [game, matched]	MISSING	001E2288 RwCameraSetNearClipPlane [rw, none]	MISSING
+002768F0	func_002768F0 [game, matched]	MISSING	001E2288 RwCameraSetNearClipPlane [rw, none]	MISSING
+00276990	OpenRenderWare__15CB3SoundManagerFv [game, matched]	MISSING	00290D70 _rwaCoreOpen [rwa, none]	MISSING
+00276A30	IsBoostPassPlaying__22CB3SoundTrafficManagerFv [game, matched]	PASS		PASS
+00276B00	GetNextHornVariant__22CB3SoundTrafficManagerFb [game, matched]	PASS		MISSING
+00276C20	CrashingTraffic__22CB3SoundTrafficManagerFP17CB3VehiclePhysics [game, matched]	PASS		MISSING
+002772D0	Prepare__22CB3SoundTrafficManagerFv [game, matched]	PASS		MISSING
+00277F40	Stop__19CB3SoundTrafficPassFv [game, matched]	PASS		PASS
+00278750	Prepare__19CB3SoundTrafficPassF25ETrafficVehicleCategoriesi [game, matched]	PASS		PASS
+00278830	UpdateDoppler__22CB3SoundTrafficVehicleFPfPff [game, matched]	PASS		PASS
+00278D20	StartHorn__22CB3SoundTrafficVehicleFv [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+00278E70	Deactivate__22CB3SoundTrafficVehicleFv [game, matched]	MISSING	002979E0 _rwaVirtualVoiceSetTrigger [rwa, none]	MISSING
+0027A550	Prepare__22CB3SoundTrafficVehicleFv [game, matched]	PASS		MISSING
+0027A920	PlayCarAlarm__20CB3SoundCrashManagerFP17CB3VehiclePhysics [game, matched]	PASS		MISSING
+0027AF60	UpdateDeadMansHorn__20CB3SoundCrashManagerFv [game, matched]	PASS		PASS
+0027BCE0	func_0027BCE0 [game, matched]	MISSING	002A2DE0 _rwaStreamSetLoopSegment [rwa, none]	MISSING
+0027BF00	UpdateKerbBounces__20CB3SoundCrashManagerFv [game, draft]	PASS		PASS
+0027C070	UpdateParticulateGlass__20CB3SoundCrashManagerFv [game, draft]	PASS		PASS
+0027C370	WheelImpact__20CB3SoundCrashManagerFbQ29GtMathPs26CGtV3df [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+0027C8E0	func_0027C8E0 [game, matched]	PASS		PASS
+0027CF30	func_0027CF30 [game, matched]	PASS		PASS
+0027D240	func_0027D240 [game, matched]	PASS		PASS
+0027D380	func_0027D380 [game, draft]	MISSING	002A2DE0 _rwaStreamSetLoopSegment [rwa, none]	MISSING
+0027DDD0	func_0027DDD0 [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+0027E900	func_0027E900 [game, matched]	PASS		PASS
+0027EC10	func_0027EC10 [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+0027EE40	DeformRoof__20CB3SoundCrashManagerFQ29GtMathPs26CGtV3df [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+0027EEC0	DeformBonnet__20CB3SoundCrashManagerFQ29GtMathPs26CGtV3df [game, matched]	MISSING	00280580 func_00280580 [game, matched]	MISSING
+0027EF30	DeformFrontBumper__20CB3SoundCrashManagerFQ29GtMathPs26CGtV3df [game, matched]	PASS		PASS
+0027EF60	DeformRearBumper__20CB3SoundCrashManagerFQ29GtMathPs26CGtV3df [game, matched]	PASS		PASS
+0027EF90	DeformSpoiler__20CB3SoundCrashManagerFQ29GtMathPs26CGtV3df [game, matched]	PASS		PASS
+0027EFD0	DeformBoot__20CB3SoundCrashManagerFQ29GtMathPs26CGtV3df [game, matched]	MISSING	00280580 func_00280580 [game, matched]	MISSING
+0027F040	DeformDoor__20CB3SoundCrashManagerFQ29GtMathPs26CGtV3df [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+0027F0B0	DealWithObjectObjectCollision__20CB3SoundCrashManagerFPC16CB3CollidingPair [game, matched]	PASS		PASS
+0027F2A0	CarToCar__20CB3SoundCrashManagerFPQ29GtMathPs26CGtV3dfPC16CB3CollidingPair [game, matched]	PASS		PASS
+0027F480	BodyPartImpact__20CB3SoundCrashManagerFb17EVehicleFlyingBitQ29GtMathPs26CGtV3df [game, matched]	PASS		PASS
+0027F5E0	PropImpact__20CB3SoundCrashManagerFb11EB3PropTypeQ29GtMathPs26CGtV3df [game, matched]	PASS		MISSING
+0027FFF0	func_0027FFF0 [game, matched]	PASS		PASS
+002802B0	func_002802B0 [game, matched]	PASS		PASS
+00280860	GenericGlassSmash__20CB3SoundCrashManagerFP17CB3VehiclePhysics [game, matched]	PASS		PASS
+00280900	func_00280900 [game, matched]	PASS		PASS
+00280D00	func_00280D00 [game, draft]	PASS		MISSING
+002810E0	ReleaseStreams__20CB3SoundCrashManagerFv [game, matched]	PASS		PASS
+00281890	func_00281890 [game, matched]	PASS		MISSING
+00282930	Construct__20CB3SoundCrashManagerFv [game, matched]	PASS		MISSING
+00283800	StartScrape__14CB3SoundScrapeFiPC12CGtSoundWave [game, matched]	PASS		PASS
+00283920	Update__14CB3SoundScrapeFb [game, matched]	PASS		PASS
+00283A50	Prepare__14CB3SoundScrapeFv [game, matched]	PASS		PASS
+00284260	func_00284260 [game, matched]	MISSING	002979E0 _rwaVirtualVoiceSetTrigger [rwa, none]	MISSING
+002842A0	func_002842A0 [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+00285340	FESelect__18CB3HUDSoundManagerFv [game, matched]	MISSING	002858C0 PlayHudSound__18CB3HUDSoundManagerFUlPC12CGtSoundBankffb [game, matched]	MISSING
+002854A0	FEKeyboardSel__18CB3HUDSoundManagerFv [game, matched]	MISSING	002858C0 PlayHudSound__18CB3HUDSoundManagerFUlPC12CGtSoundBankffb [game, matched]	MISSING
+00285A60	func_00285A60 [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+00285B00	func_00285B00 [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+00285BC0	GeneralPopup__18CB3HUDSoundManagerFv [game, matched]	MISSING	002858C0 PlayHudSound__18CB3HUDSoundManagerFUlPC12CGtSoundBankffb [game, matched]	MISSING
+00285C00	func_00285C00 [game, draft]	MISSING	002858C0 PlayHudSound__18CB3HUDSoundManagerFUlPC12CGtSoundBankffb [game, matched]	MISSING
+00286C60	Update__18CB3HUDSoundManagerFv [game, matched]	PASS		PASS
+002870D0	func_002870D0 [game, matched]	MISSING	002AFC10 RwaSPU2WaveRAMGetFree [rwa, none]	MISSING
+00287570	func_00287570 [game, matched]	MISSING	002979E0 _rwaVirtualVoiceSetTrigger [rwa, none]	MISSING
+002875D0	func_002875D0 [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+00287710	Update__14CB3SoundESMLowFPC10CB3RaceCarfff [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+00287890	Prepare__14CB3SoundESMLowFUli [game, matched]	MISSING	002AFC10 RwaSPU2WaveRAMGetFree [rwa, none]	MISSING
+00287940	Construct__14CB3SoundESMLowFv [game, matched]	PASS		MISSING
+00287970	CalculateDoppler__15CB3SoundESMHighFPC10CB3RaceCarPfPf [game, matched]	PASS		MISSING
+00287C40	Start__15CB3SoundESMHighFv [game, draft]	MISSING	003856D0 Start__17CGtSoundRealVoiceFPC19CGtSoundVoiceParams [game, matched]	MISSING
+00287F20	Update__15CB3SoundESMHighFPC10CB3RaceCarfff [game, matched]	MISSING	003856D0 Start__17CGtSoundRealVoiceFPC19CGtSoundVoiceParams [game, matched]	MISSING
+002882D0	Prepare__15CB3SoundESMHighFUli [game, matched]	MISSING	002AFC10 RwaSPU2WaveRAMGetFree [rwa, none]	MISSING
+00288440	Construct__15CB3SoundESMHighFv [game, matched]	PASS		MISSING
+00288770	ModulateRpm__11CB3SoundESMFR22CB3SoundESMGraphInputsPC10CB3RaceCar [game, matched]	PASS		PASS
+00288F70	GetModeBankPath__23CB3SoundGameModeManagerCFv [game, matched]	PASS		MISSING
+00289080	UpdateVoiceGroupModeMixer__23CB3SoundGameModeManagerFv [game, draft]	PASS		MISSING
+00289340	UpdateGameStates__23CB3SoundGameModeManagerFv [game, draft]	PASS		MISSING
+00289770	UpdateTakedownPitcher__23CB3SoundGameModeManagerFv [game, matched]	PASS		PASS
+00289A30	CancelTakedownPitcher__23CB3SoundGameModeManagerFv [game, matched]	PASS		MISSING
+00289A50	StartTakedownPitcher__23CB3SoundGameModeManagerFv [game, matched]	MISSING	003856D0 Start__17CGtSoundRealVoiceFPC19CGtSoundVoiceParams [game, matched]	MISSING
+00289BF0	Update__23CB3SoundGameModeManagerFv [game, draft]	MISSING	002B2E80 _rwaSPU2OutputSetEnvironment [rwa, none]	MISSING
+0028A3C0	Construct__23CB3SoundGameModeManagerFP13RwaSPU2Output [game, matched]	MISSING	00277360 Construct__22CB3SoundTrafficManagerFv [game, matched]	MISSING
+0028AB60	Prepare__16CB3SoundListenerFUi [game, matched]	PASS		MISSING
+0028AC50	Construct__16CB3SoundListenerFv [game, matched]	MISSING	002AEF00 RwaVirtualListenerCreate [rwa, none]	MISSING
+0028AC80	func_0028AC80 [game, matched]	PASS		MISSING
+0028ADD0	SetMasterVolumeScalar__15CB3SoundManagerFf [game, matched]	PASS		MISSING
+0028AEB0	func_0028AEB0 [game, matched]	MISSING	00290D30 RwaCoreUpdateStart [rwa, none]	MISSING
+0028B220	func_0028B220 [game, matched]	PASS		MISSING
+0028B720	UpdateBassVoices__13CB3SoundAICarFPC10CB3RaceCar [game, matched]	PASS		MISSING
+0028B8D0	StartBassVoices__13CB3SoundAICarFv [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+0028BBC0	Update__13CB3SoundAICarFPC10CB3RaceCar [game, matched]	MISSING	0028E2E0 Update__17CB3SoundSkidModelFPPC8CB3WheelfQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dPP20CGtSoundVirtualVoiceQ29GtMathPs26CGtV3dbPfPfbbb [game, none]	MISSING
+0028BDD0	Prepare__13CB3SoundAICarFUli [game, matched]	MISSING	002AFC10 RwaSPU2WaveRAMGetFree [rwa, none]	MISSING
+0028BF90	func_0028BF90 [game, matched]	PASS		PASS
+0028CB00	Update__17CB3SoundPlayerCarFPC10CB3RaceCar [game, matched]	MISSING	0028E2E0 Update__17CB3SoundSkidModelFPPC8CB3WheelfQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dPP20CGtSoundVirtualVoiceQ29GtMathPs26CGtV3dbPfPfbbb [game, none]	MISSING
+0028CB60	Prepare__17CB3SoundPlayerCarFUli [game, matched]	MISSING	002AFC10 RwaSPU2WaveRAMGetFree [rwa, none]	MISSING
+0028CD10	func_0028CD10 [game, matched]	PASS		MISSING
+0028CD60	UpdateHorn__15CB3SoundRaceCarFP10CB3RaceCar [game, matched]	PASS		PASS
+0028CE30	UpdateBoostIn__15CB3SoundRaceCarFPC10CB3RaceCar [game, matched]	PASS		PASS
+0028CF00	func_0028CF00 [game, draft]	PASS		PASS
+0028D1A0	func_0028D1A0 [game, matched]	PASS		PASS
+0028D300	func_0028D300 [game, draft]	PASS		MISSING
+0028D660	StartBoost__15CB3SoundRaceCarFPC10CB3RaceCar [game, matched]	PASS		MISSING
+0028D830	func_0028D830 [game, matched]	MISSING	0028E2E0 Update__17CB3SoundSkidModelFPPC8CB3WheelfQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dPP20CGtSoundVirtualVoiceQ29GtMathPs26CGtV3dbPfPfbbb [game, none]	MISSING
+0028DBB0	Prepare__15CB3SoundRaceCarFUli [game, matched]	PASS		MISSING
+0028EA10	Update__17CB3SoundSkidModelFPC10CB3RaceCar [game, draft]	MISSING	0028E2E0 Update__17CB3SoundSkidModelFPPC8CB3WheelfQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dPP20CGtSoundVirtualVoiceQ29GtMathPs26CGtV3dbPfPfbbb [game, none]	MISSING
+0028EBE0	Prepare__17CB3SoundSkidModelFv [game, matched]	PASS		MISSING
+0028FB20	Update__18CB3SoundTurboModelFPC10CB3RaceCarPC22CB3SoundRaceCarAttribs [game, matched]	PASS		PASS
+0028FE70	Prepare__18CB3SoundTurboModelFPCc [game, matched]	PASS		MISSING
+0028FF30	UpdateSkidVoices__22CB3SoundCrashedTrafficFv [game, draft]	PASS		MISSING
+002901D0	StartSkidVoices__22CB3SoundCrashedTrafficFv [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+00290510	Update__22CB3SoundCrashedTrafficFv [game, draft]	PASS		PASS
+00290900	Prepare__22CB3SoundCrashedTrafficFv [game, matched]	PASS		MISSING
+002B56B0	StopVehiclesIfTurning__15CB3StopJunctionF22EStopJunctionLaneTypesb [game, matched]	PASS		MISSING
+002B5970	FindFirstTurningParam__15CB3StopJunctionF22EStopJunctionLaneTypesb [game, matched]	PASS		MISSING
+002B61E0	Update__15CB3StopJunctionFbf [game, matched]	PASS		MISSING
+002B7070	func_002B7070 [game, matched]	PASS		MISSING
+002B7100	func_002B7100 [game, matched]	PASS		MISSING
+002B7110	FixUp__18CB3EnvironmentDataFv [game, matched]	PASS		MISSING
+002B9400	CollideHulls__20CB3ConvexHullCollideFP20CB3HullCollideParams [game, matched]	MISSING	002B8920 DoCollideHullToHull__20CB3ConvexHullCollideFP20CB3HullCollideParams [game, draft]	MISSING
+002B9470	CollideBodyHullWithWorld__20CB3ConvexHullCollideFP28CB3HullWorldTriCollideParamsP16CB3CollidingBody [game, matched]	MISSING	00272EA0 func_00272EA0 [game, draft]	MISSING
+002BA3A0	MakeFromBoundingBox__13CB3ConvexHullFQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3d12EB3HullShape [game, matched]	PASS		PASS
+002BB830	SunPos2BearingAndAltitude__21CB3EnvironmentManagerFPfPfQ29GtMathPs26CGtV3d [game, draft]	PASS		PASS
+002BBB90	RenderBackdropTexture__21CB3EnvironmentManagerFv [game, draft]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002BBFA0	SunOcclusionTest__21CB3EnvironmentManagerFv [game, matched]	PASS		MISSING
+002BC070	RenderSunToEnvironmentMap__21CB3EnvironmentManagerFv [game, matched]	MISSING	0024B360 RenderEnvmap__14CB3SunRendererFv [game, matched]	MISSING
+002BC140	RenderSkyToEnvironmentMap__21CB3EnvironmentManagerFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002BC190	BuildEnvmapSunCoronaData__21CB3EnvironmentManagerFv [game, matched]	MISSING	00221A70 AccessTexture__15CGtTextureCacheFP10CGtTexturef29EGtTextureCachePS2_FilterModebb [game, draft]	MISSING
+002BC270	RenderClouds__21CB3EnvironmentManagerFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002BC2B0	RenderSunBlob__21CB3EnvironmentManagerFv [game, matched]	PASS		PASS
+002BC380	RenderSky__21CB3EnvironmentManagerFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002BC460	func_002BC460 [game, draft]	PASS		PASS
+002BC970	Release__21CB3EnvironmentManagerFv [game, draft]	MISSING	0024D360 Release__14CB3SunRendererFv [game, matched]	MISSING
+002BCEC0	Construct__21CB3EnvironmentManagerFv [game, matched]	MISSING	0021E490 Construct__Q218CB3SkyDomeRenderer26CB3SkyDomeHemisphereParamsFQ222CB3SkyDomeRendererBase13ESkyComponent [game, matched]	MISSING
+002BD560	func_002BD560 [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002BD7F0	func_002BD7F0 [game, matched]	PASS		PASS
+002BD9A0	Construct__14CB3TrailSystemFv [game, matched]	PASS		MISSING
+002BEA00	RenderWorld__22CB3PhysicsManagerDebugFv [game, matched]	PASS		MISSING
+002BEDB0	func_002BEDB0 [game, matched]	MISSING	00272EA0 func_00272EA0 [game, draft]	MISSING
+002C1EC0	func_002C1EC0 [game, matched]	MISSING	002C3080 lgCodecEnumerate [lg, none]	MISSING
+002C2040	func_002C2040 [game, matched]	PASS		MISSING
+002C2070	func_002C2070 [game, matched]	PASS		MISSING
+002E2700	Construct__18CB3BehaviourOffsetFv [game, matched]	PASS		MISSING
+002E2730	Update__18CB3BehaviourOffsetFP9CGtCameraf [game, draft]	PASS		PASS
+002E3350	Construct__18CB3BehaviourOffsetF16EB3BehaviourTypei [game, matched]	PASS		MISSING
+002E4A40	Prepare__25CB3BehaviourRaceCarFollowFPv [game, draft]	DIFF	1 words: mem 0051706C 717FFFFC vs 3F800000	DIFF
+002E5D90	Construct__25CB3BehaviourRaceCarFollowFib [game, matched]	PASS		MISSING
+002E5E10	Construct__18CB3BehaviourRotateFv [game, matched]	PASS		MISSING
+002E6F30	func_002E6F30 [game, matched]	MISSING	002E6CC0 SetParameters__18CB3BehaviourRotateFii [game, draft]	MISSING
+002E7150	SetActiveBehaviour__22CB3PlayerCameraManagerFi [game, matched]	DIFF	1 words: mem 0051706C 717FFFFC vs 3F800000	DIFF
+002E7250	DeactivateBehaviour__22CB3PlayerCameraManagerFi [game, matched]	PASS		MISSING
+002E72D0	ActivateBehaviour__22CB3PlayerCameraManagerFi [game, matched]	PASS		MISSING
+002E7340	IsPlayerVisible__22CB3PlayerCameraManagerFv [game, matched]	PASS		PASS
+002E7610	func_002E7610 [game, draft]	PASS		PASS
+002E7810	Prepare__22CB3PlayerCameraManagerFv [game, matched]	DIFF	1 words: mem 0051706C 717FFFFC vs 3F800000	MISSING
+002E7BA0	Construct__22CB3PlayerCameraManagerFi [game, matched]	PASS		MISSING
+002E7F00	Action__25CB3PlayerCameraStateDebugF14EGtStateActionPvPvPv [game, matched]	PASS		PASS
+002E80A0	Action__28CB3PlayerCameraStateInactiveF14EGtStateActionPvPvPv [game, matched]	PASS		PASS
+002E8250	Action__25CB3PlayerCameraStateIntroF14EGtStateActionPvPvPv [game, matched]	PASS		PASS
+002E8BD0	func_002E8BD0 [game, matched]	PASS		PASS
+002ED310	Construct__21CB3BehaviourFlyAroundFi16EB3FlyAroundType [game, matched]	PASS		MISSING
+002ED3E0	Update__22CB3SoundRaceCarManagerFv [game, draft]	CRASH	signal 11	CRASH
+002F02C0	RenderWorld__15CB3TrafficDebugFv [game, matched]	PASS		PASS
+002F03A0	Construct__14CB3CPUMonitorsFv [game, matched]	PASS		MISSING
+002F0440	func_002F0440 [game, draft]	MISSING	002F0640 func_002F0640 [game, draft]	MISSING
+002F3870	EndRender__16CB3TrailRendererFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002F3C80	DispatchBuffer__17CB3DebrisRendererFv [game, draft]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+002F42C0	EndRender__17CB3DebrisRendererFv [game, matched]	PASS		PASS
+002F4320	RenderDebrisArray__17CB3DebrisRendererFP14CB3DebrisArrayf [game, draft]	PASS		PASS
+002F49A0	Construct__14CB3DebrisArrayF15EDebrisGeometry [game, matched]	MISSING	001DE260 RwV3dLength [rw, none]	MISSING
+002F4A20	ConstructGeometryData__14CB3DebrisArrayF15EDebrisGeometry [game, matched]	MISSING	001DE260 RwV3dLength [rw, none]	MISSING
+002F4EA0	Update__15CB3SoundDopplerFffffPfPf [game, matched]	PASS		PASS
+002F5DC0	func_002F5DC0 [game, draft]	PASS		MISSING
+002F6210	GetTrackMatrix__14CB3CameraUtilsFPQ29GtMathPs212CGtMatrix3x4P17CB3RaceCarPhysics [game, matched]	ERROR	b3host: guest pointer outside RAM/scratchpad dereferenced	ERROR
+002F6370	GetRigMatrix__14CB3CameraUtilsFPQ29GtMathPs212CGtMatrix3x4P16CB3CollidingBody [game, draft]	DIFF	1 words: mem 01FFE36C CFAC5FEC vs 00000000	MISSING
+002F64E0	GetRigPosition__14CB3CameraUtilsFPQ29GtMathPs26CGtV3dP16CB3CollidingBody [game, draft]	PASS		MISSING
+002F9920	func_002F9920 [game, matched]	PASS		MISSING
+002F99D0	func_002F99D0 [game, matched]	PASS		MISSING
+002F99E0	func_002F99E0 [game, matched]	MISSING	0026A7E0 BeginInstanceRender__16CB3TrackRendererFPC15CB3InstanceMeshPC17CGtAxisAlignedBoxRC16CB3TrackMaterialff24EB3InstanceDistanceCheckbf [game, none]	MISSING
+002F9D00	Destroy__15CGtLinearMallocFv [game, matched]	PASS		PASS
+002F9DD0	__dt__15CGtLinearMallocFv [game, matched]	PASS		PASS
+002FA9A0	Render__13CB3RadialBlurFv [game, draft]	MISSING	0020DE40 RpSkyTexCacheAccessSpeculate [rw, none]	MISSING
+002FAF50	Construct__18CB3SoundESMManagerFv [game, matched]	PASS		MISSING
+002FB2E0	Apply__23CB3SoundEsmGraphOutputsCFP20CGtSoundVirtualVoicePC10CB3RaceCarf [game, draft]	PASS		MISSING
+002FB3E0	Apply__23CB3SoundEsmGraphOutputsCFUi [game, draft]	PASS		MISSING
+002FB4B0	Apply__23CB3SoundEsmGraphOutputsCFP17CGtSoundRealVoicePC10CB3RaceCarff [game, draft]	MISSING	00385B10 Update__17CGtSoundRealVoiceFPC19CGtSoundVoiceParams [game, matched]	MISSING
+002FC0E0	Reset__20CB3SoundDSPDataBlockFv [game, matched]	PASS		PASS
+002FC1E0	CalculateGainPair__18CB3SoundDistortionFffbPfPf [game, matched]	PASS		PASS
+002FCA60	Update__18CB3SoundDistortionFv [game, draft]	ORACLE	r5900_mini: unsupported REGIMM at pc 0x002FCB58 (insn 0x04180004)	MISSING
+002FCF00	StopDistortion__18CB3SoundDistortionFv [game, matched]	PASS		PASS
+002FCFC0	StartDistortion__18CB3SoundDistortionFv [game, matched]	MISSING	0010F3E0 sceSifCheckStatRpc [sce, none]	MISSING
+003012D0	ComputeVehicleRenderData__16CB3StreamedTrackFP25CB3VehicleEssentialParamsf [game, matched]	MISSING	00301340 GetIrradiance__16CB3StreamedTrackFiQ29GtMathPs26CGtV3dP16CGtIrradianceMapf [game, draft]	MISSING
+00301C80	IntersectLineNearestWithUnit__16CB3StreamedTrackFUiRC7CGtLineP28CGtPolygonIntersectionResult [game, matched]	ERROR	b3host::guest_address: host pointer 0x7ffef1ba6918 is not in guest memory (RAM 0x7506083be010 + 2000000, scratchpad 0x63c461651f00)	MISSING
+00301D50	func_00301D50 [game, matched]	PASS		PASS
+00302160	Update__16CB3StreamedTrackFv [game, draft]	PASS		MISSING
+003029B0	UpdateStreamHighFSM__16CB3StreamedTrackFv [game, matched]	MISSING	0010BE60 WaitSema [sce, none]	MISSING
+00302AE0	UpdateStreamLowFSM__16CB3StreamedTrackFv [game, matched]	MISSING	0010BE60 WaitSema [sce, none]	MISSING
+00302D20	func_00302D20 [game, matched]	PASS		PASS
+00303750	RenderFrontEndShadow__12CB3ShadowMgrFi [game, draft]	MISSING	00365640 BeginRendering__6B3Im3dFv [game, draft]	MISSING
+003039A0	EndShadowPlaneRendering__17CB3ShadowRendererFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+00303C10	BeginShadowPlaneRendering__17CB3ShadowRendererFv [game, matched]	MISSING	00365640 BeginRendering__6B3Im3dFv [game, draft]	MISSING
+00303F10	GetLEDState__25CGtInputDevicePS2KeyboardFv [game, matched]	MISSING	00306668 lgKbdGetLedState [lg, none]	MISSING
+003076D0	ConstructDMAData__21CB3CoronaDynamicArrayFiii [game, draft]	MISSING	0010C718 SyncDCache [sce, none]	MISSING
+003096E0	GetFinishStatus__16CMemoryDevicePS2FiiPi [game, matched]	PASS		MISSING
+0030A130	Sync__16CMemoryDevicePS2F17EMemDevPollOrWaitPi [game, matched]	MISSING	00242E00 func_00242E00 [sce, none]	MISSING
+0030A8E0	Init__16CMemoryDevicePS2Fv [game, matched]	MISSING	00241BC0 sceMc2Init [sce, none]	MISSING
+0030A9D0	func_0030A9D0 [game, matched]	PASS		PASS
+0030B6E0	func_0030B6E0 [game, matched]	MISSING	00127520 func_00127520 [runtime, none]	MISSING
+0030B9D0	func_0030B9D0 [game, matched]	MISSING	00127520 func_00127520 [runtime, none]	MISSING
+0030C2C0	RequestOnePlayerGameMode__14CB3MenuChoicesFi [game, matched]	PASS		MISSING
+0030CF90	func_0030CF90 [game, matched]	MISSING	002515A0 FixDown__10CGtTextureFv [game, matched]	MISSING
+0030D1B0	RequestNewGameMode__14CB3MenuChoicesFv [game, matched]	MISSING	002515A0 FixDown__10CGtTextureFv [game, matched]	MISSING
+0030D5C0	SetMenuPage__18CB3MenuPageManagerFP15CB3MenuPageBaseb [game, matched]	PASS		PASS
+0030D7C0	Update__18CB3MenuPageManagerFv [game, draft]	PASS		MISSING
+0030DD70	ReleaseCurrentMenu__18CB3MenuPageManagerFv [game, matched]	PASS		MISSING
+0030DF10	Construct__18CB3MenuPageManagerFv [game, draft]	PASS		MISSING
+0030E930	func_0030E930 [game, matched]	PASS		MISSING
+0030EB10	func_0030EB10 [game, matched]	PASS		PASS
+0030ED80	Construct__14CB3MenuFlowFSMFPvPC14CGtStateOffsetP8CGtTimer [game, matched]	MISSING	003999E0 func_003999E0 [game, matched]	MISSING
+0030F620	func_0030F620 [game, matched]	PASS		PASS
+00310200	func_00310200 [game, draft]	PASS		PASS
+00318100	Update__18CB3ClassSelectPageFv [game, matched]	PASS		PASS
+00318560	func_00318560 [game, matched]	MISSING	001D51C0 Clean__10CGt2dFrameFv [game, matched]	MISSING
+00318A30	func_00318A30 [game, matched]	MISSING	001D51C0 Clean__10CGt2dFrameFv [game, matched]	MISSING
+00318A80	func_00318A80 [game, matched]	PASS		PASS
+00318F50	func_00318F50 [game, matched]	MISSING	00319C80 func_00319C80 [game, matched]	MISSING
+0031FB10	func_0031FB10 [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+00321690	Update__20CB3LoadingScreenPageFv [game, matched]	MISSING	0019DD00 func_0019DD00 [game, draft]	MISSING
+00321780	func_00321780 [game, matched]	PASS		MISSING
+00322700	func_00322700 [game, matched]	PASS		MISSING
+003242F0	func_003242F0 [game, matched]	PASS		PASS
+003248F0	Action__24CB3OnlineGameCreateStateF14EGtStateActionPvPvPv [game, matched]	PASS		PASS
+00325990	Construct__15CGtVideoDecoderFv [game, matched]	MISSING	00109BF8 sceMpegInit [sce, none]	MISSING
+00325DC0	viBufCount [game, matched]	MISSING	0010BE60 WaitSema [sce, none]	MISSING
+00325E10	viBufDelete [game, matched]	MISSING	00114E60 func_00114E60 [sce, none]	MISSING
+00326610	viBufEndPut [game, matched]	MISSING	0010BE60 WaitSema [sce, none]	MISSING
+00326670	viBufBeginPut [game, matched]	MISSING	0010BE60 WaitSema [sce, none]	MISSING
+00326770	viBufReset [game, matched]	ERROR	b3host: guest pointer outside RAM/scratchpad dereferenced	ERROR
+003268E0	viBufCreate [game, matched]	MISSING	0010BE20 CreateSema [sce, none]	MISSING
+0032ADF0	Action__22CB3OnlineJoinGameStateF14EGtStateActionPvPvPv [game, matched]	PASS		PASS
+0032ED50	Construct__18CB3BehaviourEffectFv [game, matched]	PASS		MISSING
+0032ED90	Construct__18CB3BehaviourEffectFP22CB3PlayerCameraManager [game, matched]	PASS		MISSING
+0032F0D0	CanStickySpeedMatch__24CB3AIAggressionBehaviourCFv [game, draft]	PASS		PASS
+0032F840	MoveToTarget__24CB3AIAggressionBehaviourFv [game, draft]	DIFF	1 words: mem 00653ECC 42037FE4 vs 00000000	MISSING
+0032FB30	UpdateSlam__24CB3AIAggressionBehaviourFv [game, draft]	DIFF	1 words: mem 00653ECC 0041D001 vs 00000000	MISSING
+00333150	CollideWheelWithWorld__18CB3BodyPartPhysicsFv [game, draft]	MISSING	00275D20 IntersectSphereTriangle__14GtIntersectionFQ29GtMathPs29CGtSphereQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dQ29GtMathPs26CGtV3dPQ29GtMathPs26CGtV3d [game, none]	MISSING
+00333740	func_00333740 [game, matched]	MISSING	00301B00 func_00301B00 [game, matched]	MISSING
+003342D0	Prepare__18CB3BodyPartPhysicsFP17CB3VehiclePhysicsi13EBodyPartType [game, matched]	DIFF	1 words: mem 00631ADC 3EB28E03 vs 3F800000	MISSING
+003350E0	func_003350E0 [game, matched]	PASS		MISSING
+003353C0	func_003353C0 [game, matched]	MISSING	003350F0 func_003350F0 [game, draft]	MISSING
+003359F0	func_003359F0 [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+00341CF0	func_00341CF0 [game, matched]	PASS		MISSING
+00343800	func_00343800 [game, matched]	PASS		PASS
+00345D00	func_00345D00 [game, matched]	PASS		PASS
+0034CED0	SetAllowableCharacters__28CB3OnScreenKeyboardComponentF14EGlobalStrings [game, matched]	PASS		MISSING
+0034CEF0	SetDisplayText__28CB3OnScreenKeyboardComponentFPUsb [game, matched]	PASS		MISSING
+0034D910	AddCharToString__28CB3OnScreenKeyboardComponentFUs [game, matched]	MISSING	0031E1A0 Release__19CB3PromptsComponentFv [game, matched]	MISSING
+0034F300	SetupKeys__28CB3OnScreenKeyboardComponentFbbb [game, draft]	PASS		MISSING
+00350F70	Select__28CB3OnScreenKeyboardComponentFv [game, matched]	MISSING	0031E1A0 Release__19CB3PromptsComponentFv [game, matched]	MISSING
+00350F80	Show__28CB3OnScreenKeyboardComponentFbb [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+00351410	Update__28CB3OnScreenKeyboardComponentFf [game, matched]	PASS		PASS
+003517F0	func_003517F0 [game, matched]	PASS		MISSING
+00353990	Release__16CB3CrashAnalyserFv [game, matched]	PASS		PASS
+003541D0	func_003541D0 [game, matched]	PASS		PASS
+003548C0	func_003548C0 [game, matched]	DIFF	1 words: f0 43BCD479 vs 43BCD47A	DIFF
+00354B20	AddCollidingBody__16CB3CrashAnalyserFP16CB3CollidingBody [game, matched]	PASS		PASS
+00354D60	JoinExistingCrash__16CB3CrashAnalyserFv [game, matched]	PASS		MISSING
+00354ED0	Construct__16CB3CrashAnalyserFv [game, matched]	PASS		MISSING
+00354F70	func_00354F70 [game, matched]	PASS		MISSING
+00354FD0	func_00354FD0 [game, draft]	MISSING	0035C3E0 ForAllSpheresResult__13CGtSphereTreeFRC10CGtFrustumPFPC19CGtSphereTreeSphere21EGtIntersectionResultRC21CGtIntersectionResultPv_bPv [game, matched]	MISSING
+003550F0	func_003550F0 [game, draft]	MISSING	0035C3E0 ForAllSpheresResult__13CGtSphereTreeFRC10CGtFrustumPFPC19CGtSphereTreeSphere21EGtIntersectionResultRC21CGtIntersectionResultPv_bPv [game, matched]	MISSING
+00355A90	func_00355A90 [game, matched]	MISSING	0035C3E0 ForAllSpheresResult__13CGtSphereTreeFRC10CGtFrustumPFPC19CGtSphereTreeSphere21EGtIntersectionResultRC21CGtIntersectionResultPv_bPv [game, matched]	MISSING
+00355BD0	func_00355BD0 [game, draft]	MISSING	0035C3E0 ForAllSpheresResult__13CGtSphereTreeFRC10CGtFrustumPFPC19CGtSphereTreeSphere21EGtIntersectionResultRC21CGtIntersectionResultPv_bPv [game, matched]	MISSING
+00356FB0	func_00356FB0 [game, matched]	MISSING	0035C3E0 ForAllSpheresResult__13CGtSphereTreeFRC10CGtFrustumPFPC19CGtSphereTreeSphere21EGtIntersectionResultRC21CGtIntersectionResultPv_bPv [game, matched]	MISSING
+00357600	Action__29CB3PlayerCameraStateCrashModeF14EGtStateActionPvPvPv [game, matched]	PASS		PASS
+003582A0	Prepare__19CB3BehaviourClusterFPv [game, draft]	MISSING	00301BC0 IntersectLineWithUnit__16CB3StreamedTrackFUiRC7CGtLinePFRC28CGtPolygonIntersectionResultPv_bPv [game, matched]	MISSING
+00358840	Construct__19CB3BehaviourClusterFv [game, matched]	PASS		MISSING
+00358850	UpdateFocus__13CB3ClusterRigFf [game, draft]	DIFF	2 words: mem 0051737C 3F800000 vs 41000000; mem 0051738C 3F800000 vs 41000000	DIFF
+0035A270	func_0035A270 [game, draft]	DIFF	2 words: mem 0051736C 6C0C5487 vs 00000000; mem 005173AC 6C0C5487 vs 00000000	MISSING
+0035A700	PrepareFocus__13CB3ClusterRigFf [game, draft]	PASS		PASS
+0035D250	AddToIntegrateList__13CGtSphereTreeFP19CGtSphereTreeSphere [game, matched]	PASS		PASS
+0035D960	Recompute__13CGtSphereTreeFP19CGtSphereTreeSphere [game, draft]	PASS		PASS
+0035DF60	Update__13CGtSphereTreeFv [game, matched]	PASS		MISSING
+0035E030	RemoveSphere__13CGtSphereTreeFP19CGtSphereTreeSphere [game, matched]	PASS		PASS
+0035E750	AddSphere__13CGtSphereTreeFP19CGtSphereTreeSphereQ29GtMathPs26CGtV3dfPv [game, matched]	PASS		PASS
+00361900	CalculateCrashDescription__13CB3CrashComboFv [game, matched]	PASS		MISSING
+003620B0	UpdateSkids__13CB3CrashComboFv [game, matched]	PASS		PASS
+00362340	UpdateSpins__13CB3CrashComboFv [game, draft]	PASS		PASS
+00362F60	UpdateCurrentCombo__13CB3CrashComboFv [game, matched]	MISSING	003634B0 GetSideFacingUp__13CB3CrashComboFRCQ29GtMathPs212CGtMatrix3x4 [game, matched]	MISSING
+00363C90	OnCrashStart__13CB3CrashComboFPC17CB3CrashStartInfo [game, matched]	DIFF	1 words: mem 0064F97C 00000000 vs 3F800000	MISSING
+00364270	func_00364270 [game, matched]	PASS		PASS
+003642C0	Prepare__13CB3CrashComboFP10CB3RaceCar [game, matched]	PASS		MISSING
+00364600	func_00364600 [game, matched]	MISSING	00212E30 _FormatString__10CGtUnicodeFPUsPCUsPCUsPCUsPCUsPCUs [game, none]	MISSING
+00365510	SetTexture__6B3Im3dFP10CGtTexture [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+00366050	Prepare__15CB3PopcornArrayFv [game, matched]	PASS		PASS
+00367F40	OnAttack__13CB3ScoreBonusF21EScoreBonusAttackTypeP10CB3RaceCari19EScoreBonusCategory [game, matched]	PASS		MISSING
+003683E0	OnCrashComboResult__13CB3ScoreBonusF21ECrashComboEvaluation [game, matched]	PASS		MISSING
+003684A0	OnCrashReset__13CB3ScoreBonusFv [game, matched]	PASS		MISSING
+00368530	OnCrashEscape__13CB3ScoreBonusFi [game, matched]	PASS		MISSING
+00368680	OnTakedown__13CB3ScoreBonusFP10CB3RaceCarPC17CB3CrashStartInfobb [game, draft]	PASS		MISSING
+00368D60	OnTailgate__13CB3ScoreBonusFP10CB3RaceCarP16CB3ScoreCategory [game, matched]	PASS		PASS
+00368E90	OnAward__13CB3ScoreBonusF16EScoreBonusEventiPC16CB3ScoreCategory [game, matched]	PASS		MISSING
+00368EF0	OnEvent__13CB3ScoreBonusF16EScoreBonusEventiib [game, matched]	PASS		MISSING
+00369270	Update__13CB3ScoreBonusFv [game, matched]	PASS		PASS
+00369450	func_00369450 [game, matched]	PASS		MISSING
+00369690	Action__22CB3OnlineRankingsStateF14EGtStateActionPvPvPv [game, matched]	PASS		PASS
+0036A910	Action__21CB3OnlineBuddiesStateF14EGtStateActionPvPvPv [game, matched]	PASS		PASS
+0036B0A0	func_0036B0A0 [game, matched]	PASS		PASS
+003717A0	CacheGlobalTextures__13CB3MenuImagesFv [game, matched]	PASS		PASS
+00371870	CacheFrontendTextures__13CB3MenuImagesFv [game, matched]	PASS		PASS
+00373F60	Prepare__23CB3BehaviourInterpolateFPv [game, matched]	PASS		MISSING
+003741A0	SetParameters__23CB3BehaviourInterpolateF24EB3PlayerCameraBehaviour24EB3PlayerCameraBehaviourf20EB3InterpolationType24EB3InterpolationTimeMode [game, matched]	PASS		MISSING
+00374240	Construct__23CB3BehaviourInterpolateFP22CB3PlayerCameraManager [game, matched]	PASS		MISSING
+00374290	Construct__18CB3CameraBehaviourFv [game, matched]	PASS		MISSING
+003742C0	ReadMemory__13CGtByteStreamFPvi [game, matched]	PASS		PASS
+00374380	WriteMemory__13CGtByteStreamFPCvi [game, matched]	PASS		PASS
+00374840	Action__26CB3PlayerCameraStateEditorF14EGtStateActionPvPvPv [game, matched]	PASS		PASS
+00375270	Construct__20CB3BehaviourKeyFrameFv [game, matched]	PASS		MISSING
+003754B0	func_003754B0 [game, matched]	PASS		MISSING
+003755D0	func_003755D0 [game, matched]	PASS		MISSING
+00375AA0	Render__15CB3ScrapeSystemFv [game, matched]	MISSING	00365640 BeginRendering__6B3Im3dFv [game, draft]	MISSING
+00375D90	Prepare__15CB3ScrapeSystemFv [game, matched]	PASS		PASS
+00375E90	Construct__15CB3ScrapeSystemFv [game, draft]	PASS		PASS
+00376230	EndRender__17CB3ScrapeRendererFv [game, matched]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+00376260	BeginRender__17CB3ScrapeRendererFv [game, matched]	MISSING	00365640 BeginRendering__6B3Im3dFv [game, draft]	MISSING
+003767E0	Construct__19CGtFramerateManagerFff [game, matched]	PASS		PASS
+00378EA0	Upload__23CB3TextureCollectionPS2Fv [game, matched]	MISSING	00221A70 AccessTexture__15CGtTextureCacheFP10CGtTexturef29EGtTextureCachePS2_FilterModebb [game, draft]	MISSING
+0037FBB0	func_0037FBB0 [game, matched]	PASS		PASS
+00382CF0	func_00382CF0 [game, matched]	PASS		MISSING
+00383A70	FindWave__12CGtSoundBankCFRCUlb [game, matched]	PASS		PASS
+00383C10	Unload__12CGtSoundBankFv [game, matched]	MISSING	002ADFA0 RwaWaveDictDestroy [rwa, none]	MISSING
+00383C80	LoadAsync__12CGtSoundBankFPCcP13RwaSPU2OutputP17RwaWaveDictLoaderPvi [game, matched]	MISSING	0029EB70 RwaWaveDictReadAsync [rwa, none]	MISSING
+00383F60	FindWave__19CGtSoundBankManagerCFRCUlb [game, matched]	PASS		MISSING
+00383FF0	UnloadBank__19CGtSoundBankManagerFP12CGtSoundBank [game, matched]	MISSING	002ADFA0 RwaWaveDictDestroy [rwa, none]	MISSING
+00384460	Construct__19CGtSoundBankManagerFP13RwaSPU2OutputiP24CGtSoundWaveObjectBuffer [game, matched]	MISSING	001DC390 HMalloc [rw, none]	MISSING
+003847B0	SetPos__16CGtSoundListenerFQ29GtMathPs26CGtV3df [game, draft]	MISSING	001DE260 RwV3dLength [rw, none]	MISSING
+003849F0	Construct__16CGtSoundListenerFv [game, matched]	MISSING	002AEF00 RwaVirtualListenerCreate [rwa, none]	MISSING
+00384A60	GetNearestListener__23CGtSoundListenerManagerCFQ29GtMathPs26CGtV3d [game, draft]	PASS		PASS
+00384B80	SetListener__23CGtSoundListenerManagerFiP16CGtSoundListener [game, matched]	MISSING	002AE6F0 RwaListenerManagerRegisterVirtualListener [rwa, none]	MISSING
+00384CE0	Update__23CGtSoundListenerManagerFv [game, matched]	PASS		MISSING
+00384D40	Prepare__23CGtSoundListenerManagerFUi [game, matched]	MISSING	002AE6E0 RwaListenerManagerSetMode [rwa, none]	MISSING
+00384DE0	Construct__23CGtSoundListenerManagerFP13RwaSPU2Output [game, matched]	MISSING	00298D80 RwaListenerCreate [rwa, none]	MISSING
+00384E70	StopAll__15CGtSoundManagerFv [game, matched]	MISSING	00290D30 RwaCoreUpdateStart [rwa, none]	MISSING
+00384FD0	func_00384FD0 [game, matched]	MISSING	00290CF0 RwaCoreUpdateFinish [rwa, none]	MISSING
+00384FF0	func_00384FF0 [game, matched]	MISSING	00290D30 RwaCoreUpdateStart [rwa, none]	MISSING
+00385010	Update__15CGtSoundManagerFffff [game, matched]	MISSING	00385A00 Update__17CGtSoundRealVoiceFffff [game, matched]	MISSING
+00385090	Prepare__15CGtSoundManagerFPvPvii [game, matched]	PASS		MISSING
+00385160	Construct__15CGtSoundManagerFP30CGtSoundManagerConstructParams [game, matched]	MISSING	00298D80 RwaListenerCreate [rwa, none]	MISSING
+00385E20	Construct__17CGtSoundRealVoiceFP13RwaSPU2OutputP24CGtSoundRealVoiceDSPSendi [game, matched]	MISSING	002B2210 RwaSPU2VoiceCreate [rwa, none]	MISSING
+00386020	func_00386020 [game, matched]	MISSING	002A28A0 func_002A28A0 [rwa, none]	MISSING
+00386080	func_00386080 [game, matched]	MISSING	002A2C80 _rwaStreamGetStatus [rwa, none]	MISSING
+00386240	Stop__14CGtSoundStreamFv [game, matched]	MISSING	002A2C90 _rwaStreamSetPlayState [rwa, none]	MISSING
+00386290	Play__14CGtSoundStreamFb [game, matched]	MISSING	002A2DE0 _rwaStreamSetLoopSegment [rwa, none]	MISSING
+003863C0	Release__14CGtSoundStreamFv [game, matched]	MISSING	002A2C90 _rwaStreamSetPlayState [rwa, none]	MISSING
+00386410	Update__14CGtSoundStreamFv [game, matched]	MISSING	002A2C80 _rwaStreamGetStatus [rwa, none]	MISSING
+003865A0	func_003865A0 [game, matched]	MISSING	002A2C80 _rwaStreamGetStatus [rwa, none]	MISSING
+00386790	AttachMedia__14CGtSoundStreamFPCc [game, matched]	MISSING	002A2C80 _rwaStreamGetStatus [rwa, none]	MISSING
+003868C0	Construct__14CGtSoundStreamFP13RwaSPU2Outputi [game, matched]	MISSING	002A3670 RwaStreamCreate [rwa, none]	MISSING
+00386970	GetStreamsPreparing__21CGtSoundStreamManagerFv [game, matched]	PASS		MISSING
+003869D0	StopAll__21CGtSoundStreamManagerFv [game, matched]	PASS		PASS
+00386A60	FreeStream__21CGtSoundStreamManagerFP14CGtSoundStream [game, matched]	PASS		MISSING
+00386B30	AllocStream__21CGtSoundStreamManagerFb [game, matched]	PASS		MISSING
+00386CB0	Update__21CGtSoundStreamManagerFv [game, matched]	PASS		PASS
+00386D50	Construct__21CGtSoundStreamManagerFP13RwaSPU2Outputii [game, draft]	MISSING	001DC390 HMalloc [rw, none]	MISSING
+00387240	func_00387240 [game, matched]	MISSING	0011FB18 sceCdReadClock [sce, none]	MISSING
+00387A40	Stop__20CGtSoundVirtualVoiceFv [game, matched]	MISSING	002979E0 _rwaVirtualVoiceSetTrigger [rwa, none]	MISSING
+00387A90	Start__20CGtSoundVirtualVoiceFPC19CGtSoundVoiceParams [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+003884D0	Update__20CGtSoundVirtualVoiceFPC19CGtSoundVoiceParams [game, matched]	PASS		MISSING
+00388A10	Construct__20CGtSoundVirtualVoiceFP13RwaSPU2Output [game, matched]	MISSING	00297FD0 RwaVirtualVoiceCreate [rwa, none]	MISSING
+00388BD0	TriggerRealVoice__20CGtSoundVoiceManagerFPC19CGtSoundVoiceParams [game, matched]	MISSING	003856D0 Start__17CGtSoundRealVoiceFPC19CGtSoundVoiceParams [game, matched]	MISSING
+00388D40	TriggerVoice__20CGtSoundVoiceManagerFPC19CGtSoundVoiceParams [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+00388FA0	AllocRealVoice__20CGtSoundVoiceManagerFv [game, matched]	PASS		MISSING
+00389080	Release__20CGtSoundVoiceManagerFv [game, matched]	MISSING	002B0F50 _rwaSPU2VoiceSetWave [rwa, none]	MISSING
+00389380	Construct__20CGtSoundVoiceManagerFP13RwaSPU2OutputP24CGtSoundRealVoiceDSPSendiP23CGtSoundListenerManager [game, matched]	ERROR	b3host: guest pointer outside RAM/scratchpad dereferenced	ERROR
+003894D0	GetLength__12CGtSoundWaveCFv [game, matched]	PASS		PASS
+003895D0	Construct__12CGtSoundWaveFP11RwaSPU2Wave [game, matched]	PASS		MISSING
+00389830	func_00389830 [game, matched]	PASS		MISSING
+00389A50	func_00389A50 [game, matched]	PASS		MISSING
+00389A80	func_00389A80 [game, matched]	PASS		PASS
+00389AB0	OnCrashStart__25CB3OfflineSingleRaceLogicFP17CB3RaceCarPhysicsP17CB3CrashStartInfo [game, matched]	PASS		MISSING
+00389C50	func_00389C50 [game, matched]	MISSING	00375280 GetTime__19CGtHiResSystemTimerFv [game, matched]	MISSING
+00389EE0	func_00389EE0 [game, matched]	MISSING	0022BAE0 GetDeadInputTime__15CB3InputManagerFSc [game, matched]	MISSING
+0038A380	func_0038A380 [game, matched]	PASS		PASS
+0038A430	func_0038A430 [game, matched]	PASS		MISSING
+0038AB30	func_0038AB30 [game, matched]	PASS		MISSING
+0038ABE0	func_0038ABE0 [game, matched]	PASS		PASS
+0038BAE0	Construct__25CB3OfflineBurningLapLogicFv [game, matched]	PASS		MISSING
+0038E160	func_0038E160 [game, matched]	PASS		MISSING
+0038EB40	func_0038EB40 [game, matched]	PASS		MISSING
+0038FF60	func_0038FF60 [game, matched]	PASS		MISSING
+00393320	Construct__28CB3OnlineTurnBasedCrashLogicFv [game, matched]	PASS		MISSING
+00394C30	Update__24CB3TakedownCameraManagerFv [game, draft]	PASS		PASS
+00395060	func_00395060 [game, matched]	MISSING	003856D0 Start__17CGtSoundRealVoiceFPC19CGtSoundVoiceParams [game, matched]	MISSING
+003951A0	OnTakedown__20CB3OfflineStageLogicFP10CB3RaceCarP10CB3RaceCar [game, matched]	MISSING	003856D0 Start__17CGtSoundRealVoiceFPC19CGtSoundVoiceParams [game, matched]	MISSING
+00395310	UpdateCameras__20CB3OfflineStageLogicFv [game, matched]	PASS		MISSING
+00395490	Update__20CB3OfflineStageLogicFv [game, matched]	MISSING	0022BAE0 GetDeadInputTime__15CB3InputManagerFSc [game, matched]	MISSING
+003956A0	Prepare__20CB3OfflineStageLogicFv [game, matched]	PASS		PASS
+00395800	OnTakedown__13CB3StageLogicFP10CB3RaceCarP10CB3RaceCar [game, matched]	PASS		MISSING
+00395970	OnWorldPrepared__13CB3StageLogicFv [game, matched]	PASS		MISSING
+00399C30	UpdateExplosionTrails__19CB3ExplosionManagerFf [game, draft]	PASS		PASS
+0039AD20	func_0039AD20 [game, matched]	PASS		PASS
+003A6DE0	func_003A6DE0 [game, matched]	MISSING	002187B0 RenderTriStripGouraudTex__12Gt2dRendererFRCQ29GtMathPs26CGtV2diPCQ29GtMathPs26CGtV2dPCQ29GtMathPs26CGtV2dPCQ29GtMathPs26CGtV4d [game, none]	MISSING
+003A6E30	func_003A6E30 [game, matched]	MISSING	002187B0 RenderTriStripGouraudTex__12Gt2dRendererFRCQ29GtMathPs26CGtV2diPCQ29GtMathPs26CGtV2dPCQ29GtMathPs26CGtV2dPCQ29GtMathPs26CGtV4d [game, none]	MISSING
+003A7060	func_003A7060 [game, matched]	PASS		MISSING
+003BB100	func_003BB100 [game, matched]	PASS		MISSING
+003BB190	Prepare__24CB3ChampionshipChallengeFv [game, matched]	PASS		MISSING
+003BB1A0	Construct__24CB3ChampionshipChallengeFv [game, matched]	PASS		MISSING
+003BE8D0	FixUp__18CGtCollisionKDTreeFv [game, matched]	PASS		MISSING
+003C2F90	func_003C2F90 [game, matched]	PASS		MISSING
+003C3430	Prepare__16CB3StreamManagerFUl [game, matched]	MISSING	00212B80 GetFileNameFromDeviceName__13CGTFileSystemFPCc [game, draft]	MISSING
+003C6360	func_003C6360 [game, draft]	PASS		PASS
+003C6DF0	func_003C6DF0 [game, matched]	PASS		PASS
+003C70B0	func_003C70B0 [game, matched]	PASS		PASS
+003C71B0	func_003C71B0 [game, matched]	PASS		PASS
+003C8A30	func_003C8A30 [game, matched]	PASS		PASS
+003C9210	func_003C9210 [game, matched]	MISSING	00321470 Prepare__19CB3VSelectComponentFPC29CB3MenuComponentSelectionDataP28CB3VSelectComponentEntryData [game, matched]	MISSING
+003C9340	func_003C9340 [game, draft]	PASS		PASS
+003C96F0	func_003C96F0 [game, draft]	PASS		MISSING
+003C98D0	func_003C98D0 [game, matched]	MISSING	00321470 Prepare__19CB3VSelectComponentFPC29CB3MenuComponentSelectionDataP28CB3VSelectComponentEntryData [game, matched]	MISSING
+003C9BF0	func_003C9BF0 [game, matched]	PASS		PASS
+003CBD20	func_003CBD20 [game, matched]	PASS		PASS
+003CC2C0	func_003CC2C0 [game, matched]	PASS		MISSING
+003CD610	Prepare__13CB3CrashScoreFv [game, matched]	PASS		PASS
+003D0960	func_003D0960 [game, draft]	PASS		PASS
+003D0D80	func_003D0D80 [game, matched]	PASS		MISSING
+003D11D0	func_003D11D0 [game, matched]	PASS		MISSING
+003D27F0	func_003D27F0 [game, draft]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+003D2EA0	func_003D2EA0 [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+003D46A0	UpdateWibbleAnimationOut__27CB3HUDPrimaryMessageHandlerFP27CB3HUDPrimaryMessageHandler [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+003D4C70	UpdateSpinAnimationOut__27CB3HUDPrimaryMessageHandlerFP27CB3HUDPrimaryMessageHandler [game, matched]	PASS		PASS
+003D5510	ClearMessage__27CB3HUDPrimaryMessageHandlerFb [game, matched]	PASS		PASS
+003D55B0	Update__27CB3HUDPrimaryMessageHandlerFf [game, matched]	PASS		PASS
+003D6AB0	Prepare__16CB3HUDImpactTimeFi9EHUDAligni [game, matched]	PASS		MISSING
+003D6FE0	func_003D6FE0 [game, draft]	PASS		MISSING
+003D8070	StartTransition__20CB3HUDPrimaryMessageFb8EHUDMode8EHUDMode [game, matched]	PASS		PASS
+003D80E0	UpdateTransition__20CB3HUDPrimaryMessageFfb8EHUDMode8EHUDMode [game, matched]	PASS		PASS
+003D8130	UpdateCrashText__20CB3HUDPrimaryMessageFf [game, matched]	PASS		PASS
+003D8230	Update__20CB3HUDPrimaryMessageFf [game, matched]	PASS		MISSING
+003D8280	UpdateMessage__20CB3HUDPrimaryMessageFf [game, draft]	PASS		MISSING
+003D8810	Prepare__20CB3HUDPrimaryMessageFi9EHUDAligniP11CB3HUDScore [game, matched]	PASS		MISSING
+003D8D60	MakeConvexHull__18CB3ConvexHullMakerFP13CB3ConvexHullPfP19CB3ConvexHullVertex [game, matched]	DIFF	6 words: mem 0058765C 00000000 vs F8944689; mem 0058766C 00000000 vs 00007506; mem 0058768C 3E5A98A2 vs 00000000; mem 0058769C 00000000 vs F8944689; mem 005876AC 00000000 vs 00007506; mem 005876CC 3E5A98A2 vs 00000000	MISSING
+003DA920	FindPointNearestTo__16CB3VehicleDeformFfffP13CB3ConvexHullPQ29GtMathPs26CGtV3d18EMainBodyBoneIndexPQ29GtMathPs26CGtV3d [game, matched]	PASS		MISSING
+003DC070	Update__16CB3VehicleDeformFv [game, draft]	PASS		PASS
+003E0590	GetPivotPos__16CB3VehicleDeformF17EVirtualBoneIndex [game, draft]	PASS		PASS
+003E0B10	RotateAndScaleCornerBonesToPointToRestOfCar__16CB3VehicleDeformFb [game, draft]	PASS		PASS
+003E19C0	UpdateFlyingBitsBones__16CB3VehicleDeformFff [game, matched]	DIFF	6 words: mem 006576CC 411ED7B7 vs 00000000; mem 0065770C 411ED7B7 vs 00000000; mem 0065799C 411ED7B7 vs 00000000; mem 006579CC 411ED7B7 vs 00000000; mem 006579DC 411ED7B7 vs 00000000; mem 00657A0C 411ED7B7 vs 00000000	MISSING
+003E39B0	DeformBonnet__16CB3VehicleDeformFffb [game, draft]	PASS		MISSING
+003E4AA0	GetIKAngles__16CB3VehicleDeformFfffPfPfPfPf [game, matched]	PASS		PASS
+003E5040	DeformDoor__16CB3VehicleDeformF17EVehicleFlyingBitff [game, draft]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+003E6C20	func_003E6C20 [game, draft]	PASS		PASS
+003E7110	GetVirtualBones__16CB3VehicleDeformFQ29GtMathPs26CGtV3dPScPScPf [game, matched]	DIFF	1 words: mem 00657108 3F31E9F9 vs 00000000	DIFF
+003E7850	GetBlockSize__16CB3MemoryManagerCF14EB3MemoryBlock [game, matched]	PASS		PASS
+003E7AD0	ReleaseBlock__16CB3MemoryManagerF14EB3MemoryBlocki [game, matched]	PASS		PASS
+003E7D40	AcquireBlock__16CB3MemoryManagerF14EB3MemoryBlocki [game, draft]	PASS		PASS
+003E9A60	GetStageTrackID__25CB3HardCodedRaceStageListFUl [game, matched]	PASS		ERROR
+003E9CB0	func_003E9CB0 [game, matched]	MISSING	0021AC70 unknown	MISSING
+003EA580	func_003EA580 [game, matched]	MISSING	0021AC70 unknown	MISSING
+003EAA60	func_003EAA60 [game, matched]	PASS		MISSING
+003EAF00	func_003EAF00 [game, matched]	PASS		MISSING
+003EB0A0	func_003EB0A0 [game, matched]	PASS		MISSING
+003EB0F0	func_003EB0F0 [game, matched]	PASS		PASS
+003EB500	func_003EB500 [game, matched]	PASS		PASS
+003EBA20	func_003EBA20 [game, matched]	PASS		PASS
+003EC7E0	func_003EC7E0 [game, matched]	PASS		PASS
+003F3F90	func_003F3F90 [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+003F4160	func_003F4160 [game, matched]	MISSING	0031E1A0 Release__19CB3PromptsComponentFv [game, matched]	MISSING
+003F4600	func_003F4600 [game, matched]	MISSING	002F9690 func_002F9690 [game, matched]	MISSING
+003F4A80	func_003F4A80 [game, matched]	MISSING	001383B0 EvaluateTrackUnlocking__10CB3ProfileFv [game, matched]	MISSING
+003F55E0	func_003F55E0 [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+003F5ED0	func_003F5ED0 [game, matched]	PASS		MISSING
+003F7750	func_003F7750 [game, draft]	PASS		PASS
+003F86B0	func_003F86B0 [game, matched]	PASS		PASS
+003F8870	func_003F8870 [game, matched]	PASS		PASS
+003F8890	func_003F8890 [game, matched]	PASS		MISSING
+003FA4A0	func_003FA4A0 [game, matched]	PASS		PASS
+003FA600	func_003FA600 [game, draft]	PASS		MISSING
+003FB710	func_003FB710 [game, matched]	PASS		MISSING
+003FB7C0	func_003FB7C0 [game, matched]	PASS		PASS
+003FBA40	func_003FBA40 [game, matched]	PASS		PASS
+003FBB50	func_003FBB50 [game, matched]	PASS		PASS
+003FBBE0	func_003FBBE0 [game, matched]	PASS		PASS
+003FBC20	func_003FBC20 [game, matched]	PASS		MISSING
+003FBDB0	func_003FBDB0 [game, matched]	PASS		PASS
+003FC060	func_003FC060 [game, matched]	PASS		MISSING
+003FC260	func_003FC260 [game, matched]	PASS		PASS
+003FC470	func_003FC470 [game, matched]	PASS		PASS
+003FC520	func_003FC520 [game, matched]	PASS		PASS
+003FC5D0	func_003FC5D0 [game, matched]	PASS		PASS
+003FC700	func_003FC700 [game, matched]	PASS		MISSING
+003FC8C0	func_003FC8C0 [game, matched]	MISSING	002A2C80 _rwaStreamGetStatus [rwa, none]	MISSING
+003FCC10	func_003FCC10 [game, matched]	PASS		MISSING
+003FCD20	func_003FCD20 [game, matched]	PASS		MISSING
+003FE130	func_003FE130 [game, matched]	MISSING	003FF540 func_003FF540 [game, matched]	MISSING
+003FE1F0	func_003FE1F0 [game, matched]	PASS		PASS
+003FE8F0	func_003FE8F0 [game, matched]	PASS		PASS
+003FFD80	func_003FFD80 [game, matched]	PASS		PASS
+0041D3E0	Update__25CB3SoundStaticPassManagerFv [game, draft]	PASS		PASS
+0041E3C0	func_0041E3C0 [game, matched]	PASS		PASS
+0041E8A0	func_0041E8A0 [game, matched]	PASS		MISSING
+0041E8B0	func_0041E8B0 [game, matched]	PASS		MISSING
+0041EAD0	Construct__21CB3NetworkVoIPManagerFP23CGtNetworkPlayerManager [game, matched]	MISSING	002C3080 lgCodecEnumerate [lg, none]	MISSING
+0041F0C0	func_0041F0C0 [game, matched]	PASS		PASS
+00420B40	ApplyEvent__29CB3MemCardFSMFlowCommunicatorFUiPv [game, matched]	MISSING	00212E30 _FormatString__10CGtUnicodeFPUsPCUsPCUsPCUsPCUsPCUs [game, none]	MISSING
+00420B60	func_00420B60 [game, matched]	PASS		MISSING
+00420E20	OnMemCardPageExit__24CB3MemCardControllerBaseFv [game, matched]	PASS		MISSING
+00421190	StartLoadProfileFlow__24CB3MemCardControllerBaseFv [game, matched]	MISSING	00242E00 func_00242E00 [sce, none]	MISSING
+00421580	Update__24CB3MemCardControllerBaseFv [game, matched]	MISSING	00242E00 func_00242E00 [sce, none]	MISSING
+004215A0	func_004215A0 [game, matched]	MISSING	003FF540 func_003FF540 [game, matched]	MISSING
+00421E50	func_00421E50 [game, matched]	PASS		MISSING
+00422070	func_00422070 [game, matched]	PASS		PASS
+00422410	func_00422410 [game, matched]	PASS		PASS
+00422CA0	func_00422CA0 [game, matched]	PASS		PASS
+00424480	func_00424480 [game, matched]	PASS		PASS
+00424750	func_00424750 [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+00425330	func_00425330 [game, matched]	PASS		PASS
+00426C10	Render__18CB3DirectionalBlurFv [game, draft]	MISSING	001F3080 _rwDMAOpenVIFPkt [rw, none]	MISSING
+004277C0	GetCarTexture__22CB3ImageReward2dObjectF17EB3MenuCarClassesi [game, matched]	MISSING	00127520 func_00127520 [runtime, none]	MISSING
+00427A30	func_00427A30 [game, matched]	MISSING	00297930 _rwaVirtualVoiceSetWave [rwa, none]	MISSING
+0042DF40	func_0042DF40 [game, matched]	MISSING	00127520 func_00127520 [runtime, none]	MISSING
+0042E5C0	func_0042E5C0 [game, matched]	PASS		MISSING
+0042E5D0	func_0042E5D0 [game, matched]	PASS		PASS
+0042E6B0	func_0042E6B0 [game, matched]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+0042FA60	func_0042FA60 [game, matched]	PASS		MISSING
+0042FCB0	func_0042FCB0 [game, matched]	PASS		MISSING
+00432160	func_00432160 [game, matched]	PASS		MISSING
+00432410	func_00432410 [game, matched]	PASS		MISSING
+004328C0	func_004328C0 [game, matched]	PASS		MISSING
+00432A50	func_00432A50 [game, matched]	PASS		PASS
+00432AB0	func_00432AB0 [game, draft]	MISSING	00319C80 func_00319C80 [game, matched]	MISSING
+00434CF0	func_00434CF0 [game, matched]	PASS		MISSING
+00434DD0	func_00434DD0 [game, matched]	PASS		MISSING
+00434FF0	func_00434FF0 [game, matched]	PASS		MISSING
+00436350	func_00436350 [game, matched]	MISSING	0011FB18 sceCdReadClock [sce, none]	MISSING
+004365B0	func_004365B0 [game, matched]	MISSING	002F9690 func_002F9690 [game, matched]	MISSING
+00436B00	func_00436B00 [game, matched]	PASS		MISSING
+00436B10	func_00436B10 [game, matched]	PASS		PASS
+00436C20	func_00436C20 [game, matched]	MISSING	002F9690 func_002F9690 [game, matched]	MISSING
+004376F0	func_004376F0 [game, matched]	PASS		PASS
+00437B50	func_00437B50 [game, matched]	PASS		PASS
+00437DC0	func_00437DC0 [game, matched]	PASS		PASS
+00438910	func_00438910 [game, matched]	MISSING	00319E80 Prepare__19CB3HeadingComponentFQ219CB3HeadingComponent12EHeadingType [game, matched]	MISSING
+00438DD0	func_00438DD0 [game, matched]	PASS		PASS
+00438F30	func_00438F30 [game, matched]	PASS		MISSING
+00439280	func_00439280 [game, matched]	PASS		MISSING
+00439E00	func_00439E00 [game, matched]	PASS		PASS
+0043C470	func_0043C470 [game, matched]	PASS		PASS
+0043C5B0	func_0043C5B0 [game, matched]	MISSING	00319C80 func_00319C80 [game, matched]	MISSING
+0043EE40	func_0043EE40 [game, matched]	PASS		PASS
+0043EFA0	func_0043EFA0 [game, matched]	PASS		PASS
+0043FD60	func_0043FD60 [game, matched]	PASS		PASS
+0043FFB0	func_0043FFB0 [game, matched]	PASS		PASS
+004413C0	func_004413C0 [game, matched]	PASS		PASS
+00441D70	func_00441D70 [game, draft]	PASS		PASS
+00442880	func_00442880 [game, matched]	MISSING	004438E0 func_004438E0 [lg, none]	MISSING
+00445850	func_00445850 [game, matched]	PASS		PASS
+00446970	func_00446970 [game, matched]	PASS		MISSING
+004474F0	func_004474F0 [game, matched]	PASS		PASS
+00448930	func_00448930 [game, draft]	MISSING	002F9690 func_002F9690 [game, matched]	MISSING
+00449150	func_00449150 [game, matched]	PASS		MISSING
+00449510	func_00449510 [game, draft]	MISSING	001D5E70 Prepare__11CGt2dObjectFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dPFRCQ211CGt2dObject16CGt2dObjectSpacePCv_vUiUi [game, matched]	MISSING
+00449F10	func_00449F10 [game, matched]	MISSING	002F9690 func_002F9690 [game, matched]	MISSING
+00455050	func_00455050 [game, matched]	PASS		PASS
+00456900	func_00456900 [game, matched]	PASS		PASS
+00461270	GetDefaultCornerHeights__16CB3VehicleDeformFP13CB3ConvexHullPf [game, draft]	PASS		MISSING
+00469AB0	func_00469AB0 [game, matched]	PASS		PASS

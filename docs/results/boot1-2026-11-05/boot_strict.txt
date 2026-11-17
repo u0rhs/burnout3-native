@@ -1,0 +1,17 @@
+native_boot: 5336 native functions in the table; ELF $B3_WIN/perf/install/game/SLUS_210.50
+boot: _InitSys: ok (v0 00000000)
+boot: FlushCache(0): ok (v0 00000000)
+boot: main = func_0012EB30(argc, argv): MISSING no native function at 001E2FF8 RwEngineInit [rw, none]; a0-a3 00000000 00000001 00000100 00000000 f12 00000000 sp 01FFFD60; chain: 0012EB30 func_0012EB30 > 00133BB0 Construct__7CB3GameFv > 00228160 func_00228160 > 00227ED0 OpenRenderWare__18CB3GraphicsManagerFv
+stopped at 001E2FF8 RwEngineInit [rw, none]: rw library entry point: platform tier (S5) or the library as C
+ran natively: 217 distinct table functions entered through dispatch (1529 calls; game:matched 99, game:nonmatching 100, libm 2, platform 16) [lower bound: direct C++ links not counted]
+stub log: _InitSys (1 call): libkernl data 0x484140-0x485840 / bss 0x4E3240-0x4EAF40 not initialised (retail: timer, alarm, thread, TLB tables)
+stub log: SetupThread (1 call): boot arguments: argc 0, argv[0] NULL (the game's boot path becomes "cdrom0:\(NULL);1"); --disc-args for a disc boot
+stub log: sceSifInitRpc (2 calls): no IOP: libsif's RPC state (.bss) not initialised
+stub log: sceCdInit (2 calls): no CD/DVD driver: libcdvd's state (.bss) not initialised
+stub log: sceSifRebootIop (1 call): no IOP to reboot (image "cdrom0:\IOP\DNAS280.IMG;1"); libsif state not modelled
+stub log: sceSifLoadFileReset (1 call): no IOP: libsif's load-file RPC binding not initialised
+stub log: sceFsReset (1 call): no IOP: the file service RPC binding not initialised
+stub log: sceCdMmode (1 call): media type 2 not recorded (libcdvd state)
+stub log: sceCdPOffCallback (1 call): power-off handler 001D4010(0051BAC0) kept by the platform, not in libcdvd's .bss
+stub log: AddIntcHandler (1 call): INTC handler id 2 (cause 2, 002370A0) kept by the platform; it runs when the frame scheduler models the interrupt (S5)
+stub log: sceScfGetAspect (1 call): from the platform's OSD config word; libscf's gConfig cache not written

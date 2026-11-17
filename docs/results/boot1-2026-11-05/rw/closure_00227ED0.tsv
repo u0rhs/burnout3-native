@@ -1,0 +1,246 @@
+# static closure from 00227ED0 OpenRenderWare__18CB3GraphicsManagerFv (game and RW code followed; other libraries are leaves)
+address	size	kind	name	layer
+0010BB00	16	sce	AddIntcHandler	
+0010C858	124	sce	InvalidDCache	
+0011E388	20	runtime	func_0011E388	
+0011FD98	100	runtime	calloc	
+00121468	256	runtime	func_00121468	
+00121568	16	runtime	func_00121568	
+00121578	276	runtime	fflush	
+00121690	312	runtime	fgets	
+00121C00	36	runtime	fopen	
+00121D18	76	runtime	fputs	
+00121D68	284	runtime	fread	
+001222F0	1196	runtime	fseek	
+00122800	260	runtime	ftell	
+00122D80	132	runtime	fwrite	
+001232D8	84	runtime	malloc	
+00123330	72	runtime	free	
+00123EA8	176	runtime	memcpy	
+00124060	192	runtime	memset	
+00125E08	100	runtime	realloc	
+00126B40	144	runtime	sprintf	
+00126BD8	168	runtime	sscanf	
+00126EC8	300	runtime	strcat	
+00127188	324	runtime	strcmp	
+001272D0	276	runtime	strcpy	
+001273E8	312	runtime	strlen	
+001275F8	428	runtime	strncat	
+001277A8	440	runtime	strncmp	
+00127960	444	runtime	strncpy	
+00127BF8	132	runtime	func_00127BF8	
+00128BE8	32	runtime	func_00128BE8	
+0012BC70	84	runtime	vsprintf	
+001D8720	40	rw	RwStreamWriteInt32	core
+001D87C0	80	rw	RwStreamReadInt32	core
+001D8988	20	rw	func_001D8988	core
+001D89A0	20	rw	func_001D89A0	core
+001D89B8	60	rw	_rwerror	core
+001D89F8	48	rw	func_001D89F8	core
+001D8A28	20	rw	func_001D8A28	core
+001D8A80	100	rw	RwErrorSet	core
+001D8AE8	148	rw	_rwFileSystemOpen	core
+001D8B80	8	rw	_rwFileSystemClose	core
+001D8B98	88	rw	rwfexist	core
+001D8BF0	604	rw	func_001D8BF0	core
+001DA3E0	48	rw	RwEngineSetMatrixTolerances	core
+001DAB40	180	rw	_rwMatrixOpen	core
+001DABF8	104	rw	_rwMatrixClose	core
+001DAC60	872	rw	RwFreeListCreate	core
+001DAFC8	880	rw	RwFreeListCreateAndPreallocateSpace	core
+001DB338	676	rw	_rwFreeListAllocReal	core
+001DB7A8	216	rw	RwFreeListDestroy	core
+001DB8A8	408	rw	_rwFreeListFreeReal	core
+001DBBB8	588	rw	RwFreeListForAllUsed	core
+001DBE08	76	rw	_rwMemoryClose	core
+001DBE58	256	rw	_rwMemoryOpen	core
+001DBF58	8	rw	_rwFreeListEnable	core
+001DBF60	188	rw	_RwFreeListFree	core
+001DC020	876	rw	FreeListCreate	core
+001DC390	28	rw	HMalloc	core
+001DC3B0	28	rw	HRealloc	core
+001DC3D0	28	rw	HCalloc	core
+001DC3F0	312	rw	_rwResourcesOpen	core
+001DC818	288	rw	RwResourcesEmptyArena	core
+001DCAC8	116	rw	_rwResourcesClose	core
+001DCDC8	412	rw	RwStreamRead	core
+001DCF68	512	rw	RwStreamWrite	core
+001DD488	120	rw	_rwStreamModuleOpen	core
+001DD500	84	rw	_rwStreamModuleClose	core
+001DD6E8	60	rw	_rwPluginRegistryAddPluginStream	core
+001DDA68	304	rw	_rwPluginRegistryClose	core
+001DDB98	864	rw	_rwPluginRegistryAddPlugin	core
+001DDEF8	76	rw	_rwPluginRegistryOpen	core
+001DDF58	68	rw	_rwPluginRegistrySetStaticPluginsSize	core
+001DDFD0	152	rw	_rwPluginRegistryInitObject	core
+001DE068	96	rw	_rwPluginRegistryDeInitObject	core
+001DE138	72	rw	rwDestroyEntry	core
+001DE180	8	rw	func_001DE180	core
+001DE188	8	rw	func_001DE188	core
+001DE190	8	rw	func_001DE190	core
+001DE4E0	84	rw	func_001DE4E0	core
+001DE538	20	rw	func_001DE538	core
+001DE5A8	536	rw	func_001DE5A8	core
+001DE7C0	152	rw	func_001DE7C0	core
+001DE858	464	rw	func_001DE858	core
+001DEA28	128	rw	func_001DEA28	core
+001DEF40	84	rw	_rwResHeapInit	core
+001DEF98	8	rw	_rwResHeapClose	core
+001DEFF0	184	rw	_rwResHeapFree	core
+001DF168	120	rw	_rwChunkGroupOpen	core
+001DF1E0	84	rw	_rwChunkGroupClose	core
+001DF540	260	rw	_rwStringOpen	core
+001DFA40	8	rw	_rwStringClose	core
+001DFB48	112	rw	func_001DFB48	?
+001DFBB8	68	rw	func_001DFBB8	?
+001DFC00	68	rw	func_001DFC00	?
+001DFC48	52	rw	func_001DFC48	?
+001DFC80	52	rw	func_001DFC80	?
+001DFCB8	72	rw	_rwpathisabsolute	os
+001E0730	56	rw	RwTextureRegisterPluginStream	core
+001E2428	68	rw	RwCameraRegisterPlugin	core
+001E2528	104	rw	_rwCameraClose	core
+001E2590	124	rw	_rwCameraOpen	core
+001E2738	492	rw	CorePluginAttach	core
+001E2A98	104	rw	RwEngineSetVideoMode	core
+001E2D10	268	rw	RwEngineStart	core
+001E2E20	136	rw	RwEngineClose	core
+001E2EA8	316	rw	RwEngineOpen	core
+001E2FF8	340	rw	RwEngineInit	core
+001E3150	60	rw	RwEngineRegisterPlugin	core
+001E31B8	76	rw	RwEngineTerm	core
+001E33D0	260	rw	_rwDeviceSystemRequest	core
+001E34D8	8	rw	_rwGetNumEngineInstances	core
+001E34E0	36	rw	MallocWrapper	core
+001E3508	52	rw	FreeWrapper	core
+001E4330	48	rw	RwFrameSetStaticPluginsSize	core
+001E44B0	104	rw	_rwFrameClose	core
+001E4518	136	rw	_rwFrameOpen	core
+001E46A0	416	rw	_rwImageOpen	core
+001E4840	304	rw	_rwImageClose	core
+001E4C20	548	rw	RwImageMakeMask	core
+001E4E48	1240	rw	RwImageApplyMask	core
+001E5320	772	rw	ImagePathForAllFullNames	core
+001E5628	292	rw	RwImageRead	core
+001E58E0	444	rw	RwImageReadMaskedImage	core
+001E5AA0	936	rw	ImageConvertDepth	core
+001E60C8	516	rw	RwImageGammaCorrect	core
+001E62F0	160	rw	RwImageCreate	core
+001E6390	108	rw	RwImageDestroy	core
+001E6400	272	rw	RwImageAllocatePixels	core
+001E6510	76	rw	RwImageFreePixels	core
+001E6560	284	rw	RwImageCopy	core
+001E68F8	496	rw	RwImageSetGamma	core
+001E6BD0	48	rw	RwImageFindFileType	core
+001E6E38	96	rw	ImageAttempRead	core
+001E6E98	228	rw	ImageDetermineExtender	core
+001E70D0	100	rw	RwImageSetFromRaster	core
+001E7138	100	rw	RwRasterSetFromImage	core
+001E7360	164	rw	RwImageFindRasterFormat	core
+001E7408	216	rw	_rwRasterOpen	core
+001E74F0	252	rw	RwRasterCreate	core
+001E75F0	112	rw	RwRasterDestroy	core
+001E7678	80	rw	RwRasterGetNumLevels	core
+001E7A40	64	rw	RwRasterLock	core
+001E7A80	60	rw	RwRasterUnlock	core
+001E7B40	68	rw	RwRasterRegisterPlugin	core
+001E7BB8	104	rw	_rwRasterClose	core
+001E7C20	764	rw	ImageResampleGetSpan	core
+001E7F20	636	rw	ImageResampleGetAvgPixel	core
+001E81A0	840	rw	RwImageResample	core
+001E84E8	276	rw	RwImageCreateResample	core
+001E8AE8	912	rw	PalettizeMipmaps	core
+001E8E78	1084	rw	TextureImageReadAndSize	core
+001E92B8	628	rw	TextureDefaultNormalRead	core
+001E9530	1760	rw	TextureDefaultMipmapRead	core
+001E9C10	1472	rw	TextureRasterDefaultBuildMipmaps	core
+001EA318	408	rw	_rwTextureClose	core
+001EA4B0	508	rw	_rwTextureOpen	core
+001EA790	64	rw	RwTextureGenerateMipmapName	core
+001EA8B0	156	rw	RwTextureSetName	core
+001EA950	156	rw	RwTextureSetMaskName	core
+001EAB68	136	rw	RwTextureCreate	core
+001EABF0	176	rw	RwTextureDestroy	core
+001EAD78	236	rw	RwTexDictionaryFindNamedTexture	core
+001EAEA0	112	rw	RwTexDictionaryForAllTextures	core
+001EAF88	68	rw	RwTextureRegisterPlugin	core
+001EB078	156	rw	TextureDefaultMipmapName	core
+001EB118	72	rw	TextureDefaultRead	core
+001EB160	136	rw	TextureDefaultFind	core
+001EE930	308	rw	LeafAddPixel	core
+001EEA68	268	rw	LeafCalcStats	core
+001EEB78	324	rw	StatsAdd	core
+001EECC0	296	rw	StatsSub	core
+001EEDE8	248	rw	RepresentativeColor	core
+001EEEE0	1244	rw	RwPalQuantAddImage	core
+001EF3C0	572	rw	assignindex	core
+001EF600	684	rw	addvolume	core
+001EF8B0	1568	rw	nCut	core
+001EFED0	2596	rw	RwPalQuantResolvePalette	core
+001F08F8	1684	rw	RwPalQuantMatchImage	core
+001F0FA8	292	rw	RwPalQuantInit	core
+001F10D0	288	rw	RwPalQuantTerm	core
+001F11F0	468	rw	CalcNodeWeights	core
+001F13C8	256	rw	CountLeafs	core
+001F14C8	324	rw	ExtractNodes	core
+001F1610	68	rw	GetIndex	core
+001F1658	284	rw	DeleteOctTree	core
+001F1778	1392	rw	rwDMAHandler	driver
+001F1F50	1204	rw	_rwDMAClosePkt	driver
+001F2408	536	rw	_rwDMAForceBufferSwap	driver
+001F2620	372	rw	_rwDMAAddPkt	driver
+001F2AF8	1412	rw	_rwDMAOpenGIFPkt	driver
+001F3080	1348	rw	_rwDMAOpenVIFPkt	driver
+001F3768	680	rw	_rwDMADMAPktAllocHigh	driver
+001F3A10	504	rw	_rwDMAAddImageUpload	driver
+001F4288	8	rw	_rwDMAYieldCallbackSet	driver
+001F4310	160	rw	_rwDMAAddPURef	driver
+001F45C0	64	rw	_rwDMAPreAlloc	driver
+001FF360	12	rw	_rwDeviceGetHandle	core
+001FF3C8	12	rw	RpSkyGetModeStructurePtr	driver
+001FF510	64	rw	RpSkySelectDeepZBuffer	driver
+001FF768	12	rw	RpSkySelectTrueTSClipper	driver
+001FF858	184	rw	_rwDeviceRegisterPlugin	core
+001FF910	116	rw	skyReadTexCB	driver
+001FF988	88	rw	skyWriteTexCB	driver
+001FF9E0	28	rw	func_001FF9E0	driver
+0020DFB0	160	rw	RpSkyTexCacheFlush	driver
+0020E050	48	rw	RpSkyTexCacheDisable	driver
+0020E0A0	16	rw	RpSkyTexCacheSetCallBack	driver
+0020E0C0	16	rw	RpSkyTexCacheSetReleaseCallBack	driver
+0020E310	12	rw	RpSkyTexCacheGetStartAddress	driver
+0020EA98	188	rw	_rwIm3DOpen	core
+0020EB58	92	rw	_rwIm3DClose	core
+0020F040	48	rw	_rwRenderPipelineOpen	core
+0020F070	40	rw	_rwRenderPipelineClose	core
+0020F098	8	rw	_rwPipeAttach	core
+0020F7E8	180	rw	_rxPipelineOpen	core
+0020FE00	92	rw	_rxPipelineClose	core
+00210658	596	rw	HeapSuperBlockReset	core
+002113C8	404	rw	RxHeapCreate	core
+00211560	156	rw	RxHeapDestroy	core
+002116D0	360	rw	RxRenderStateVectorSetDefaultRenderStateVector	core
+00211C10	8	rw	_rwIm3DCreatePlatformTransformPipeline	driver
+00211C18	8	rw	_rwIm3DCreatePlatformRenderPipelines	driver
+00211C20	8	rw	func_00211C20	driver
+00211C28	8	rw	_rwIm3DDestroyPlatformRenderPipelines	driver
+00221490	216	game	FlushCache__15CGtTextureCacheFv	
+00221650	504	game	AddRasterToCache__15CGtTextureCacheFP8RwRasteri	
+00221850	544	game	AddRasterToCurrentDoubleBuffer__15CGtTextureCacheFP8RwRaster	
+00221E80	432	game	BuildPacketToSendRasterToGS__15CGtTextureCacheFP8RwRasterUi	
+00222030	164	game	RemoveRasterFromCache__15CGtTextureCacheFP8RwRaster	
+00222120	320	game	Construct__15CGtTextureCacheFUiii	
+00222260	108	game	func_00222260	
+002222D0	16	game	func_002222D0	
+002222E0	24	game	func_002222E0	
+00222300	164	game	GetBlockSize__19CB3MemoryManagerPS2CF14EB3MemoryBlock	
+002224C0	248	game	AcquireBlock__19CB3MemoryManagerPS2F14EB3MemoryBlocki	
+00227A20	348	game	SetVideoModeParams__18CB3GraphicsManagerFP14RwSkyVideoMode	
+00227ED0	360	game	OpenRenderWare__18CB3GraphicsManagerFv	
+00228040	48	game	func_00228040	
+0022B830	28	game	func_0022B830	
+00251680	52	game	AttachPlugins__10CGtTextureFv	
+003E7850	500	game	GetBlockSize__16CB3MemoryManagerCF14EB3MemoryBlock	
+003E7D40	2572	game	AcquireBlock__16CB3MemoryManagerF14EB3MemoryBlocki	
+003E8B70	8	game	func_003E8B70	
+003E8BB0	68	game	GetMemoryBlock__21CB3ManagedMemoryBlockFi	

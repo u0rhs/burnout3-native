@@ -1,0 +1,1663 @@
+// Sony EE library libmpeg (SDK 2.8.0 as retail links it): motion compensation -- the reference fetches of a
+// macroblock (_motionComp0, _getAllRefs, _getRef0), finishing a macroblock (func_00105188: the fetch functions, then
+// the prediction / BDEC output written into the picture), and Sony's hand-written MMI block functions (the _rix /
+// _ri0 tables: copy or average, full / half pel; func_00106098 / func_001060F8: saturate to bytes). Written from the
+// retail asm (decomp assembly/asm/sce/libmpeg.s, 0x104410-0x106158); hardware through b3hw_* in the asm's order (the
+// toSPR DMA channel's CHCR 0x1000D400, STR bit 8). Structures: sce/mpeg_internal.h (UnkStruct_sceMpegMbBuf, the two
+// macroblock buffers from +0x5A8; UnkStruct_sceMpegMcRec, one fetch). Tags: [C] confirmed from the asm, [L] likely,
+// [G] guess. mpegA for movie2 (2026-11-07).
+//
+// The MMI functions are written as plain C over the lanes, one helper per instruction with its exact semantics
+// [C EE Core Instruction Set Manual]: lq / sq (16 bytes, the address's low 4 bits ignored), ld (8 bytes), pcpyld,
+// mtsab (SA = (rs ^ imm) & 15 bytes) + qfsrv (the 32-byte funnel {rs, rt} shifted right by SA bytes), pextlb / pextub
+// with $zero (bytes zero-extended to halfwords), paddh (wrapping), psrlh / psllh, pcgth with $zero (signed > 0),
+// pminh / pmaxh (signed), ppacb (low bytes of the halfwords), pnor $zero (all ones), and psrah of the flag register
+// t3 (its low 64 bits, which is all `and` reads). Each function keeps the asm's register names, loop shape (the
+// do-while rows of a `bgtz`, the part-2 / second-plane re-entries) and order of loads and stores, including Sony's
+// own quirks: func_00105AF0 / func_00105BD0 / func_00105CB8 round the two halves of a row differently (+1 vs pcgth),
+// and func_00105E60 reloads $t9 = 1 inside its loop, so only its first row rounds the 4-pel sum with +2.
+
+#include "sce/mpeg_internal.h"
+#include "b3hw/hw.h"
+
+extern unsigned int _rix[];        // [C] 0x00483F98: the luma block functions by avg << 2 | half x << 1 | half y
+extern unsigned int _ri0[];        // [C] 0x00483FB8: the chroma ones
+extern unsigned int D_00106140[];  // [C] four words 0x00FF00FF inside func_001060F8 (.text): halfwords of 255
+
+extern char D_004B1B10[];   // [C] "Invalid modion type -- ignored(%d)"
+extern char D_004B1B38[];   // [C] "(a) invalid motion_type(%d)-0"
+extern char D_004B1B58[];   // [C] "(b) invalid motion_type(%d)-1"
+extern char D_004B1B78[];   // [C] "(c) invalid motion_type(%d)-2"
+extern char D_004B1B98[];   // [C] "intra && skip MB"
+
+extern "C" void _Error(UnkStruct_sceMpegData *d, const char *msg);
+extern "C" void _Error1(UnkStruct_sceMpegData *d, const char *fmt, int a2, int a3);
+extern "C" void dmaRefImage(UnkStruct_sceMpegData *d);
+extern "C" void _dualPrimeVector(UnkStruct_sceMpegData *d, int *out, int *dmv, int mvx, int mvy);
+
+extern "C" void _getAllRefs(UnkStruct_sceMpegData *d, int x, int y, int mbtype, int mtype, int *pmv, int *mvfs,
+                            int *dmv);
+extern "C" void _getRef0(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img, int fsel, int dfld, int yoff,
+                         int h, int x, int y, int mvx, int mvy, int ff, int avg);
+extern "C" void func_00106098(unsigned int dst, unsigned int pred, unsigned int resid);
+extern "C" void func_001060F8(unsigned int dst, unsigned int src);
+
+// [C] buffer i (0 / 1) of the two macroblock buffers from +0x5A8.
+static inline UnkStruct_sceMpegMbBuf *mpeg_mbbuf(UnkStruct_sceMpegData *d, int i)
+{
+    return (UnkStruct_sceMpegMbBuf *)&d->field_5A8 + i;
+}
+
+// ---- the MMI helpers: a 128-bit GPR as 16 bytes (b[0] = bits 0-7) ----
+
+struct mmi_q {
+    unsigned char b[16];
+};
+
+// lq rd, 0(a): 16 bytes from a & ~15
+static inline void mmi_lq(mmi_q *rd, unsigned int a)
+{
+    const unsigned char *p;
+    int i;
+
+    p = (const unsigned char *)(a & 0xFFFFFFF0u);
+    for (i = 0; i < 16; i++) {
+        rd->b[i] = p[i];
+    }
+}
+
+// sq rs, 0(a): 16 bytes to a & ~15
+static inline void mmi_sq(unsigned int a, const mmi_q *rs)
+{
+    unsigned char *p;
+    int i;
+
+    p = (unsigned char *)(a & 0xFFFFFFF0u);
+    for (i = 0; i < 16; i++) {
+        p[i] = rs->b[i];
+    }
+}
+
+// ld rd, 0(a): the 64-bit doubleword at a (8-aligned here: the chroma rows are 8 bytes apart)
+static inline unsigned long long mmi_ld(unsigned int a)
+{
+    const unsigned char *p;
+    unsigned long long v;
+    int i;
+
+    p = (const unsigned char *)a;
+    v = 0;
+    for (i = 7; i >= 0; i--) {
+        v = (v << 8) | p[i];
+    }
+    return v;
+}
+
+// pcpyld rd, rs, rt: rd low 64 = rt low 64, rd high 64 = rs low 64
+static inline void mmi_pcpyld(mmi_q *rd, unsigned long long rs, unsigned long long rt)
+{
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        rd->b[i] = (unsigned char)(rt >> (i * 8));
+        rd->b[8 + i] = (unsigned char)(rs >> (i * 8));
+    }
+}
+
+// qfsrv rd, rs, rt (SA in bytes, from mtsab): rd = ({rs, rt} >> SA * 8) low 128 bits
+static inline void mmi_qfsrv(mmi_q *rd, const mmi_q *rs, const mmi_q *rt, int sa)
+{
+    mmi_q t;
+    int i;
+    int j;
+
+    for (i = 0; i < 16; i++) {
+        j = i + sa;
+        t.b[i] = j < 16 ? rt->b[j] : rs->b[j - 16];
+    }
+    *rd = t;
+}
+
+// pextlb rd, $zero, rt: the low 8 bytes of rt zero-extended to halfwords
+static inline void mmi_pextlb0(mmi_q *rd, const mmi_q *rt)
+{
+    mmi_q t;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        t.b[i * 2] = rt->b[i];
+        t.b[i * 2 + 1] = 0;
+    }
+    *rd = t;
+}
+
+// pextub rd, $zero, rt: the high 8 bytes of rt zero-extended to halfwords
+static inline void mmi_pextub0(mmi_q *rd, const mmi_q *rt)
+{
+    mmi_q t;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        t.b[i * 2] = rt->b[8 + i];
+        t.b[i * 2 + 1] = 0;
+    }
+    *rd = t;
+}
+
+static inline unsigned int mmi_geth(const mmi_q *r, int i)
+{
+    return r->b[i * 2] | (r->b[i * 2 + 1] << 8);
+}
+
+static inline void mmi_seth(mmi_q *r, int i, unsigned int v)
+{
+    r->b[i * 2] = (unsigned char)v;
+    r->b[i * 2 + 1] = (unsigned char)(v >> 8);
+}
+
+// paddh rd, rs, rt: 8 halfword adds, wrapping
+static inline void mmi_paddh(mmi_q *rd, const mmi_q *rs, const mmi_q *rt)
+{
+    mmi_q t;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        mmi_seth(&t, i, (mmi_geth(rs, i) + mmi_geth(rt, i)) & 0xFFFF);
+    }
+    *rd = t;
+}
+
+// psrlh rd, rt, s: 8 halfword logical right shifts
+static inline void mmi_psrlh(mmi_q *rd, const mmi_q *rt, int s)
+{
+    mmi_q t;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        mmi_seth(&t, i, mmi_geth(rt, i) >> s);
+    }
+    *rd = t;
+}
+
+// psllh rd, rt, s: 8 halfword left shifts
+static inline void mmi_psllh(mmi_q *rd, const mmi_q *rt, int s)
+{
+    mmi_q t;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        mmi_seth(&t, i, (mmi_geth(rt, i) << s) & 0xFFFF);
+    }
+    *rd = t;
+}
+
+// pnor rd, $zero, $zero: all ones
+static inline void mmi_pnor00(mmi_q *rd)
+{
+    int i;
+
+    for (i = 0; i < 16; i++) {
+        rd->b[i] = 0xFF;
+    }
+}
+
+// pcgth rd, rs, $zero: 0xFFFF where the signed halfword of rs is > 0, else 0
+static inline void mmi_pcgth0(mmi_q *rd, const mmi_q *rs)
+{
+    mmi_q t;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        mmi_seth(&t, i, (short)mmi_geth(rs, i) > 0 ? 0xFFFF : 0);
+    }
+    *rd = t;
+}
+
+// pminh rd, rs, rt: signed halfword minimum
+static inline void mmi_pminh(mmi_q *rd, const mmi_q *rs, const mmi_q *rt)
+{
+    mmi_q t;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        mmi_seth(&t, i, (short)mmi_geth(rs, i) < (short)mmi_geth(rt, i) ? mmi_geth(rs, i) : mmi_geth(rt, i));
+    }
+    *rd = t;
+}
+
+// pmaxh rd, rs, $zero: signed halfword maximum with 0
+static inline void mmi_pmaxh0(mmi_q *rd, const mmi_q *rs)
+{
+    mmi_q t;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        mmi_seth(&t, i, (short)mmi_geth(rs, i) > 0 ? mmi_geth(rs, i) : 0);
+    }
+    *rd = t;
+}
+
+// ppacb rd, rs, rt: rd bytes 0-7 = the low bytes of rt's halfwords, bytes 8-15 those of rs's
+static inline void mmi_ppacb(mmi_q *rd, const mmi_q *rs, const mmi_q *rt)
+{
+    mmi_q t;
+    int i;
+
+    for (i = 0; i < 8; i++) {
+        t.b[i] = rt->b[i * 2];
+        t.b[8 + i] = rs->b[i * 2];
+    }
+    *rd = t;
+}
+
+// psrah t2, t3, 15 then `and t2, t2, a3`: and reads the low 64 bits, i.e. halfwords 0-3 of t3 >> 15 (arithmetic)
+static inline long long mmi_psrah15_and(unsigned long long t3, long long a3)
+{
+    unsigned long long r;
+    int i;
+
+    r = 0;
+    for (i = 0; i < 4; i++) {
+        r |= (unsigned long long)(((short)(t3 >> (i * 16)) >> 15) & 0xFFFF) << (i * 16);
+    }
+    return (long long)(r & (unsigned long long)a3);
+}
+
+// ---- motion compensation ----
+
+// [C] a macroblock's motion compensation set-up: row / column = mbaddr / % +0x144 (`div`; +0x144 == 0 traps with
+// `break 7`). Intra: after the toSPR DMA ends, buffer +0x828's +0x138 = 0. Otherwise a motion type outside 1..3
+// reports "Invalid modion type -- ignored(%d)", +0x134 = 1, returns 0; else the reference fetches (_getAllRefs at
+// (column * 16, row * 16)), the toSPR DMA's end, dmaRefImage, +0x138 = 1. Then the buffer's +0x134 = (mbinc == 1 and
+// bit 1 of the type), +0x130 = intra, +0x128 = the output image's (frame: +0x1D8, structure 2: +0x1F8, else +0x1E8)
+// +0 + (column * +0x10 + row) * 0x180. Returns 1.
+// 0x00104410
+extern "C" int _motionComp0(UnkStruct_sceMpegData *d, int mbaddr, int mbinc, int mbtype, int mtype, int *pmv,
+                            int *mvfs, int *dmv)
+{
+    UnkStruct_sceMpegMbBuf *mb;
+    UnkStruct_sceMpegImage *img;
+    int intra;
+    int row;
+    int col;
+    int i;
+
+    intra = mbtype & 1;
+    row = mbaddr / d->field_144;
+    col = mbaddr % d->field_144;
+    if (intra) {
+        i = d->field_828;
+        while ((b3hw_read32(0x1000D400) >> 8) & 1) {
+        }
+        mpeg_mbbuf(d, i)->field_138 = 0;
+    } else {
+        if ((unsigned int)(mtype - 1) >= 3) {
+            _Error1(d, D_004B1B10, mtype, 0);   // [C] a2 = the motion type; a3 unset by retail (unused)
+            d->field_134 = 1;
+            return 0;
+        }
+        _getAllRefs(d, col << 4, row << 4, mbtype, mtype, pmv, mvfs, dmv);
+        while ((b3hw_read32(0x1000D400) >> 8) & 1) {
+        }
+        dmaRefImage(d);
+        mpeg_mbbuf(d, d->field_828)->field_138 = 1;
+    }
+    if (mbinc == 1 && (mbtype & 2) != 0) {
+        mpeg_mbbuf(d, d->field_828)->field_134 = mbinc;
+    } else {
+        mpeg_mbbuf(d, d->field_828)->field_134 = 0;
+    }
+    mpeg_mbbuf(d, d->field_828)->field_130 = intra;
+    if (d->field_18C == 3) {
+        img = d->field_1D8;
+    } else if (d->field_18C == 2) {
+        img = d->field_1F8;
+    } else {
+        img = d->field_1E8;
+    }
+    mpeg_mbbuf(d, d->field_828)->field_128 = img->field_0 + (col * img->field_10 + row) * 0x180;
+    return 1;
+}
+
+// [C] the reference fetches of a macroblock at (x, y): buffer +0x828's fetch count = 0. Forward (type bit 3, or any
+// macroblock of a P picture): frame picture -- frame motion (type 2, or no forward vector) one 16-row fetch from
+// +0x1D0; field motion (1) two 8-row fetches (field select mvfs[0] / mvfs[2] into destination fields 0 / 1, vertical
+// halved); dual prime (3) four 8-row fetches (same-parity with the vector, opposite-parity with _dualPrimeVector's,
+// averaged); else "(a) invalid motion_type". Field picture -- the reference by [second field of a P picture with
+// +0x138 and a field select of the other parity][field select] from {+0x1E0, +0x1F0, +0x1E4, +0x1F4}: field motion
+// (1, or no forward vector) one 16-row fetch; 16x8 (2) two 8-row fetches (rows 0 / 8); dual prime (3) the same-parity
+// field then the averaged opposite one; else "(b) invalid motion_type". Backward (bit 2), averaged with a forward
+// prediction when one was made: frame picture -- type 2 one 16-row fetch from +0x1D4, any other two 8-row field
+// fetches; field picture -- the reference +0x1F4 / +0x1E4 by its field select: type 1 one 16-row fetch, 2 two 8-row
+// fetches, else "(c) invalid motion_type".
+// 0x00104660
+extern "C" void _getAllRefs(UnkStruct_sceMpegData *d, int x, int y, int mbtype, int mtype, int *pmv, int *mvfs,
+                            int *dmv)
+{
+    UnkStruct_sceMpegImage *refs[4];
+    int dp[4];
+    int fwd;
+    int done;
+    int bot;
+    int sec;
+
+    done = 0;
+    mpeg_mbbuf(d, d->field_828)->field_12C = 0;
+    fwd = mbtype & 8;
+    if (fwd != 0 || d->field_168 == 2) {
+        if (d->field_18C == 3) {
+            if (mtype == 2 || fwd == 0) {
+                _getRef0(d, d->field_1D0, 0, 0, 0, 16, x, y, pmv[0], pmv[1], 0, 0);
+            } else if (mtype == 1) {
+                _getRef0(d, d->field_1D0, mvfs[0], 0, 0, 8, x, y, pmv[0], pmv[1] >> 1, mtype, 0);
+                _getRef0(d, d->field_1D0, mvfs[2], 1, 0, 8, x, y, pmv[4], pmv[5] >> 1, mtype, 0);
+            } else if (mtype == 3) {
+                _dualPrimeVector(d, dp, dmv, pmv[0], pmv[1] >> 1);
+                _getRef0(d, d->field_1D0, 0, 0, 0, 8, x, y, pmv[0], pmv[1] >> 1, 1, 0);
+                _getRef0(d, d->field_1D0, 1, 0, 0, 8, x, y, dp[0], dp[1], 1, 1);
+                _getRef0(d, d->field_1D0, 1, 1, 0, 8, x, y, pmv[0], pmv[1] >> 1, 1, 0);
+                _getRef0(d, d->field_1D0, 0, 1, 0, 8, x, y, dp[2], dp[3], 1, 1);
+            } else {
+                _Error1(d, D_004B1B38, mtype, 0);   // [C] a2 = the motion type; a3 unset by retail (unused)
+            }
+            done = 1;
+        } else {
+            bot = d->field_18C == 2;
+            refs[0] = d->field_1E0;
+            refs[1] = d->field_1F0;
+            refs[2] = d->field_1E4;
+            refs[3] = d->field_1F4;
+            sec = 0;
+            if (d->field_168 == 2 && d->field_138 != 0) {
+                sec = (bot ^ mvfs[0]) != 0;
+            }
+            if (mtype == 1 || fwd == 0) {
+                _getRef0(d, refs[sec * 2 + mvfs[0]], 0, 0, 0, 16, x, y, pmv[0], pmv[1], 0, 0);
+            } else if (mtype == 2) {
+                _getRef0(d, refs[sec * 2 + mvfs[0]], 0, 0, 0, 8, x, y, pmv[0], pmv[1], 0, 0);
+                sec = 0;
+                if (d->field_168 == mtype && d->field_138 != 0) {
+                    sec = (bot ^ mvfs[2]) != 0;
+                }
+                _getRef0(d, refs[sec * 2 + mvfs[2]], 0, 0, 8, 8, x, y, pmv[4], pmv[5], 0, 0);
+            } else if (mtype == 3) {
+                sec = d->field_138 != 0;
+                _dualPrimeVector(d, dp, dmv, pmv[0], pmv[1]);
+                _getRef0(d, refs[bot], 0, 0, 0, 16, x, y, pmv[0], pmv[1], 0, 0);
+                _getRef0(d, refs[sec * 2 + (bot ? 0 : 1)], 0, 0, 0, 16, x, y, dp[0], dp[1], 0, 1);
+            } else {
+                _Error1(d, D_004B1B58, mtype, 0);   // [C] a2 = the motion type; a3 unset by retail (unused)
+            }
+            done = 1;
+        }
+    }
+    if ((mbtype & 4) == 0) {
+        return;
+    }
+    if (d->field_18C == 3) {
+        if (mtype == 2) {
+            _getRef0(d, d->field_1D4, 0, 0, 0, 16, x, y, pmv[2], pmv[3], 0, done);
+        } else {
+            _getRef0(d, d->field_1D4, mvfs[1], 0, 0, 8, x, y, pmv[2], pmv[3] >> 1, 1, done);
+            _getRef0(d, d->field_1D4, mvfs[3], 1, 0, 8, x, y, pmv[6], pmv[7] >> 1, 1, done);
+        }
+    } else if (mtype == 1) {
+        _getRef0(d, mvfs[1] != 0 ? d->field_1F4 : d->field_1E4, 0, 0, 0, 16, x, y, pmv[2], pmv[3], 0, done);
+    } else if (mtype == 2) {
+        _getRef0(d, mvfs[1] != 0 ? d->field_1F4 : d->field_1E4, 0, 0, 0, 8, x, y, pmv[2], pmv[3], 0, done);
+        _getRef0(d, mvfs[3] != 0 ? d->field_1F4 : d->field_1E4, 0, 0, 8, 8, x, y, pmv[6], pmv[7], 0, done);
+    } else {
+        _Error1(d, D_004B1B78, mtype, 0);   // [C] a2 = the motion type; a3 unset by retail (unused)
+    }
+}
+
+// [C] one reference fetch n (buffer +0x828's count) of h rows: the luma position (x + (mvx >> 1), y + vertical +
+// yoff + fsel, the vertical (mvy >> 1) doubled for a field fetch ff) split into the reference macroblock (lmx, lmy) and
+// the offset in it; luma record: destination +0x834 + (dfld + yoff) * 32, the shift, the rows from the first
+// macroblock and from the one below (half-pel needs one more row), the row step 16 << ff, the two source rows in the
+// fetch's copy (buffer +0 + n * 0x600: the 2 x 2 macroblocks, 0x180 bytes each, the right column at +0x300). Chroma
+// likewise from the halved vectors (truncated toward zero) at 8 << ff, destination +0x834 + 0x200 + (dfld + yoff / 2)
+// * 16, sources at the chroma planes (+0x100, +0x400) of the copy's macroblock that holds them. The block functions
+// from _rix / _ri0 by avg << 2 | half x << 1 | half y, the reference macroblock's address (image +0 + (lmx * +0x10 +
+// lmy) * 0x180) and the next column's; count + 1.
+// 0x00104D68
+extern "C" void _getRef0(UnkStruct_sceMpegData *d, UnkStruct_sceMpegImage *img, int fsel, int dfld, int yoff,
+                         int h, int x, int y, int mvx, int mvy, int ff, int avg)
+{
+    UnkStruct_sceMpegMbBuf *mb;
+    UnkStruct_sceMpegMcRec *lr;
+    UnkStruct_sceMpegMcRec *cr;
+    unsigned int pred;
+    unsigned int src;
+    unsigned int csrc;
+    int n;
+    int lx;
+    int ly;
+    int lmx;
+    int lmy;
+    int mbidx;
+    int hx;
+    int hy;
+    int cmvx;
+    int cmvy;
+    int cx;
+    int cy;
+    int cmx;
+    int cmy;
+    int chx;
+    int chy;
+    int ch;
+    int idx;
+    int v;
+
+    mb = mpeg_mbbuf(d, d->field_828);
+    pred = d->field_834;
+    n = mb->field_12C;
+    lx = (mvx >> 1) + x;
+    lr = &mb->field_48[n];
+    cr = &mb->field_B8[n];
+    if (ff) {
+        ly = ((mvy >> 1) << 1) + y + (yoff + fsel);
+    } else {
+        ly = (mvy >> 1) + y + (yoff + fsel);
+    }
+    lmx = lx >> 4;
+    lmy = ly >> 4;
+    mbidx = lmx * img->field_10 + lmy;
+    lr->field_4 = lx - (lmx << 4);
+    ly = ly - (lmy << 4);
+    lr->field_0 = pred + (dfld + yoff) * 32;
+    hy = mvy & 1;
+    hx = mvx & 1;
+    if (hy) {
+        if ((h << ff) + ly < 16) {
+            lr->field_8 = h;
+            lr->field_C = 0;
+        } else {
+            v = (16 >> ff) - (ly >> ff) - 1;
+            lr->field_8 = v;
+            lr->field_C = h - v;
+        }
+    } else {
+        if ((h << ff) + ly < 17) {
+            lr->field_8 = h;
+            lr->field_C = 0;
+        } else {
+            v = (16 >> ff) - (ly >> ff);
+            lr->field_8 = v;
+            lr->field_C = h - v;
+        }
+    }
+    src = mb->field_0 + n * 0x600;
+    idx = (avg << 2) | (hx << 1) | hy;
+    lr->field_14 = src + ly * 16;
+    lr->field_10 = 16 << ff;
+    lr->field_18 = src + ly * 16 + 0x300;
+
+    cmvx = mvx + (int)((unsigned int)mvx >> 31);
+    cmvy = mvy + (int)((unsigned int)mvy >> 31);
+    cx = (cmvx >> 2) + (x >> 1);
+    ch = h >> 1;
+    if (ff) {
+        cy = ((cmvy >> 2) << 1) + (y >> 1) + ((yoff >> 1) + fsel);
+    } else {
+        cy = (cmvy >> 2) + (y >> 1) + ((yoff >> 1) + fsel);
+    }
+    cmy = cy >> 3;
+    chx = (cmvx >> 1) & 1;
+    cmx = cx >> 3;
+    cr->field_4 = cx - (cmx << 3);
+    cr->field_0 = pred + 0x200 + (dfld + (yoff >> 1)) * 16;
+    cy = cy - (cmy << 3);
+    chy = (cmvy >> 1) & 1;
+    if (chy) {
+        if ((ch << ff) + cy < 8) {
+            cr->field_8 = ch;
+            cr->field_C = 0;
+        } else {
+            v = (8 >> ff) - (cy >> ff) - 1;
+            cr->field_8 = v;
+            cr->field_C = ch - v;
+        }
+    } else {
+        if ((ch << ff) + cy < 9) {
+            cr->field_8 = ch;
+            cr->field_C = 0;
+        } else {
+            v = (8 >> ff) - (cy >> ff);
+            cr->field_8 = v;
+            cr->field_C = ch - v;
+        }
+    }
+    cr->field_10 = 8 << ff;
+    mb->field_28[n] = _rix[idx];
+    csrc = src + ((cmx - lmx) * 2 + (cmy - lmy)) * 0x180;
+    cr->field_14 = csrc + cy * 8 + 0x100;
+    cr->field_18 = csrc + cy * 8 + 0x400;
+    mb->field_8[n] = img->field_0 + mbidx * 0x180;
+    mb->field_38[n] = _ri0[(avg << 2) | (chx << 1) | chy];
+    mb->field_18[n] = img->field_0 + (mbidx + img->field_10) * 0x180;
+    mb->field_12C = mb->field_12C + 1;
+}
+
+// [C] finishes the macroblock of buffer i: when its fetches were made (+0x138), each fetch's luma then chroma block
+// function on its records; intra with +0x13C reports "intra && skip MB"; then the output (+0x128): intra -- the BDEC
+// output (+0x4) saturated (func_001060F8); no coded data (+0x13C) -- the prediction (+0x834) saturated; else
+// prediction + BDEC output saturated (func_00106098).
+// 0x00105188
+extern "C" void func_00105188(UnkStruct_sceMpegData *d, int i)
+{
+    UnkStruct_sceMpegMbBuf *mb;
+    int k;
+
+    mb = mpeg_mbbuf(d, i);
+    if (mb->field_138 != 0 && mb->field_12C > 0) {
+        k = 0;
+        do {
+            ((void (*)(UnkStruct_sceMpegMcRec *))mb->field_28[k])(&mb->field_48[k]);
+            ((void (*)(UnkStruct_sceMpegMcRec *))mb->field_38[k])(&mb->field_B8[k]);
+            k = k + 1;
+        } while (k < mb->field_12C);
+    }
+    if (mb->field_130 != 0 && mb->field_13C != 0) {
+        _Error(d, D_004B1B98);
+    }
+    if (mb->field_130 != 0) {
+        func_001060F8(mb->field_128, mb->field_4);
+    } else if (mb->field_13C != 0) {
+        func_001060F8(mb->field_128, d->field_834);
+    } else {
+        func_00106098(mb->field_128, d->field_834, mb->field_4);
+    }
+}
+
+// ---- the block functions (Sony's hand-written MMI; argument: one UnkStruct_sceMpegMcRec) ----
+
+// [C] luma copy, full pel (_rix[0]): per row, 16 bytes from the two source rows funnel-shifted (mtsab +4; qfsrv),
+// widened to halfwords (pextlb / pextub) and stored (sq, sq +0x10); rows +0x8 from the first macroblock, then +0xC
+// from the one below (sources + 0x80 past the row end).
+// 0x001053A8
+extern "C" void func_001053A8(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2;
+    unsigned int a1, a2, t6;
+    int a3, t4, t3, sa;
+    long long t7, f;
+
+    a1 = r->field_14;
+    a2 = r->field_18;
+    a3 = r->field_8;
+    t6 = r->field_0;
+    sa = r->field_4 & 15;   // mtsab t5, 0
+    t4 = r->field_10;
+    t3 = t4 << 1;
+    t7 = -1;
+    for (;;) {
+        do {
+            mmi_lq(&t0, a1);               // lq t0, 0(a1)
+            a3 = a3 - 1;
+            mmi_lq(&t1, a2);               // lq t1, 0(a2)
+            a1 += t4;
+            mmi_qfsrv(&t2, &t1, &t0, sa);  // qfsrv t2, t1, t0
+            mmi_pextlb0(&t0, &t2);         // pextlb t0, zero, t2
+            mmi_pextub0(&t1, &t2);         // pextub t1, zero, t2
+            mmi_sq(t6, &t0);               // sq t0, 0(t6)
+            a2 += t4;
+            mmi_sq(t6 + 0x10, &t1);        // sq t1, 0x10(t6)
+            t6 += t3;
+        } while (a3 > 0);
+        a1 += 0x80;
+        a2 += 0x80;
+        a3 = r->field_C;
+        f = t7 & a3;
+        t7 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] chroma copy, full pel (_ri0[0]): per row the two 8-byte source rows joined (ld, ld, pcpyld), rotated by +4
+// (qfsrv t0, t0), the low 8 bytes widened (pextlb), stored; rows +0x8, then +0xC (sources + 0x140); then the second
+// plane (sources + 0x40, destination + 0x80).
+// 0x00105420
+extern "C" void func_00105420(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1;
+    unsigned int a1, a2, t6;
+    int a3, t4, t3, sa;
+    long long t7, t8, f;
+
+    a1 = r->field_14;
+    a2 = r->field_18;
+    t6 = r->field_0;
+    t4 = r->field_10;
+    t3 = t4 << 1;
+    sa = r->field_4 & 15;   // mtsab t5, 0
+    t8 = -1;
+    for (;;) {
+        a3 = r->field_8;
+        t7 = -1;
+        for (;;) {
+            do {
+                mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+                mmi_qfsrv(&t1, &t0, &t0, sa);              // qfsrv t1, t0, t0
+                mmi_pextlb0(&t0, &t1);                     // pextlb t0, zero, t1
+                mmi_sq(t6, &t0);                           // sq t0, 0(t6)
+                a3 = a3 - 1;
+                a1 += t4;
+                t6 += t3;
+                a2 += t4;
+            } while (a3 > 0);
+            a1 += 0x140;
+            a2 += 0x140;
+            a3 = r->field_C;
+            f = t7 & a3;
+            t7 = 0;
+            if (f == 0) {
+                break;
+            }
+        }
+        a1 = r->field_14 + 0x40;
+        a2 = r->field_18 + 0x40;
+        t6 = r->field_0 + 0x80;
+        f = t8;
+        t8 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] luma copy, vertical half pel (_rix[1]): the first row loaded ahead; per row the next one, (prev + next + 1) >> 1
+// (paddh, paddh 1s, psrlh 1) stored; with rows +0x8 == 0 the first part is skipped.
+// 0x001054B8
+extern "C" void func_001054B8(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t7, t9, v0, v1;
+    unsigned int a1, a2, t6;
+    int a3, t4, t8, sa, skip;
+    long long t3, f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15: halfwords of 1
+    a1 = r->field_14;
+    a2 = r->field_18;
+    a3 = r->field_8;
+    t6 = r->field_0;
+    t8 = r->field_10;
+    mmi_lq(&t0, a1);                 // lq t0, 0(a1)
+    t4 = t8 << 1;
+    mmi_lq(&t1, a2);                 // lq t1, 0(a2)
+    sa = r->field_4 & 15;            // mtsab t5, 0
+    mmi_qfsrv(&t2, &t1, &t0, sa);    // qfsrv t2, t1, t0
+    mmi_pextlb0(&t0, &t2);           // pextlb t0, zero, t2
+    t3 = -1;
+    mmi_pextub0(&t1, &t2);           // pextub t1, zero, t2
+    skip = a3 == 0;
+    for (;;) {
+        if (!skip) {
+            do {
+                a1 += t8;
+                a2 += t8;
+                mmi_lq(&t2, a1);                 // lq t2, 0(a1)
+                mmi_lq(&t7, a2);                 // lq t7, 0(a2)
+                mmi_qfsrv(&v0, &t7, &t2, sa);    // qfsrv v0, t7, t2
+                mmi_pextlb0(&t2, &v0);           // pextlb t2, zero, v0
+                a3 = a3 - 1;
+                mmi_pextub0(&t7, &v0);           // pextub t7, zero, v0
+                mmi_paddh(&v0, &t0, &t2);        // paddh v0, t0, t2
+                mmi_paddh(&v1, &t1, &t7);        // paddh v1, t1, t7
+                t0 = t2;                         // por t0, t2, zero
+                t1 = t7;                         // por t1, t7, zero
+                mmi_paddh(&v0, &v0, &t9);        // paddh v0, v0, t9
+                mmi_paddh(&v1, &v1, &t9);        // paddh v1, v1, t9
+                mmi_psrlh(&v0, &v0, 1);          // psrlh v0, v0, 1
+                mmi_psrlh(&v1, &v1, 1);          // psrlh v1, v1, 1
+                mmi_sq(t6, &v0);                 // sq v0, 0(t6)
+                mmi_sq(t6 + 0x10, &v1);          // sq v1, 0x10(t6)
+                t6 += t4;
+            } while (a3 > 0);
+        }
+        skip = 0;
+        a1 += 0x80;
+        a2 += 0x80;
+        a3 = r->field_C;
+        f = t3 & a3;
+        t3 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] chroma copy, vertical half pel (_ri0[1]): as func_001054B8 over 8-byte rows (ld / pcpyld / qfsrv / pextlb),
+// part 2 at + 0x140, then the second plane; t3 bit 15 = part 2 pending, bit 0 = second plane pending.
+// 0x00105570
+extern "C" void func_00105570(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t7, t9;
+    unsigned int a1, a2, t6;
+    int a3, t4, t8, sa, skip;
+    unsigned long long t3;
+    long long f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    a1 = r->field_14;
+    a2 = r->field_18;
+    t6 = r->field_0;
+    t4 = r->field_10;
+    t3 = 1;
+    t8 = t4 << 1;
+    sa = r->field_4 & 15;            // mtsab t5, 0
+    for (;;) {
+        a3 = r->field_8;
+        mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+        mmi_qfsrv(&t0, &t0, &t0, sa);              // qfsrv t0, t0, t0
+        t3 |= 0x8000;
+        mmi_pextlb0(&t7, &t0);                     // pextlb t7, zero, t0
+        skip = a3 == 0;
+        for (;;) {
+            if (!skip) {
+                do {
+                    a1 += t4;
+                    a2 += t4;
+                    mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld, ld, pcpyld t0, t1, t0
+                    mmi_qfsrv(&t0, &t0, &t0, sa);              // qfsrv t0, t0, t0
+                    mmi_pextlb0(&t2, &t0);                     // pextlb t2, zero, t0
+                    a3 = a3 - 1;
+                    mmi_paddh(&t1, &t2, &t7);                  // paddh t1, t2, t7
+                    t7 = t2;                                   // por t7, t2, zero
+                    mmi_paddh(&t2, &t1, &t9);                  // paddh t2, t1, t9
+                    mmi_psrlh(&t2, &t2, 1);                    // psrlh t2, t2, 1
+                    mmi_sq(t6, &t2);                           // sq t2, 0(t6)
+                    t6 += t8;
+                } while (a3 > 0);
+            }
+            skip = 0;
+            a1 += 0x140;
+            a3 = r->field_C;
+            a2 += 0x140;
+            f = mmi_psrah15_and(t3, a3);   // psrah t2, t3, 15; and t2, t2, a3
+            t3 &= 0x7FFF;
+            if (f == 0) {
+                break;
+            }
+        }
+        a1 = r->field_14 + 0x40;
+        a2 = r->field_18 + 0x40;
+        t6 = r->field_0 + 0x80;
+        f = t3 & 1;
+        t3 &= 0xFFFE;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] luma copy, horizontal half pel (_rix[2]): per row the shifted row and the one shifted a byte further (qfsrv
+// with SA +4, then SA 1 over the pair), (a + b + 1) >> 1.
+// 0x00105640
+extern "C" void func_00105640(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t2, t7, t9, v0, v1;
+    unsigned int a1, a2, t6;
+    int a3, t5, t1, t0;
+    long long t3, f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    a1 = r->field_14;
+    a2 = r->field_18;
+    a3 = r->field_8;
+    t6 = r->field_0;
+    t5 = r->field_4;
+    t1 = r->field_10;
+    t0 = t1 << 1;
+    t3 = -1;
+    for (;;) {
+        do {
+            mmi_lq(&t2, a1);                   // lq t2, 0(a1)
+            mmi_lq(&t7, a2);                   // lq t7, 0(a2)
+            mmi_qfsrv(&v0, &t7, &t2, t5 & 15); // mtsab t5, 0; qfsrv v0, t7, t2
+            mmi_qfsrv(&v1, &t2, &t7, t5 & 15); // qfsrv v1, t2, t7
+            mmi_pextlb0(&t2, &v0);             // pextlb t2, zero, v0
+            a3 = a3 - 1;
+            mmi_pextub0(&t7, &v0);             // pextub t7, zero, v0
+            mmi_qfsrv(&v1, &v1, &v0, 1);       // mtsab t8 (1), 0; qfsrv v1, v1, v0
+            mmi_pextlb0(&v0, &v1);             // pextlb v0, zero, v1
+            mmi_pextub0(&v1, &v1);             // pextub v1, zero, v1
+            mmi_paddh(&t2, &t2, &v0);          // paddh t2, t2, v0
+            mmi_paddh(&t7, &t7, &v1);          // paddh t7, t7, v1
+            mmi_paddh(&v0, &t2, &t9);          // paddh v0, t2, t9
+            mmi_paddh(&v1, &t7, &t9);          // paddh v1, t7, t9
+            mmi_psrlh(&v0, &v0, 1);            // psrlh v0, v0, 1
+            mmi_psrlh(&v1, &v1, 1);            // psrlh v1, v1, 1
+            mmi_sq(t6, &v0);                   // sq v0, 0(t6)
+            mmi_sq(t6 + 0x10, &v1);            // sq v1, 0x10(t6)
+            a1 += t1;
+            a2 += t1;
+            t6 += t0;
+        } while (a3 > 0);
+        a1 += 0x80;
+        a2 += 0x80;
+        a3 = r->field_C;
+        f = t3 & a3;
+        t3 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] chroma copy, horizontal half pel (_ri0[2]): the rotated row and its one-byte shift (qfsrv t2, zero, t0 with
+// SA 1), (a + b + 1) >> 1; parts and planes as func_00105420.
+// 0x001056F0
+extern "C" void func_001056F0(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t9, z;
+    unsigned int a1, a2, t6;
+    int a3, t5, v1, v0;
+    long long t3, t4, f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    mmi_pcpyld(&z, 0, 0);            // $zero
+    a1 = r->field_14;
+    a2 = r->field_18;
+    t6 = r->field_0;
+    t5 = r->field_4;
+    t4 = -1;
+    v1 = r->field_10;
+    v0 = v1 << 1;
+    for (;;) {
+        a3 = r->field_8;
+        t3 = -1;
+        for (;;) {
+            do {
+                mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+                mmi_qfsrv(&t0, &t0, &t0, t5 & 15);         // mtsab t5, 0; qfsrv t0, t0, t0
+                mmi_pextlb0(&t1, &t0);                     // pextlb t1, zero, t0
+                a3 = a3 - 1;
+                a1 += v1;
+                a2 += v1;
+                mmi_qfsrv(&t2, &z, &t0, 1);                // mtsab t8 (1), 0; qfsrv t2, zero, t0
+                mmi_pextlb0(&t0, &t2);                     // pextlb t0, zero, t2
+                mmi_paddh(&t2, &t1, &t0);                  // paddh t2, t1, t0
+                mmi_paddh(&t2, &t2, &t9);                  // paddh t2, t2, t9
+                mmi_psrlh(&t2, &t2, 1);                    // psrlh t2, t2, 1
+                mmi_sq(t6, &t2);                           // sq t2, 0(t6)
+                t6 += v0;
+            } while (a3 > 0);
+            a1 += 0x140;
+            a2 += 0x140;
+            a3 = r->field_C;
+            f = t3 & a3;
+            t3 = 0;
+            if (f == 0) {
+                break;
+            }
+        }
+        a1 = r->field_14 + 0x40;
+        a2 = r->field_18 + 0x40;
+        t6 = r->field_0 + 0x80;
+        f = t4;
+        t4 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] luma copy, both half pel (_rix[3]): the horizontal pair sums of the previous and the next row, (s0 + s1 + 2)
+// >> 2 (t9 = halfwords of 2: pnor, psrlh 15, psllh 1).
+// 0x001057A8
+extern "C" void func_001057A8(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t7, t9, v0, v1;
+    unsigned int a1, a2, t6;
+    int a3, t5, t4, sa, skip;
+    long long t3, f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    mmi_psllh(&t9, &t9, 1);          // psllh t9, t9, 1: halfwords of 2
+    a1 = r->field_14;
+    a2 = r->field_18;
+    a3 = r->field_8;
+    t6 = r->field_0;
+    t5 = r->field_4;
+    t4 = r->field_10;
+    mmi_lq(&t0, a1);                 // lq t0, 0(a1)
+    mmi_lq(&t1, a2);                 // lq t1, 0(a2)
+    sa = t5 & 15;                    // mtsab t5, 0
+    mmi_qfsrv(&t2, &t1, &t0, sa);    // qfsrv t2, t1, t0
+    mmi_qfsrv(&t7, &t0, &t1, sa);    // qfsrv t7, t0, t1
+    mmi_pextlb0(&t0, &t2);           // pextlb t0, zero, t2
+    mmi_pextub0(&t1, &t2);           // pextub t1, zero, t2
+    t3 = -1;
+    mmi_qfsrv(&t7, &t7, &t2, 1);     // mtsab t8 (1), 0; qfsrv t7, t7, t2
+    mmi_pextlb0(&t2, &t7);           // pextlb t2, zero, t7
+    mmi_pextub0(&t7, &t7);           // pextub t7, zero, t7
+    mmi_paddh(&t0, &t0, &t2);        // paddh t0, t0, t2
+    mmi_paddh(&t1, &t1, &t7);        // paddh t1, t1, t7
+    skip = a3 == 0;
+    for (;;) {
+        if (!skip) {
+            do {
+                a1 += t4;
+                a2 += t4;
+                mmi_lq(&t2, a1);                 // lq t2, 0(a1)
+                mmi_lq(&t7, a2);                 // lq t7, 0(a2)
+                mmi_qfsrv(&v0, &t7, &t2, t5 & 15); // mtsab t5, 0; qfsrv v0, t7, t2
+                mmi_qfsrv(&v1, &t2, &t7, t5 & 15); // qfsrv v1, t2, t7
+                mmi_pextlb0(&t2, &v0);           // pextlb t2, zero, v0
+                a3 = a3 - 1;
+                mmi_pextub0(&t7, &v0);           // pextub t7, zero, v0
+                mmi_qfsrv(&v1, &v1, &v0, 1);     // mtsab t8 (1), 0; qfsrv v1, v1, v0
+                mmi_pextlb0(&v0, &v1);           // pextlb v0, zero, v1
+                mmi_pextub0(&v1, &v1);           // pextub v1, zero, v1
+                mmi_paddh(&t2, &t2, &v0);        // paddh t2, t2, v0
+                mmi_paddh(&t7, &t7, &v1);        // paddh t7, t7, v1
+                mmi_paddh(&v0, &t0, &t2);        // paddh v0, t0, t2
+                mmi_paddh(&v1, &t1, &t7);        // paddh v1, t1, t7
+                t0 = t2;                         // por t0, t2, zero
+                t1 = t7;                         // por t1, t7, zero
+                mmi_paddh(&v0, &v0, &t9);        // paddh v0, v0, t9
+                mmi_paddh(&v1, &v1, &t9);        // paddh v1, v1, t9
+                mmi_psrlh(&v0, &v0, 2);          // psrlh v0, v0, 2
+                mmi_psrlh(&v1, &v1, 2);          // psrlh v1, v1, 2
+                mmi_sq(t6, &v0);                 // sq v0, 0(t6)
+                mmi_sq(t6 + 0x10, &v1);          // sll t2, t4, 1; sq v1, 0x10(t6)
+                t6 += t4 << 1;
+            } while (a3 > 0);
+        }
+        skip = 0;
+        a1 += 0x80;
+        a2 += 0x80;
+        a3 = r->field_C;
+        f = t3 & a3;
+        t3 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] chroma copy, both half pel (_ri0[3]): as func_001057A8 over 8-byte rows; a1 runs one row ahead of a2 (a1
+// advanced after the first row's load, a2 at the top of each row), parts and planes as func_00105570.
+// 0x001058A0
+extern "C" void func_001058A0(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t7, t9, z;
+    unsigned int a1, a2, t6;
+    int a3, t5, t4, skip;
+    unsigned long long t3;
+    long long f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    mmi_psllh(&t9, &t9, 1);          // psllh t9, t9, 1
+    mmi_pcpyld(&z, 0, 0);            // $zero
+    a1 = r->field_14;
+    a2 = r->field_18;
+    t6 = r->field_0;
+    t5 = r->field_4;
+    t4 = r->field_10;
+    t3 = 1;
+    for (;;) {
+        a3 = r->field_8;
+        mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+        mmi_qfsrv(&t0, &t0, &t0, t5 & 15);         // mtsab t5, 0; qfsrv t0, t0, t0
+        mmi_pextlb0(&t1, &t0);                     // pextlb t1, zero, t0
+        a1 += t4;
+        t3 |= 0x8000;
+        mmi_qfsrv(&t2, &z, &t0, 1);                // mtsab t8 (1), 0; qfsrv t2, zero, t0
+        mmi_pextlb0(&t0, &t2);                     // pextlb t0, zero, t2
+        mmi_paddh(&t7, &t1, &t0);                  // paddh t7, t1, t0
+        skip = a3 == 0;
+        for (;;) {
+            if (!skip) {
+                do {
+                    a2 += t4;
+                    mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+                    mmi_qfsrv(&t0, &t0, &t0, t5 & 15);         // mtsab t5, 0; qfsrv t0, t0, t0
+                    mmi_pextlb0(&t1, &t0);                     // pextlb t1, zero, t0
+                    a3 = a3 - 1;
+                    a1 += t4;
+                    mmi_qfsrv(&t2, &z, &t0, 1);                // mtsab t8 (1), 0; qfsrv t2, zero, t0
+                    mmi_pextlb0(&t0, &t2);                     // pextlb t0, zero, t2
+                    mmi_paddh(&t2, &t1, &t0);                  // paddh t2, t1, t0
+                    mmi_paddh(&t1, &t2, &t7);                  // paddh t1, t2, t7
+                    t7 = t2;                                   // por t7, t2, zero
+                    mmi_paddh(&t2, &t1, &t9);                  // paddh t2, t1, t9
+                    mmi_psrlh(&t2, &t2, 2);                    // sll t0, t4, 1; psrlh t2, t2, 2
+                    mmi_sq(t6, &t2);                           // sq t2, 0(t6)
+                    t6 += t4 << 1;
+                } while (a3 > 0);
+            }
+            skip = 0;
+            a1 += 0x140;
+            a3 = r->field_C;
+            a2 += 0x140;
+            f = mmi_psrah15_and(t3, a3);   // psrah t2, t3, 15; and t2, t2, a3
+            t3 &= 0x7FFF;
+            if (f == 0) {
+                break;
+            }
+        }
+        a1 = r->field_14 + 0x40;
+        a2 = r->field_18 + 0x40;
+        t6 = r->field_0 + 0x80;
+        f = t3 & 1;
+        t3 &= 0xFFFE;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] luma average, full pel (_rix[4]): the shifted row averaged into the destination's halfwords, (d + s + 1) >> 1.
+// 0x001059A0
+extern "C" void func_001059A0(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t2, t7, t9, v0, v1;
+    unsigned int a1, a2, t6;
+    int a3, t1, t0, sa;
+    long long t3, f;
+
+    a1 = r->field_14;
+    a2 = r->field_18;
+    a3 = r->field_8;
+    t6 = r->field_0;
+    t1 = r->field_10;
+    t0 = t1 << 1;
+    t3 = -1;
+    sa = r->field_4 & 15;            // mtsab t5, 0
+    for (;;) {
+        do {
+            mmi_lq(&t2, a1);                 // lq t2, 0(a1)
+            mmi_lq(&t7, a2);                 // lq t7, 0(a2)
+            mmi_qfsrv(&v0, &t7, &t2, sa);    // qfsrv v0, t7, t2
+            mmi_pextlb0(&t2, &v0);           // pextlb t2, zero, v0
+            mmi_pextub0(&t7, &v0);           // pextub t7, zero, v0
+            mmi_lq(&v0, t6);                 // lq v0, 0(t6)
+            mmi_lq(&v1, t6 + 0x10);          // lq v1, 0x10(t6)
+            mmi_paddh(&v0, &v0, &t2);        // paddh v0, v0, t2
+            mmi_paddh(&v1, &v1, &t7);        // paddh v1, v1, t7
+            mmi_pnor00(&t9);                 // pnor t9, zero, zero
+            mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+            mmi_paddh(&t2, &v0, &t9);        // paddh t2, v0, t9
+            mmi_psrlh(&v0, &t2, 1);          // psrlh v0, t2, 1
+            mmi_paddh(&t2, &v1, &t9);        // paddh t2, v1, t9
+            mmi_psrlh(&v1, &t2, 1);          // psrlh v1, t2, 1
+            mmi_sq(t6, &v0);                 // sq v0, 0(t6)
+            mmi_sq(t6 + 0x10, &v1);          // sq v1, 0x10(t6)
+            a3 = a3 - 1;
+            a1 += t1;
+            t6 += t0;
+            a2 += t1;
+        } while (a3 > 0);
+        a1 += 0x80;
+        a2 += 0x80;
+        a3 = r->field_C;
+        f = t3 & a3;
+        t3 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] chroma average, full pel (_ri0[4]): (d + s + (d + s > 0)) >> 1 (pcgth, psrlh 15).
+// 0x00105A40
+extern "C" void func_00105A40(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2;
+    unsigned int a1, a2, t6;
+    int a3, v1, v0, sa;
+    long long t3, t4, f;
+
+    a1 = r->field_14;
+    a2 = r->field_18;
+    t6 = r->field_0;
+    t4 = -1;
+    v1 = r->field_10;
+    v0 = v1 << 1;
+    sa = r->field_4 & 15;            // mtsab t5, 0
+    for (;;) {
+        a3 = r->field_8;
+        t3 = -1;
+        for (;;) {
+            do {
+                mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+                mmi_qfsrv(&t0, &t0, &t0, sa);              // qfsrv t0, t0, t0
+                mmi_pextlb0(&t1, &t0);                     // pextlb t1, zero, t0
+                a3 = a3 - 1;
+                a1 += v1;
+                a2 += v1;
+                mmi_lq(&t0, t6);                           // lq t0, 0(t6)
+                mmi_paddh(&t2, &t1, &t0);                  // paddh t2, t1, t0
+                mmi_pcgth0(&t1, &t2);                      // pcgth t1, t2, zero
+                mmi_psrlh(&t1, &t1, 15);                   // psrlh t1, t1, 15
+                mmi_paddh(&t2, &t2, &t1);                  // paddh t2, t2, t1
+                mmi_psrlh(&t2, &t2, 1);                    // psrlh t2, t2, 1
+                mmi_sq(t6, &t2);                           // sq t2, 0(t6)
+                t6 += v0;
+            } while (a3 > 0);
+            a1 += 0x140;
+            a2 += 0x140;
+            a3 = r->field_C;
+            f = t3 & a3;
+            t3 = 0;
+            if (f == 0) {
+                break;
+            }
+        }
+        a1 = r->field_14 + 0x40;
+        a2 = r->field_18 + 0x40;
+        t6 = r->field_0 + 0x80;
+        f = t4;
+        t4 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] luma average, vertical half pel (_rix[5]): the vertical interpolation as func_001054B8, then averaged into the
+// destination: the low 8 pixels (d + p + 1) >> 1, the high 8 (d + p + (d + p > 0)) >> 1 (Sony's asm as it stands).
+// 0x00105AF0
+extern "C" void func_00105AF0(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t7, t9, v0, v1;
+    unsigned int a1, a2, t6;
+    int a3, t4, t8, sa, skip;
+    long long t3, f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    a1 = r->field_14;
+    a2 = r->field_18;
+    a3 = r->field_8;
+    t6 = r->field_0;
+    t4 = r->field_10;
+    mmi_lq(&t0, a1);                 // lq t0, 0(a1)
+    mmi_lq(&t1, a2);                 // lq t1, 0(a2)
+    sa = r->field_4 & 15;            // mtsab t5, 0
+    mmi_qfsrv(&t2, &t1, &t0, sa);    // qfsrv t2, t1, t0
+    t8 = t4 << 1;
+    mmi_pextlb0(&t0, &t2);           // pextlb t0, zero, t2
+    t3 = -1;
+    mmi_pextub0(&t1, &t2);           // pextub t1, zero, t2
+    skip = a3 == 0;
+    for (;;) {
+        if (!skip) {
+            do {
+                a1 += t4;
+                a2 += t4;
+                mmi_lq(&t2, a1);                 // lq t2, 0(a1)
+                mmi_lq(&t7, a2);                 // lq t7, 0(a2)
+                mmi_qfsrv(&v0, &t7, &t2, sa);    // qfsrv v0, t7, t2
+                mmi_pextlb0(&t2, &v0);           // pextlb t2, zero, v0
+                a3 = a3 - 1;
+                mmi_pextub0(&t7, &v0);           // pextub t7, zero, v0
+                mmi_paddh(&v0, &t0, &t2);        // paddh v0, t0, t2
+                mmi_paddh(&v1, &t1, &t7);        // paddh v1, t1, t7
+                t0 = t2;                         // por t0, t2, zero
+                t1 = t7;                         // por t1, t7, zero
+                mmi_paddh(&v0, &v0, &t9);        // paddh v0, v0, t9
+                mmi_paddh(&v1, &v1, &t9);        // paddh v1, v1, t9
+                mmi_psrlh(&v0, &v0, 1);          // psrlh v0, v0, 1
+                mmi_psrlh(&v1, &v1, 1);          // psrlh v1, v1, 1
+                mmi_lq(&t2, t6);                 // lq t2, 0(t6)
+                mmi_lq(&t7, t6 + 0x10);          // lq t7, 0x10(t6)
+                mmi_paddh(&v0, &v0, &t2);        // paddh v0, v0, t2
+                mmi_paddh(&v1, &v1, &t7);        // paddh v1, v1, t7
+                mmi_paddh(&t2, &v0, &t9);        // paddh t2, v0, t9
+                mmi_psrlh(&v0, &t2, 1);          // psrlh v0, t2, 1
+                mmi_pcgth0(&t2, &v1);            // pcgth t2, v1, zero
+                mmi_psrlh(&t2, &t2, 15);         // psrlh t2, t2, 15
+                mmi_paddh(&t2, &v1, &t2);        // paddh t2, v1, t2
+                mmi_psrlh(&v1, &t2, 1);          // psrlh v1, t2, 1
+                mmi_sq(t6, &v0);                 // sq v0, 0(t6)
+                mmi_sq(t6 + 0x10, &v1);          // sq v1, 0x10(t6)
+                t6 += t8;
+            } while (a3 > 0);
+        }
+        skip = 0;
+        a1 += 0x80;
+        a2 += 0x80;
+        a3 = r->field_C;
+        f = t3 & a3;
+        t3 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] chroma average, vertical half pel (_ri0[5]): func_00105570's interpolation, then (d + p + (d + p > 0)) >> 1.
+// 0x00105BD0
+extern "C" void func_00105BD0(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t7, t9;
+    unsigned int a1, a2, t6;
+    int a3, t4, t8, sa, skip;
+    unsigned long long t3;
+    long long f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    a1 = r->field_14;
+    a2 = r->field_18;
+    t6 = r->field_0;
+    t4 = r->field_10;
+    t3 = 1;
+    t8 = t4 << 1;
+    sa = r->field_4 & 15;            // mtsab t5, 0
+    for (;;) {
+        a3 = r->field_8;
+        mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+        mmi_qfsrv(&t0, &t0, &t0, sa);              // qfsrv t0, t0, t0
+        t3 |= 0x8000;
+        mmi_pextlb0(&t7, &t0);                     // pextlb t7, zero, t0
+        skip = a3 == 0;
+        for (;;) {
+            if (!skip) {
+                do {
+                    a1 += t4;
+                    a2 += t4;
+                    mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld, ld, pcpyld t0, t1, t0
+                    mmi_qfsrv(&t0, &t0, &t0, sa);              // qfsrv t0, t0, t0
+                    mmi_pextlb0(&t2, &t0);                     // pextlb t2, zero, t0
+                    a3 = a3 - 1;
+                    mmi_paddh(&t1, &t2, &t7);                  // paddh t1, t2, t7
+                    t7 = t2;                                   // por t7, t2, zero
+                    mmi_paddh(&t2, &t1, &t9);                  // paddh t2, t1, t9
+                    mmi_psrlh(&t2, &t2, 1);                    // psrlh t2, t2, 1
+                    mmi_lq(&t0, t6);                           // lq t0, 0(t6)
+                    mmi_paddh(&t2, &t2, &t0);                  // paddh t2, t2, t0
+                    mmi_pcgth0(&t1, &t2);                      // pcgth t1, t2, zero
+                    mmi_psrlh(&t1, &t1, 15);                   // psrlh t1, t1, 15
+                    mmi_paddh(&t2, &t2, &t1);                  // paddh t2, t2, t1
+                    mmi_psrlh(&t2, &t2, 1);                    // psrlh t2, t2, 1
+                    mmi_sq(t6, &t2);                           // sq t2, 0(t6)
+                    t6 += t8;
+                } while (a3 > 0);
+            }
+            skip = 0;
+            a1 += 0x140;
+            a3 = r->field_C;
+            a2 += 0x140;
+            f = mmi_psrah15_and(t3, a3);   // psrah t2, t3, 15; and t2, t2, a3
+            t3 &= 0x7FFF;
+            if (f == 0) {
+                break;
+            }
+        }
+        a1 = r->field_14 + 0x40;
+        a2 = r->field_18 + 0x40;
+        t6 = r->field_0 + 0x80;
+        f = t3 & 1;
+        t3 &= 0xFFFE;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] luma average, horizontal half pel (_rix[6]): func_00105640's interpolation, then averaged as func_00105AF0
+// (low half + 1, high half pcgth).
+// 0x00105CB8
+extern "C" void func_00105CB8(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t2, t7, t9, v0, v1;
+    unsigned int a1, a2, t6;
+    int a3, t5, t1, t0;
+    long long t3, f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    a1 = r->field_14;
+    a2 = r->field_18;
+    a3 = r->field_8;
+    t6 = r->field_0;
+    t5 = r->field_4;
+    t1 = r->field_10;
+    t0 = t1 << 1;
+    t3 = -1;
+    for (;;) {
+        do {
+            mmi_lq(&t2, a1);                   // lq t2, 0(a1)
+            mmi_lq(&t7, a2);                   // lq t7, 0(a2)
+            mmi_qfsrv(&v0, &t7, &t2, t5 & 15); // mtsab t5, 0; qfsrv v0, t7, t2
+            mmi_qfsrv(&v1, &t2, &t7, t5 & 15); // qfsrv v1, t2, t7
+            mmi_pextlb0(&t2, &v0);             // pextlb t2, zero, v0
+            a3 = a3 - 1;
+            mmi_pextub0(&t7, &v0);             // pextub t7, zero, v0
+            mmi_qfsrv(&v1, &v1, &v0, 1);       // mtsab t8 (1), 0; qfsrv v1, v1, v0
+            mmi_pextlb0(&v0, &v1);             // pextlb v0, zero, v1
+            mmi_pextub0(&v1, &v1);             // pextub v1, zero, v1
+            mmi_paddh(&t2, &t2, &v0);          // paddh t2, t2, v0
+            mmi_paddh(&t7, &t7, &v1);          // paddh t7, t7, v1
+            mmi_paddh(&v0, &t2, &t9);          // paddh v0, t2, t9
+            mmi_paddh(&v1, &t7, &t9);          // paddh v1, t7, t9
+            mmi_psrlh(&v0, &v0, 1);            // psrlh v0, v0, 1
+            mmi_psrlh(&v1, &v1, 1);            // psrlh v1, v1, 1
+            mmi_lq(&t2, t6);                   // lq t2, 0(t6)
+            mmi_lq(&t7, t6 + 0x10);            // lq t7, 0x10(t6)
+            mmi_paddh(&v0, &v0, &t2);          // paddh v0, v0, t2
+            mmi_paddh(&v1, &v1, &t7);          // paddh v1, v1, t7
+            mmi_paddh(&t2, &v0, &t9);          // paddh t2, v0, t9
+            mmi_psrlh(&v0, &t2, 1);            // psrlh v0, t2, 1
+            mmi_pcgth0(&t2, &v1);              // pcgth t2, v1, zero
+            mmi_psrlh(&t2, &t2, 15);           // psrlh t2, t2, 15
+            mmi_paddh(&t2, &v1, &t2);          // paddh t2, v1, t2
+            mmi_psrlh(&v1, &t2, 1);            // psrlh v1, t2, 1
+            mmi_sq(t6, &v0);                   // sq v0, 0(t6)
+            mmi_sq(t6 + 0x10, &v1);            // sq v1, 0x10(t6)
+            a1 += t1;
+            a2 += t1;
+            t6 += t0;
+        } while (a3 > 0);
+        a1 += 0x80;
+        a2 += 0x80;
+        a3 = r->field_C;
+        f = t3 & a3;
+        t3 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] chroma average, horizontal half pel (_ri0[6]): func_001056F0's interpolation, then (d + p + (d + p > 0)) >> 1.
+// 0x00105D90
+extern "C" void func_00105D90(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t9, z;
+    unsigned int a1, a2, t6;
+    int a3, t5, v1, v0;
+    long long t3, t4, f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    mmi_pcpyld(&z, 0, 0);            // $zero
+    a1 = r->field_14;
+    a2 = r->field_18;
+    t6 = r->field_0;
+    t5 = r->field_4;
+    t4 = -1;
+    v1 = r->field_10;
+    v0 = v1 << 1;
+    for (;;) {
+        a3 = r->field_8;
+        t3 = -1;
+        for (;;) {
+            do {
+                mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+                mmi_qfsrv(&t0, &t0, &t0, t5 & 15);         // mtsab t5, 0; qfsrv t0, t0, t0
+                mmi_pextlb0(&t1, &t0);                     // pextlb t1, zero, t0
+                a3 = a3 - 1;
+                a1 += v1;
+                a2 += v1;
+                mmi_qfsrv(&t2, &z, &t0, 1);                // mtsab t8 (1), 0; qfsrv t2, zero, t0
+                mmi_pextlb0(&t0, &t2);                     // pextlb t0, zero, t2
+                mmi_paddh(&t2, &t1, &t0);                  // paddh t2, t1, t0
+                mmi_paddh(&t2, &t2, &t9);                  // paddh t2, t2, t9
+                mmi_psrlh(&t2, &t2, 1);                    // psrlh t2, t2, 1
+                mmi_lq(&t0, t6);                           // lq t0, 0(t6)
+                mmi_paddh(&t2, &t2, &t0);                  // paddh t2, t2, t0
+                mmi_pcgth0(&t1, &t2);                      // pcgth t1, t2, zero
+                mmi_psrlh(&t1, &t1, 15);                   // psrlh t1, t1, 15
+                mmi_paddh(&t2, &t2, &t1);                  // paddh t2, t2, t1
+                mmi_psrlh(&t2, &t2, 1);                    // psrlh t2, t2, 1
+                mmi_sq(t6, &t2);                           // sq t2, 0(t6)
+                t6 += v0;
+            } while (a3 > 0);
+            a1 += 0x140;
+            a2 += 0x140;
+            a3 = r->field_C;
+            f = t3 & a3;
+            t3 = 0;
+            if (f == 0) {
+                break;
+            }
+        }
+        a1 = r->field_14 + 0x40;
+        a2 = r->field_18 + 0x40;
+        t6 = r->field_0 + 0x80;
+        f = t4;
+        t4 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] luma average, both half pel (_rix[7]): func_001057A8's interpolation ((s0 + s1 + t9) >> 2), then (d + p + 1)
+// >> 1 for both halves. t9 starts as halfwords of 2 and is reset to 1s inside the loop (pnor / psrlh 15 at 0x105F18),
+// so from the second row on the 4-pel sum rounds with +1: Sony's asm as it stands.
+// 0x00105E60
+extern "C" void func_00105E60(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t7, t9, v0, v1;
+    unsigned int a1, a2, t6;
+    int a3, t5, t8, sa, skip;
+    long long t3, f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    mmi_psllh(&t9, &t9, 1);          // psllh t9, t9, 1
+    a1 = r->field_14;
+    a2 = r->field_18;
+    a3 = r->field_8;
+    t6 = r->field_0;
+    t5 = r->field_4;
+    t8 = r->field_10;
+    mmi_lq(&t0, a1);                 // lq t0, 0(a1)
+    mmi_lq(&t1, a2);                 // lq t1, 0(a2)
+    sa = t5 & 15;                    // mtsab t5, 0
+    mmi_qfsrv(&t2, &t1, &t0, sa);    // qfsrv t2, t1, t0
+    mmi_qfsrv(&t7, &t0, &t1, sa);    // qfsrv t7, t0, t1
+    mmi_pextlb0(&t0, &t2);           // pextlb t0, zero, t2
+    mmi_pextub0(&t1, &t2);           // pextub t1, zero, t2
+    t3 = -1;
+    mmi_qfsrv(&t7, &t7, &t2, 1);     // mtsab t4 (1), 0; qfsrv t7, t7, t2
+    mmi_pextlb0(&t2, &t7);           // pextlb t2, zero, t7
+    mmi_pextub0(&t7, &t7);           // pextub t7, zero, t7
+    mmi_paddh(&t0, &t0, &t2);        // paddh t0, t0, t2
+    mmi_paddh(&t1, &t1, &t7);        // paddh t1, t1, t7
+    skip = a3 == 0;
+    for (;;) {
+        if (!skip) {
+            do {
+                a1 += t8;
+                a2 += t8;
+                mmi_lq(&t2, a1);                   // lq t2, 0(a1)
+                mmi_lq(&t7, a2);                   // lq t7, 0(a2)
+                mmi_qfsrv(&v0, &t7, &t2, t5 & 15); // mtsab t5, 0; qfsrv v0, t7, t2
+                mmi_qfsrv(&v1, &t2, &t7, t5 & 15); // qfsrv v1, t2, t7
+                mmi_pextlb0(&t2, &v0);             // pextlb t2, zero, v0
+                a3 = a3 - 1;
+                mmi_pextub0(&t7, &v0);             // pextub t7, zero, v0
+                mmi_qfsrv(&v1, &v1, &v0, 1);       // mtsab t4 (1), 0; qfsrv v1, v1, v0
+                mmi_pextlb0(&v0, &v1);             // pextlb v0, zero, v1
+                mmi_pextub0(&v1, &v1);             // pextub v1, zero, v1
+                mmi_paddh(&t2, &t2, &v0);          // paddh t2, t2, v0
+                mmi_paddh(&t7, &t7, &v1);          // paddh t7, t7, v1
+                mmi_paddh(&v0, &t0, &t2);          // paddh v0, t0, t2
+                mmi_paddh(&v1, &t1, &t7);          // paddh v1, t1, t7
+                t0 = t2;                           // por t0, t2, zero
+                t1 = t7;                           // por t1, t7, zero
+                mmi_paddh(&v0, &v0, &t9);          // paddh v0, v0, t9
+                mmi_paddh(&v1, &v1, &t9);          // paddh v1, v1, t9
+                mmi_psrlh(&v0, &v0, 2);            // psrlh v0, v0, 2
+                mmi_psrlh(&v1, &v1, 2);            // psrlh v1, v1, 2
+                mmi_lq(&t2, t6);                   // lq t2, 0(t6)
+                mmi_lq(&t7, t6 + 0x10);            // lq t7, 0x10(t6)
+                mmi_paddh(&v0, &v0, &t2);          // paddh v0, v0, t2
+                mmi_paddh(&v1, &v1, &t7);          // paddh v1, v1, t7
+                mmi_pnor00(&t9);                   // pnor t9, zero, zero
+                mmi_psrlh(&t9, &t9, 15);           // psrlh t9, t9, 15
+                mmi_paddh(&t2, &v0, &t9);          // paddh t2, v0, t9
+                mmi_psrlh(&v0, &t2, 1);            // psrlh v0, t2, 1
+                mmi_paddh(&t2, &v1, &t9);          // paddh t2, v1, t9
+                mmi_psrlh(&v1, &t2, 1);            // psrlh v1, t2, 1
+                mmi_sq(t6, &v0);                   // sq v0, 0(t6)
+                mmi_sq(t6 + 0x10, &v1);            // sll t2, t8, 1; sq v1, 0x10(t6)
+                t6 += t8 << 1;
+            } while (a3 > 0);
+        }
+        skip = 0;
+        a1 += 0x80;
+        a2 += 0x80;
+        a3 = r->field_C;
+        f = t3 & a3;
+        t3 = 0;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] chroma average, both half pel (_ri0[7]): func_001058A0's interpolation, then (d + p + (d + p > 0)) >> 1.
+// 0x00105F80
+extern "C" void func_00105F80(UnkStruct_sceMpegMcRec *r)
+{
+    mmi_q t0, t1, t2, t7, t9, z;
+    unsigned int a1, a2, t6;
+    int a3, t5, t4, skip;
+    unsigned long long t3;
+    long long f;
+
+    mmi_pnor00(&t9);                 // pnor t9, zero, zero
+    mmi_psrlh(&t9, &t9, 15);         // psrlh t9, t9, 15
+    mmi_psllh(&t9, &t9, 1);          // psllh t9, t9, 1
+    mmi_pcpyld(&z, 0, 0);            // $zero
+    a1 = r->field_14;
+    a2 = r->field_18;
+    t6 = r->field_0;
+    t5 = r->field_4;
+    t4 = r->field_10;
+    t3 = 1;
+    for (;;) {
+        a3 = r->field_8;
+        mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+        mmi_qfsrv(&t0, &t0, &t0, t5 & 15);         // mtsab t5, 0; qfsrv t0, t0, t0
+        mmi_pextlb0(&t1, &t0);                     // pextlb t1, zero, t0
+        a1 += t4;
+        t3 |= 0x8000;
+        mmi_qfsrv(&t2, &z, &t0, 1);                // mtsab t8 (1), 0; qfsrv t2, zero, t0
+        mmi_pextlb0(&t0, &t2);                     // pextlb t0, zero, t2
+        mmi_paddh(&t7, &t1, &t0);                  // paddh t7, t1, t0
+        skip = a3 == 0;
+        for (;;) {
+            if (!skip) {
+                do {
+                    a2 += t4;
+                    mmi_pcpyld(&t0, mmi_ld(a2), mmi_ld(a1));   // ld t0, 0(a1); ld t1, 0(a2); pcpyld t0, t1, t0
+                    mmi_qfsrv(&t0, &t0, &t0, t5 & 15);         // mtsab t5, 0; qfsrv t0, t0, t0
+                    mmi_pextlb0(&t1, &t0);                     // pextlb t1, zero, t0
+                    a3 = a3 - 1;
+                    a1 += t4;
+                    mmi_qfsrv(&t2, &z, &t0, 1);                // mtsab t8 (1), 0; qfsrv t2, zero, t0
+                    mmi_pextlb0(&t0, &t2);                     // pextlb t0, zero, t2
+                    mmi_paddh(&t2, &t1, &t0);                  // paddh t2, t1, t0
+                    mmi_paddh(&t1, &t2, &t7);                  // paddh t1, t2, t7
+                    t7 = t2;                                   // por t7, t2, zero
+                    mmi_paddh(&t2, &t1, &t9);                  // paddh t2, t1, t9
+                    mmi_psrlh(&t2, &t2, 2);                    // psrlh t2, t2, 2
+                    mmi_lq(&t0, t6);                           // lq t0, 0(t6)
+                    mmi_paddh(&t2, &t2, &t0);                  // paddh t2, t2, t0
+                    mmi_pcgth0(&t1, &t2);                      // pcgth t1, t2, zero
+                    mmi_psrlh(&t1, &t1, 15);                   // psrlh t1, t1, 15
+                    mmi_paddh(&t2, &t2, &t1);                  // paddh t2, t2, t1
+                    mmi_psrlh(&t2, &t2, 1);                    // sll t0, t4, 1; psrlh t2, t2, 1
+                    mmi_sq(t6, &t2);                           // sq t2, 0(t6)
+                    t6 += t4 << 1;
+                } while (a3 > 0);
+            }
+            skip = 0;
+            a1 += 0x140;
+            a3 = r->field_C;
+            a2 += 0x140;
+            f = mmi_psrah15_and(t3, a3);   // psrah t2, t3, 15; and t2, t2, a3
+            t3 &= 0x7FFF;
+            if (f == 0) {
+                break;
+            }
+        }
+        a1 = r->field_14 + 0x40;
+        a2 = r->field_18 + 0x40;
+        t6 = r->field_0 + 0x80;
+        f = t3 & 1;
+        t3 &= 0xFFFE;
+        if (f == 0) {
+            break;
+        }
+    }
+}
+
+// [C] prediction + BDEC output: 24 times, 16 halfwords of each added (paddh), clamped to 0..255 (pminh with
+// D_00106140's 255s, pmaxh with zero), packed to 16 bytes (ppacb) and stored: one 0x180-byte macroblock.
+// 0x00106098
+extern "C" void func_00106098(unsigned int dst, unsigned int pred, unsigned int resid)
+{
+    mmi_q t0, t1, t2, t3, t5, v0;
+    unsigned int a0, a1, a2;
+    int t4;
+
+    a0 = dst;
+    a1 = pred;
+    a2 = resid;
+    t4 = 0x18;
+    mmi_lq(&t3, (unsigned int)D_00106140);   // lq t3, %lo(D_00106140)(t2)
+    do {
+        mmi_lq(&t0, a1);                 // lq t0, 0(a1)
+        t4 = t4 - 1;
+        mmi_lq(&t5, a2);                 // lq t5, 0(a2)
+        a0 += 0x10;
+        mmi_lq(&t1, a1 + 0x10);          // lq t1, 0x10(a1)
+        mmi_paddh(&t0, &t0, &t5);        // paddh t0, t0, t5
+        mmi_lq(&v0, a2 + 0x10);          // lq v0, 0x10(a2)
+        mmi_pminh(&t0, &t0, &t3);        // pminh t0, t0, t3
+        mmi_paddh(&t1, &t1, &v0);        // paddh t1, t1, v0
+        mmi_pmaxh0(&t0, &t0);            // pmaxh t0, t0, zero
+        mmi_pminh(&t1, &t1, &t3);        // pminh t1, t1, t3
+        a1 += 0x20;
+        mmi_pmaxh0(&t1, &t1);            // pmaxh t1, t1, zero
+        a2 += 0x20;
+        mmi_ppacb(&t2, &t1, &t0);        // ppacb t2, t1, t0
+        mmi_sq(a0 - 0x10, &t2);          // sq t2, -0x10(a0)
+    } while (t4 != 0);
+}
+
+// [C] one macroblock's halfwords clamped to 0..255 and packed to bytes (as func_00106098 without the add).
+// 0x001060F8
+extern "C" void func_001060F8(unsigned int dst, unsigned int src)
+{
+    mmi_q t0, t1, t2, t3;
+    unsigned int a0, a1;
+    int t4;
+
+    a0 = dst;
+    a1 = src;
+    t4 = 0x18;
+    mmi_lq(&t3, (unsigned int)D_00106140);   // lq t3, %lo(D_00106140)(t2)
+    do {
+        mmi_lq(&t0, a1);                 // lq t0, 0(a1)
+        t4 = t4 - 1;
+        mmi_pminh(&t0, &t0, &t3);        // pminh t0, t0, t3
+        mmi_lq(&t1, a1 + 0x10);          // lq t1, 0x10(a1)
+        mmi_pmaxh0(&t0, &t0);            // pmaxh t0, t0, zero
+        mmi_pminh(&t1, &t1, &t3);        // pminh t1, t1, t3
+        a1 += 0x20;
+        mmi_pmaxh0(&t1, &t1);            // pmaxh t1, t1, zero
+        a0 += 0x10;
+        mmi_ppacb(&t2, &t1, &t0);        // ppacb t2, t1, t0
+        mmi_sq(a0 - 0x10, &t2);          // sq t2, -0x10(a0)
+    } while (t4 != 0);
+}

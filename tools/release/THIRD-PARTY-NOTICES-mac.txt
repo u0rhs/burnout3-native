@@ -1,0 +1,24 @@
+Third-party software in this build (Burnout 3 native port, @VERSION@, macOS on Apple Silicon)
+
+The license texts are beside this file.
+
+SDL 3 (Simple DirectMedia Layer) @SDL_VERSION@ -- zlib license                          SDL3-LICENSE.txt
+  libSDL3.0.dylib (used by b3launcher and libb3render.so).
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+
+stb_truetype (Sean Barrett) -- public domain / MIT, either                               stb_truetype-LICENSE.txt
+  Linked into b3launcher (its text, drawn from the system's fonts).
+
+dr_mp3, dr_flac, dr_wav (David Reid) -- public domain / MIT-0, either             dr_libs-LICENSE.txt
+  minimp3 (lieff) inside dr_mp3 -- CC0                                                    minimp3-LICENSE.txt
+  stb_vorbis (Sean Barrett) -- public domain / MIT, either                              stb_vorbis-LICENSE.txt
+  Linked into native_play: your own music folder's MP3 / FLAC / WAV / Ogg Vorbis files.
+
+Lua 5.4.9 (Lua.org, PUC-Rio) -- MIT license                                              Lua-LICENSE.txt
+  Linked into native_play: the scripting language of script mods.
+  Copyright (C) 1994-2026 Lua.org, PUC-Rio
+
+From macOS, not included: the C and C++ libraries (libSystem, libc++), zlib (libz.1.dylib), Metal and the other
+system frameworks SDL uses.
+
+The game itself (Burnout 3: Takedown) is not included; its code and data come from your own disc at run time.
