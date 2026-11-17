@@ -35,7 +35,7 @@ cp -r "$PORT/src/b3modtool" "$ST/src/"; cp "$PORT/tools/modding/b3modtool.cpp" "
 # test builds: the bug report (src/b3report: the ZIP writer, the report, the system description) and the version stamp
 cp -r "$PORT/src/b3report" "$ST/src/"
 "$PORT/tools/release/version_info.sh" "$ST/src/b3report/version_info.cpp"
-cp "$PORT"/src/native/save_card.* "$PORT"/src/native/save_formats.* "$PORT"/src/native/save_store.* "$PORT"/src/native/save_stats.* "$PORT"/src/native/replay_file.h "$ST/src/native/"   # replay1: the Replays page
+cp "$PORT"/src/native/save_card.* "$PORT"/src/native/save_formats.* "$PORT"/src/native/save_store.* "$PORT"/src/native/save_stats.* "$PORT"/src/native/replay_file.h "$PORT"/src/native/pcsx2_cards.h "$ST/src/native/"   # replay1: the Replays page; 1.1: pcsx2_cards.h (IMPORT SAVE)
 # the launcher's Music page: the custom soundtrack's folder scan and tags (src/native/custom_music.h, its decoders)
 cp "$PORT"/src/native/custom_music.* "$PORT"/src/native/music_decoders.cpp "$ST/src/native/"; cp -r "$PORT/src/native/third_party" "$ST/src/native/"
 cp "$PORT"/src/native/now_playing* "$PORT"/src/native/dbus_dl.h "$ST/src/native/"   # nowplaying1: the Music page's OTHER MUSIC APPS line
@@ -115,8 +115,8 @@ printf '%s\n' -O coff -i "$(W "$ST/obj/b3icon.rc")" -o "$(W "$ST/obj/b3icon.res.
 run windres.exe obj/b3icon.rsp
 # Burnout3Launcher.exe (mac5, remaster-features §8): a windows-subsystem program (no console; SDL_main.h's WinMain), the
 # C++ runtime static, SDL3.dll beside it as for the others; photo2: its SHOWROOM page draws with b3gfx and b3view's car scene;
-# update1: WinHTTP (a system DLL) for the update check
-printf '%s\n' -mwindows $(W "$ST/obj/b3icon.res.o") $(W "$ST/obj/b3launcher_main.o") $(W "$ST/obj/b3launcher_showroom.o") $(W "$ST/obj/b3launcher_showroom_view.o") $(W "$ST/obj/b3gfx_sdl.o") $(W "$ST/obj/scene.o") $(W "$ST/obj/carscene.o") $(W "$ST/obj/b3launcher_core.o") $(W "$ST/obj/b3launcher_update.o") $(W "$ST/obj/b3launcher_update_net.o") $(W "$ST/obj/b3launcher_spawn.o") $(W "$ST/obj/b3launcher_gameart.o") \
+# update1: WinHTTP (a system DLL) for the update check; update2: the update's install step (installer.cpp)
+printf '%s\n' -mwindows $(W "$ST/obj/b3icon.res.o") $(W "$ST/obj/b3launcher_main.o") $(W "$ST/obj/b3launcher_showroom.o") $(W "$ST/obj/b3launcher_showroom_view.o") $(W "$ST/obj/b3gfx_sdl.o") $(W "$ST/obj/scene.o") $(W "$ST/obj/carscene.o") $(W "$ST/obj/b3launcher_core.o") $(W "$ST/obj/b3launcher_update.o") $(W "$ST/obj/b3launcher_update_net.o") $(W "$ST/obj/b3launcher_installer.o") $(W "$ST/obj/b3launcher_sign.o") $(W "$ST/obj/b3launcher_oneclick.o") $(W "$ST/obj/b3launcher_spawn.o") $(W "$ST/obj/b3launcher_gameart.o") \
   $(W "$ST/obj/b3launcher_font.o") $(W "$ST/obj/b3launcher_draw.o") $(W "$ST/obj/b3settings_settings.o") $(W "$ST/obj/b3settings_page.o") $(W "$ST/obj/b3settings_menu.o") \
   $(W "$ST/obj/b3settings_safemode.o") $(W "$ST/obj/input_keys.o") $(W "$ST/obj/input_report.o") $(W "$ST/obj/input_bindings.o") $(W "$ST/obj/save_card.o") $(W "$ST/obj/save_formats.o") \
   $(W "$ST/obj/save_store.o") $(W "$ST/obj/save_stats.o") $(W "$ST/obj/custom_music.o") $(W "$ST/obj/music_decoders.o") $(W "$ST/obj/now_playing.o") $(W "$ST/obj/now_playing_mpris.o") $(W "$ST/obj/now_playing_win.o") $(W "$ST/obj/b3replay_prompts.o") $(W "$ST/obj/b3replay_glyphdraw.o") $(W "$ST/obj/b3report_zip.o") $(W "$ST/obj/b3report_bug_report.o") $(W "$ST/obj/b3report_sysinfo.o") $(W "$ST/obj/b3report_version_info.o") $(W "$ST/obj/b3mod_mods.o") $(W "$ST/obj/b3mod_archive.o") $(W "$ST/obj/b3mod_codemod.o") $ASSET_RT "$(W "$ST/sdl3/libSDL3.dll.a")" -lz -pthread -lwinhttp $LINK -o "$(W "$OUT/Burnout3Launcher.exe")" > "$ST/obj/launcher.link.rsp"

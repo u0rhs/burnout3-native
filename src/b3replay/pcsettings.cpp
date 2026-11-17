@@ -39,6 +39,8 @@ void apply_view(View& v, const b3settings::Settings& s) {
     v.glass_damage = s.glass_damage;
     v.fov_scale = b3settings::fov_tangent_scale(s.fov);
     v.fov_correction = s.fov_correction;
+    v.chase_distance = float(std::clamp(s.camera_distance, 90, 150)) / 100.0f;   // 1.1
+    v.chase_height = float(std::clamp(s.camera_height, 0, 100)) / 100.0f;
     v.hud_colour_filter = s.hud_colour_filter;   // accessibility (a11y.h): the 2D layer only, drawn only
     v.reduce_flashes = s.screen_flashes == 1;
     v.hud_size = s.hud_size;   // textsize1 (a11y.h): the race HUD scaled per component, drawn only

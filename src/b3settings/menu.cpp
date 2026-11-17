@@ -580,7 +580,7 @@ std::vector<Item> Menu::items(const std::string& fonts, const std::string& art, 
         b.rect(kFrameX0 + 302, y, 12, kTitleH, kAccent, kRectSlant);
         b.rect(kFrameX0 + 318, y, 7, kTitleH, rgba(255, 176, 32, 150), kRectSlant);
         b.text("PC", kFrameX0 + 12, y + 6, 34, 18, kAccent, kItalic);
-        b.text("SETTINGS", kFrameX0 + 46, y + 3, 230, kTitleH - 4, kText, kHeadingFont);
+        b.text(content_.title, kFrameX0 + 46, y + 3, 230, kTitleH - 4, kText, kHeadingFont);
     }
 
     // the tabs: the L1 / R1 prompts at both ends, the current tab a bright slanted panel
@@ -725,8 +725,8 @@ std::vector<Item> Menu::items(const std::string& fonts, const std::string& art, 
     {
         const float y = kFooterY;
         b.rect(kFrameX0, y, kFrameX1 - kFrameX0, kFooterH, rgba(8, 18, 46, 220));
-        b.text("UP / DOWN  SELECT     LEFT / RIGHT  CHANGE     CONFIRM  CHOOSE", kFrameX0 + 12, y + 5, 380, 12, kTextSoft, kTextSmall);
-        b.text("BACK  CLOSE AND SAVE", kFrameX1 - 212, y + 5, 200, 12, kAccent, kTextSmall | kAlignRight);
+        b.text(content_.footer_keys, kFrameX0 + 12, y + 5, 380, 12, kTextSoft, kTextSmall);
+        b.text(content_.footer_back, kFrameX1 - 212, y + 5, 200, 12, kAccent, kTextSmall | kAlignRight);
     }
 
     // a popup over the page

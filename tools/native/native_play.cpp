@@ -61,7 +61,8 @@
 //                         while one can be, a corner hint shows the button: PC SETTINGS > INTERFACE > VIDEO SKIP HINT)
 //   --saves DIR           save1: the saves folder (B3NATIVE_SAVES_ROOT; src/native/save_store.h): profile-N.sav files,
 //                         active-slot.txt. Default in a window (not --offscreen, not --replay-pad): the user's own,
-//                         save_store.h default_saves_root() (beside pc_settings.ini); otherwise no card unless given.
+//                         save_store.h default_saves_root() (beside pc_settings.ini), or the folder chosen on the
+//                         launcher's Saves page (launcher.ini saves_dir); otherwise no card unless given.
 //                         The card is there from the start (B3NATIVE_CARD_PRESENT_VBLANK=0 unless set), as a PS2's is,
 //                         and the game's saves are written back (B3NATIVE_CARD_PERSIST=1 unless set).
 //   --mouse LIST          mac5: scripted mouse events through the window's own path (tools/native/menu_mouse.h):
@@ -119,6 +120,7 @@
 #include "b3host/call.h"
 #include "b3host/native_backend.h"
 #include "b3asset/discfs.h"
+#include "b3asset/language.h"   // 1.0.1: language packs
 #include "audio_sink.h"
 #include "gameview_native.h"
 #include "crash_report.h"
@@ -736,7 +738,30 @@ int main(int argc, char** argv) {
         };
         const char* given = std::getenv("B3NATIVE_SAVES_ROOT");
         if (!saves.empty()) set_env("B3NATIVE_SAVES_ROOT", saves);
-        else if (!(given && *given) && !offscreen && replay_pad.empty() && replay_file.empty()) {
+        else if (!(given && *given) && !offscreen && replay_pad.empty() && replay_file.empty() &&
+                 !b3native::save::chosen_saves_root(b3native::save::user_data_dir()).empty()) {
+            // 1.1: the folder chosen on the launcher's Saves page (launcher.ini saves_dir). Not made when it is not there
+            // (a cloud drive or a network share not connected): this run has no memory card, and the player is told
+            const std::filesystem::path d = b3native::save::chosen_saves_root(b3native::save::user_data_dir());
+            std::error_code ec;
+            std::string root;
+            if (std::filesystem::is_directory(d, ec)) {
+                try {
+                    root = d.string();   // (the environment's text: the system's code page on Windows)
+                } catch (const std::exception&) {
+                    root.clear();
+                }
+            }
+            const std::u8string u8 = d.u8string();
+            const std::string shown(u8.begin(), u8.end());
+            if (!root.empty()) set_env("B3NATIVE_SAVES_ROOT", root);
+            else
+                tell_user("save folder not found",
+                          "The save folder chosen in the launcher is not available:\n" + shown +
+                              "\n\nThe game starts without a memory card: nothing is saved this time. Connect the drive or "
+                              "network folder and start again, or choose another save folder on the launcher's Saves page.",
+                          exe_dir);
+        } else if (!(given && *given) && !offscreen && replay_pad.empty() && replay_file.empty()) {
             const std::filesystem::path d = b3native::save::default_saves_root();
             std::error_code ec;
             if (!d.empty()) std::filesystem::create_directories(d, ec);
@@ -868,6 +893,19 @@ int main(int argc, char** argv) {
         if (mod_overlay.empty()) std::printf("native_play: mods: none\n");
         else std::printf("native_play: mods: active (%s; the first wins): %s\n", from.c_str(), b3mod::describe(mod_overlay).c_str());
         b3native::platform::disc::set_overlay(&mod_overlay);
+        {   // 1.0.1 (b3asset/language.h): PC SETTINGS > LANGUAGE, the game's text from the player's European disc
+            b3settings::Settings ls;
+            const std::string sp = b3native::settings_path(render_args, pref);
+            const std::string lroot = pref.empty() ? std::string() : b3mod::path_utf8(b3asset::language::imported_root(pref));
+            // 1.1: the renderer's PC SETTINGS page lists the same folder's languages (and shows itself in the chosen one)
+            if (!lroot.empty()) env_set("B3NATIVE_LANGUAGES_DIR", lroot);
+            if (!sp.empty() && !lroot.empty() && b3settings::load_file(sp, ls) && !ls.language.empty()) {
+                if (b3native::platform::disc::set_language(lroot, ls.language))
+                    std::printf("native_play: language %s (%s), imported in %s\n", ls.language.c_str(), b3asset::language::name_of(ls.language).c_str(), lroot.c_str());
+                else
+                    std::printf("native_play: language %s: not imported (%s); the game's own text (English)\n", ls.language.c_str(), lroot.c_str());
+            }
+        }
         if (replay_in) {   // replay1: the same mods, file for file (the set hash covers each file's size and bytes)
             const std::string* want = replay_in->option("mods.hash");
             const std::string have = mod_overlay.empty() ? std::string() : b3mod::hex64(mod_overlay.set_hash());
@@ -1279,6 +1317,7 @@ int main(int argc, char** argv) {
         // the ONLINE dialog's words: the port's own instead of the PS2's "no network adaptor" (tools/native/online_message.h;
         // B3NATIVE_ONLINE_MESSAGE=0: the game's text)
         b3native::OnlineMessage online_message;
+        online_message.set_language(b3native::platform::disc::language_text());   // 1.1: a language pack's words
         online_message.install(hooks);
         static int (*g_music)(char*, int) = nullptr;   // PC SETTINGS > INTERFACE > MUSIC (tools/native/custom_soundtrack.h)
         g_music = r.music;

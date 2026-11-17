@@ -17,6 +17,10 @@
 // the game's words are not kept here). A GLOBALUS.BIN from a mod that rewrites string 105 / 107 therefore shows the
 // mod's text; a mod's wrap of the lookup sits above this layer anyway (hook_table.h). B3NATIVE_ONLINE_MESSAGE=0 leaves
 // the game's text (comparisons).
+//
+// 1.1: with a language from the player's European disc (set_language: native_play passes platform_disc.h
+// language_text(), empty when a mod's table is over it) the lookup's text is that language's own no-adapter message;
+// the port's words then come in that language (text_for).
 #ifndef B3NATIVE_ONLINE_MESSAGE_H
 #define B3NATIVE_ONLINE_MESSAGE_H
 
@@ -34,6 +38,8 @@ class OnlineMessage {
 public:
     // On the hook table's port layer; false (and the game's text) when the lookup is not native or the env says 0.
     bool install(HookTable& hooks);
+    // 1.1: the code of the language pack the game's text comes from (empty: the disc's own or a mod's)
+    void set_language(std::string code) { language_ = std::move(code); }
     ~OnlineMessage() {
         if (instance() == this) instance() = nullptr;
     }
@@ -50,6 +56,20 @@ public:
     static_assert(kAt == 0x000C1200u && GuestArena::kOnlineMessage.size == 0x100u, "the online message stays where it is");
     static_assert(2 * sizeof kText <= GuestArena::kOnlineMessage.size, "the text fits its region");
 
+    // 1.1: the port's words in a language's code (UTF-8; the game's fonts have the European letters); kText otherwise
+    static const char* text_for(const std::string& code) {
+        static const struct { const char* code; const char* text; } kTexts[] = {
+            {"FR", "Le jeu en ligne arrive bient\xC3\xB4t."},
+            {"GE", "Der Online-Modus kommt bald."},
+            {"IT", "Il gioco online arriver\xC3\xA0 presto."},
+            {"SP", "El juego online llegar\xC3\xA1 pronto."},
+            {"DU", "Online spelen komt binnenkort."},
+            {"SW", "Onlinespel kommer snart."},
+        };
+        for (const auto& t : kTexts)
+            if (code == t.code) return t.text;
+        return kText;
+    }
     static bool is_message(std::uint32_t id) { return id == kNoAdapter || id == kNoAdapter2; }
     // FNV-1a 64 over the UTF-16LE bytes of the guest string at `at`; *units its length (capped at 1024 units)
     static std::uint64_t guest_hash(b3host::gaddr at, std::uint32_t* units);
@@ -64,6 +84,7 @@ private:
     bool write_text();   // kText at kAt, once; false: the region was in use
 
     void (*lookup_)(const b3host::CallArgs&, b3host::CallResult&) = nullptr;
+    std::string language_;
     bool written_ = false;
     bool disabled_ = false;
     bool logged_ = false;
@@ -110,7 +131,14 @@ inline bool OnlineMessage::write_text() {
             return false;
         }
     b3host::gaddr at = kAt;
-    for (const char* c = kText; *c; ++c, at += 2) b3host::store<std::uint16_t>(at, static_cast<std::uint8_t>(*c));
+    const std::string text = text_for(language_);
+    for (std::size_t i = 0; i < text.size() && at + 2 < kAt + GuestArena::kOnlineMessage.size; at += 2) {   // UTF-8 -> UTF-16
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        std::uint16_t u = c;
+        if (c >= 0xC0 && c < 0xE0 && i + 1 < text.size()) u = static_cast<std::uint16_t>((c & 0x1F) << 6 | (static_cast<unsigned char>(text[i + 1]) & 0x3F)), i += 2;
+        else ++i;
+        b3host::store<std::uint16_t>(at, u);
+    }
     b3host::store<std::uint16_t>(at, 0);
     written_ = true;
     return true;
@@ -119,7 +147,9 @@ inline bool OnlineMessage::write_text() {
 inline void OnlineMessage::lookup(const b3host::CallArgs& a, b3host::CallResult& r) {
     OnlineMessage* p = instance();
     p->lookup_(a, r);   // the layers below first (the game's table, or a mod's)
-    if (!is_message(a.gpr[1].w[0]) || !is_retail(r.v0.w[0]) || !p->write_text()) return;
+    // the disc's own words, or (1.1) a language pack's (any text: its words differ per language)
+    const bool ours = is_retail(r.v0.w[0]) || (r.v0.w[0] != 0 && !p->language_.empty());
+    if (!is_message(a.gpr[1].w[0]) || !ours || !p->write_text()) return;
     if (!p->logged_) {
         p->logged_ = true;
         std::printf("online_message: string %u (no network adapter) answered with the port's text\n", a.gpr[1].w[0]);

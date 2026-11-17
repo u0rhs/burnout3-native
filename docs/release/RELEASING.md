@@ -57,18 +57,43 @@ What that means for a release:
    files' names, so either works.)
 
    Check that each package's `VERSION.txt` (and the launcher's Credits page) shows `0.2.0+<the tagged commit>`.
+   **Sign them (1.1 one-click updates).** In the folder holding the three packages:
+
+   ```
+   sha256sum burnout3-native-*-win64.zip burnout3-native-*-linux-x86_64.tar.gz burnout3-native-*-macos-arm64.dmg > SHA256SUMS
+   ssh-keygen -Y sign -f <your release key> -n burnout3-native-update SHA256SUMS      # writes SHA256SUMS.sig
+   ssh-keygen -Y check-novalidate -n burnout3-native-update -s SHA256SUMS.sig < SHA256SUMS   # "Good ... signature"
+   ```
+
+   The names in SHA256SUMS must be exactly the attached files' names (run it in their folder, no paths). A launcher
+   installs an update only when SHA256SUMS.sig is a valid signature by the key in `src/b3launcher/update_key.h` and the
+   downloaded package's hash is the one listed; without the two files the banner just opens the release page.
 5. **Create the GitHub Release** for the tag (the repository's **Releases > Draft a new release**, or
    `gh release create v0.2.0 --title "..." --notes-file notes.md <files>`):
    - Title: a short name. The launcher shows it after the tag ("Update available: v0.2.0 — <title>").
    - Notes: start with the most important changes. The launcher shows only the first lines (headings and list marks
      taken off), so put a one-line summary first.
-   - Attach the Windows zip, the Linux tarball and the Mac dmg.
+   - Attach the Windows zip, the Linux tarball, the Mac dmg, **SHA256SUMS and SHA256SUMS.sig**.
    - Tick **Set as a pre-release** for anything that is not meant for every player. Leave it unticked for a normal
      release, and make sure it is marked as the latest release.
    - Publish. A draft is invisible to the launcher.
 6. **Check it.** Open `https://api.github.com/repos/u0rhs/burnout3-native/releases/latest` in a browser: its
    `tag_name` must be the new tag. Launchers of older versions show the banner at their next daily check (or at once
    with Settings > Launcher > **Check now**).
+
+## Signing (one-click updates, 1.1)
+
+The release key is an OpenSSH Ed25519 key that only the maintainer holds. Make it once, on your own computer:
+
+```
+ssh-keygen -t ed25519 -C "burnout3-native releases" -f burnout3-native-release
+```
+
+Give it a passphrase, and keep `burnout3-native-release` (the private half) safe and backed up: whoever has it can
+sign updates that every launcher installs, and without it no launcher accepts a new key (a new key needs a launcher
+built with it, which players would install by hand). `burnout3-native-release.pub` (one line, `ssh-ed25519 AAAA...`)
+is public: it goes into `src/b3launcher/update_key.h` (`kReleaseKey`). An empty `kReleaseKey` turns one-click updates
+off (the banner opens the release page, as in 1.0). `ssh-keygen` comes with Windows 10 / 11, macOS and Linux.
 
 ## Trying the banner without a release
 

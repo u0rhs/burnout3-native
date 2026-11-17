@@ -2,6 +2,7 @@
 #include "font.h"
 
 #include "gameart.h"
+#include "b3settings/page.h"
 
 #include <algorithm>
 #include <cmath>
@@ -297,7 +298,14 @@ float Text::head(std::string_view s, float x, float y, float size, SDL_FColor c,
     return measure_only ? width(s, size, true) : draw(s, x, y, size, c, true);
 }
 
+std::string Text::tr(std::string_view s) const { return b3settings::translate_text(std::string(s), language_); }
+
 float Text::width(std::string_view s, float size, bool bold) {
+    if (translating()) {
+        const std::string t = tr(s);
+        Raw raw(*this);
+        return width(t, size, bold);
+    }
     Baked* b = baked(size, bold);
     if (!b) return float(s.size()) * 8.0f * (size / 10.0f);
     float x = 0;
@@ -313,6 +321,11 @@ float Text::width(std::string_view s, float size, bool bold) {
 }
 
 float Text::draw(std::string_view s, float x, float y, float size, SDL_FColor c, bool bold) {
+    if (translating()) {
+        const std::string t = tr(s);
+        Raw raw(*this);
+        return draw(t, x, y, size, c, bold);
+    }
     Baked* b = baked(size, bold);
     const float lh = line_height(size);
     if (!b) {   // SDL's debug font
@@ -376,6 +389,11 @@ float Text::draw(std::string_view s, float x, float y, float size, SDL_FColor c,
 }
 
 std::vector<std::string> Text::wrap(std::string_view s, float size, float max_w, bool bold) {
+    if (translating()) {   // the whole text translated, then wrapped (its lines are drawn as they are)
+        const std::string t = tr(s);
+        Raw raw(*this);
+        return wrap(t, size, max_w, bold);
+    }
     std::vector<std::string> lines;
     std::size_t at = 0;
     while (at <= s.size()) {
@@ -428,6 +446,11 @@ std::vector<std::string> Text::wrap(std::string_view s, float size, float max_w,
 }
 
 std::string Text::elide(std::string_view s, float size, float max_w, bool bold) {
+    if (translating()) {
+        const std::string t = tr(s);
+        Raw raw(*this);
+        return elide(t, size, max_w, bold);
+    }
     if (width(s, size, bold) <= max_w) return std::string(s);
     // keep the end of a path (its last folders say the most): "...rest"
     const bool path = s.find('/') != std::string_view::npos || s.find('\\') != std::string_view::npos;

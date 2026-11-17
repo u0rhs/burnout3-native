@@ -19,7 +19,10 @@ namespace b3launcher::update {
 
 // GET `url` (https only) with this User-Agent and `Accept: application/vnd.github+json`; `timeout_ms` bounds the
 // connection and the whole answer; a body over `max_bytes` fails. Blocks: run it on a thread of its own.
-Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms = 8000, std::size_t max_bytes = std::size_t(1) << 20);
+// 1.1: `download` asks for a file (a release asset: Accept: application/octet-stream, no API version header) instead of
+// the API's JSON.
+Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms = 8000, std::size_t max_bytes = std::size_t(1) << 20,
+                   bool download = false);
 
 }  // namespace b3launcher::update
 

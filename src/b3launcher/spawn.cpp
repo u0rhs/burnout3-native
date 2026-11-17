@@ -4,7 +4,11 @@
 #include "core.h"
 
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>   // 1.1: _NSGetExecutablePath (self_exe_path)
+#endif
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -172,5 +176,24 @@ bool shift_key_held() {
 }
 
 #endif
+
+std::filesystem::path self_exe_path() {
+    std::error_code ec;
+#if defined(_WIN32)
+    wchar_t self[32768];
+    const DWORD n = GetModuleFileNameW(nullptr, self, DWORD(sizeof self / sizeof self[0]));
+    if (n > 0 && n < sizeof self / sizeof self[0]) return std::filesystem::path(std::wstring(self, n));
+    return {};
+#elif defined(__APPLE__)
+    char self[4096];
+    std::uint32_t n = sizeof self;
+    if (_NSGetExecutablePath(self, &n) != 0) return {};
+    const std::filesystem::path p = std::filesystem::weakly_canonical(std::filesystem::path(self), ec);
+    return ec ? std::filesystem::path() : p;
+#else
+    const std::filesystem::path p = std::filesystem::read_symlink("/proc/self/exe", ec);
+    return ec ? std::filesystem::path() : p;
+#endif
+}
 
 }  // namespace b3launcher

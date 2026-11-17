@@ -307,19 +307,20 @@ TEST(conflicts_gamepad) {
 }
 
 TEST(analog_digital_conversions) {
+    const GamepadTuning legacy{0.24f, 0.25f, false};   // 1.0.0's pedals (ANALOG PEDALS off)
     PlayerControls p = default_player(0);
     // a button on a stick half axis: full deflection; a key likewise (the right stick, the keyboard)
     p.pad[std::size_t(Ds2::RStickLeft)] = {PadInput::North};
     p.pad[std::size_t(Ds2::RStickDown)] = {PadInput::LeftTrigger};
     GamepadState g;
     g.north = true;
-    auto s = gamepad_sample(g, p);
+    auto s = gamepad_sample(g, p, legacy);
     CHECK(s[2] == 0x00 && s[3] == 0x7F);
     CHECK(pressed(s, 12));   // North still Triangle too (both bound)
     // a trigger on a stick half axis: its travel
     g = {};
     g.left_trigger = 16384;
-    s = gamepad_sample(g, p);
+    s = gamepad_sample(g, p, legacy);
     CHECK(s[3] == stick_y_byte(16384.0f / 32767.0f));
     CHECK(s[3] > 0xBC && s[3] < 0xC2);
     CHECK(s[13] == std::uint8_t(std::lround(255.0f * 16384.0f / 32767.0f)));   // and Square's pressure (its default)
@@ -327,27 +328,27 @@ TEST(analog_digital_conversions) {
     p.pad[std::size_t(Ds2::L2)] = {PadInput::RightTrigger};
     g = {};
     g.right_trigger = 6000;   // below 25 %
-    s = gamepad_sample(g, p);
+    s = gamepad_sample(g, p, legacy);
     CHECK(!pressed(s, kL2) && s[16] == std::uint8_t(std::lround(255.0f * 6000.0f / 32767.0f)) && s[16] > 0);
     g.right_trigger = 20000;
-    s = gamepad_sample(g, p);
+    s = gamepad_sample(g, p, legacy);
     CHECK(pressed(s, kL2) && s[16] == std::uint8_t(std::lround(255.0f * 20000.0f / 32767.0f)));
     CHECK(pressed(s, kCross) && s[12] == s[16]);   // the trigger also stays Cross's
     // a stick half axis on a button: past the dead zone, rescaled, as pressure; pressed from the threshold
     p.pad[std::size_t(Ds2::Up)] = {PadInput::RightYNeg};
     g = {};
     g.right_y = -32768;
-    s = gamepad_sample(g, p);
+    s = gamepad_sample(g, p, legacy);
     CHECK(pressed(s, kUp) && s[8] == 0xFF);
     g.right_y = -6000;   // inside the 24 % dead zone
-    s = gamepad_sample(g, p);
+    s = gamepad_sample(g, p, legacy);
     CHECK(!pressed(s, kUp) && s[8] == 0);
     // two inputs on one stick half: the further one
     p.pad[std::size_t(Ds2::SteerLeft)] = {PadInput::LeftXNeg, PadInput::DpadLeft};
     g = {};
     g.left_x = -10000;
     g.dpad_left = true;
-    s = gamepad_sample(g, p);
+    s = gamepad_sample(g, p, legacy);
     CHECK(s[4] == 0x00);
     // the keyboard on the right stick: full at once
     PlayerControls k = default_player(0);
@@ -708,6 +709,27 @@ TEST(reset_one_and_all) {
     c.player[1].gyro.mode = 1;
     reset_all(c);
     CHECK(c == default_controls());
+}
+
+TEST(analog_pedals_with_the_bindings) {
+    // 1.0.1 ANALOG PEDALS on the bindings path: the default player's triggers (Cross / Square's analog inputs) drive the
+    // right stick; a button bound to the right stick still adds its full deflection (the larger wins)
+    PlayerControls p = default_player(0);
+    GamepadState g;
+    g.right_trigger = 16384;
+    auto s = gamepad_sample(g, p);
+    CHECK(!pressed(s, kCross) && s[12] == 0 && s[3] == stick_y_byte(-pedal_stick(16384.0f / 32767.0f)));
+    g = {};
+    g.right_trigger = 32767;
+    g.left_trigger = 32767;   // both: the buttons, as 1.0.0
+    s = gamepad_sample(g, p);
+    CHECK(pressed(s, kCross) && pressed(s, kSquare) && s[3] == stick_y_byte(0.0f));
+    p.pad[std::size_t(Ds2::RStickUp)] = {PadInput::North};
+    g = {};
+    g.north = true;
+    g.right_trigger = 4000;   // a light pedal under a full stick: the stick's full deflection
+    s = gamepad_sample(g, p);
+    CHECK(s[3] == stick_y_byte(-1.0f));
 }
 
 TEST_MAIN("test_input_bindings: control remapping (src/native/input_bindings.h)")

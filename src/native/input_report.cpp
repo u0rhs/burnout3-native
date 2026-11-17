@@ -79,6 +79,11 @@ std::uint8_t stick_x_byte(float v) { return x_byte(to_axis(v)); }
 
 std::uint8_t stick_y_byte(float v) { return y_byte(to_axis(v)); }
 
+float pedal_stick(float travel) {
+    if (!(travel > 0.0f)) return 0.0f;
+    return std::clamp(0.1f + 0.8f * std::pow(std::min(travel, 1.0f), 0.25f), 0.0f, 1.0f);
+}
+
 std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const GamepadTuning& t) {
     std::array<std::uint8_t, 32> s = neutral_sample();
     const float z = std::clamp(t.stick_dead_zone, 0.0f, 0.95f);
@@ -101,16 +106,25 @@ std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const Gamepad
         if (p >= 0) s[std::size_t(p)] = 0xFF;
     }
 
-    // Cross / Square: the face button or the trigger as an analog pedal (the pressure is reported below the threshold
-    // too: the game's accelerator and brake read the pressure)
-    const auto pedal = [&](bool button, std::int16_t trigger, Ds2 c) {
-        const float tr = trigger_amount(trigger);
+    // Cross / Square: the face button, and the trigger as a pedal. 1.0.1 ANALOG PEDALS: a trigger alone drives the right
+    // stick (pedal_stick: the game's analog throttle / brake); both triggers past the threshold press both buttons (a
+    // powerslide). Off: the trigger's pressure on the button (pressed from the threshold), as 1.0.0.
+    const float acc = trigger_amount(g.right_trigger), brk = trigger_amount(g.left_trigger);
+    const bool both = acc >= theta && brk >= theta;
+    float stick_y = 0;   // the report's y: down positive
+    const auto pedal = [&](bool button, float tr, Ds2 c, float dir) {
+        if (t.analog_pedals && !both) {
+            if (button) { press(s, c); s[std::size_t(pressure_byte(c))] = 0xFF; }
+            stick_y += dir * pedal_stick(tr);
+            return;
+        }
         const float amount = std::max(button ? 1.0f : 0.0f, tr);
         s[std::size_t(pressure_byte(c))] = static_cast<std::uint8_t>(std::lround(255.0f * amount));
         if (button || tr >= theta) press(s, c);
     };
-    pedal(g.south, g.right_trigger, Ds2::Cross);
-    pedal(g.west, g.left_trigger, Ds2::Square);
+    pedal(g.south, acc, Ds2::Cross, -1.0f);
+    pedal(g.west, brk, Ds2::Square, 1.0f);
+    if (stick_y != 0.0f) s[3] = stick_y_byte(std::clamp(stick_y, -1.0f, 1.0f));
 
     // the left stick (SDL's y: down positive, as the report's)
     s[4] = stick_x_byte(stick_axis(g.left_x, z));

@@ -125,6 +125,9 @@ private:
     std::mutex music_m_;         // the published music settings (music_folder_pub_, playlist_mode_pub_)
     // remap1 (render thread)
     std::string controls_path_;
+    // 1.0.1 LANGUAGE: the imported languages (<preferences>/languages, beside controls.ini), scanned once
+    std::vector<std::pair<std::string, std::string>> languages_;
+    bool languages_scanned_ = false;
     b3native::input::Controls controls_ = b3native::input::default_controls();
     std::size_t ctl_player_ = 0, ctl_device_ = 0, ctl_view_ = 0;
     b3native::input::RebindFlow flow_;

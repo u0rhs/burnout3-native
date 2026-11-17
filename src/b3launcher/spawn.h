@@ -28,6 +28,9 @@ void release(Child& c);
 // GetAsyncKeyState; macOS: [NSEvent modifierFlags], looked up at run time). false where the system has no such
 // query (Linux: the launcher then reads SDL's keyboard state once its window has the focus).
 bool shift_key_held();
+// 1.1 one-click updates: this program's own file (Windows GetModuleFileNameW, macOS _NSGetExecutablePath, Linux
+// /proc/self/exe); empty when the system does not say
+std::filesystem::path self_exe_path();
 
 }  // namespace b3launcher
 

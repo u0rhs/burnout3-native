@@ -42,6 +42,7 @@ struct Settings {
     // Quality
     int msaa = 4;                     // 1, 2, 4, 8 (applies at the next start)
     Filter filter = Filter::kAniso16; // 3D textures (applies at the next start); the 2D stays bilinear
+    int upscaling = 1;                // 1.1: RENDER SCALE's upscale, 0 bilinear (as 1.0), 1 sharp (post.frag sharp_upscale)
     int render_scale = 100;           // effects2: RENDER SCALE, % of the window the 3D picture (effects and full-screen passes with it) is
                                       // drawn at, then scaled up; the HUD and menus stay at the window's size. 100 (the default) is the
                                       // picture as before, byte for byte. 50..100; the presets: LOW 75, the others 100. Drawn only
@@ -75,6 +76,10 @@ struct Settings {
     // Camera (drawn only: the game's camera is retail; the view's tangents scaled, the eye dollied)
     int fov = 0;                      // horizontal field of view at full boost in degrees, 0 = the game's (90)
     bool fov_correction = true;       // keep the car's size: the eye moves along the view direction
+    // 1.1 (drawn only): the chase camera moved back (percent of the game's distance to the car, 90..150 in 10s, 100 the
+    // game's) and up (centimetres, 0..100 in 25s), tilted to keep the car where it was on screen (View::apply_fov)
+    int camera_distance = 100;
+    int camera_height = 0;
     // Interface
     int fps_view = 0;                 // fpsoverlay2: the FPS COUNTER (src/b3replay/fpspanel.h): 0 off, 1 minimal, 2 standard, 3 detailed.
                                       // An ini from before the views holds `fps_counter = true / false`: true reads as 2, false as 0
@@ -101,6 +106,10 @@ struct Settings {
     int playlist_mode = 0;            // 0 EA Trax only (the game's), 1 custom only, 2 mixed (custom and EA Trax in turn)
     int other_music_apps = 0;         // nowplaying1: 0 off (no system calls at all), 1 another app's song in the EA TRAX popup
                                       // (the system's now-playing interface; tools/native/now_playing_popup.h; drawn only)
+    // Language (1.0.1, b3asset/language.h): the game's text from the player's own European disc, imported once by the
+    // launcher into <preferences>/languages. Host-only: the game opens DATA/GLOBALUS.BIN and HEADUS.BIN as on the US
+    // disc and gets that language's GLOBAL<code>.BIN / HEAD<code>.BIN instead (the same string ids). Next start.
+    std::string language;             // a disc's code ("IT", "FR", "GE", ...); empty: English (the game's own text)
     // Accessibility (remaster-features "Accessibility"; PC SETTINGS > INTERFACE, section ACCESSIBILITY). The defaults are
     // the game exactly: the frames byte-identical, the pad reports untouched.
     int screen_flashes = 0;           // 0 full (the game's), 1 reduced: the 2D layer's full-screen bright fills and the
@@ -130,6 +139,8 @@ struct Settings {
     // (docs/pc-settings.md §3.8). Strength and triggers are host-only.
     int rumble = 0;
     int rumble_strength = 100;        // the motors' speed the pads are given, percent (10..100)
+    bool analog_pedals = true;        // 1.0.1 ANALOG TRIGGERS: a trigger on accelerate / brake is the game's analog throttle /
+                                      // brake (src/native/input_keys.h GamepadTuning::analog_pedals); off: 1.0.0's pressure
     bool rumble_triggers = false;     // also the triggers' own motors (Xbox One / Series impulse triggers) where a pad has them
     // DualSense adaptive triggers (pad1, remaster-features §5; src/native/pad_triggers.h; the window). Presentation only:
     // 0 off (the default: no effect is ever sent to a pad), 1 on: PS5 pads' triggers resist, buzz and kick from the game's

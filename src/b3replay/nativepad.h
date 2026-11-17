@@ -96,6 +96,8 @@ public:
         rumble_triggers_.store(triggers);
     }
     bool rumble_on() const { return rumble_on_.load(); }
+    // 1.0.1 ANALOG TRIGGERS (input_keys.h GamepadTuning::analog_pedals): from PC SETTINGS, live
+    void set_analog_pedals(bool on) { analog_pedals_.store(on); }
     void set_motors(int port, std::uint8_t small, std::uint8_t large);
     // pad1 (PC SETTINGS > CONTROLLER > ADAPTIVE TRIGGERS; src/native/pad_triggers.h): presentation only, off by default
     // (then no effect is ever sent). On: DualSense (PS5) pads get trigger effects from the game's state the window reads
@@ -201,6 +203,7 @@ private:
     float wheel_acc_ = 0;                  // (window thread)
     // rumble1
     std::atomic<bool> rumble_on_{false}, rumble_triggers_{false};
+    std::atomic<bool> analog_pedals_{true};   // 1.0.1
     std::atomic<int> rumble_strength_{100};
     b3native::pad::Motors motors_[2];      // (under mu_) the game's, per port
     std::uint64_t motors_ms_[2] = {0, 0};  // (under mu_) when they were handed (SDL ticks)

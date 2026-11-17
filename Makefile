@@ -355,7 +355,7 @@ $(BUILD)/test_pad_actuator: tests/test_pad_actuator.cpp tests/test.h src/native/
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< src/b3mod/codemod.cpp src/b3mod/mods.cpp -o $@
 # settings1 (docs/pc-settings.md): the PC settings model, ini, HSET record and the page's menu model
 TESTS += $(BUILD)/test_settings
-$(BUILD)/test_settings: tests/test_settings.cpp tests/test.h include/b3settings/settings.h include/b3settings/page.h include/b3settings/safemode.h src/b3settings/settings.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3settings/safemode.cpp
+$(BUILD)/test_settings: tests/test_settings.cpp tests/test.h include/b3settings/settings.h include/b3settings/page.h include/b3settings/i18n.h include/b3settings/safemode.h src/b3settings/settings.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3settings/safemode.cpp
 	$(CXX) -Iinclude $(REQFLAGS) $(CXXFLAGS) $< src/b3settings/settings.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3settings/safemode.cpp -o $@
 # effects2 (src/b3replay/sparks.h): the particle effects' levels on hand-made captures (sparks, popcorn)
 TESTS += $(BUILD)/test_effect_levels
@@ -451,7 +451,7 @@ $(BUILD)/test_custom_music: tests/test_custom_music.cpp tests/test.h src/native/
 # save1 (remaster-features §8): the .sav, the PS2 / PCSX2 import formats, the save folder, the card's write-back
 SAVE_SRC := src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/save_stats.cpp
 TESTS += $(BUILD)/test_save_formats
-$(BUILD)/test_save_formats: tests/test_save_formats.cpp tests/test.h src/native/save_card.h src/native/save_formats.h src/native/save_store.h $(SAVE_SRC)
+$(BUILD)/test_save_formats: tests/test_save_formats.cpp tests/test.h src/native/pcsx2_cards.h src/native/save_card.h src/native/save_formats.h src/native/save_store.h $(SAVE_SRC)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $< $(SAVE_SRC) -o $@
 # The game's own stats from its save, and local achievements from them (remaster-features §5; src/native/save_stats.h)
@@ -487,16 +487,33 @@ LAUNCHER_CORE_SRC := $(SHOWROOM_SRC) src/b3launcher/core.cpp src/b3launcher/spaw
 LAUNCHER_SRC := $(LAUNCHER_CORE_SRC) src/b3mod/archive.cpp src/b3launcher/font.cpp src/b3launcher/draw.cpp src/b3launcher/main.cpp src/b3replay/prompts.cpp src/b3replay/glyphdraw.cpp \
                 $(REPORT_SRC) src/b3report/sysinfo.cpp $(SHOWROOM_VIEW_SRC)
 LAUNCHER_DEP := $(wildcard include/b3port/app_icon*.h) $(wildcard src/b3launcher/*.h src/b3launcher/third_party/*.h include/b3settings/*.h include/b3mod/*.h) src/native/input_keys.h src/native/input_bindings.h src/native/pad_gyro.h src/native/pad_triggers.h \
-                src/native/input_keys_sdl.h src/native/save_card.h src/native/save_formats.h src/native/save_store.h src/native/save_stats.h \
+                src/native/input_keys_sdl.h src/native/save_card.h src/native/save_formats.h src/native/save_store.h src/native/save_stats.h src/native/pcsx2_cards.h \
                 src/native/custom_music.h src/native/now_playing.h src/native/dbus_dl.h src/native/replay_file.h $(wildcard src/b3view/*.h include/b3gfx/*.h) src/b3gfx/shaders_gen.h
 # update1: the update check (src/b3launcher/update.h: versions, the API's JSON, launcher.ini's update_* keys; the
 # request itself, update_net.cpp, only in the launcher: WinHTTP / libcurl loaded at run time). test_launcher_update: canned answers, no network
 LAUNCHER_CORE_SRC += src/b3launcher/update.cpp
-LAUNCHER_SRC += src/b3launcher/update.cpp src/b3launcher/update_net.cpp
+LAUNCHER_SRC += src/b3launcher/update.cpp src/b3launcher/update_net.cpp src/b3launcher/sign.cpp src/b3launcher/oneclick.cpp
+# 1.1 one-click updates: the signature check (sign.h); test_launcher_sign: ssh-keygen / Python-made vectors
+TESTS += $(BUILD)/test_launcher_sign
+$(BUILD)/test_launcher_sign: tests/test_launcher_sign.cpp tests/test.h src/b3launcher/sign.h src/b3launcher/sign.cpp
+	@mkdir -p $(BUILD)
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< src/b3launcher/sign.cpp -o $@
+TESTS += $(BUILD)/test_launcher_oneclick
+$(BUILD)/test_launcher_oneclick: tests/test_launcher_oneclick.cpp tests/test.h src/b3launcher/oneclick.h src/b3launcher/oneclick.cpp src/b3launcher/sign.cpp src/b3launcher/update.cpp src/b3launcher/update_key.h
+	@mkdir -p $(BUILD)
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< src/b3launcher/oneclick.cpp src/b3launcher/sign.cpp src/b3launcher/update.cpp -o $@
 TESTS += $(BUILD)/test_launcher_update
 $(BUILD)/test_launcher_update: tests/test_launcher_update.cpp tests/test.h src/b3launcher/update.h src/b3launcher/update.cpp
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< src/b3launcher/update.cpp -o $@
+# update2: the one-click update's install step (src/b3launcher/installer.h: a release .zip / .tar.gz unpacked, checked and
+# swapped in with renames, previous-version/ and roll back). test_launcher_installer: packages written by the test
+LAUNCHER_SRC += src/b3launcher/installer.cpp
+INSTALLER_TEST_SRC := src/b3launcher/installer.cpp src/b3mod/archive.cpp src/b3mod/mods.cpp
+TESTS += $(BUILD)/test_launcher_installer
+$(BUILD)/test_launcher_installer: tests/test_launcher_installer.cpp tests/test.h src/b3launcher/installer.h include/b3mod/archive.h include/b3mod/mods.h $(INSTALLER_TEST_SRC)
+	@mkdir -p $(BUILD)
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(INSTALLER_TEST_SRC) -lz -o $@
 TESTS += $(BUILD)/test_launcher
 $(BUILD)/test_launcher: tests/test_launcher.cpp tests/test.h tests/iso_writer.h $(LAUNCHER_CORE_SRC) $(LAUNCHER_DEP) $(B3ASSET_OBJ)
 	@mkdir -p $(BUILD)
@@ -727,7 +744,7 @@ MAC_TESTS_EXACT := test_ps2float test_fenv test_vufloat test_gtmath_ps2 test_gtm
 MAC_TESTS_OTHER := test_b3asset test_hdpack test_sparkshade test_popcornshade test_hud test_capture test_livelap \
                    test_settings test_effect_levels test_carlook test_clock test_inproc test_rwa_iop test_spu2_mixer test_b3route \
                    test_native_backend test_native_platform test_gameview_native test_save_card \
-                   test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load
+                   test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_launcher_installer test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load
 MAC_TESTS := $(MAC_TESTS_EXACT) $(MAC_TESTS_OTHER)
 RUN ?=
 mac-tests-build:

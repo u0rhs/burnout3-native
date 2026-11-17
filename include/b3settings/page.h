@@ -43,6 +43,10 @@ struct Tab {
 struct Content {
     std::vector<Tab> tabs;
     std::string popup;
+    // 1.1: the page's own words around the rows (Menu::items draws them), translated with the rows (translate below)
+    std::string title = "SETTINGS";
+    std::string footer_keys = "UP / DOWN  SELECT     LEFT / RIGHT  CHANGE     CONFIRM  CHOOSE";
+    std::string footer_back = "BACK  CLOSE AND SAVE";
 };
 
 // What the host can offer (rows for things it lacks are left out or disabled).
@@ -53,6 +57,11 @@ struct Env {
     bool music = false;                // the host plays a music folder (INTERFACE: the MUSIC section; native_play)
     std::string music_status;          // the music folder: the last choice's result
     std::string now_playing;           // nowplaying1: what OTHER MUSIC APPS detects now (native_play), empty: not reading
+    // 1.0.1 LANGUAGE (b3asset/language.h): the imported languages (code, name), as <preferences>/languages holds them;
+    // the row offers English and these. `language_import`: the host can import from a disc (IMPORT LANGUAGES row)
+    std::vector<std::pair<std::string, std::string>> languages;
+    bool language_import = false;
+    std::string language_status;       // the last import's result
     // save1: the native game's card is a profile file (SAVES tab: export / import); profile 0 = no card this run
     int profile = 0;
     int next_profile = 0;              // active-slot.txt: the file the next start uses (0: as `profile`)
@@ -108,6 +117,22 @@ enum : std::uint32_t { kRowCtlGyroMode = 305, kRowCtlGyroAxis = 306, kRowCtlGyro
 
 Content build_content(const Settings& s, const Env& env);
 
+// 1.0.1: LANGUAGE (INTERFACE; its edit is the host's: language_edit maps the shown value to a code) and IMPORT
+// LANGUAGES (an action: the host's disc dialog)
+enum : std::uint32_t { kRowLanguage = 270, kActionImportLanguages = 271 };
+
+// 1.1: the port's own text in the player's language (include/b3settings/i18n.h). `language` is Settings::language (a
+// disc code: FR GE IT SP DU SW; empty or any other: English, unchanged). Every label, value, level text and description
+// sentence of `c` that the language's table has is replaced; what it lacks (paths, statuses, a mod's rows) stays as it is.
+void translate(Content& c, const std::string& language);
+// The language the page is shown in: Settings::language when it is one of env.languages (imported), else English ("").
+std::string ui_language(const Settings& s, const Env& env);
+// The texts of `c` (labels, values, sentences) that `language`'s table lacks; none when it has no table. For the
+// tests: every word the page shows has its translation.
+std::vector<std::string> untranslated(Content c, const std::string& language);
+// One text in `language` (a label, a value, or a description: sentence by sentence); itself when untranslated.
+std::string translate_text(const std::string& text, const std::string& language);
+
 struct Edit {
     std::uint32_t id = 0;
     std::size_t value = 0;
@@ -116,6 +141,8 @@ struct Edit {
 };
 // Applies one edit of build_content's rows; false when the id is not a settings row.
 bool apply_edit(Settings& s, const Edit& e);
+// 1.0.1: a LANGUAGE edit into `s` (value 0 English, n the env's n-th imported language); false for any other edit.
+bool language_edit(Settings& s, const Env& env, const Edit& e);
 
 // One poll of input (held states; the model makes edges and the hold repeat). Pointer in picture pixels.
 struct Input {

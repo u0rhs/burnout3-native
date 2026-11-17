@@ -228,6 +228,11 @@ struct View {
     // direction so the chased car keeps its size (fov_correction; docs/specs/settings-page.md §4)
     float fov_scale = 1.0f;
     bool fov_correction = true;
+    // 1.1 (drawn only): the chase camera's distance to the chased car x chase_distance and its eye raised chase_height
+    // (world units, metres) along the camera's up, then turned down about its right axis so the point it looked at
+    // stays in the centre; only views with a chased car (apply_fov's test), so in-car, bumper and replay cameras stay
+    float chase_distance = 1.0f;
+    float chase_height = 0.0f;
     void apply_fov(Camera& c, const std::vector<Vehicle>& vehicles) const;
     std::vector<CarFile> cars;                  // scan_cars(game), once
     std::map<ModelHead, int> head_file;         // model header -> index into cars (-1 unmatched)

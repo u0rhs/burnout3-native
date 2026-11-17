@@ -36,9 +36,12 @@
 #include "spawn.h"
 #include "update.h"       // update1: the update check (the Play page's banner, Settings > Launcher, Credits)
 #include "update_net.h"
+#include "oneclick.h"        // 1.1 one-click updates: the signed release's package
+#include "installer.h"       // ... put in place of this one (the previous version kept)
 
 #include "b3port/app_icon.h"   // the built-in window icon
 #include "b3asset/discfs.h"   // patches3: the game folder's files a mod's patches apply to
+#include "b3asset/language.h"   // 1.0.1: LANGUAGE, IMPORT LANGUAGES
 #include "b3asset/hdpack.h"   // showhd1: the showroom's HD packs (the game's list) and its check's test pack
 #include "b3asset/png.h"
 #include "b3mod/archive.h"   // modkit1b: Add mod (a .zip / .b3mod)
@@ -54,6 +57,7 @@
 
 #include "../native/input_keys_sdl.h"
 #include "../native/now_playing.h"   // nowplaying1: the Music page's OTHER MUSIC APPS line
+#include "../native/pcsx2_cards.h"   // 1.1: the save imports start in PCSX2's memory card folder
 #include "../native/pad_triggers.h"
 #include "../native/replay_file.h"
 #include "../native/save_stats.h"
@@ -67,6 +71,7 @@
 #include <cstdint>
 #include <mach-o/dyld.h>   // macpkg1: _NSGetExecutablePath (the launcher's own folder inside the .app)
 #endif
+
 
 #include <algorithm>
 #include <cctype>
@@ -158,7 +163,7 @@ struct Widget {
     int up = -1, down = -1;
 };
 
-enum class DialogKind { kHdFolder, kGameFolder, kExport, kImportFile, kImportFolder, kGameImage, kMusicFolder, kModArchive };   // iso1: kGameImage; modkit1b: kModArchive
+enum class DialogKind { kHdFolder, kGameFolder, kExport, kImportFile, kImportFolder, kGameImage, kMusicFolder, kModArchive, kLanguageImage, kSavesFolder };   // 1.1: kSavesFolder   // 1.0.1: kLanguageImage   // iso1: kGameImage; modkit1b: kModArchive
 
 struct Modal {
     std::string title, text;
@@ -235,6 +240,9 @@ struct App {
     MusicCheck music;            // the music folder's songs (the game's scan)
     std::string music_checked;   // the folder `music` is of
     std::string music_note;      // the last choice's result, in the in-game page's words
+    // 1.0.1 LANGUAGE (b3asset/language.h): the languages imported into <pref>/languages (code, name), the last import's result
+    std::vector<std::pair<std::string, std::string>> languages;
+    std::string language_note;
     // nowplaying1: OTHER MUSIC APPS' reader for the Music page's "Detected" line (made the first time the page shows
     // with the option on; it reads only while that page shows and the option is on)
     std::unique_ptr<b3nowplaying::Poller> now_playing;
@@ -255,6 +263,9 @@ struct App {
     std::vector<SaveSlot> slots;
     std::string save_note;
     bool save_note_bad = false;
+    // 1.1: the user's folders PCSX2's memory card folders are looked for in (pcsx2_cards.h); set: the screenshot check's
+    // stand-ins instead of this computer's
+    std::optional<b3native::save::Pcsx2Homes> pcsx2_homes;
     // the STATS page (save_stats.h): every profile in use in the save files, read only
     struct StatsEntry {
         int slot = 1;            // the file (profile-N.sav)
@@ -357,6 +368,21 @@ struct App {
         std::string file;                 // B3LAUNCHER_UPDATE_FILE / the checks: the answer read from this file, no request
         bool net = true;                  // false (--screenshot): never a request, whatever is asked
     } upd;
+    // 1.1 one-click updates (oneclick.h, installer.h): the latest release fetched, checked and installed on a thread
+    struct InstallJob {
+        std::mutex m;
+        int step = 0;                     // 0 asking GitHub, 1 the signed list, 2 downloading, 3 checking, 4 writing, 5 installing
+        bool done = false, ok = false;
+        std::string why, tag;
+        fs::path package;                 // macOS: the checked dmg, opened for the player
+    };
+    struct Inst {
+        std::shared_ptr<InstallJob> job;
+        std::thread th;
+        bool installed = false;           // the files are swapped: the next start is the new version
+        std::string tag, note;            // the version installed; the last attempt's result in words
+    } inst;
+    fs::path self_exe;                    // this launcher's own file, found at start (a swap moves the running one)
 
     // the game's front-end look (gameart.h), from the game data folder; off: the plain look
     struct Look {
@@ -389,10 +415,34 @@ struct App {
 
 // ---- files ----
 
+void save_settings(App& a);
+
+// 1.1: a Steam Deck (Steam's SteamDeck=1, or the board's DMI name: Jupiter = LCD, Galileo = OLED)
+bool on_steam_deck() {
+    if (const char* e = std::getenv("SteamDeck"); e && e[0] == '1') return true;
+#if defined(__linux__)
+    std::ifstream f("/sys/devices/virtual/dmi/id/product_name");
+    std::string name;
+    if (f && std::getline(f, name)) return name == "Jupiter" || name == "Galileo";
+#endif
+    return false;
+}
+
 void load_settings(App& a) {
     a.settings = b3settings::Settings{};
     std::string why;
-    if (b3settings::load_file(utf8_of(settings_file(a.pref)), a.settings, &why) && !why.empty()) a.settings_note = "Read with notes: " + why;
+    std::error_code ec;
+    const fs::path file = settings_file(a.pref);
+    if (!fs::exists(file, ec) && on_steam_deck()) {
+        // 1.1: the first start on a Steam Deck: MEDIUM (MSAA 2x, the PS2-size post, half the particles) and vsync, which
+        // hold its 60 Hz screen where HIGH ran at about 55; saved once, so every later change is the player's own
+        a.settings = b3settings::with_preset(a.settings, b3settings::Preset::kMedium);
+        a.settings.vsync = true;
+        save_settings(a);
+        a.settings_note = "Steam Deck: started from the MEDIUM preset with VSYNC on (change them in Settings).";
+        return;
+    }
+    if (b3settings::load_file(utf8_of(file), a.settings, &why) && !why.empty()) a.settings_note = "Read with notes: " + why;
 }
 
 void save_settings(App& a) {
@@ -416,11 +466,14 @@ void refresh_music(App& a, bool force = false) {
     a.music = a.settings.music_folder.empty() ? MusicCheck{} : check_music_folder(path_from_utf8(a.settings.music_folder));
 }
 
+// 1.1: the saves folder in use: the one chosen on the Saves page (launcher.ini saves_dir), else the default
+fs::path saves_root(const App& a) { return saves_folder(a.pref, a.cfg.saves_dir); }
+
 // The stats of every profile in the save files (read only: nothing is written)
 void load_stats(App& a) {
     a.stats.clear();
     a.stats_notes.clear();
-    const fs::path root = saves_folder(a.pref);
+    const fs::path root = saves_root(a);
     for (const SaveSlot& s : a.slots) {
         if (!s.sav && !s.legacy) continue;
         std::string err;
@@ -543,15 +596,18 @@ void load_replays(App& a) {
     if (a.replay_sel >= a.replays.size()) a.replay_sel = 0;
 }
 
+void refresh_languages(App& a);   // 1.0.1 (the SETTINGS page)
+
 void refresh(App& a) {
     a.game = check_game_folder(a.game_dir);
-    a.slots = list_save_slots(saves_folder(a.pref));
+    a.slots = list_save_slots(saves_root(a));
     load_stats(a);
     std::error_code ec;
     a.have_run = fs::exists(run_state_file(a.pref), ec);
     a.run = b3settings::load_run_state(utf8_of(run_state_file(a.pref)));
     refresh_hd(a);
     refresh_music(a);
+    refresh_languages(a);   // 1.0.1
     refresh_mods(a);
 }
 
@@ -619,6 +675,105 @@ bool poll_update(App& a) {
     update::apply(a.cfg.update, r, unix_now());
     save_config(config_file(a.pref), a.cfg);
     return true;
+}
+
+// ---- 1.1 one-click updates ----
+
+bool oneclick_available(const App& a) {
+    std::array<std::uint8_t, 32> key{};
+    return a.upd.net && oneclick::release_key(key) && !a.self_exe.empty();
+}
+
+// Asks GitHub for the latest release, fetches this system's package checked against the signed hash list
+// (oneclick.h), and installs it beside the launcher (installer.h; macOS: the dmg is opened for the player).
+void start_install(App& a) {
+    if (a.inst.job || a.inst.installed || !oneclick_available(a)) return;
+    auto job = std::make_shared<App::InstallJob>();
+    const std::string ua = update::user_agent(b3port::version());
+    const fs::path dir = a.pref / "updates", install_dir = a.exe_dir;
+    a.inst.job = job;
+    a.inst.note.clear();
+    a.inst.th = std::thread([job, ua, dir, install_dir]() {
+        const auto set_step = [&](int s) { std::lock_guard<std::mutex> l(job->m); job->step = s; };
+        const auto finish = [&](bool ok, std::string why) {
+            std::lock_guard<std::mutex> l(job->m);
+            job->ok = ok;
+            job->why = std::move(why);
+            job->done = true;
+        };
+        const update::Response latest = update::https_get(update::kLatestUrl, ua);
+        update::Release rel;
+        std::string why;
+        if (!latest.ok || latest.status != 200 || !update::parse_release(latest.body, rel, &why))
+            return finish(false, "could not read the latest release" + (latest.ok ? std::string() : " (" + latest.error + ")"));
+        if (!update::is_newer(rel.tag, b3port::version())) return finish(false, "this is already the latest version");
+        {
+            std::lock_guard<std::mutex> l(job->m);
+            job->tag = rel.tag;
+        }
+        std::array<std::uint8_t, 32> key{};
+        if (!oneclick::release_key(key)) return finish(false, "one-click updates are off in this build");
+        const oneclick::Fetch fetch = [ua](const std::string& url, bool download, std::size_t max) {
+            return update::https_get(url, ua, download ? 30 * 60 * 1000 : 15000, max, download);
+        };
+        const oneclick::Result got = oneclick::fetch_package(rel, update::this_platform(), key, fetch, dir,
+                                                             [&](oneclick::Step s) { set_step(1 + int(s)); });
+        if (!got.ok) return finish(false, got.why);
+        if (update::this_platform() == update::Platform::kMac) {
+            std::lock_guard<std::mutex> l(job->m);
+            job->package = got.package;
+            job->ok = job->done = true;
+            return;
+        }
+        set_step(5);
+        const installer::Result in = installer::install(got.package, install_dir);
+        std::error_code ec;
+        fs::remove(got.package, ec);
+        finish(in.ok, in.why);
+    });
+}
+
+// The result, once it is there. True when one came.
+bool poll_install(App& a) {
+    if (!a.inst.job) return false;
+    bool ok;
+    std::string why, tag;
+    fs::path package;
+    {
+        std::lock_guard<std::mutex> l(a.inst.job->m);
+        if (!a.inst.job->done) return false;
+        ok = a.inst.job->ok;
+        why = a.inst.job->why;
+        tag = a.inst.job->tag;
+        package = a.inst.job->package;
+    }
+    if (a.inst.th.joinable()) a.inst.th.join();
+    a.inst.job.reset();
+    if (!ok) {
+        a.inst.note = "Update not installed: " + why + ".";
+        return true;
+    }
+    a.inst.tag = tag;
+    if (!package.empty()) {   // macOS: the checked disk image, opened; the player drags the app as on the first install
+        const std::string url = "file://" + utf8_of(package);
+        SDL_OpenURL(url.c_str());
+        a.inst.note = "The update " + tag + " is downloaded and checked: its disk image is open. Quit, then drag the app to Applications.";
+        return true;
+    }
+    a.inst.installed = true;
+    a.inst.note = "Update " + tag + " installed. Restart the launcher to use it (your saves and settings stay as they are).";
+    return true;
+}
+
+// Starts the launcher file that is now in place (the new version) and quits this one
+void restart_launcher(App& a) {
+    std::string err;
+    if (auto c = spawn(a.self_exe, {}, a.exe_dir, {}, &err)) {
+        release(*c);
+        a.quit = true;
+    } else {
+        a.inst.note = "Could not restart the launcher (" + err + "): close it and start it again.";
+    }
 }
 
 // At the end: a request still under way is left to finish on its own (its timeout bounds it; quitting does not wait)
@@ -816,6 +971,21 @@ bool use_own_browser(const App& a) {
     return pad_like(a) || gamepad_ui();
 }
 
+// 1.1: PCSX2's memory card folders on this computer (pcsx2_cards.h), most likely first
+std::vector<b3native::save::Pcsx2CardFolder> pcsx2_folders(const App& a) {
+    if (a.pcsx2_homes) return b3native::save::pcsx2_card_folders(*a.pcsx2_homes);
+    b3native::save::Pcsx2Homes h;
+    auto user_folder = [](SDL_Folder f) { const char* p = SDL_GetUserFolder(f); return p ? path_from_utf8(p) : fs::path(); };
+    h.home = user_folder(SDL_FOLDER_HOME);
+    h.documents = user_folder(SDL_FOLDER_DOCUMENTS);
+    if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) h.xdg_config = fs::path(x);
+#ifdef _WIN32
+    for (const char* v : {"ProgramFiles", "ProgramFiles(x86)"})
+        if (const char* p = std::getenv(v); p && *p) h.program_files.push_back(fs::path(p));
+#endif
+    return b3native::save::pcsx2_card_folders(h);
+}
+
 void open_dialog(App& a, DialogKind kind, const std::string& start) {
     if (use_own_browser(a)) {   // osk1
         open_browser(a, kind, start);
@@ -824,7 +994,12 @@ void open_dialog(App& a, DialogKind kind, const std::string& start) {
     a.dialog_start = start;
     void* user = reinterpret_cast<void*>(static_cast<std::intptr_t>(kind));
     ++a.dialogs_open;   // until its answer (dialog_done: always called, also on an error)
-    const char* loc = start.empty() ? nullptr : start.c_str();
+    std::string at = start;
+    if (at.empty() && (kind == DialogKind::kImportFile || kind == DialogKind::kImportFolder)) {   // 1.1: in PCSX2's cards
+        const auto f = pcsx2_folders(a);
+        if (!f.empty()) at = utf8_of(f.front().path / "");   // (a trailing separator: the dialog opens inside it)
+    }
+    const char* loc = at.empty() ? nullptr : at.c_str();
     if (kind == DialogKind::kExport) {
         static const SDL_DialogFileFilter f[] = {{"Burnout 3 port save (*.sav)", "sav"}};
         SDL_ShowSaveFileDialog(dialog_done, user, a.win, f, 1, loc);
@@ -834,14 +1009,14 @@ void open_dialog(App& a, DialogKind kind, const std::string& start) {
     } else if (kind == DialogKind::kModArchive) {   // modkit1b
         static const SDL_DialogFileFilter f[] = {{"Mods (*.b3mod, *.zip)", "b3mod;zip"}, {"All files", "*"}};
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
-    } else if (kind == DialogKind::kGameImage) {   // iso1: the disc image, read in place (b3asset/discfs.h)
+    } else if (kind == DialogKind::kGameImage || kind == DialogKind::kLanguageImage) {   // iso1: the disc image, read in place (b3asset/discfs.h)
         static const SDL_DialogFileFilter f[] = {{"Disc images (*.iso, *.bin)", "iso;bin"}, {"All files", "*"}};
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
     } else {
         // iso1: the game data was a disc image: its folder to start in
         std::error_code ec;
         const std::string dir = kind == DialogKind::kGameFolder && fs::is_regular_file(path_from_utf8(start), ec)
-                                    ? utf8_of(path_from_utf8(start).parent_path()) : start;
+                                    ? utf8_of(path_from_utf8(start).parent_path()) : at;
         SDL_ShowOpenFolderDialog(dialog_done, user, a.win, dir.empty() ? nullptr : dir.c_str(), false);
     }
 }
@@ -915,11 +1090,13 @@ const char* browse_title(DialogKind k) {
     case DialogKind::kHdFolder: return "Choose the HD texture pack folder";
     case DialogKind::kGameFolder: return "Choose the game data folder or disc image";
     case DialogKind::kGameImage: return "Choose the game's disc image or folder";
+    case DialogKind::kLanguageImage: return "Choose a European disc image of the game (its languages are copied)";
     case DialogKind::kMusicFolder: return "Choose your music folder";
     case DialogKind::kModArchive: return "Add a mod: choose its .b3mod or .zip file";
     case DialogKind::kImportFile: return "Import a save file";
     case DialogKind::kImportFolder: return "Import a folder card";
     case DialogKind::kExport: return "Export the save to a folder";
+    case DialogKind::kSavesFolder: return "Choose the save folder";   // 1.1
     }
     return "Choose";
 }
@@ -946,6 +1123,11 @@ void browse_status(Browser& b) {
         }
         break;
     }
+    case DialogKind::kLanguageImage:   // 1.0.1
+        b.status = files ? "Disc images here: A on one copies its languages (a European copy of the game)."
+                         : "No disc images here: open the folder that holds your European disc image.";
+        b.status_level = files ? 1 : 0;
+        break;
     case DialogKind::kHdFolder:
         b.status = files ? std::to_string(files) + (b.list.more ? "+" : "") + (files == 1 ? " image" : " images") +
                                " (.dds / .png) in this folder. Start chooses it."
@@ -966,8 +1148,23 @@ void browse_status(Browser& b) {
         b.status = "Open the folder card's folder, then Start.";
         break;
     case DialogKind::kModArchive:
-    case DialogKind::kImportFile:
         b.status = files ? "A on a file chooses it." : "No such files in this folder.";
+        break;
+    case DialogKind::kImportFile:   // 1.1: PCSX2's card named
+        if (!b3native::save::pcsx2_first_card(b.dir).empty()) {
+            b.status = "PCSX2's memory cards: the card in its first slot is Mcd001.ps2. A on it chooses it.";
+            b.status_level = 1;
+        } else {
+            b.status = files ? "A on a file chooses it." : "No such files in this folder.";
+        }
+        break;
+    case DialogKind::kSavesFolder:   // 1.1
+        if (b3native::save::has_saves(b.dir)) {
+            b.status = "Saves are in this folder: Start uses them.";
+            b.status_level = 1;
+        } else {
+            b.status = "No saves in this folder yet: Start chooses it (your saves can be copied into it).";
+        }
         break;
     }
 }
@@ -1001,13 +1198,16 @@ void open_browser(App& a, DialogKind kind, const std::string& start, const std::
     switch (kind) {
     case DialogKind::kGameFolder:
     case DialogKind::kGameImage: b.exts = {"iso", "bin"}; b.pick_files = true; break;   // a folder, or a disc image
+    case DialogKind::kLanguageImage: b.exts = {"iso", "bin"}; b.pick_files = true; break;   // 1.0.1
     case DialogKind::kHdFolder: b.exts = {"dds", "png"}; break;                          // shown, not chosen
     case DialogKind::kMusicFolder: b.exts = {"mp3", "flac", "ogg", "oga", "wav"}; break;
     case DialogKind::kModArchive: b.exts = {"b3mod", "zip"}; b.pick_files = true; b.pick_folder = false; break;
     case DialogKind::kImportFile: b.exts = {"sav", "psu", "max", "ps2", "mcd", "bin"}; b.pick_files = true; b.pick_folder = false; break;
     case DialogKind::kImportFolder: break;
     case DialogKind::kExport: b.export_name = start.empty() ? "Burnout3-save.sav" : start; break;
+    case DialogKind::kSavesFolder: break;   // 1.1
     }
+    const bool importing = kind == DialogKind::kImportFile || kind == DialogKind::kImportFolder;
     // where it starts: the current choice (a file's folder, with the file highlighted), else home
     auto user_folder = [](SDL_Folder f) { const char* p = SDL_GetUserFolder(f); return p ? path_from_utf8(p) : fs::path(); };
     const fs::path home = user_folder(SDL_FOLDER_HOME);
@@ -1017,11 +1217,15 @@ void open_browser(App& a, DialogKind kind, const std::string& start, const std::
         select = from;
         from = from.parent_path();
     }
+    const std::vector<b3native::save::Pcsx2CardFolder> pcsx2 = importing ? pcsx2_folders(a) : std::vector<b3native::save::Pcsx2CardFolder>{};
+    if (importing && from.empty() && !pcsx2.empty()) from = pcsx2.front().path;   // 1.1: an import starts in PCSX2's cards
+    if (kind == DialogKind::kImportFile && select.empty() && !from.empty()) select = b3native::save::pcsx2_first_card(from);
     while (!from.empty() && !fs::is_directory(from, ec) && !is_root_folder(from)) from = parent_folder(from);   // (gone: the nearest folder above)
     if (from.empty() || !fs::is_directory(from, ec)) from = kind == DialogKind::kExport ? user_folder(SDL_FOLDER_DOCUMENTS) : home;
     if (from.empty() || !fs::is_directory(from, ec)) from = a.exe_dir;
     std::vector<BrowsePlace> places;
     if (!start.empty() && kind != DialogKind::kExport) places.push_back({"Current choice", select.empty() ? from : select.parent_path()});
+    for (const auto& f : pcsx2) places.push_back({f.label, f.path});   // 1.1
     places.push_back({"Home", home});
     places.push_back({"Desktop", user_folder(SDL_FOLDER_DESKTOP)});
     places.push_back({"Documents", user_folder(SDL_FOLDER_DOCUMENTS)});
@@ -1119,9 +1323,11 @@ void browse_nav(App& a, Nav n) {
     }
 }
 
+void choose_saves_folder(App& a, const fs::path& to);   // 1.1 (the SAVES page)
+
 void handle_path(App& a, DialogKind kind, const std::string& path) {
     const fs::path p = path_from_utf8(path);
-    const fs::path root = saves_folder(a.pref);
+    const fs::path root = saves_root(a);
     const int slot = b3native::save::read_active_slot(root);
     std::string err;
     switch (kind) {
@@ -1152,6 +1358,21 @@ void handle_path(App& a, DialogKind kind, const std::string& path) {
     case DialogKind::kModArchive:   // modkit1b
         add_mod(a, p, false);
         break;
+    case DialogKind::kSavesFolder:   // 1.1
+        choose_saves_folder(a, p);
+        return;   // (refreshed there; a question may be open)
+    case DialogKind::kLanguageImage: {   // 1.0.1: copy the disc's languages into <pref>/languages (b3asset/language.h)
+        std::string why;
+        const auto done = b3asset::language::import_from_disc(p, a.pref, &why);
+        refresh_languages(a);
+        if (done.empty()) a.language_note = "No languages imported: " + why + ".";
+        else {
+            std::string names;
+            for (const auto& l : done) names += (names.empty() ? "" : ", ") + l.name;
+            a.language_note = "Imported: " + names + ". Choose one in LANGUAGE (from the next start).";
+        }
+        break;
+    }
     case DialogKind::kExport: {
         fs::path to = p;
         if (to.extension().empty()) to += ".sav";
@@ -1320,7 +1541,7 @@ void make_report(App& a) {
                                        : b3port::report_folder({desk ? path_from_utf8(desk) : fs::path(), docs ? path_from_utf8(docs) : fs::path(), a.pref});
     if (a.report_save)
         for (const SaveSlot& s : a.slots)
-            if (s.active && s.sav) in.save_file = b3native::save::profile_file(saves_folder(a.pref), s.slot);
+            if (s.active && s.sav) in.save_file = b3native::save::profile_file(saves_root(a), s.slot);
     in.system_info = b3port::system_info({}, true);
     in.system_info += "game data: " + utf8_of(a.game_dir) + " (" + a.game.summary + (a.game.warning.empty() ? "" : " " + a.game.warning) + ")\n";
     in.system_info += "launcher: " + utf8_of(a.exe_dir) + "\n";
@@ -1505,17 +1726,43 @@ int button(Ui& ui, const SDL_FRect& r, const std::string& label, Style st, bool 
 }
 
 // A status line: a dot, a title and its text
+// 1.1: a status line's title column: 150, or wider for a translated title that needs it
+float status_title_w(App& a, const std::string& title) { return std::max(150.0f, a.text->width(title, kBody, true) + 14); }
+
 float status_line(App& a, float x, float y, float w, SDL_FColor dot, const std::string& title, const std::string& body) {
     D::disc(x + 6, y + 11, 5, dot);
     text(a, title, x + 22, y, kBody, col::text, true);
-    const float tw = 150;
+    const float tw = status_title_w(a, title);
     const float hgt = paragraph(a, body, x + 22 + tw, y, w - 22 - tw, kBody, col::dim);
     return std::max(hgt, a.text->line_height(kBody)) + 10;
 }
 
+// 1.1: capitals of UTF-8 text in the launcher's languages (ASCII, Latin-1's letters, oe); other characters as they are
+std::string utf8_upper(std::string_view s) {
+    std::string o;
+    o.reserve(s.size());
+    for (std::size_t i = 0; i < s.size();) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == 0xC3 && i + 1 < s.size()) {   // U+00C0..U+00FF
+            const unsigned char d = static_cast<unsigned char>(s[i + 1]);
+            const unsigned cp = 0xC0u + (d & 0x3Fu);
+            const bool lower = cp >= 0xE0 && cp <= 0xFE && cp != 0xF7;
+            o += char(0xC3);
+            o += char(lower ? d - 0x20 : d);
+            i += 2;
+        } else if (c == 0xC5 && i + 1 < s.size() && static_cast<unsigned char>(s[i + 1]) == 0x93) {   // oe
+            o += "\xC5\x92";
+            i += 2;
+        } else {
+            o += char(std::toupper(c));
+            ++i;
+        }
+    }
+    return o;
+}
+
 float section(App& a, const std::string& s, float x, float y) {
-    std::string up;
-    for (char c : s) up += char(std::toupper(static_cast<unsigned char>(c)));
+    const std::string up = utf8_upper(a.text->translated(s));
     text(a, up, x, y, a.look.on ? kSection + 1.5f : kSection, col::accent, true);
     return a.text->line_height(a.look.on ? kSection + 1.5f : kSection) + 6;
 }
@@ -1549,7 +1796,7 @@ float play_update_banner(App& a, Ui& ui, float x, float y, float w) {
     D::round_rect(SDL_FRect{x, y, w, h}, 12, col::panel);
     D::round_rect_outline(SDL_FRect{x, y, w, h}, 12, 1.5f, D::alpha(col::accent, 0.85f));
     D::disc(x + 22, y + h * 0.5f, 6, col::accent);
-    const float tx = x + 40, tw = w - 40 - bw - 36;
+    const float tx = x + 40, tw = w - 40 - (oneclick_available(a) ? 2 * bw + 12 : bw) - 36;
     text(a, a.text->elide(update::status_text(a.cfg.update, update::State::kAvailable), kBody, tw, true), tx, y + 10, kBody, col::text, true);
     std::string sub;
     if (const std::string d = update::published_date(r.published); !d.empty()) sub = "Released " + d;
@@ -1557,10 +1804,40 @@ float play_update_banner(App& a, Ui& ui, float x, float y, float w) {
     if (sub.empty()) sub = "A newer version of the port is out.";
     text(a, a.text->elide(sub, kSmall, tw), tx, y + 12 + a.text->line_height(kBody), kSmall, col::dim);
     const std::string url = r.url;
-    button(ui, SDL_FRect{x + w - bw - 12, y + 12, bw, h - 24}, "Download", Style::kNormal, true,
-           "Opens the release's page (" + url + ") in your browser, to download the new version there. The launcher installs nothing itself.",
-           [url]() { SDL_OpenURL(url.c_str()); });
-    return y + h + 20;
+    const bool oneclick_on = oneclick_available(a);
+    if (oneclick_on) {   // 1.1: install it from here (a signed release), or the page as before
+        const bool busy = a.inst.job != nullptr;
+        if (a.inst.installed)
+            button(ui, SDL_FRect{x + w - bw - 12, y + 12, bw, h - 24}, "Restart now", Style::kPrimary, true,
+                   "Starts the new version of the launcher. Your saves and settings stay as they are.", [&a]() { restart_launcher(a); });
+        else
+            button(ui, SDL_FRect{x + w - bw - 12, y + 12, bw, h - 24}, busy ? "Installing..." : "Install update", Style::kPrimary, !busy,
+                   "Downloads the new version, checks that it is the port's own signed release, and puts it in place of this one. "
+                   "The previous version is kept: Settings > Launcher can undo the update.",
+                   [&a]() { start_install(a); });
+        button(ui, SDL_FRect{x + w - 2 * bw - 24, y + 12, bw, h - 24}, "Release page", Style::kNormal, true,
+               "Opens the release's page (" + url + ") in your browser.", [url]() { SDL_OpenURL(url.c_str()); });
+    } else {
+        button(ui, SDL_FRect{x + w - bw - 12, y + 12, bw, h - 24}, "Download", Style::kNormal, true,
+               "Opens the release's page (" + url + ") in your browser, to download the new version there. The launcher installs nothing itself.",
+               [url]() { SDL_OpenURL(url.c_str()); });
+    }
+    y += h + 20;
+    if (a.inst.job || !a.inst.note.empty()) {   // the install's progress, or its result
+        std::string line = a.inst.note;
+        if (a.inst.job) {
+            int step;
+            {
+                std::lock_guard<std::mutex> l(a.inst.job->m);
+                step = a.inst.job->step;
+            }
+            static const char* kSteps[] = {"Asking GitHub for the release...", "Checking the release's signature...", "Downloading the update...",
+                                           "Checking the download...", "Saving the download...", "Installing..."};
+            line = kSteps[std::clamp(step, 0, 5)];
+        }
+        y += paragraph(a, line, x + 4, y - 8, w - 8, kSmall, a.inst.note.rfind("Update not", 0) == 0 ? col::warn : col::dim) + 8;
+    }
+    return y;
 }
 
 void page_play(App& a, Ui& ui, float x, float y, float w) {
@@ -1628,7 +1905,7 @@ void page_play(App& a, Ui& ui, float x, float y, float w) {
         auto line = [&](SDL_FColor dot, const std::string& t, const std::string& b) {
             if (draw_it) yy += status_line(a, px, yy, pw, dot, t, b);
             else {
-                const float tw = 150;
+                const float tw = status_title_w(a, t);
                 yy += std::max(float(a.text->wrap(b, kBody, pw - 22 - tw).size()) * a.text->line_height(kBody), a.text->line_height(kBody)) + 10;
             }
         };
@@ -1691,11 +1968,19 @@ void page_play(App& a, Ui& ui, float x, float y, float w) {
 
 // ---- the SETTINGS page ----
 
+void refresh_languages(App& a) {   // 1.0.1: the imported languages (b3asset/language.h)
+    a.languages.clear();
+    for (const auto& l : b3asset::language::on_disc(b3asset::language::imported_root(a.pref)))
+        if (l.supported) a.languages.emplace_back(l.code, l.name);
+}
+
 void settings_edit(App& a, std::uint32_t id, std::size_t value) {
     b3settings::Edit e;
     e.id = id;
     e.value = value;
-    if (b3settings::apply_edit(a.settings, e)) save_settings(a);
+    b3settings::Env env;   // 1.0.1: LANGUAGE's values are the imported languages
+    env.languages = a.languages;
+    if (b3settings::language_edit(a.settings, env, e) || b3settings::apply_edit(a.settings, e)) save_settings(a);
 }
 
 void confirm_reset(App& a) {
@@ -1716,7 +2001,8 @@ void confirm_reset(App& a) {
 }
 
 void action_row(App& a, std::uint32_t id) {
-    if (id == b3settings::kActionChooseHdPack) open_dialog(a, DialogKind::kHdFolder, a.settings.hd_pack_dir);
+    if (id == b3settings::kActionImportLanguages) open_dialog(a, DialogKind::kLanguageImage, utf8_of(a.game_dir.parent_path()));   // 1.0.1
+    else if (id == b3settings::kActionChooseHdPack) open_dialog(a, DialogKind::kHdFolder, a.settings.hd_pack_dir);
     else if (id == b3settings::kActionClearHdPack) {
         a.settings.hd_pack_dir.clear();
         save_settings(a);
@@ -1838,7 +2124,7 @@ float settings_launcher(App& a, Ui& ui, float x, float y, float w) {
     r.values = {"Off", "On"};
     r.value = a.cfg.update.enabled ? 1 : 0;
     r.description = "Once a day, asks GitHub whether a newer release of the port is out (shown on the Play page). Nothing else is "
-                    "sent; GitHub sees your IP address. Nothing is downloaded. Off: no request at all.";
+                    "sent; GitHub sees your IP address. Nothing is downloaded until you choose Install update. Off: no request at all.";
     setting_row(a, ui, r, x, y, w, 46, [&a](std::size_t v) { set_update_check(a, v != 0); });
     y += 46 + 10;
     const bool on = a.cfg.update.enabled, busy = update_checking(a);
@@ -1852,12 +2138,29 @@ float settings_launcher(App& a, Ui& ui, float x, float y, float w) {
         line += ". Last checked " + format_time(a.cfg.update.checked_at);
     text(a, a.text->elide(line, kSmall, w - 220), x + 220, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall,
          st == update::State::kAvailable ? col::accent : col::faint);
-    return y + 44;
+    y += 44;
+    if (!a.exe_dir.empty() && !a.inst.job && installer::can_roll_back(a.exe_dir)) {   // 1.1: the previous version is kept
+        y += 10;
+        button(ui, SDL_FRect{x, y, 260, 44}, "Undo the last update", Style::kNormal, true,
+               "Puts the previous version back (the one an update replaced), then restart the launcher. Your saves and settings stay as they are.",
+               [&a]() {
+                   const installer::Result r = installer::roll_back(a.exe_dir);
+                   a.inst.installed = r.ok;
+                   a.inst.note = r.ok ? "The previous version is back. Restart the launcher to use it." : "Could not undo the update: " + r.why + ".";
+               });
+        if (a.inst.installed)
+            button(ui, SDL_FRect{x + 276, y, 200, 44}, "Restart now", Style::kPrimary, true, "Starts the launcher that is now in place.",
+                   [&a]() { restart_launcher(a); });
+        if (!a.inst.note.empty())
+            text(a, a.text->elide(a.inst.note, kSmall, w - 500), x + 492, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::faint);
+        y += 44;
+    }
+    return y;
 }
 
 void page_settings(App& a, Ui& ui, float x, float y, float w) {
     const std::string hd_status = a.hd_note;
-    const b3settings::Content c = settings_content(a.settings, hd_status, a.hd.images > 0);
+    const b3settings::Content c = settings_content(a.settings, hd_status, a.hd.images > 0, a.languages, a.language_note);
     if (c.tabs.empty()) return;
     a.settings_tab = std::min(a.settings_tab, c.tabs.size() - 1);
     // the tab bar: one widget (left / right switch, a click picks)
@@ -1973,7 +2276,7 @@ void page_hd(App& a, Ui& ui, float x, float y, float w) {
         // the in-game row (b3settings::build_content's GRAPHICS tab: HD TEXTURES, there while a folder is chosen); a
         // row of its own when none is, so the switch is reachable here too (Settings::hd_textures either way)
         b3settings::Row r;
-        for (const auto& t : settings_content(a.settings, a.hd_note, a.hd.images > 0).tabs)
+        for (const auto& t : settings_content(a.settings, a.hd_note, a.hd.images > 0, a.languages, a.language_note).tabs)
             for (const auto& row : t.rows)
                 if (row.kind == b3settings::RowKind::kToggle && row.label == "HD TEXTURES") r = row;
         if (r.label.empty()) {
@@ -2636,12 +2939,16 @@ void page_game(App& a, Ui& ui, float x, float y, float w) {
 // ---- the SAVES page ----
 
 void confirm_import(App& a, bool folder) {
-    const int slot = b3native::save::read_active_slot(saves_folder(a.pref));
+    const int slot = b3native::save::read_active_slot(saves_root(a));
     Modal m;
     m.title = "Replace file " + std::to_string(slot) + "?";
     m.text = "The save you choose replaces file " + std::to_string(slot) + " (profile-" + std::to_string(slot) +
              ".sav); the old one is kept beside it as profile-" + std::to_string(slot) +
              ".sav.bak. A .sav, a PS2 save (.psu, .max) or a PCSX2 memory card (.ps2, or a folder card).";
+    // 1.1: which PCSX2 file (the dialog starts in PCSX2's memcards folder when there is one)
+    m.text += folder ? " From PCSX2: the folder card's folder, in PCSX2's memcards folder."
+                     : " From PCSX2: its memory card, usually Mcd001.ps2 in its memcards folder.";
+    if (const auto f = pcsx2_folders(a); !f.empty()) m.text += " Found: " + utf8_of(f.front().path);
     m.buttons = {{folder ? "Choose a folder card" : "Choose a file", [&a, folder]() {
                       open_dialog(a, folder ? DialogKind::kImportFolder : DialogKind::kImportFile, "");
                   }},
@@ -2649,14 +2956,120 @@ void confirm_import(App& a, bool folder) {
     a.modal = m;
 }
 
+// 1.1: the folders compared as the same one (a chosen folder that is the default's: no choice)
+bool same_folder(const fs::path& x, const fs::path& y) {
+    std::error_code ec;
+    if (fs::equivalent(x, y, ec)) return true;
+    std::error_code ex, ey;
+    const fs::path cx = fs::weakly_canonical(x, ex), cy = fs::weakly_canonical(y, ey);
+    if (ex || ey) return x.lexically_normal() == y.lexically_normal();
+    return cx.lexically_normal() == cy.lexically_normal();
+}
+
+// 1.1: the save folder changed to `to` (the default: saves_folder(pref)), after the saves in use were copied there when
+// `copy` (copy_saves: nothing there replaced, nothing removed here). launcher.ini keeps the choice; native_play uses
+// it from its next start.
+void use_saves_folder(App& a, const fs::path& to, bool copy) {
+    const fs::path from = saves_root(a), def = saves_folder(a.pref);
+    const bool to_default = same_folder(to, def);
+    std::error_code ec;
+    if (to_default) fs::create_directories(def, ec);
+    std::string note;
+    a.save_note_bad = true;
+    {   // the game writes its saves there: a folder it cannot write in is refused
+        const fs::path probe = to / ".b3port-write-check";
+        std::ofstream f(probe, std::ios::binary | std::ios::trunc);
+        const bool ok = bool(f << "b3");
+        f.close();
+        fs::remove(probe, ec);
+        if (!ok) {
+            a.save_note = "Cannot use that folder: nothing can be written in it. The save folder is not changed.";
+            refresh(a);
+            return;
+        }
+    }
+    if (copy) {
+        std::string err;
+        if (b3native::save::copy_saves(from, to, &err) < 0) {
+            a.save_note = "COPY FAILED: " + err + ". The save folder is not changed.";
+            refresh(a);
+            return;
+        }
+        note = "Your saves were copied there. ";
+    }
+    const std::string kept = a.cfg.saves_dir;
+    a.cfg.saves_dir = to_default ? std::string() : utf8_of(to);
+    std::string why;
+    if (!save_config(config_file(a.pref), a.cfg, &why)) {
+        a.cfg.saves_dir = kept;
+        a.save_note = note + "Cannot remember the folder: " + why;
+        refresh(a);
+        return;
+    }
+    a.save_note_bad = false;
+    a.save_note = note + (to_default ? "The default save folder is used from the next start."
+                                     : "This save folder is used from the next start.");
+    if (!copy && b3native::save::has_saves(from)) a.save_note += " The saves in the old folder stay there.";
+    refresh(a);
+}
+
+// 1.1: a save folder chosen (Choose save folder..., or Use the default folder). A folder without saves while the one in
+// use has some: the player is asked whether to copy them there first.
+void choose_saves_folder(App& a, const fs::path& to) {
+    const fs::path from = saves_root(a);
+    if (same_folder(to, from)) {
+        a.save_note = "That folder is the save folder already.";
+        a.save_note_bad = false;
+        refresh(a);
+        return;
+    }
+    std::error_code ec;
+    if (!same_folder(to, saves_folder(a.pref)) && !fs::is_directory(to, ec)) {
+        a.save_note = "That folder is not there. The save folder is not changed.";
+        a.save_note_bad = true;
+        refresh(a);
+        return;
+    }
+    if (b3native::save::has_saves(to) || !b3native::save::has_saves(from)) {
+        use_saves_folder(a, to, false);
+        return;
+    }
+    Modal m;
+    m.title = "Copy your saves there?";
+    m.text = "The folder you chose has no saves yet. Copy the saves in use into it (" + utf8_of(to) +
+             ")? Nothing is deleted or replaced: the old folder keeps its files.";
+    m.buttons = {{"Copy and use it", [&a, to]() { use_saves_folder(a, to, true); }},
+                 {"Use it empty", [&a, to]() { use_saves_folder(a, to, false); }},
+                 {"Cancel", nullptr}};
+    a.modal = m;
+}
+
 void page_saves(App& a, Ui& ui, float x, float y, float w) {
-    const fs::path root = saves_folder(a.pref);
-    text(a, "Save folder", x, y, kBody, col::text, true);
-    text(a, a.text->elide(utf8_of(root), kBody, w - 140 - 200), x + 140, y, kBody, col::dim);
+    const fs::path root = saves_root(a);
+    const bool chosen = !a.cfg.saves_dir.empty();
+    const float lw = std::max(140.0f, text(a, "Save folder", x, y, kBody, col::text, true) + 14);   // 1.1: a longer translated label
+    text(a, a.text->elide(utf8_of(root), kBody, w - lw - 200), x + lw, y, kBody, col::dim);
     button(ui, SDL_FRect{x + w - 190, y - 10, 190, 42}, "Open save folder", Style::kNormal, true,
            "Opens the folder in the file manager. Copy a profile-N.sav to take its three profiles to another computer.",
            [&a, root]() { open_folder(root, &a.save_note); });
     y += 46;
+    // 1.1: the save folder of the player's choice (a cloud or network folder two computers share)
+    {
+        float bx = x;
+        button(ui, SDL_FRect{bx, y, 230, 42}, "Choose save folder...", Style::kNormal, true,
+               "Keeps the saves in another folder: a cloud folder (OneDrive, Google Drive, Dropbox) or a network folder that "
+               "another computer uses too. Used from the next start. Asks before copying your saves there.",
+               [&a, root]() { open_dialog(a, DialogKind::kSavesFolder, utf8_of(root)); });
+        bx += 246;
+        button(ui, SDL_FRect{bx, y, 230, 42}, "Use the default folder", Style::kNormal, chosen,
+               chosen ? "Back to the save folder beside the game's settings. Used from the next start. Asks before copying your saves there."
+                      : "The default save folder is in use.",
+               [&a]() { choose_saves_folder(a, saves_folder(a.pref)); });
+        bx += 246;
+        text(a, a.text->elide(chosen ? "Your chosen folder" : "The default folder", kSmall, x + w - bx), bx,
+             y + (42 - a.text->line_height(kSmall)) * 0.5f, kSmall, chosen ? col::accent : col::faint);
+        y += 42 + 14;
+    }
     for (const SaveSlot& s : a.slots) {
         Widget wd;
         wd.r = SDL_FRect{x, y, w, 58};
@@ -2664,7 +3077,7 @@ void page_saves(App& a, Ui& ui, float x, float y, float w) {
         wd.desc = "Press to use file " + std::to_string(n) + " from the next start. Each file holds three profiles of its own.";
         wd.activate = [&a, n]() {
             std::string err;
-            if (b3native::save::write_active_slot(saves_folder(a.pref), n, &err)) a.save_note = "File " + std::to_string(n) + " is used from the next start.";
+            if (b3native::save::write_active_slot(saves_root(a), n, &err)) a.save_note = "File " + std::to_string(n) + " is used from the next start.";
             else a.save_note = "Cannot write active-slot.txt: " + err;
             a.save_note_bad = !err.empty();
             refresh(a);
@@ -2703,7 +3116,8 @@ void page_saves(App& a, Ui& ui, float x, float y, float w) {
            [&a, act]() { open_dialog(a, DialogKind::kExport, "Burnout3-file-" + std::to_string(act) + ".sav"); });
     bx += 246;
     button(ui, SDL_FRect{bx, y, 250, 46}, "Import into file " + std::to_string(act) + "...", Style::kNormal, true,
-           "Replaces the file in use with a saved game: a .sav, a PS2 save (.psu, .max) or a PCSX2 memory card (.ps2). Asks first.",
+           "Replaces the file in use with a saved game: a .sav, a PS2 save (.psu, .max) or a PCSX2 memory card (.ps2). "
+           "PCSX2's card is usually Mcd001.ps2 in its memcards folder. Asks first.",
            [&a]() { confirm_import(a, false); });
     bx += 266;
     button(ui, SDL_FRect{bx, y, 250, 46}, "Import a folder card...", Style::kNormal, true,
@@ -2711,7 +3125,8 @@ void page_saves(App& a, Ui& ui, float x, float y, float w) {
     y += 46 + 16;
     if (!a.save_note.empty()) y += paragraph(a, a.save_note, x + 4, y, w - 8, kBody, a.save_note_bad ? col::bad : col::ok) + 6;
     y += paragraph(a, "The game saves by itself to the file in use (its three profiles inside). Choose another file to keep "
-                      "separate profiles; a new one starts empty.",
+                      "separate profiles; a new one starts empty. A save folder in the cloud or on the network can be shared "
+                      "by two computers: play on one at a time, and let the folder sync before starting on the other.",
                    x + 4, y, w - 8, kSmall, col::faint);
     a.content_h = y;
 }
@@ -2720,10 +3135,7 @@ void page_saves(App& a, Ui& ui, float x, float y, float w) {
 // The game's own stats of each profile in the save files (src/native/save_stats.h: read only) and the local
 // achievements worked out from them. A row of profiles to choose from, the chosen one's totals, then the achievements.
 
-std::string upper(std::string s) {
-    for (char& c : s) c = char(std::toupper(static_cast<unsigned char>(c)));
-    return s;
-}
+std::string upper(std::string s) { return utf8_upper(s); }
 
 void progress_bar(const SDL_FRect& r, double frac, SDL_FColor fill) {
     D::round_rect(r, r.h * 0.5f, D::alpha(col::faint, 0.35f));
@@ -2827,7 +3239,7 @@ void page_stats(App& a, Ui& ui, float x, float y, float w) {
             const float tx = x + float(k) * (tw + gap);
             D::round_rect(SDL_FRect{tx, y, tw, th}, 10, col::panel);
             if (a.look.on) D::round_rect_outline(SDL_FRect{tx, y, tw, th}, 10, 1.0f, D::alpha(col::edge, 0.6f));
-            text(a, a.text->elide(upper(t.title), kSection + 1, tw - 32, true), tx + 16, y + 12, kSection + 1, col::accent, true);
+            text(a, a.text->elide(upper(a.text->translated(t.title)), kSection + 1, tw - 32, true), tx + 16, y + 12, kSection + 1, col::accent, true);
             const bool full = t.have >= t.of;
             const float vw = text(a, std::to_string(t.have), tx + 16, y + 32, 26, full ? gold : col::text, true);
             text(a, "/ " + std::to_string(t.of), tx + 16 + vw + 8, y + 32 + (a.text->line_height(26) - a.text->line_height(kBody)) * 0.7f, kBody, col::dim);
@@ -4012,8 +4424,7 @@ void game_header(App& a) {
         blit(a, logo, SDL_FRect{10, 10, 236, 59}, D::rgba(0xFFFFFF));
     }
     // the page title as the menus' headings ("SELECT OPTION"): HeadFont's italic capitals, right-aligned
-    std::string t;
-    for (const char* c = kPageNames[a.page]; *c; ++c) t += char(std::toupper(static_cast<unsigned char>(*c)));
+    const std::string t = utf8_upper(a.text->translated(kPageNames[a.page]));
     const float size = 30;
     const float tw = a.text->head(t, 0, 0, size, col::text, true);
     a.text->head(t, a.W - 44 - tw, 16 + (kHeaderH - 26 - a.text->line_height(size)) * 0.5f, size, D::rgba(0xD8E6F6), false);
@@ -4051,8 +4462,7 @@ void game_sidebar(App& a) {
         a.side_widgets.push_back(w);
         const bool sel = p == a.page;
         const bool hv = a.mouse_on && !a.modal && a.mouse_x >= r.x && a.mouse_x < r.x + r.w && a.mouse_y >= r.y && a.mouse_y < r.y + r.h;
-        std::string up;
-        for (const char* c = kPageNames[p]; *c; ++c) up += char(std::toupper(static_cast<unsigned char>(*c)));
+        const std::string up = utf8_upper(a.text->translated(kPageNames[p]));
         const float size = sel ? 24.0f : 20.0f;
         const float ty = r.y + (r.h - a.text->line_height(size)) * 0.5f;
         const SDL_FColor c = sel ? (a.in_content ? D::rgba(0xDCE8F8) : col::text) : hv ? col::accent_hi : col::dim;
@@ -4579,6 +4989,11 @@ std::string footer_text(const App& a) {
 }
 
 void render(App& a) {
+    if (a.text) {   // 1.1: the launcher's words in the chosen language when it is imported (English otherwise)
+        b3settings::Env env;
+        env.languages = a.languages;
+        a.text->set_language(b3settings::ui_language(a.settings, env));
+    }
     int pw = 0, ph = 0;
     SDL_GetCurrentRenderOutputSize(a.ren, &pw, &ph);
     a.scale = std::clamp(std::min(float(pw) / 1280.0f, float(ph) / 720.0f), 0.5f, 4.0f);
@@ -4835,7 +5250,7 @@ void nav(App& a, Nav n) {
     if (n == Nav::NextPage) { go_page(a, a.page + 1); return; }
     if (n == Nav::PrevTab || n == Nav::NextTab) {
         if (a.page == kSettings) {
-            const std::size_t count = settings_content(a.settings, "", false).tabs.size();
+            const std::size_t count = settings_content(a.settings, "", false, a.languages, a.language_note).tabs.size();
             if (count) a.settings_tab = (a.settings_tab + (n == Nav::PrevTab ? count - 1 : 1)) % count;
         }
         if (a.page == kShowroom) showroom_step(a, n == Nav::PrevTab ? -1 : 1);
@@ -5722,7 +6137,7 @@ int walk_checks(App& a, SDL_JoystickID& vj) {
     };
     std::vector<PageState> pages = {{"Play", [&]() { go_page(a, kPlay); }}};
     {
-        const auto tabs = settings_content(a.settings, a.hd_note, a.hd.images > 0).tabs;
+        const auto tabs = settings_content(a.settings, a.hd_note, a.hd.images > 0, a.languages, a.language_note).tabs;
         for (std::size_t t = 0; t < tabs.size(); ++t)
             pages.push_back({"Settings > " + tabs[t].label, [&a, t]() { go_page(a, kSettings); a.settings_tab = t; }});
     }
@@ -6230,6 +6645,110 @@ int walk_checks(App& a, SDL_JoystickID& vj) {
     return fails;
 }
 
+// ---- 1.1: the save folder of the player's choice and the PCSX2 import (--screenshot) ----
+// In scratch folders under the check's data folder (--pref), removed afterwards: a chosen folder with a save, then an
+// empty one chosen (the copy question, "Copy and use it": the save copied, launcher.ini's saves_dir as native_play reads
+// it), back to a folder with saves (no question, nothing copied), back to the default (no saves_dir line). Then the
+// import with a stand-in PCSX2 memcards folder (Mcd001.ps2): the question names it, the folder list starts there with
+// the card highlighted. Shots: saves_copy_offer.png, saves_chosen.png, import_confirm.png, import_pcsx2.png in `shots`.
+// The launcher.ini choice is put back. Returns the number of failures.
+int saves_folder_checks(App& a, const fs::path& shots) {
+    int bad = 0;
+    auto report = [&](bool ok, const std::string& what) {
+        std::printf("b3launcher: save folder check %s: %s\n", ok ? "PASS" : "FAIL", what.c_str());
+        if (!ok) ++bad;
+    };
+    auto shot = [&](const char* name) {
+        render(a);
+        render(a);
+        const fs::path to = shots / name;
+        if (save_shot(a, to)) std::printf("b3launcher: %s\n", utf8_of(to).c_str());
+    };
+    std::error_code ec;
+    const fs::path base = a.pref / "savefolder-check";
+    fs::remove_all(base, ec);
+    const fs::path first = base / "first", cloud = base / "cloud";
+    fs::create_directories(first, ec);
+    fs::create_directories(cloud, ec);
+    std::string err;
+    const b3native::save::Directories none;
+    report(b3native::save::write_sav_file(b3native::save::profile_file(first, 2), none, &err) &&
+               b3native::save::write_active_slot(first, 2, &err),
+           "a stand-in save " + err);
+    const std::string kept = a.cfg.saves_dir;
+    a.modal.reset();
+    go_page(a, kSaves);
+    a.in_content = true;
+    a.focus = 0;
+    use_saves_folder(a, first, false);
+    report(saves_root(a) == first && b3native::save::chosen_saves_root(a.pref) == first, "a chosen folder in use and in launcher.ini");
+    // an empty folder chosen: asked first
+    choose_saves_folder(a, cloud);
+    report(a.modal && a.modal->title == "Copy your saves there?" && a.modal->buttons.size() == 3, "the copy question for an empty folder");
+    shot("saves_copy_offer.png");
+    if (a.modal && !a.modal->buttons.empty()) {
+        auto fn = a.modal->buttons[0].fn;   // Copy and use it
+        a.modal.reset();
+        if (fn) fn();
+    }
+    report(fs::is_regular_file(b3native::save::profile_file(cloud, 2), ec) && b3native::save::read_active_slot(cloud) == 2 &&
+               fs::is_regular_file(b3native::save::profile_file(first, 2), ec),
+           "the save copied (the old folder keeps it)");
+    report(saves_root(a) == cloud && b3native::save::chosen_saves_root(a.pref) == cloud && !a.save_note_bad,
+           "the new folder in use (launcher.ini: " + utf8_of(b3native::save::chosen_saves_root(a.pref)) + "): " + a.save_note);
+    a.focus = 1;
+    shot("saves_chosen.png");
+    // a folder with saves: no question
+    choose_saves_folder(a, first);
+    report(!a.modal && saves_root(a) == first, "a folder with saves: used at once");
+    // the default folder: no saves_dir line in launcher.ini
+    a.modal.reset();
+    use_saves_folder(a, saves_folder(a.pref), false);
+    std::string ini;
+    {
+        std::ifstream f(config_file(a.pref), std::ios::binary);
+        std::ostringstream ss;
+        ss << f.rdbuf();
+        ini = ss.str();
+    }
+    report(a.cfg.saves_dir.empty() && ini.find("saves_dir") == std::string::npos && b3native::save::chosen_saves_root(a.pref).empty(),
+           "back to the default folder (no saves_dir in launcher.ini)");
+    // the import: a stand-in PCSX2 memcards folder
+    b3native::save::Pcsx2Homes h;
+    h.home = base / "home";
+    const fs::path cards = b3native::save::pcsx2_card_folders(h, false).front().path;
+    fs::create_directories(cards, ec);
+    { std::ofstream(cards / "Mcd001.ps2", std::ios::binary) << "stand-in"; }
+    { std::ofstream(cards / "Mcd002.ps2", std::ios::binary) << "stand-in"; }
+    a.pcsx2_homes = h;
+    confirm_import(a, false);
+    report(a.modal && a.modal->text.find("Mcd001.ps2") != std::string::npos && a.modal->text.find(utf8_of(cards)) != std::string::npos,
+           "the import question names Mcd001.ps2 and the folder found");
+    shot("import_confirm.png");
+    a.modal.reset();
+    open_browser(a, DialogKind::kImportFile, "");
+    const Browser& b = *a.browser;
+    const bool sel_card = b.sel < int(b.list.entries.size()) && b.list.entries[std::size_t(b.sel)].path.filename() == "Mcd001.ps2";
+    report(b.dir == cards && sel_card && !b.places.empty() && b.places[0].label.rfind("PCSX2 memory cards", 0) == 0 &&
+               b.status.find("Mcd001.ps2") != std::string::npos,
+           "the import's folder list starts in PCSX2's memcards with Mcd001.ps2 highlighted");
+    shot("import_pcsx2.png");
+    // put back
+    a.browser.reset();
+    a.modal.reset();
+    a.pcsx2_homes.reset();
+    if (a.cfg.saves_dir != kept) {
+        a.cfg.saves_dir = kept;
+        save_config(config_file(a.pref), a.cfg);
+    }
+    a.save_note.clear();
+    a.save_note_bad = false;
+    fs::remove_all(base, ec);
+    refresh(a);
+    std::printf("b3launcher: save folder check %s\n", bad ? "FAIL" : "PASS");
+    return bad;
+}
+
 // ---- osk1: the on-screen keyboard and the folder list by a pad alone (--screenshot) ----
 // A virtual pad (as in the walk: SDL events and the launcher's own pad polling) types a path into the Music page's
 // "Type a path..." on the launcher's on-screen keyboard and confirms it with Start, then picks a folder (HD Textures >
@@ -6709,7 +7228,8 @@ int screenshots(App& a, const fs::path& dir) {
         {"mods", [&]() { go_page(a, kMods); a.in_content = true; a.focus = 2; }},   // modkit1
         {"mods_last", [&]() { go_page(a, kMods); a.in_content = true; a.focus = 13; }},   // the fourth card (errors / notes; modkit1b: after Add mod; sdk2b: and Developer mods)
         {"game", [&]() { go_page(a, kGame); a.in_content = false; }},
-        {"saves", [&]() { go_page(a, kSaves); a.in_content = true; a.focus = 2; }},
+        {"saves", [&]() { go_page(a, kSaves); a.in_content = true; a.focus = 4; }},   // (1.1: after Choose save folder... and Use the default folder: File 2)
+        {"saves_folder", [&]() { if (saves_folder_checks(a, dir)) ++bad_checks; go_page(a, kSaves); a.in_content = true; a.focus = 1; }},   // 1.1
         {"stats", [&]() { go_page(a, kStats); a.in_content = false; a.scroll[kStats] = 0; }},
         {"stats_achievements", [&]() { go_page(a, kStats); a.in_content = true; a.focus = int(a.stats.size()) + 6; }},
         {"replays", [&]() { go_page(a, kReplays); a.in_content = true; a.focus = std::min(2, int(a.replays.size()) + 1); }},
@@ -7150,6 +7670,10 @@ int main(int argc, char** argv) {
         }
     }
 #endif
+    {   // 1.1 one-click updates: this launcher's own file (found now: an update renames the running one away)
+        a.self_exe = self_exe_path();
+        if (!a.exe_dir.empty()) installer::clean_leftovers(a.exe_dir);   // an install cut short
+    }
     std::error_code ec;
     a.cwd = fs::current_path(ec);
     if (!pref_arg.empty()) a.pref = fs::absolute(path_from_utf8(pref_arg), ec);
@@ -7253,6 +7777,7 @@ int main(int argc, char** argv) {
             skip_poll(a);   // launchskip1
             poll_child(a);
             poll_update(a);   // update1
+            poll_install(a);  // 1.1 one-click updates
             pads_motion(a);   // pad1
             render(a);
             SDL_RenderPresent(a.ren);
@@ -7260,6 +7785,7 @@ int main(int argc, char** argv) {
     }
     pads_motion(a, true);   // pad1: the triggers free, the sensors off
     end_update_check(a);    // update1
+    if (a.inst.th.joinable()) a.inst.th.join();   // 1.1: an install under way finishes (a swap is never cut short)
     for (SDL_Gamepad* g : a.pads) SDL_CloseGamepad(g);
     if (a.show.tex) SDL_DestroyTexture(a.show.tex);   // photo2
     a.show.view.reset();

@@ -239,9 +239,9 @@ The tabs and rows as built (settings1, 2026-11-05, then mac5 and the feature lan
 | GRAPHICS | ANTI-ALIASING (MSAA off / 2x / 4x / 8x), TEXTURE FILTERING (point, PS2 bilinear, trilinear, anisotropic 2x-16x), DITHER (off / on, perf1: native-renderer §33.8), HD TEXTURES (only with a pack), CAR DETAIL (game / highest), CAR REFLECTIONS (reflect1: Off / Original / Enhanced, default Enhanced; the PS2 original and Low presets use Original), CAR SHADOWS, SKID MARKS, ROAD SHINE, SUN AND LENS FLARE, CAR AND TRAFFIC LIGHTS | MSAA, filter and HD at the next start; the rest live |
 | EFFECTS | MOTION BLUR, BOOST BLUR (0-100 %, default 50 = main's 0.5), BLOOM, POST QUALITY (PS2 / PC), (effects2, §7.18) SPARKS and CRASH DEBRIS (Off / Low / Medium / High, ini `sparks` / `popcorn` 0-3, default 3), SCRAPES, DAMAGE, GLASS DAMAGE; section POWER: (§7.18) BATTERY SAVER (Off / On, ini `battery_saver`, default off, row id 245) | live |
 | CAMERA | FIELD OF VIEW (60-120, 90 = the game's), FOV CORRECTION, (splitlayout1, §7.11) SPLIT SCREEN (Top / bottom / Side by side, ini `split_layout` 0-1, default 0, row id 180) | live |
-| INTERFACE | FPS COUNTER (fpsoverlay2: Off / Minimal / Standard / Detailed, ini key `fps_view` 0-3, default 0, row id 255; an older `fps_counter = true` reads as 2) and FPS COUNTER POSITION (ini key `fps_corner` 0-3, default 0 = top left, row id 256); BUTTON PROMPTS (mac5: Auto / PlayStation / PS4 / PS5 / Xbox / Nintendo / Generic / Keyboard, ini key `button_prompts` 0-6 (6 = PS4 / PS5, listed second), default 0 = Auto); VIDEO SKIP HINT (mac5: on / off, ini key `skip_hint`, default on); (§7.17, photorow1) PHOTO MODE IN PAUSE MENU (Off / On, ini key `photo_row` true / false, default on, row id 240); (§7.16, units1) SPEED UNITS (MPH / KM/H, ini key `speed_units` 0-1, default 0 = MPH, row id 220); DATE FORMAT (mac5: Month/Day/Year / Day/Month/Year, ini key `date_format` 0-1, default 0); (§7.15, launchskip1) OPEN THE LAUNCHER AT START (Off / On, ini key `launcher_at_start` true / false, default on, row id 210; read by the launcher only); AUDIO AND CONTROLS (a pointer to Driver Details > SETTINGS). Also on the launcher's Settings page | live (OPEN THE LAUNCHER AT START: the launcher's next start; SPEED UNITS: the speedometer from the next race) |
+| INTERFACE | FPS COUNTER (fpsoverlay2: Off / Minimal / Standard / Detailed, ini key `fps_view` 0-3, default 0, row id 255; an older `fps_counter = true` reads as 2) and FPS COUNTER POSITION (ini key `fps_corner` 0-3, default 0 = top left, row id 256); BUTTON PROMPTS (mac5: Auto / PlayStation / PS4 / PS5 / Xbox / Nintendo / Generic / Keyboard, ini key `button_prompts` 0-6 (6 = PS4 / PS5, listed second), default 0 = Auto); VIDEO SKIP HINT (mac5: on / off, ini key `skip_hint`, default on); (§7.17, photorow1) PHOTO MODE IN PAUSE MENU (Off / On, ini key `photo_row` true / false, default on, row id 240); (§7.16, units1) SPEED UNITS (MPH / KM/H, ini key `speed_units` 0-1, default 0 = MPH, row id 220); (§7.19, 1.1) LANGUAGE (English / the imported languages, ini key `language`, default English, row id 270) and IMPORT LANGUAGES (launcher only, row id 271); DATE FORMAT (mac5: Month/Day/Year / Day/Month/Year, ini key `date_format` 0-1, default 0); (§7.15, launchskip1) OPEN THE LAUNCHER AT START (Off / On, ini key `launcher_at_start` true / false, default on, row id 210; read by the launcher only); AUDIO AND CONTROLS (a pointer to Driver Details > SETTINGS). Also on the launcher's Settings page | live (OPEN THE LAUNCHER AT START: the launcher's next start; SPEED UNITS: the speedometer from the next race) |
 | INTERFACE, section ACCESSIBILITY | (§7.1) SCREEN FLASHES (Full / Reduced, ini `screen_flashes` 0-1, default 0); HUD COLOUR FILTER (Off / Deuteranopia / Protanopia / Tritanopia, ini `hud_colour_filter` 0-3, default 0); HUD SIZE (100% / 115% / 130% / 150%, ini `hud_size` 0-3, default 0: the race HUD only); BOOST (Hold / Toggle, ini `boost_mode` 0-1, default 0; **input-changing**, opt-in). Also on the launcher's Settings page (same rows) | live |
-| INTERFACE, section CONTROLLER | (§7.4, rumble1) RUMBLE (Off / On, ini `rumble` 0-1, default 0), RUMBLE STRENGTH (10-100 %, ini `rumble_strength`, default 100), TRIGGER RUMBLE (Off / On, ini `rumble_triggers`, default off); (§7.12, pad1) ADAPTIVE TRIGGERS (Off / On, ini `adaptive_triggers` 0-1, default 0, row id 190; DualSense only, presentation only), TRIGGER STRENGTH (10-100 %, ini `adaptive_triggers_strength`, default 100, row id 191); (§7.13, carsel1) CAR SERIES ON L1 / R1 (Off / On, ini `series_shoulders` 0-1, default 0, row id 200; **input-changing**, opt-in). Also on the launcher's Settings page | live (native_play reads RUMBLE and CAR SERIES each VBlank) |
+| INTERFACE, section CONTROLLER | (§7.4, rumble1) RUMBLE (Off / On, ini `rumble` 0-1, default 0), RUMBLE STRENGTH (10-100 %, ini `rumble_strength`, default 100), TRIGGER RUMBLE (Off / On, ini `rumble_triggers`, default off); (§7.12, pad1) ADAPTIVE TRIGGERS (Off / On, ini `adaptive_triggers` 0-1, default 0, row id 190; DualSense only, presentation only), TRIGGER STRENGTH (10-100 %, ini `adaptive_triggers_strength`, default 100, row id 191); (§7.13, carsel1) CAR SERIES ON L1 / R1 (Off / On, ini `series_shoulders` 0-1, default 0, row id 200; **input-changing**, opt-in); (§7.20, 1.1) ANALOG TRIGGERS (Off / On, ini `analog_pedals`, default on, row id 272). Also on the launcher's Settings page | live (native_play reads RUMBLE and CAR SERIES each VBlank) |
 | INTERFACE, section CONTROLS | (§7.9, remap1) PLAYER, DEVICE, KEYS FOR, the 24 actions, RESET TO DEFAULTS; (§7.12, pad1) with DEVICE Controller: GYRO STEERING (Off / Mix / Replace; **input-changing**, opt-in), GYRO AXIS, GYRO SENSITIVITY, GYRO DEAD ZONE, GYRO RECENTRE (row ids 305-309; saved per player in controls.ini `[playerN.gyro]`, default off). native_play's page only; the launcher's Controllers page has the same | live |
 | INTERFACE, section TIME ATTACK | (§7.2) GHOST (Off / Best lap, ini `ghost` 0-1, default 0): Time Attack ghosts, drawn only. Also on the launcher's Settings page | live (a lap from its next start) |
 | INTERFACE, section SPEEDRUN | (§7.3) SPEEDRUN TIMER (Off / Event / Event + splits, ini `speedrun_timer` 0-2, default 0): drawn only; INSTANT RESTART (Off / On, ini `instant_restart` 0-1, default 0; **input-injecting**, opt-in). Also on the launcher's Settings page | live |
@@ -1342,6 +1342,81 @@ effects: bloom 16%, MSAA 4x -> off 18%, the motion blur 10%, the whole-track dra
 Checks: `test_settings` (`effect_levels_effects2`, `battery_saver_effects2`, `render_scale_effects2`), `test_effect_levels` (the
 shares are stable, nested and the right size; per-level spark quad and debris sprite counts on hand-made captures; High twice
 gives byte-identical vertices; every Low / Medium quad is one of High's); the golden record at HIGH.
+
+### 7.19 Languages (1.1, 2026-11-18)
+
+The game's text in another language, from the player's own European disc, and the port's own text in the same
+language.
+
+| Row | Values (ini) | Default | Id |
+|---|---|---|---|
+| LANGUAGE | English and every imported language (`language`: a two-letter code, FR GE IT SP DU SW EN; empty = English) | English | 270 |
+| IMPORT LANGUAGES | an action: choose a European disc image or folder (launcher only) | | 271 |
+
+- **The game's text.** A European disc carries one pair of string tables per language (`DATA/GLOBAL<code>.BIN`,
+  `DATA/HEAD<code>.BIN`, the same format and ids as the US disc's `GLOBALUS.BIN` / `HEADUS.BIN`). IMPORT LANGUAGES copies
+  the pairs once into `<preferences>/languages/DATA/` (include/b3asset/language.h); the disc is not needed afterwards. No
+  game text ships with the port. native_play gives the chosen pair to the game in place of the US pair
+  (src/native/platform_disc.cpp `set_language`); a mod's GLOBALUS.BIN still wins. Applies at the next start. Japanese
+  (on the Japanese and Korean discs) is listed but not offered: the US game's fonts have no CJK letters.
+- **The port's own text.** The PC SETTINGS page (in the game and on the launcher's Settings page) is shown in the chosen
+  language when it is imported (`b3settings::ui_language`); its labels, values and description sentences come from
+  `include/b3settings/i18n.h` (our own words, one table per language). Paths, statuses and mods' rows stay as they are.
+  The launcher's own pages are translated where they are drawn (src/b3launcher/font.cpp `Text::set_language`: every
+  text the launcher draws or measures goes through the same tables; its live status lines, made of parts, stay English).
+  The ONLINE dialog's "Online play is coming soon." comes in the language too (tools/native/online_message.h).
+- English is the default and unchanged: with no language set the page, the game and the golden record are as before.
+
+Checks: `test_settings` (`language_row_and_edit`, `translations_cover_the_page`: every word of a full page has its
+translation in each language, `translate_page`), `test_discfs` (`language_packs_on_a_disc_folder`).
+
+### 7.20 Analog triggers (1.1, 2026-11-18)
+
+| Row | Values (ini) | Default | Id |
+|---|---|---|---|
+| ANALOG TRIGGERS (INTERFACE > CONTROLLER, after CAR SERIES ON L1 / R1) | Off / On (`analog_pedals` true / false) | On | 272 |
+
+On: a trigger bound to accelerate or brake drives the game's own analog throttle and brake, the right stick's up / down
+(`CB3ControllerMapping::GetAccelerator` 0x12FA40 / `GetBrake` 0x12F970 read it besides Cross / Square). The trigger's
+travel t is sent as the stick value 0.1 + 0.8 t^0.25, which the game's dead zone (0.1) and curve (the fourth power)
+turn back into a throttle of about t: light pressure, light throttle. Both triggers past the threshold together press
+both buttons (the powerslide), as before. The face buttons still press fully. Off: 1.0.0's behaviour, the trigger's
+pressure on the button. Live (native_play reads it each VBlank); input-changing only for trigger players (a trigger
+held fully still gives full throttle).
+
+Checks: `test_input_keys` (`analog_pedals_drive_the_right_stick`, `pedal_stick_makes_the_throttle_follow_the_pedal`),
+`test_input_bindings` (`analog_pedals_with_the_bindings`), `test_settings` (`analog_triggers_row`).
+
+### 7.21 Chase camera distance and height (1.1, 2026-11-18)
+
+| Row (CAMERA tab, after FOV CORRECTION) | Values (ini) | Default | Id |
+|---|---|---|---|
+| CAMERA DISTANCE | -10% / Game / +10% ... +50% (`camera_distance` 90..150 in 10s) | Game (100) | 62 |
+| CAMERA HEIGHT | Game / +0.25 m ... +1 m (`camera_height` 0..100 cm in 25s) | Game (0) | 63 |
+
+Drawn only, like FIELD OF VIEW (src/b3replay/view.cpp `View::apply_fov`): on views with a chased car (the same test as
+FOV CORRECTION: a race car ahead within chase reach, near the view axis) the eye moves back along the view to the
+chosen share of its distance to the car (a closer view stops short of the car's rear), rises along the camera's up,
+and turns down about the axis between the old and new view directions so the point it looked at stays centred.
+In-car, bumper, replay and crash cameras without a chased car are unchanged. The game's camera, physics and replays
+are not touched; with Game / Game the picture is the original (golden unchanged).
+
+### 7.22 Upscaling (1.1, 2026-11-18)
+
+| Row (GRAPHICS > IMAGE, after RENDER SCALE) | Values (ini) | Default | Id |
+|---|---|---|---|
+| UPSCALING | Bilinear / Sharp (`upscaling` 0 / 1) | Sharp | 247 |
+
+Only with a RENDER SCALE below 100%. Sharp (src/b3gfx/shaders/post.frag `sharp_upscale`, the port's own): a
+Catmull-Rom cubic over the 4 x 4 source texels, held within the range of the 2 x 2 it lies between (no halos), then
+sharpened by its difference from the bilinear value, less where the local contrast is already high. Bilinear is 1.0's.
+
+### 7.23 Frame rate limit pacing (1.1, 2026-11-18)
+
+FRAME RATE LIMIT (and BATTERY SAVER's 60) now waits on a fixed schedule (each frame's deadline one period after the
+last), so the average is the limit exactly. With VSYNC on and a limit at or above the display's refresh, the limiter
+stands aside and vsync alone paces the frames: two clocks at the same rate beat against each other and dropped a
+frame now and then (55-58 fps reported on 60 Hz screens).
 
 ## Appendix: candidate gameplay mods (for later; not built, not designed)
 

@@ -4,7 +4,7 @@ The facts for the release announcement, each with where it was verified. Keep th
 nothing goes into the post that is not on this page. Status: ✅ in the build · 🚧 built, being checked · 📋 planned.
 The README's feature list uses the same marks and groups; keep the two in step.
 
-Last updated: 2026-11-17 (version 1.0.0).
+Last updated: 2026-11-18 (version 1.1.0).
 
 ## What it is
 

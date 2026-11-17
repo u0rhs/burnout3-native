@@ -26,6 +26,22 @@ std::filesystem::path user_data_dir();
 // user_data_dir() / "saves" (empty when user_data_dir() is).
 std::filesystem::path default_saves_root();
 
+// 1.1 (a save folder of the player's choice: a cloud or network folder shared by two computers): the folder chosen on the
+// launcher's Saves page, "saves_dir = <UTF-8 path>" in <data_dir>/launcher.ini (src/b3launcher/core.h Config). Empty
+// when none is chosen (or no such file): the default, default_saves_root(). native_play uses it when started without
+// --saves / $B3NATIVE_SAVES_ROOT, in a window.
+std::filesystem::path chosen_saves_root(const std::filesystem::path& data_dir);
+// A path from launcher.ini's UTF-8 text (on Windows a std::string path would be the ANSI code page).
+std::filesystem::path path_from_utf8(const std::string& s);
+
+// True when `root` holds a save of the layout above: a profile-N.sav or a profile-N folder (N 1..5).
+bool has_saves(const std::filesystem::path& root);
+// 1.1: the saves of `from` copied into `to` (made when missing), for a change of save folder: profile-N.sav and its
+// .sav.bak, the profile-N folders, active-slot.txt and backups/. Nothing in `to` is replaced: a file already there is
+// left as it is (and counted in *kept). The number of files copied; -1 (and *error) when one could not be (those
+// copied stay). `from` is not changed.
+int copy_saves(const std::filesystem::path& from, const std::filesystem::path& to, std::string* error = nullptr, int* kept = nullptr);
+
 std::filesystem::path profile_file(const std::filesystem::path& root, int slot);
 std::filesystem::path legacy_profile_folder(const std::filesystem::path& root, int slot);
 

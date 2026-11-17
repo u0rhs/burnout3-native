@@ -222,4 +222,33 @@ TEST(cache_in_launcher_ini) {
     CHECK(!back.enabled);
 }
 
+TEST(release_assets_and_sums) {
+    // 1.1 one-click updates: the release's files, this system's package, the hash list
+    const char* json = R"({"tag_name": "v1.2.0", "html_url": "https://github.com/u0rhs/burnout3-native/releases/tag/v1.2.0",
+        "assets": [
+          {"name": "burnout3-native-1.2.0-abc-win64.zip", "size": 1000,
+           "browser_download_url": "https://github.com/u0rhs/burnout3-native/releases/download/v1.2.0/burnout3-native-1.2.0-abc-win64.zip"},
+          {"name": "burnout3-native-1.2.0-abc-linux-x86_64.tar.gz", "size": 900,
+           "browser_download_url": "https://github.com/u0rhs/burnout3-native/releases/download/v1.2.0/burnout3-native-1.2.0-abc-linux-x86_64.tar.gz"},
+          {"name": "SHA256SUMS", "size": 10, "browser_download_url": "https://github.com/u0rhs/burnout3-native/releases/download/v1.2.0/SHA256SUMS"},
+          {"name": "evil-win64.zip", "browser_download_url": "https://example.com/evil-win64.zip"},
+          {"name": "../x", "browser_download_url": "https://github.com/u0rhs/burnout3-native/releases/download/v1.2.0/x"}
+        ]})";
+    Release r;
+    CHECK(parse_release(json, r));
+    CHECK(r.assets.size() == 3);   // another site's download and a path-like name are dropped
+    const Release::Asset* w = package_asset(r, Platform::kWindows);
+    CHECK(w && w->name == "burnout3-native-1.2.0-abc-win64.zip" && w->size == 1000);
+    const Release::Asset* l = package_asset(r, Platform::kLinux);
+    CHECK(l && l->name == "burnout3-native-1.2.0-abc-linux-x86_64.tar.gz");
+    CHECK(package_asset(r, Platform::kMac) == nullptr);
+    CHECK(find_asset(r, "SHA256SUMS") && !find_asset(r, "SHA256SUMS.sig"));
+    const std::string a(64, 'a'), b(64, 'B');
+    const std::string sums = a + "  burnout3-native-1.2.0-abc-win64.zip\n" + b + " *burnout3-native-1.2.0-abc-linux-x86_64.tar.gz\r\n";
+    CHECK(sum_for(sums, "burnout3-native-1.2.0-abc-win64.zip") == a);
+    CHECK(sum_for(sums, "burnout3-native-1.2.0-abc-linux-x86_64.tar.gz") == std::string(64, 'b'));   // lower case
+    CHECK(sum_for(sums, "other.zip").empty());
+    CHECK(sum_for(sums + std::string(64, 'c') + "  burnout3-native-1.2.0-abc-win64.zip\n", "burnout3-native-1.2.0-abc-win64.zip").empty());   // two different
+}
+
 TEST_MAIN("test_launcher_update: the launcher's update check (src/b3launcher/update.h), canned answers only")

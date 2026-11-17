@@ -66,7 +66,7 @@ layer and a renderer of our own. Nothing pretends to be a PS2 and no PS2 code ru
 | **Loading** | The PS2's load times | Fast loading (on by default) |
 | **Online** | Gone with EA's servers | Coming in a future release |
 
-> **Version 1.0.0.** Found a problem? Please [report it](#reporting-a-bug).
+> **Version 1.1.0.** Found a problem? Please [report it](#reporting-a-bug).
 
 ## Screenshots
 
@@ -181,7 +181,7 @@ make modtool                                   # b3modtool, the mod kit's tool
 | | Windows | Linux | macOS |
 |:--|:--|:--|:--|
 | **System** | Windows 10 / 11, 64-bit | x86-64, glibc 2.35+ (Ubuntu 22.04+, Debian 12, Fedora 36+, SteamOS 3 ...) | Apple Silicon (M1 or later) |
-| **Graphics** | A GPU and driver with Vulkan | A driver with Vulkan; X11 or Wayland | Metal (built in) |
+| **Graphics** | A GPU and driver with Vulkan 1.0 or newer | A driver with Vulkan 1.0 or newer; X11 or Wayland | Metal (built in) |
 | **Package** | Zip with the launcher | Tarball with its own SDL 3 | `.dmg` with the launcher app |
 | **Tested** | ✅ Played on a high-end desktop; the package passes its smoke test | ✅ The package passes its smoke test and was played on one desktop; other distributions and the Steam Deck: untested | 🚧 Played on an M1 when built from source; the `.dmg` is built by CI, and a build of it has been installed and run on a real Mac |
 
@@ -375,12 +375,41 @@ compiled for your PC, like any other PC game.
 </details>
 
 <details>
+<summary><b>How is this different from other PC versions?</b></summary>
+<br>
+
+Other PC versions are recompilations: a console release's program translated as it is. This port is built from a
+decompilation of the PS2 game, its code rebuilt as source, so every function of the game runs as native code, and the
+PC parts (renderer, sound, input, saves) are written for the PC.
+</details>
+
+<details>
 <summary><b>What do I need to play?</b></summary>
 <br>
 
-Your own copy of Burnout 3: Takedown for the PS2, the North American release (SLUS-21050), as a disc image (`.iso`
-or `.bin`) or as the disc's files in a folder. Other regions do not work. We don't supply the ISO or any game files;
-the [player guide](docs/PLAYING.md#2-making-a-disc-image-of-your-own-disc) shows how to make an image of your own disc.
+Your own copy of Burnout 3: Takedown for the PS2, the North American release (NTSC-U, SLUS-21050), as a disc image
+(`.iso` or `.bin`) or as the disc's files in a folder. Other regions do not run, but if you also own a European disc,
+**IMPORT LANGUAGES** (launcher Settings > INTERFACE) copies its languages into the US game. We don't supply the ISO or
+any game files; the [player guide](docs/PLAYING.md#2-making-a-disc-image-of-your-own-disc) shows how to make an image
+of your own disc.
+</details>
+
+<details>
+<summary><b>What PC do I need?</b></summary>
+<br>
+
+On Windows and Linux, any graphics card with a **Vulkan 1.0** driver (no newer Vulkan version is needed). There is no
+Direct3D or OpenGL path, so a GPU without any Vulkan driver (for example Intel HD 4000 on Windows) cannot run it. On a
+Mac, an Apple Silicon Mac (Metal). The minimum CPU and memory are not measured yet; see
+[Requirements](#platforms) and the [player guide](docs/PLAYING.md#your-pc).
+</details>
+
+<details>
+<summary><b>Was AI used to make it?</b></summary>
+<br>
+
+Yes, AI assistance was used in developing the port. Every change, however it was written, has to pass the same
+checks: the 20 scripted scenarios must give byte-identical results, so the game still plays exactly as on the PS2.
 </details>
 
 <details>
@@ -466,7 +495,18 @@ Open Anyway**, or run `xattr -dr com.apple.quarantine "/Applications/Burnout 3 N
 <br>
 
 In your user data folder, never in the game folder; the launcher's **Saves** page opens it and can export a save or
-import PS2 saves (`.psu`, `.max`, PCSX2 cards). Details: [player guide, section 6](docs/PLAYING.md#6-saves).
+import PS2 saves (`.psu`, `.max`, PCSX2 cards). It can also keep your saves in a folder you choose, such as a
+OneDrive, Google Drive or Dropbox folder or a NAS, so two computers (a PC and a Mac) share them. Details:
+[player guide, section 6](docs/PLAYING.md#6-saves).
+</details>
+
+<details>
+<summary><b>Can I bring my PCSX2 saves?</b></summary>
+<br>
+
+Yes. On the launcher's **Saves** page press **Import into file N...** and choose PCSX2's memory card, usually
+`Mcd001.ps2` in PCSX2's `memcards` folder (the import starts there when it finds it). Folder memory cards and `.psu` /
+`.max` saves work too. In the game, SETTINGS > SAVES > IMPORT SAVE does the same.
 </details>
 
 <a id="reporting-a-bug"></a>

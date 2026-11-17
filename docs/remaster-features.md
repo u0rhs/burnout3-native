@@ -808,6 +808,22 @@ RGBA16F, 184 MB at 3200 x 1800), reloaded it, and blended the glow into every sa
 rounding (mean difference 0.00001 of 255, at most 3 of 255 on a few pixels); the PS2-sized path (POST PS2, the golden
 record) and MSAA off keep the original form byte for byte. Measured in a real window on an RTX 4080 SUPER (5120 x 1440, MSAA 8, the same race replay), the lean form was slower than the original split (218 fps against 238), so the original split is the default again; `B3_BLOOM_LEAN=1` opts into the lean form for comparisons.
 
+## 13. Languages and analog triggers (1.1, 2026-11-18)
+
+- **Languages.** The game's text in French, German, Italian, Spanish, Dutch, Swedish or UK English, imported once from
+  the player's own European disc (no game text ships with the port), and the launcher and the port's own SETTINGS page
+  translated into the same languages (our own words). English stays the default. docs/pc-settings.md §7.19.
+- **Analog triggers.** A trigger on accelerate or brake drives the game's own analog throttle and brake (the right
+  stick's up / down that the PS2 game already reads), so the pedals work gradually, as on the Xbox release. On by
+  default; Off is 1.0.0's trigger-as-a-button. docs/pc-settings.md §7.20.
+
+## 14. Chase camera, sharp upscaling, steadier frame limit (1.1, 2026-11-18)
+
+- **Chase camera distance and height** (CAMERA tab): the race camera further back and higher, tilted to keep the car
+  in view; drawn only. docs/pc-settings.md §7.21.
+- **UPSCALING Sharp** for RENDER SCALE below 100%: a sharper picture on weak GPUs and handhelds. §7.22.
+- **Frame rate limit pacing**: a fixed schedule, and vsync alone when it already holds the rate. §7.23.
+
 ## Order
 
 1. Input layer with mapping, keyboard and automatic switching: needed by every platform anyway (phase 6, platform

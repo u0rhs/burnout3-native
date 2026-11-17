@@ -1,6 +1,7 @@
 // save1 (remaster-features §8): the port's .sav, the PS2 / PCSX2 import formats (src/native/save_formats.h), the save
 // folder (src/native/save_store.h) and the card's write-back to the profile file (ProfileCard). Synthetic saves only:
 // every image here is built by the test (no game save is read or committed).
+#include "pcsx2_cards.h"
 #include "save_formats.h"
 #include "save_store.h"
 #include "test.h"
@@ -448,6 +449,85 @@ TEST(profile_card_writes_back) {
         card.tick(1000);
         CHECK(card.flush(&err) && !fs::exists(profile_file(u.root, 1)));
     }
+}
+
+// 1.1: the save folder chosen in the launcher (launcher.ini saves_dir), and a change of folder's copy: the saves in use
+// copied, nothing already there replaced, the old folder untouched
+TEST(chosen_save_folder) {
+    Temp t("chosen");
+    std::string err;
+    CHECK(chosen_saves_root(t.root).empty());   // no launcher.ini: the default
+    CHECK(chosen_saves_root(fs::path()).empty());
+    {
+        std::ofstream(t.root / "launcher.ini", std::ios::binary) << "# x\ngame_dir = /g\n";
+    }
+    CHECK(chosen_saves_root(t.root).empty());   // none chosen
+    {
+        std::ofstream(t.root / "launcher.ini", std::ios::binary) << "game_dir = /g\r\n  saves_dir =  /cloud/My Drive/B3 caf\xC3\xA9 \r\n";
+    }
+    CHECK(chosen_saves_root(t.root) == path_from_utf8("/cloud/My Drive/B3 caf\xC3\xA9"));
+
+    const fs::path from = t.root / "old", to = t.root / "new";
+    fs::create_directories(from);
+    CHECK(!has_saves(from) && !has_saves(to));
+    CHECK(copy_saves(from, to, &err) == 0 && fs::is_directory(to));   // nothing to copy: the folder made
+    const Directories one{game_like_save(1)}, two{game_like_save(2)};
+    CHECK(write_sav_file(profile_file(from, 1), one, &err));
+    CHECK(write_sav_file(profile_file(from, 3), two, &err));
+    write_bytes(from / "profile-3.sav.bak", Bytes{1, 2, 3});
+    write_bytes(from / "profile-2" / "BASLUS-21050" / "icon.sys", Bytes{4, 5});   // an older folder layout
+    write_bytes(from / "backups" / "profile-1-20261118-101010.sav", Bytes{6});
+    write_bytes(from / "unrelated.txt", Bytes{7});
+    CHECK(write_active_slot(from, 3, &err));
+    CHECK(has_saves(from));
+    // a file already in the new folder is left as it is
+    write_bytes(to / "profile-3.sav", Bytes{9, 9});
+    int kept = -1;
+    CHECK(copy_saves(from, to, &err, &kept) == 5 && kept == 1);
+    CHECK(read_bytes(to / "profile-3.sav") == (Bytes{9, 9}));
+    CHECK(read_bytes(profile_file(to, 1)) == read_bytes(profile_file(from, 1)));
+    CHECK(read_bytes(to / "profile-3.sav.bak") == (Bytes{1, 2, 3}));
+    CHECK(read_bytes(to / "profile-2" / "BASLUS-21050" / "icon.sys") == (Bytes{4, 5}));
+    CHECK(read_bytes(to / "backups" / "profile-1-20261118-101010.sav") == (Bytes{6}));
+    CHECK(!fs::exists(to / "unrelated.txt"));
+    CHECK(read_active_slot(to) == 3 && has_saves(to));
+    CHECK(fs::exists(profile_file(from, 3)) && read_active_slot(from) == 3);   // the old folder keeps its files
+    // again: everything there already
+    CHECK(copy_saves(from, to, &err, &kept) == 0 && kept == 6);
+}
+
+// 1.1: PCSX2's memory card folders (pcsx2_cards.h) per system, only those there
+TEST(pcsx2_card_folders_found) {
+    Temp t("pcsx2");
+    Pcsx2Homes h;
+    h.home = t.root / "home";
+    h.documents = t.root / "docs";
+    h.program_files = {t.root / "pf", t.root / "pf86"};
+    // every place named, most likely first
+    auto all = pcsx2_card_folders(h, false, Pcsx2Os::kLinux);
+    CHECK(all.size() == 2 && all[0].path == h.home / ".config" / "PCSX2" / "memcards" &&
+          all[1].path == h.home / ".var" / "app" / "net.pcsx2.PCSX2" / "config" / "PCSX2" / "memcards" &&
+          all[1].label == "PCSX2 memory cards (Flatpak)");
+    h.xdg_config = t.root / "xdg";
+    all = pcsx2_card_folders(h, false, Pcsx2Os::kLinux);
+    CHECK(all.size() == 3 && all[0].path == t.root / "xdg" / "PCSX2" / "memcards");
+    all = pcsx2_card_folders(h, false, Pcsx2Os::kWindows);
+    CHECK(all.size() == 3 && all[0].path == h.documents / "PCSX2" / "memcards" && all[1].path == t.root / "pf" / "PCSX2" / "memcards" &&
+          all[1].label == "PCSX2 memory cards (installed)");
+    all = pcsx2_card_folders(h, false, Pcsx2Os::kMac);
+    CHECK(all.size() == 1 && all[0].path == h.home / "Library" / "Application Support" / "PCSX2" / "memcards");
+    // only the folders that exist (none yet); then the Flatpak's, with its first card
+    CHECK(pcsx2_card_folders(h, true, Pcsx2Os::kLinux).empty());
+    const fs::path flat = h.home / ".var" / "app" / "net.pcsx2.PCSX2" / "config" / "PCSX2" / "memcards";
+    fs::create_directories(flat);
+    auto found = pcsx2_card_folders(h, true, Pcsx2Os::kLinux);
+    CHECK(found.size() == 1 && found[0].path == flat);
+    CHECK(pcsx2_first_card(flat).empty());
+    write_bytes(flat / "Mcd001.ps2", Bytes{0});
+    CHECK(pcsx2_first_card(flat) == flat / "Mcd001.ps2");
+    fs::create_directories(h.documents / "PCSX2" / "memcards");
+    found = pcsx2_card_folders(h, true, Pcsx2Os::kWindows);
+    CHECK(found.size() == 1 && found[0].path == h.documents / "PCSX2" / "memcards");
 }
 
 TEST_MAIN("save formats: .sav, card images, .psu, .max, folder cards, the save folder, the card's write-back")

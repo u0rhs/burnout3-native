@@ -3,6 +3,8 @@
 
 #include "platform.h"
 
+#include "b3asset/language.h"
+
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -54,6 +56,36 @@ std::string from_overlay(const std::string& p) {
 
 void set_overlay(const b3mod::Overlay* overlay) { g_overlay = overlay && !overlay->empty() ? overlay : nullptr; }
 
+namespace {
+std::string g_lang_global, g_lang_head;   // the language's two files (host paths), empty: the game's own text
+std::string g_lang_code;                  // its code (FR, IT...)
+}  // namespace
+
+std::string language_text() {
+    if (g_lang_global.empty()) return {};
+    if (g_overlay && !from_overlay("DATA/GLOBALUS.BIN").empty()) return {};   // a mod's GLOBALUS.BIN wins
+    return g_lang_code;
+}
+
+bool set_language(const std::string& disc, const std::string& code) {
+    g_lang_global.clear();
+    g_lang_head.clear();
+    g_lang_code.clear();
+    if (disc.empty() || code.empty()) return false;
+    const std::filesystem::path g = b3asset::language::file(disc, code, false), h = b3asset::language::file(disc, code, true);
+    if (g.empty() || h.empty() || !b3asset::language::supported(b3asset::language::normalise(code))) return false;
+    try {
+        g_lang_global = g.string();
+        g_lang_head = h.string();
+        g_lang_code = b3asset::language::normalise(code);
+    } catch (...) {
+        g_lang_global.clear();
+        g_lang_head.clear();
+        return false;
+    }
+    return true;
+}
+
 const std::string& root() {
     static const std::string r = [] {
         const char* e = std::getenv("B3_DISC_ROOT");
@@ -81,6 +113,10 @@ std::string resolve(const std::string& guest_path) {
     if (p.empty()) return {};
     if (g_overlay)   // the mod kit's overlay (mods.h): an active mod's file first
         if (std::string mod = from_overlay(p); !mod.empty()) return mod;
+    if (!g_lang_global.empty()) {   // 1.0.1: the chosen language's pair from the player's European disc
+        if (same_ascii_ci(p, "DATA/GLOBALUS.BIN") || same_ascii_ci(p, "DATA\\GLOBALUS.BIN")) return g_lang_global;
+        if (same_ascii_ci(p, "DATA/HEADUS.BIN") || same_ascii_ci(p, "DATA\\HEADUS.BIN")) return g_lang_head;
+    }
     if (!b3asset::disc::is_dir(root()))
         b3host::fatal("platform disc: " + root() + " is neither a folder of the disc's files nor a disc image (set B3_DISC_ROOT)");
     const std::filesystem::path host = b3asset::disc::resolve_ci(root(), p);   // '\' or '/', names case-insensitive

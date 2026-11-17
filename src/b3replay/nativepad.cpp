@@ -292,7 +292,9 @@ void NativePad::poll_gamepads() {
             }
         }
         // remap1: the seat's bindings (player 1's for player 1's and the waiting pads; defaults: gamepad_sample's layout)
-        const auto one = b3native::input::gamepad_sample(s, controls_.player[p1 ? 0 : 1]);
+        b3native::input::GamepadTuning tuning;   // 1.0.1: ANALOG TRIGGERS
+        tuning.analog_pedals = analog_pedals_.load();
+        const auto one = b3native::input::gamepad_sample(s, controls_.player[p1 ? 0 : 1], tuning);
         if (!p1) {   // pad2: player 2's pad (port 2); not photo mode's (player 1's camera)
             two = one;
             continue;

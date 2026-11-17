@@ -52,7 +52,7 @@ struct Handle {
 
 }  // namespace
 
-Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms, std::size_t max_bytes) {
+Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms, std::size_t max_bytes, bool download) {
     Response r;
     const std::wstring wurl = wide(url);
     URL_COMPONENTS uc{};
@@ -99,7 +99,8 @@ Response https_get(const std::string& url, const std::string& user_agent, int ti
         r.error = win_error(GetLastError());
         return r;
     }
-    const wchar_t* headers = L"Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n";
+    const wchar_t* headers = download ? L"Accept: application/octet-stream\r\n"
+                                      : L"Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n";
     if (!WinHttpSendRequest(q.h, headers, DWORD(-1L), WINHTTP_NO_REQUEST_DATA, 0, 0, 0) || !WinHttpReceiveResponse(q.h, nullptr)) {
         r.error = win_error(GetLastError());
         return r;
@@ -225,7 +226,7 @@ std::size_t on_data(char* p, std::size_t size, std::size_t n, void* user) {
 
 }  // namespace
 
-Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms, std::size_t max_bytes) {
+Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms, std::size_t max_bytes, bool download) {
     Response r;
     if (url.compare(0, 8, "https://") != 0) {
         r.error = "not an https address";
@@ -243,8 +244,8 @@ Response https_get(const std::string& url, const std::string& user_agent, int ti
     }
     char err[256] = {};   // CURL_ERROR_SIZE
     Sink sink{&r.body, max_bytes};
-    curl_slist* headers = c.slist_append(nullptr, "Accept: application/vnd.github+json");
-    if (headers) headers = c.slist_append(headers, "X-GitHub-Api-Version: 2022-11-28");
+    curl_slist* headers = c.slist_append(nullptr, download ? "Accept: application/octet-stream" : "Accept: application/vnd.github+json");
+    if (headers && !download) headers = c.slist_append(headers, "X-GitHub-Api-Version: 2022-11-28");
     using WriteFn = std::size_t (*)(char*, std::size_t, std::size_t, void*);
     const WriteFn fn = on_data;
     c.easy_setopt(h, kOptUrl, url.c_str());

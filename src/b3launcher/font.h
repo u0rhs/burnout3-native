@@ -41,6 +41,13 @@ public:
     // A heading: HeadFont's italic capitals when it has every letter, else the menu font's italic
     float head(std::string_view s, float x, float y, float size, SDL_FColor c, bool measure_only = false);
 
+    // 1.1: every text drawn or measured is the port's own words in this language (b3settings::translate_text: a label,
+    // or a description sentence by sentence; what the tables lack, such as names and paths, stays). Empty: English.
+    void set_language(std::string code) { language_ = std::move(code); }
+    const std::string& language() const { return language_; }
+    // `s` in the language (as draw would show it), for a caller that changes it first (capitals)
+    std::string translated(std::string_view s) const { return language_.empty() ? std::string(s) : tr(s); }
+
     float width(std::string_view s, float size, bool bold = false);
     float line_height(float size) const { return size * 1.32f; }
     // Draws `s` with its top at y (the line box of line_height); returns its width.
@@ -56,6 +63,18 @@ private:
     bool game_usable(const GameFont* f, std::string_view s) const;
     float game_text(const GameFont& f, SDL_Texture* tex, std::string_view s, float x, float y, float size, SDL_FColor c, bool italic,
                     bool measure_only);
+
+    // 1.1: translation once per public call; `raw_` while a call works on text already translated (wrap's words)
+    std::string language_;
+    bool raw_ = false;
+    struct Raw {
+        Text& t;
+        bool was;
+        explicit Raw(Text& text) : t(text), was(text.raw_) { t.raw_ = true; }
+        ~Raw() { t.raw_ = was; }
+    };
+    bool translating() const { return !raw_ && !language_.empty(); }
+    std::string tr(std::string_view s) const;
 
     const GameFont* menu_ = nullptr;
     const GameFont* head_ = nullptr;

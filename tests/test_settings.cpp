@@ -95,6 +95,7 @@ TEST(every_row_applies) {
         for (const Row& r : t.rows) {
             if (r.kind == RowKind::kSection || r.disabled) continue;
             if (r.kind == RowKind::kAction) continue;   // mac5: the host's buttons (HD pack folder), not settings values
+            if (r.id == kRowLanguage) continue;   // 1.0.1: the host's (language_edit: its values are the imported languages)
             ++rows;
             Settings s;
             const std::size_t n = r.kind == RowKind::kToggle ? 2 : r.kind == RowKind::kSlider ? r.levels : r.values.size();
@@ -1399,7 +1400,8 @@ TEST(series_shoulders_row) {
                 CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.series_shoulders == 0);
             }
         }
-        CHECK(strength > 0 && row == strength + 1 && ghost == row + 1);
+        // 1.0.1: ANALOG TRIGGERS between CAR SERIES and the TIME ATTACK section
+        CHECK(strength > 0 && row == strength + 1 && ghost == row + 2 && in->rows[row + 1].label == "ANALOG TRIGGERS");
         for (const Tab& t : build_content(s, env).tabs)
             for (const Row& r : t.rows)
                 if (r.label == "CAR SERIES ON L1 / R1") CHECK(r.value == 1);
@@ -1793,6 +1795,157 @@ TEST(mods_tab_only_with_code_mod_rows) {   // sdk2b: PC SETTINGS > MODS (the cod
     CHECK(!c.tabs.empty() && c.tabs.back().label == "MODS" && c.tabs.back().rows.size() == 2 && c.tabs.back().rows[1].id == kModRowBase);
     Settings s;
     CHECK(!apply_edit(s, Edit{kModRowBase, 1, 1, false}));   // the host's row, not a setting
+}
+
+TEST(language_row_and_edit) {
+    // 1.0.1 LANGUAGE (INTERFACE): English and the imported languages; language_edit maps the value to a code
+    Env env{true};
+    env.languages = {{"FR", "Fran\xC3\xA7" "ais (French)"}, {"IT", "Italiano (Italian)"}};
+    Settings s;
+    s.language = "IT";
+    const Content content = build_content(s, env);   // kept: `row` points into it
+    const Row* row = nullptr;
+    for (const Tab& t : content.tabs)
+        for (const Row& r : t.rows)
+            if (r.id == kRowLanguage) row = &r;
+    CHECK(row && row->label == "LANGUAGE" && row->values.size() == 3 && row->values[0] == "English" && row->value == 2);
+    Settings e;
+    CHECK(language_edit(e, env, Edit{kRowLanguage, 1, 0, false}) && e.language == "FR");
+    CHECK(language_edit(e, env, Edit{kRowLanguage, 0, 0, false}) && e.language.empty());
+    CHECK(language_edit(e, env, Edit{kRowLanguage, 9, 0, false}) && e.language.empty());   // out of range: English
+    CHECK(!language_edit(e, env, Edit{kRowSaveScreens, 1, 0, false}));                    // not its row
+    // a chosen language that is not imported shows English, and says so
+    Settings gone;
+    gone.language = "GE";
+    for (const Tab& t : build_content(gone, env).tabs)
+        for (const Row& r : t.rows)
+            if (r.id == kRowLanguage) CHECK(r.value == 0 && r.description.find("not imported") != std::string::npos);
+    // the ini keeps it (two letters, upper case), empty for English
+    CHECK(from_ini(to_ini(s)).language == "IT");
+    CHECK(from_ini("language = it\n").language == "IT");
+    CHECK(from_ini("language = Italian\n").language.empty());
+}
+
+TEST(translations_cover_the_page) {
+    // 1.1 (i18n.h): every label, value and description sentence of a full page has its translation in each language
+    Env env{true};
+    env.music = true;
+    env.language_import = true;
+    env.languages = {{"FR", "Fran\xC3\xA7" "ais (French)"}};
+    env.profile = 1;
+    env.next_profile = 2;
+    env.controls.on = true;
+    env.controls.gyro = true;
+    Settings s;
+    s.hd_pack_dir = "/packs/SLUS-21050";
+    s.music_folder = "/music";
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"}) {
+        for (std::size_t player = 0; player < 3; ++player)
+            for (std::size_t device = 0; device < 2; ++device) {
+                env.controls.player = player;
+                env.controls.device = device;
+                const std::vector<std::string> missing = untranslated(build_content(s, env), code);
+                for (const std::string& m : missing)
+                    // data, not words: the chosen folders' names and a language's own name stay as they are
+                    if (m.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") != std::string::npos &&
+                        m.find('/') == std::string::npos && m != "music" && m != "SLUS-21050" && m != env.languages[0].second)
+                    {
+                        std::printf("  %s lacks: %s\n", code, m.c_str());
+                        CHECK(false);
+                    }
+            }
+    }
+    CHECK(untranslated(build_content(s, env), "XX").empty());   // no table: English, nothing to check
+}
+
+TEST(translate_page) {
+    Env env{true};
+    env.languages = {{"FR", "Fran\xC3\xA7" "ais (French)"}, {"IT", "Italiano (Italian)"}};
+    Settings s;
+    const Content english = build_content(s, env);
+    // English (and a language without a table) leaves the page as it is
+    Content same = english;
+    translate(same, "");
+    translate(same, "XX");
+    CHECK(same.tabs.size() == english.tabs.size() && same.title == "SETTINGS");
+    for (std::size_t k = 0; k < same.tabs.size(); ++k) CHECK(same.tabs[k].label == english.tabs[k].label);
+    // French: the same rows (ids, kinds, value counts), other words
+    Content fr = english;
+    translate(fr, "FR");
+    CHECK(fr.title != "SETTINGS" && fr.footer_back != english.footer_back);
+    for (std::size_t k = 0; k < fr.tabs.size(); ++k) {
+        CHECK(fr.tabs[k].rows.size() == english.tabs[k].rows.size());
+        for (std::size_t r = 0; r < fr.tabs[k].rows.size(); ++r) {
+            const Row& a = fr.tabs[k].rows[r];
+            const Row& b = english.tabs[k].rows[r];
+            CHECK(a.id == b.id && a.kind == b.kind && a.value == b.value && a.values.size() == b.values.size());
+        }
+    }
+    // a `{}` entry carries the text it stands for; an unknown sentence stays, the known ones around it change
+    const std::string chosen = translate_text("Chosen: /my packs/SLUS-21050 (in use).", "FR");
+    CHECK(chosen.find("/my packs/SLUS-21050") != std::string::npos && chosen.find("Chosen") == std::string::npos);
+    const std::string mixed = translate_text("Smooths jagged edges. Something new here. Applies at the next start.", "FR");
+    CHECK(mixed.find("Something new here.") != std::string::npos && mixed.find("Smooths") == std::string::npos &&
+          mixed.find("Applies") == std::string::npos);
+    // the page shows the chosen language only when it is imported
+    s.language = "IT";
+    CHECK(ui_language(s, env) == "IT");
+    s.language = "GE";
+    CHECK(ui_language(s, env).empty());
+    s.language.clear();
+    CHECK(ui_language(s, env).empty());
+}
+
+TEST(chase_camera_and_upscaling_rows) {
+    // 1.1: CAMERA DISTANCE / HEIGHT (CAMERA tab, after FOV CORRECTION) and UPSCALING (GRAPHICS, after RENDER SCALE)
+    Settings s;
+    CHECK(s.camera_distance == 100 && s.camera_height == 0 && s.upscaling == 1);
+    const Content c = build_content(s, Env{true});
+    const Row* dist = nullptr;
+    const Row* height = nullptr;
+    const Row* up = nullptr;
+    for (const Tab& t : c.tabs)
+        for (std::size_t k = 0; k < t.rows.size(); ++k) {
+            const Row& r = t.rows[k];
+            if (r.label == "CAMERA DISTANCE") {
+                dist = &r;
+                CHECK(t.label == "CAMERA" && k > 0 && t.rows[k - 1].label == "FOV CORRECTION");
+            }
+            if (r.label == "CAMERA HEIGHT") height = &r;
+            if (r.label == "UPSCALING") {
+                up = &r;
+                CHECK(k > 0 && t.rows[k - 1].label == "RENDER SCALE");
+            }
+        }
+    CHECK(dist && dist->values[dist->value] == "Game" && height && height->values[height->value] == "Game");
+    CHECK(up && up->values[up->value] == "Sharp");
+    Settings e;
+    CHECK(apply_edit(e, Edit{dist->id, 4, 0, false}) && e.camera_distance == 130);
+    CHECK(apply_edit(e, Edit{dist->id, 0, 0, false}) && e.camera_distance == 90);
+    CHECK(apply_edit(e, Edit{height->id, 4, 0, false}) && e.camera_height == 100);
+    CHECK(apply_edit(e, Edit{up->id, 0, 0, false}) && e.upscaling == 0);
+    const Settings back = from_ini(to_ini(e));
+    CHECK(back.camera_distance == 90 && back.camera_height == 100 && back.upscaling == 0);
+    CHECK(from_ini("camera_distance = 125\n").camera_distance == 100);   // not a step: the game's
+    CHECK(from_ini("camera_height = 30\n").camera_height == 0);
+    CHECK(from_ini("camera_distance = 200\n").camera_distance == 100);   // out of range
+}
+
+TEST(analog_triggers_row) {
+    // 1.0.1 ANALOG TRIGGERS (INTERFACE, after CAR SERIES): on by default, a live toggle, kept in the ini
+    Settings s;
+    CHECK(s.analog_pedals);
+    const Content c = build_content(s, Env{true});   // kept: `row` points into it
+    const Row* row = nullptr;
+    for (const Tab& t : c.tabs)
+        for (const Row& r : t.rows)
+            if (r.label == "ANALOG TRIGGERS") row = &r;
+    CHECK(row && row->id == 272 && row->kind == RowKind::kToggle && row->value == 1);
+    Settings x;
+    CHECK(apply_edit(x, Edit{272, 0, 0, false}) && !x.analog_pedals);
+    CHECK(apply_edit(x, Edit{272, 1, 0, false}) && x.analog_pedals);
+    x.analog_pedals = false;
+    CHECK(!from_ini(to_ini(x)).analog_pedals && from_ini(to_ini(Settings{})).analog_pedals);
 }
 
 TEST_MAIN("b3settings (settings1)")

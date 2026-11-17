@@ -148,6 +148,7 @@ struct CarFragmentUniforms { float env_colour[4], mode[4], to_sun[4], sun_colour
 // full-screen specular pass) is not clamped at 1.
 // bloom2: the SOFT level's share of the game's bloom intensity (before the screen blend)
 constexpr float kBloomSoft = 0.6f;
+constexpr float kUpscaleSharpen = 0.35f;   // 1.1 UPSCALING Sharp: post.frag sharp_upscale amount
 constexpr SDL_GPUTextureFormat kSceneFormat = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
 
 class SdlDevice final : public Device {
@@ -484,6 +485,7 @@ public:
     }
     Stats take_stats() override { const Stats r = stats_; stats_ = Stats{}; return r; }
     void set_dither(float steps) override { dither_ = steps; }
+    void set_sharp_upscale(bool on) override { sharp_upscale_ = on; }   // 1.1
     void set_render_scale(float scale) override {   // effects2: at 100% the extra targets are freed (the GPU may still read them: wait first)
         render_scale_ = std::clamp(scale, 0.25f, 1.0f);
         if (render_scale_ >= 0.999f && (scaled_win_.depth || scaled_off_.depth)) {
@@ -1645,7 +1647,7 @@ private:
         if (SDL_GPUGraphicsPipeline* cp = post_pipeline(true)) {
             SDL_BindGPUGraphicsPipeline(pass, cp);
             bound = cp;
-            const PostUniforms u{{4, 0, 0, 0}, {1, 0, 0, 0}, {0, 0, 1.0f / float(sc.w), 1.0f / float(sc.h)}};
+            const PostUniforms u{{4, 0, sharp_upscale_ ? 2.0f : 0.0f, 0}, {1, kUpscaleSharpen, 0, 0}, {0, 0, 1.0f / float(sc.w), 1.0f / float(sc.h)}};
             SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof u);
             SDL_GPUTexture* src = msaa_ > 1 ? sc.scene_resolve : sc.scene;
             SDL_GPUTextureSamplerBinding tsb[2] = {{src, overlay_sampler_}, {src, overlay_sampler_}};
@@ -1736,7 +1738,7 @@ private:
             for (std::size_t k = 0; k < views.size(); ++k) {
                 const SDL_GPUViewport vp{float(px[k].x), float(px[k].y), float(px[k].w), float(px[k].h), 0.0f, 1.0f};
                 SDL_SetGPUViewport(pass, &vp);
-                const PostUniforms u{{4, 0, 0, 0}, {1, 0, 0, 0}, {0, 0, 1.0f / float(vt[k].w), 1.0f / float(vt[k].h)}};
+                const PostUniforms u{{4, 0, sharp_upscale_ ? 2.0f : 0.0f, 0}, {1, kUpscaleSharpen, 0, 0}, {0, 0, 1.0f / float(vt[k].w), 1.0f / float(vt[k].h)}};
                 SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof u);
                 SDL_GPUTexture* src = msaa_ > 1 ? vt[k].scene_resolve : vt[k].scene;
                 SDL_GPUSampler* smp = vt[k].w != std::uint32_t(px[k].w) || vt[k].h != std::uint32_t(px[k].h) ? overlay_sampler_ : clamp_sampler_;   // effects2: bilinear up
@@ -2090,6 +2092,7 @@ private:
     Stats stats_;   // perf1: take_stats()
     float dither_ = 0.0f;   // perf1: Options::dither
     float render_scale_ = 1.0f;   // effects2: Options::render_scale
+    bool sharp_upscale_ = false;  // 1.1 UPSCALING: post.frag mode 4 z 2 for the scaled picture
     float line_min_ = 1.0f;       // effects2: the least line width (pixels of the target being drawn)
     Targets scaled_win_, scaled_off_;   // effects2: the 3D picture's targets at the scale (single-view frames)
     std::map<BufferId, Dyn> dyn_;   // dynamic buffers (update_*_buffer): their upload buffer and capacity

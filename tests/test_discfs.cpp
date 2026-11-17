@@ -6,6 +6,7 @@
 // Optional real check (not part of `make test`: it reads the whole disc): B3_TEST_ISO=<the retail .iso> and
 // B3_TEST_ISO_DIR=<the extracted disc folder>: every file of the folder is in the image with the same bytes.
 #include "b3asset/discfs.h"
+#include "b3asset/language.h"   // 1.0.1: language packs on a disc folder
 #include "test.h"
 
 #include <atomic>
@@ -371,6 +372,47 @@ TEST(real_disc_image) {
     }
     std::printf("  %zu files, %.1f MB compared\n", files, bytes / 1048576.0);
     CHECK(files > 0);
+}
+
+// 1.0.1 (b3asset/language.h): the languages on a disc folder and their one-time import. Synthetic files only (dummy
+// bytes, no game text): GLOBAL<code>.BIN needs its HEAD<code>.BIN; the US pair is the game's own (not offered); JA is
+// listed but not supported (not imported).
+TEST(language_packs_on_a_disc_folder) {
+    const fs::path root = fs::path("build") / "test_language";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    const fs::path disc_dir = root / "disc", pref = root / "pref";
+    fs::create_directories(disc_dir / "DATA");
+    auto put = [&](const char* name, const std::string& bytes) { std::ofstream(disc_dir / "DATA" / name, std::ios::binary) << bytes; };
+    put("GLOBALUS.BIN", "us");  put("HEADUS.BIN", "us");
+    put("GLOBALFR.BIN", "fr-global"); put("HEADFR.BIN", "fr-head");
+    put("globalit.bin", "it-global"); put("HEADIT.BIN", "it-head");   // any case, as the disc layer reads names
+    put("GLOBALGE.BIN", "ge-global");                                  // no HEADGE.BIN: not a language
+    put("GLOBALJA.BIN", "ja"); put("HEADJA.BIN", "ja");
+    put("GLOBAL.TXD", "x"); put("GLOBALUSX.BIN", "x");                 // not GLOBAL<two letters>.BIN
+    namespace lang = b3asset::language;
+    const auto found = lang::on_disc(disc_dir);
+    CHECK(found.size() == 3);
+    CHECK(found.size() == 3 && found[0].code == "FR" && found[1].code == "IT" && found[2].code == "JA");
+    CHECK(found.size() == 3 && found[0].supported && found[1].supported && !found[2].supported);
+    CHECK(found.size() == 3 && found[1].name == "Italiano (Italian)");
+    CHECK(lang::file(disc_dir, "it", false).filename() == "globalit.bin");
+    CHECK(lang::file(disc_dir, "GE", true).empty() && lang::file(disc_dir, "xyz", false).empty());
+    std::string why;
+    const auto done = lang::import_from_disc(disc_dir, pref, &why);
+    CHECK(done.size() == 2 && done[0].code == "FR" && done[1].code == "IT");
+    std::vector<std::uint8_t> b;
+    CHECK(disc::read_file(lang::imported_root(pref) / "DATA" / "GLOBALIT.BIN", b) && std::string(b.begin(), b.end()) == "it-global");
+    CHECK(disc::read_file(lang::imported_root(pref) / "DATA" / "HEADFR.BIN", b) && std::string(b.begin(), b.end()) == "fr-head");
+    CHECK(!fs::exists(lang::imported_root(pref) / "DATA" / "GLOBALJA.BIN"));
+    // the imported folder reads as a disc: the game's redirect and the settings rows use it
+    const auto again = lang::on_disc(lang::imported_root(pref));
+    CHECK(again.size() == 2 && again[0].code == "FR" && again[1].code == "IT");
+    // nothing to import: a reason, no files
+    const auto none = lang::import_from_disc(root / "nowhere", root / "pref2", &why);
+    CHECK(none.empty() && !why.empty());
+    CHECK(lang::normalise("it") == "IT" && lang::normalise("ITA").empty() && lang::normalise("1t").empty());
+    fs::remove_all(root, ec);
 }
 
 TEST_MAIN("test_discfs")

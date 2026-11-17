@@ -2829,11 +2829,20 @@ namespace b3replay {
 // the view less kSizeFraction of its radius: with it the race shots at FOV 60 / 120 keep the car's drawn width closest
 // to the game's 90 (d to the rear moved too little, d to the centre too far). A forward move stops kClearance short of
 // the car's rear. Views with no such car (in the car, on the bumper, trackside replay cameras far from it) do not move.
+//
+// 1.1 chase camera (chase_distance / chase_height, drawn only): with a chased car, its distance d (as above, after the
+// FOV move) becomes d x chase_distance (the eye moved back along the view; a closer view stops kClearance short of the
+// car's rear), the eye rises chase_height along the camera's up, and the camera turns about the axis between its old
+// and new view directions so that the point it looked at (d ahead) stays at the centre. Without a chased car: unchanged.
 void View::apply_fov(Camera& c, const std::vector<Vehicle>& vehicles) const {
-    if (fov_scale == 1.0f || !c.valid) return;
-    c.half_w *= fov_scale;
-    c.half_h *= fov_scale;
-    if (!fov_correction || !(fov_scale > 0.0f)) return;
+    const bool chase = chase_distance != 1.0f || chase_height != 0.0f;
+    if ((fov_scale == 1.0f && !chase) || !c.valid) return;
+    if (fov_scale != 1.0f) {
+        c.half_w *= fov_scale;
+        c.half_h *= fov_scale;
+    }
+    const bool dolly = fov_scale != 1.0f && fov_correction && fov_scale > 0.0f;
+    if (!dolly && !chase) return;
     constexpr float kChaseReach = 20.0f, kMinGap = 0.75f, kClearance = 1.0f, kRearFraction = 0.85f, kSizeFraction = 0.4f;
     constexpr float kAxisSlope = 0.3f, kAxisMin = 1.5f, kDefaultRadius = 2.5f;
     const float* eye = c.m.r[3];
@@ -2859,9 +2868,39 @@ void View::apply_fov(Camera& c, const std::vector<Vehicle>& vehicles) const {
         }
     }
     if (best < 0.0f) return;
-    float move = best * (1.0f - 1.0f / fov_scale);
-    if (move > 0.0f) move = std::min(move, std::max(0.0f, best_rear - kClearance));
-    for (int k = 0; k < 3; ++k) c.m.r[3][k] += at[k] * move;
+    float move = 0.0f;
+    if (dolly) {
+        move = best * (1.0f - 1.0f / fov_scale);
+        if (move > 0.0f) move = std::min(move, std::max(0.0f, best_rear - kClearance));
+        for (int k = 0; k < 3; ++k) c.m.r[3][k] += at[k] * move;
+    }
+    if (!chase) return;
+    const float d = best - move;   // the chased car's distance now
+    float aim[3];                  // the point the camera looks at, d ahead
+    for (int k = 0; k < 3; ++k) aim[k] = c.m.r[3][k] + at[k] * d;
+    float back = d * (chase_distance - 1.0f);
+    if (back < 0.0f) back = std::max(back, -std::max(0.0f, best_rear - move - kClearance));
+    float up[3] = {c.m.r[1][0], c.m.r[1][1], c.m.r[1][2]};
+    const float ul = std::sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+    if (!(ul > 1e-6f)) return;
+    for (float& u : up) u /= ul;
+    for (int k = 0; k < 3; ++k) c.m.r[3][k] += -at[k] * back + up[k] * chase_height;
+    float to[3] = {aim[0] - c.m.r[3][0], aim[1] - c.m.r[3][1], aim[2] - c.m.r[3][2]};
+    const float tl = std::sqrt(to[0] * to[0] + to[1] * to[1] + to[2] * to[2]);
+    if (!(tl > 1e-6f)) return;
+    for (float& v : to) v /= tl;
+    // the turn from `at` to `to` (Rodrigues), applied to the camera's three axes
+    float axis[3] = {at[1] * to[2] - at[2] * to[1], at[2] * to[0] - at[0] * to[2], at[0] * to[1] - at[1] * to[0]};
+    const float s = std::sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+    const float cs = at[0] * to[0] + at[1] * to[1] + at[2] * to[2];
+    if (!(s > 1e-6f)) return;
+    for (float& v : axis) v /= s;
+    for (int r = 0; r < 3; ++r) {
+        float* v = c.m.r[r];
+        const float kv[3] = {axis[1] * v[2] - axis[2] * v[1], axis[2] * v[0] - axis[0] * v[2], axis[0] * v[1] - axis[1] * v[0]};
+        const float kd = axis[0] * v[0] + axis[1] * v[1] + axis[2] * v[2];
+        for (int k = 0; k < 3; ++k) v[k] = v[k] * cs + kv[k] * s + axis[k] * kd * (1.0f - cs);
+    }
 }
 
 }  // namespace b3replay

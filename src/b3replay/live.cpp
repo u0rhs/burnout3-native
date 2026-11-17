@@ -979,6 +979,7 @@ int run_live_offscreen(const LiveOptions& o) {
     NativePad::instance().set_instant_restart(pc_page.settings().instant_restart == 1);   // speedrun1 (opt-in, input-injecting)
     NativePad::instance().set_series_shoulders(pc_page.settings().series_shoulders == 1);   // carsel1 (opt-in, input-changing)
     NativePad::instance().set_rumble(pc_page.settings().rumble == 1, pc_page.settings().rumble_strength, pc_page.settings().rumble_triggers);   // rumble1
+    NativePad::instance().set_analog_pedals(pc_page.settings().analog_pedals);   // 1.0.1
     NativePad::instance().set_adaptive_triggers(pc_page.settings().adaptive_triggers == 1, pc_page.settings().adaptive_triggers_strength);   // pad1
     std::uint64_t pc_page_ns = 0;
     SkipHint skip_hint;   // mac5
@@ -1079,6 +1080,7 @@ int run_live_offscreen(const LiveOptions& o) {
                 NativePad::instance().set_instant_restart(pc_page.settings().instant_restart == 1);
                 NativePad::instance().set_series_shoulders(pc_page.settings().series_shoulders == 1);
                 NativePad::instance().set_rumble(pc_page.settings().rumble == 1, pc_page.settings().rumble_strength, pc_page.settings().rumble_triggers);
+                NativePad::instance().set_analog_pedals(pc_page.settings().analog_pedals);   // 1.0.1
                 NativePad::instance().set_adaptive_triggers(pc_page.settings().adaptive_triggers == 1, pc_page.settings().adaptive_triggers_strength);
             }
             // mac5 (menumouse.h): scripted mouse events against the newest tick's 2D, laid out as a shot of it would be
@@ -1651,6 +1653,7 @@ int run_live_window(const LiveOptions& o) {
         NativePad::instance().set_instant_restart(s.instant_restart == 1);   // speedrun1: INSTANT RESTART (opt-in, input-injecting)
         NativePad::instance().set_series_shoulders(s.series_shoulders == 1);   // carsel1: CAR SERIES ON L1 / R1 (opt-in, input-changing)
         NativePad::instance().set_rumble(s.rumble == 1, s.rumble_strength, s.rumble_triggers);   // rumble1 (opt-in, game-visible)
+        NativePad::instance().set_analog_pedals(s.analog_pedals);   // 1.0.1
         NativePad::instance().set_adaptive_triggers(s.adaptive_triggers == 1, s.adaptive_triggers_strength);   // pad1 (presentation only)
         interpolate = s.interpolation;
         specular = o.specular && s.specular;
@@ -1663,6 +1666,7 @@ int run_live_window(const LiveOptions& o) {
         prompts_setting = s.button_prompts;
         dev->set_dither(o.dither > 0.0f || s.dither ? 1.0f : 0.0f);   // perf1: DITHER
         dev->set_render_scale(float(std::clamp(s.render_scale, 50, 100)) / 100.0f);   // effects2: RENDER SCALE
+        dev->set_sharp_upscale(s.upscaling != 0);   // 1.1 UPSCALING
         const bool full = (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN) != 0;
         if (full != (s.fullscreen || o.fullscreen)) SDL_SetWindowFullscreen(win, s.fullscreen || o.fullscreen);
     };
@@ -2110,9 +2114,24 @@ int run_live_window(const LiveOptions& o) {
                 else std::printf("[b3settings] on mains power: the settings as chosen\n");
             }
         }
-        if (max_fps > 0) {   // --max-fps / FRAME RATE LIMIT: wait out the rest of the frame's share
-            const std::uint64_t period = std::uint64_t(1e9 / max_fps), spent = b3live::now_ns() - now;
-            if (spent < period) { B3PERF_SCOPE(kLimiter); SDL_DelayPrecise(period - spent); }
+        if (max_fps > 0) {   // --max-fps / FRAME RATE LIMIT
+            // 1.1: on a fixed schedule (each frame's deadline one period after the last one's), so the average is the
+            // limit exactly; a frame that ran late starts a new schedule instead of rushing to catch up. With vsync at a
+            // refresh the limit does not go above, vsync alone paces the frames: a second clock at the same rate beats
+            // against the display's and drops a frame now and then (a 60 limit on a 60 Hz screen showed 55-58).
+            static std::uint64_t next_ns = 0;
+            static float refresh_hz = -1.0f;
+            if (refresh_hz < 0.0f) {
+                const SDL_DisplayMode* dm = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
+                refresh_hz = dm && dm->refresh_rate > 0.0f ? dm->refresh_rate : 0.0f;
+            }
+            const bool vsync_paces = std::strcmp(dev->present_mode_name(), "vsync") == 0 && refresh_hz > 0.0f && max_fps >= double(refresh_hz) - 1.0;
+            const std::uint64_t period = std::uint64_t(1e9 / max_fps), t_end = b3live::now_ns();
+            if (vsync_paces) next_ns = 0;
+            else {
+                next_ns = next_ns == 0 || t_end > next_ns + period ? t_end + (t_end - now < period ? period - (t_end - now) : 0) : next_ns + period;
+                if (next_ns > t_end) { B3PERF_SCOPE(kLimiter); SDL_DelayPrecise(next_ns - t_end); }
+            }
         }
         b3perf::frame_end(w, h);   // perf3
         if (now - title_at >= 500000000ull) {

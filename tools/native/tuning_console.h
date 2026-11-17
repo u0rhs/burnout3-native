@@ -174,7 +174,9 @@ inline std::vector<b3tune::Preset> tuning_presets(const b3mod::Overlay& mods) {
 // PC SETTINGS > INTERFACE > DEVELOPER MODS as a window run starts: the renderer's settings file (--settings in its
 // arguments, else <user data folder>/pc_settings.ini, as the renderer picks it; B3_NO_USER_SETTINGS: none). native_play
 // reads it itself: the renderer loads it only once its window runs, after the table is sealed.
-inline bool developer_mods_on(const std::string& render_args, const std::filesystem::path& pref) {
+// The pc_settings.ini a run's renderer reads: --settings in its arguments, else the preferences folder's (none with
+// B3_NO_USER_SETTINGS, as the offscreen checks run); empty when there is none.
+inline std::string settings_path(const std::string& render_args, const std::filesystem::path& pref) {
     std::string path;
     if (const std::size_t at = render_args.find("--settings "); at != std::string::npos) {
         std::size_t b = at + 11;
@@ -185,6 +187,10 @@ inline bool developer_mods_on(const std::string& render_args, const std::filesys
     } else if (!pref.empty() && !std::getenv("B3_NO_USER_SETTINGS")) {
         path = (pref / "pc_settings.ini").string();
     }
+    return path;
+}
+inline bool developer_mods_on(const std::string& render_args, const std::filesystem::path& pref) {
+    const std::string path = settings_path(render_args, pref);
     b3settings::Settings s;
     return !path.empty() && b3settings::load_file(path, s) && s.developer_mods != 0;
 }

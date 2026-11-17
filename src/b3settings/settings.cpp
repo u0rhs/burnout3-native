@@ -1,6 +1,7 @@
 // settings1: values, presets, ini, HSET (include/b3settings/settings.h).
 #include "b3settings/settings.h"
 
+#include <cctype>
 #include <algorithm>
 #include <iterator>
 #include <cmath>
@@ -39,6 +40,7 @@ const Key kKeys[] = {
     {"frames_in_flight", nullptr, &Settings::frames_in_flight, -1, 3},
     {"msaa", nullptr, &Settings::msaa, 1, 8},
     {"render_scale", nullptr, &Settings::render_scale, 50, 100},     // effects2
+    {"upscaling", nullptr, &Settings::upscaling, 0, 1},              // 1.1
     {"dither", &Settings::dither, nullptr, 0, 0},
     {"hd_textures", &Settings::hd_textures, nullptr, 0, 0},
     {"car_detail_highest", &Settings::car_detail_highest, nullptr, 0, 0},
@@ -61,6 +63,8 @@ const Key kKeys[] = {
     {"glass_damage", &Settings::glass_damage, nullptr, 0, 0},
     {"fov", nullptr, &Settings::fov, 0, kFovMax},
     {"fov_correction", &Settings::fov_correction, nullptr, 0, 0},
+    {"camera_distance", nullptr, &Settings::camera_distance, 90, 150},   // 1.1 (chase camera, drawn only)
+    {"camera_height", nullptr, &Settings::camera_height, 0, 100},
     {"fps_view", nullptr, &Settings::fps_view, 0, 3},                     // fpsoverlay2
     {"fps_corner", nullptr, &Settings::fps_corner, 0, 3},
     {"skip_hint", &Settings::skip_hint, nullptr, 0, 0},
@@ -82,6 +86,7 @@ const Key kKeys[] = {
     {"rumble", nullptr, &Settings::rumble, 0, 1},                         // rumble1 (controller rumble)
     {"rumble_strength", nullptr, &Settings::rumble_strength, 10, 100},
     {"rumble_triggers", &Settings::rumble_triggers, nullptr, 0, 0},
+    {"analog_pedals", &Settings::analog_pedals, nullptr, 0, 0},   // 1.0.1
     {"adaptive_triggers", nullptr, &Settings::adaptive_triggers, 0, 1},   // pad1 (DualSense adaptive triggers)
     {"adaptive_triggers_strength", nullptr, &Settings::adaptive_triggers_strength, 10, 100},
     {"series_shoulders", nullptr, &Settings::series_shoulders, 0, 1},     // carsel1 (car series on L1 / R1)
@@ -224,6 +229,9 @@ std::string to_ini(const Settings& s) {
     out += "music_folder = ";   // a path, as hd_pack_dir
     out += s.music_folder;
     out += '\n';
+    out += "language = ";   // 1.0.1: a disc's language code, empty for English
+    out += s.language;
+    out += '\n';
     return out;
 }
 
@@ -248,6 +256,15 @@ Settings from_ini(std::string_view text, std::vector<std::string>* warnings) {
         if (key == "music_folder") {   // a path, not a number
             if (val.find_first_of("\r\n") != std::string_view::npos) warn("music_folder: not one line");
             else s.music_folder = std::string(val);
+            continue;
+        }
+        if (key == "language") {   // 1.0.1: two letters (a disc's GLOBAL<code>.BIN) or empty
+            const bool ok = val.empty() || (val.size() == 2 && std::isalpha(static_cast<unsigned char>(val[0])) && std::isalpha(static_cast<unsigned char>(val[1])));
+            if (!ok) warn("language: " + std::string(val));
+            else {
+                s.language = std::string(val);
+                for (char& c : s.language) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            }
             continue;
         }
         if (key == "fps_counter") {   // before the views: on = the standard view
@@ -285,6 +302,8 @@ Settings from_ini(std::string_view text, std::vector<std::string>* warnings) {
     }
     if (s.msaa != 1 && s.msaa != 2 && s.msaa != 4 && s.msaa != 8) { warn("msaa: not 1, 2, 4 or 8"); s.msaa = Settings{}.msaa; }
     if (s.fov != 0 && (s.fov < kFovMin || s.fov > kFovMax)) { warn("fov: out of range"); s.fov = 0; }
+    if (s.camera_distance % 10) { warn("camera_distance: 90..150 in steps of 10"); s.camera_distance = 100; }
+    if (s.camera_height % 25) { warn("camera_height: 0..100 in steps of 25"); s.camera_height = 0; }
     if (s.frames_in_flight == 0) { warn("frames_in_flight: 1..3 or -1"); s.frames_in_flight = -1; }
     return s;
 }

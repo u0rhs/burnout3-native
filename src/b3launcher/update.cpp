@@ -477,8 +477,74 @@ bool parse_release(std::string_view json, Release& out, std::string* why) {
     if (const std::string* s = j->str("published_at")) r.published = clean(*s, 40);
     if (const Json* p = j->get("prerelease"); p && p->kind == Json::Kind::kBool) r.prerelease = p->b;
     if (const std::string* s = j->str("body")) r.notes = first_lines(std::string_view(*s).substr(0, 64 * 1024), 3);
+    if (const Json* as = j->get("assets"); as && as->kind == Json::Kind::kArray) {   // 1.1 one-click updates
+        constexpr std::string_view kDownloads = "https://github.com/u0rhs/burnout3-native/releases/download/";
+        for (const Json& a : as->items) {
+            if (a.kind != Json::Kind::kObject || r.assets.size() >= 64) continue;
+            const std::string* name = a.str("name");
+            const std::string* url = a.str("browser_download_url");
+            if (!name || !url || name->empty() || name->size() > 200 || url->compare(0, kDownloads.size(), kDownloads) != 0) continue;
+            if (name->find_first_of("/\\") != std::string::npos || *name != clean(*name, 200)) continue;
+            Release::Asset x;
+            x.name = *name;
+            x.url = *url;
+            if (const Json* sz = a.get("size"); sz && sz->kind == Json::Kind::kNumber && sz->n >= 0) x.size = std::uint64_t(sz->n);
+            r.assets.push_back(std::move(x));
+        }
+    }
     out = std::move(r);
     return true;
+}
+
+Platform this_platform() {
+#if defined(_WIN32)
+    return Platform::kWindows;
+#elif defined(__APPLE__)
+    return Platform::kMac;
+#else
+    return Platform::kLinux;
+#endif
+}
+
+const Release::Asset* find_asset(const Release& r, std::string_view name) {
+    for (const Release::Asset& a : r.assets)
+        if (a.name == name) return &a;
+    return nullptr;
+}
+
+const Release::Asset* package_asset(const Release& r, Platform p) {
+    const std::string_view tail = p == Platform::kWindows ? "-win64.zip" : p == Platform::kMac ? "-macos-arm64.dmg" : "-linux-x86_64.tar.gz";
+    const Release::Asset* found = nullptr;
+    for (const Release::Asset& a : r.assets) {
+        if (a.name.size() <= tail.size() || a.name.compare(a.name.size() - tail.size(), tail.size(), tail) != 0) continue;
+        if (a.name.rfind("burnout3-native-", 0) != 0) continue;
+        if (found) return nullptr;   // two candidates: none (the player picks on the page)
+        found = &a;
+    }
+    return found;
+}
+
+std::string sum_for(std::string_view sums, std::string_view name) {
+    std::string hit;
+    std::size_t at = 0;
+    while (at < sums.size()) {
+        std::size_t nl = sums.find('\n', at);
+        if (nl == std::string_view::npos) nl = sums.size();
+        std::string_view line = sums.substr(at, nl - at);
+        at = nl + 1;
+        if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+        if (line.size() < 66) continue;
+        const std::string_view hash = line.substr(0, 64);
+        bool hex = true;
+        for (const char c : hash) hex = hex && ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
+        if (!hex || line[64] != ' ' || (line[65] != ' ' && line[65] != '*')) continue;
+        if (line.substr(66) != name) continue;
+        std::string h(hash);
+        for (char& c : h) c = char(std::tolower(static_cast<unsigned char>(c)));
+        if (!hit.empty() && hit != h) return {};
+        hit = h;
+    }
+    return hit;
 }
 
 Response response_from_file_text(std::string_view text) {

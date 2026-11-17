@@ -34,6 +34,9 @@ std::string utf8_of(const fs::path& p);
 // ---- launcher.ini (beside pc_settings.ini) ----
 struct Config {
     std::string game_dir;   // the disc folder (SYSTEM.CNF, SLUS_210.50, DATA, TRACKS, ...); empty: search
+    // 1.1: the save folder chosen on the Saves page (a cloud or network folder shared by two computers); empty: the
+    // default, saves_folder(pref). native_play reads it too (save_store.h chosen_saves_root). Written only when set.
+    std::string saves_dir;
     update::Cache update;   // update1: the update_* keys (update.h)
     bool operator==(const Config&) const = default;
 };
@@ -51,6 +54,8 @@ fs::path logs_folder(const fs::path& pref);      // logs: the game's run logs an
 // itself (native_play --log <logs>/run-<date-time>.log, tools/native/run_log.h).
 fs::path null_device();
 fs::path saves_folder(const fs::path& pref);     // saves (save_store.h default_saves_root: the same folder)
+// 1.1: the saves folder in use: `chosen` (Config::saves_dir, UTF-8) when set, else saves_folder(pref)
+fs::path saves_folder(const fs::path& pref, const std::string& chosen);
 
 // ---- the game data folder ----
 // mac5 (integrity): native_play's check of the program [C] retail SLUS_210.50 (also the disc a replay file names,
@@ -200,7 +205,9 @@ const char* drive_name(b3native::input::Ds2 c);   // "Accelerate", "Boost", ...
 
 // The launcher's tabs of the in-game page: every tab but SAVES (the launcher's own page), the HD pack's rows as the
 // game shows them when a folder is chosen.
-b3settings::Content settings_content(const b3settings::Settings& s, const std::string& hd_status, bool hd_has_images);
+b3settings::Content settings_content(const b3settings::Settings& s, const std::string& hd_status, bool hd_has_images,
+                                     const std::vector<std::pair<std::string, std::string>>& languages = {},
+                                     const std::string& language_status = {});   // 1.0.1: the imported languages
 
 // ---- osk1: a text field's text and cursor ----
 // UTF-8 text with a cursor (a byte offset, always at a character's start): typed text goes in at the cursor, the

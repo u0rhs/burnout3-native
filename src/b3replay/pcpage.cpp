@@ -15,7 +15,9 @@
 
 #include <SDL3/SDL.h>
 
+#include "b3asset/language.h"   // 1.0.1
 #include "b3asset/hdpack.h"
+#include "../native/pcsx2_cards.h"   // 1.1: IMPORT SAVE starts in PCSX2's memory cards
 #include "tuneconsole.h"   // tune4: the DEVELOPER tab
 #include "nativepad.h"
 
@@ -55,10 +57,26 @@ UiTiming& ui_timing() {
 }
 double ms_since(std::uint64_t t0) { return double(SDL_GetTicksNS() - t0) * 1e-6; }
 
+// UTF-8 to the game's 16-bit codes (Unicode, as its European text has them: the font's accented letters). A byte
+// that does not start a well-formed sequence stands for itself (Latin-1), as before 1.1.
 std::u16string to_u16(std::string_view s) {
     std::u16string o;
     o.reserve(s.size());
-    for (unsigned char c : s) o.push_back(char16_t(c));
+    for (std::size_t i = 0; i < s.size();) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        const auto cont = [&](std::size_t k) { return i + k < s.size() && (static_cast<unsigned char>(s[i + k]) & 0xC0) == 0x80; };
+        if (c >= 0xC2 && c < 0xE0 && cont(1)) {
+            o.push_back(char16_t((c & 0x1F) << 6 | (static_cast<unsigned char>(s[i + 1]) & 0x3F)));
+            i += 2;
+        } else if (c >= 0xE0 && c < 0xF0 && cont(1) && cont(2)) {
+            const unsigned v = (c & 0x0Fu) << 12 | (static_cast<unsigned char>(s[i + 1]) & 0x3Fu) << 6 | (static_cast<unsigned char>(s[i + 2]) & 0x3Fu);
+            o.push_back(v >= 0x800 ? char16_t(v) : u'?');
+            i += 3;
+        } else {
+            o.push_back(char16_t(c));
+            ++i;
+        }
+    }
     return o;
 }
 
@@ -157,6 +175,17 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
         env.music_status = music_status_;
     }
     env.music = true;   // native_play plays it (tools/native/custom_soundtrack.h)
+    if (!languages_scanned_) {   // 1.0.1: once (a disc scan per frame would cost the frame)
+        languages_scanned_ = true;
+        // 1.1: the folder native_play reads the game's text from (B3NATIVE_LANGUAGES_DIR, set by native_play for every
+        // run); else <prefs>/languages beside the controls file (a window run without native_play's word)
+        std::filesystem::path root;
+        if (const char* d = std::getenv("B3NATIVE_LANGUAGES_DIR"); d && *d) root = b3mod::path_from_utf8(d);
+        else if (!controls_path_.empty()) root = b3asset::language::imported_root(std::filesystem::path(controls_path_).parent_path());
+        for (const auto& l : b3asset::language::on_disc(root))
+            if (l.supported) languages_.emplace_back(l.code, l.name);
+    }
+    env.languages = languages_;   // the launcher imports them (IMPORT LANGUAGES)
     {
         std::lock_guard<std::mutex> lock(music_m_);
         env.now_playing = now_playing_;   // nowplaying1
@@ -229,6 +258,7 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
     controls_env(env);
     b3settings::Content content = b3settings::build_content(settings_, env);
     if (flow_.active()) content.popup = flow_.message(pad_style());   // the menu takes no input while it shows
+    b3settings::translate(content, b3settings::ui_language(settings_, env));   // 1.1: our own text in the player's language
     const b3settings::Frame f = menu_.update(content, in);
     if (timing.on) {
         const double ms = ms_since(t_frame);
@@ -304,6 +334,7 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
                                 : "CANNOT WRITE " + path);
             continue;
         }
+        if (b3settings::language_edit(settings_, env, e)) { changed = true; ++edits_; continue; }   // 1.0.1
         if (b3settings::apply_edit(settings_, e)) { changed = true; ++edits_; }
     }
     if (hd_changed) { changed = true; ++edits_; }
@@ -621,7 +652,25 @@ void PcPage::save_action(std::uint32_t id, const b3settings::Env& env) {
                                                    {"All files", "*"}};
     const std::string def = (std::filesystem::path(env.saves_folder) / ("Burnout3-profile-" + std::to_string(env.profile) + ".sav")).string();
     if (kind == 1) SDL_ShowSaveFileDialog(dialog_cb, new DialogCall{this, kind}, nullptr, kExport, 1, def.c_str());
-    else SDL_ShowOpenFileDialog(dialog_cb, new DialogCall{this, kind}, nullptr, kImport, 2, env.saves_folder.c_str(), false);
+    else {   // 1.1: the dialog starts in PCSX2's memory card folder when there is one (pcsx2_cards.h), else the save folder
+        b3native::save::Pcsx2Homes h;
+        const char* home = SDL_GetUserFolder(SDL_FOLDER_HOME);
+        const char* docs = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
+        auto from_utf8 = [](const char* t) { const std::string u(t); return std::filesystem::path(std::u8string(u.begin(), u.end())); };
+        if (home) h.home = from_utf8(home);
+        if (docs) h.documents = from_utf8(docs);
+        if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) h.xdg_config = std::filesystem::path(x);
+#ifdef _WIN32
+        for (const char* v : {"ProgramFiles", "ProgramFiles(x86)"})
+            if (const char* p = std::getenv(v); p && *p) h.program_files.push_back(std::filesystem::path(p));
+#endif
+        std::string start = env.saves_folder;
+        if (const auto f = b3native::save::pcsx2_card_folders(h); !f.empty()) {
+            const std::u8string u = (f.front().path / "").u8string();
+            start.assign(u.begin(), u.end());
+        }
+        SDL_ShowOpenFileDialog(dialog_cb, new DialogCall{this, kind}, nullptr, kImport, 2, start.c_str(), false);
+    }
 }
 
 void PcPage::dialog_done(int kind, const char* path, const char* error) {

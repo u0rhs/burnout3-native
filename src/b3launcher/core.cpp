@@ -62,6 +62,7 @@ std::string config_to_ini(const Config& c) {
     std::ostringstream o;
     o << "# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)\n";
     o << "game_dir = " << c.game_dir << "\n";
+    if (!c.saves_dir.empty()) o << "saves_dir = " << c.saves_dir << "\n";   // 1.1 (a default folder: no line, as before)
     update::write_ini(o, c.update);   // update1
     return o.str();
 }
@@ -78,6 +79,7 @@ Config config_from_ini(std::string_view text) {
         if (line.empty() || line[0] == '#' || eq == std::string_view::npos) continue;
         const std::string_view key = trim(line.substr(0, eq)), val = trim(line.substr(eq + 1));
         if (key == "game_dir") c.game_dir = std::string(val);
+        else if (key == "saves_dir") c.saves_dir = std::string(val);   // 1.1
         else update::read_ini_key(c.update, key, val);   // update1
     }
     return c;
@@ -125,6 +127,7 @@ fs::path null_device() {
 #endif
 }
 fs::path saves_folder(const fs::path& pref) { return pref / "saves"; }
+fs::path saves_folder(const fs::path& pref, const std::string& chosen) { return chosen.empty() ? saves_folder(pref) : path_from_utf8(chosen); }
 
 // ---- the game data folder ----
 
@@ -649,13 +652,19 @@ std::vector<KeyRow> key_rows(const std::vector<b3native::input::KeyBinding>& map
     return rows;
 }
 
-b3settings::Content settings_content(const b3settings::Settings& s, const std::string& hd_status, bool hd_has_images) {
+b3settings::Content settings_content(const b3settings::Settings& s, const std::string& hd_status, bool hd_has_images,
+                                     const std::vector<std::pair<std::string, std::string>>& languages, const std::string& language_status) {
     b3settings::Env env;
+    env.languages = languages;                 // 1.0.1: LANGUAGE and IMPORT LANGUAGES
+    env.language_import = true;
+    env.language_status = language_status;
     env.hd_pack = !s.hd_pack_dir.empty();      // the HD TEXTURES row with a folder chosen
     env.hd_pack_loaded = hd_has_images;        // "(in use)": used from the next start
     env.hd_pack_status = hd_status;
     env.profile = 0;                           // no SAVES tab: the launcher's SAVES page
-    return b3settings::build_content(s, env);
+    b3settings::Content c = b3settings::build_content(s, env);
+    b3settings::translate(c, b3settings::ui_language(s, env));   // 1.1: our own text in the player's language
+    return c;
 }
 
 // ---- osk1: a text field's text and cursor ----

@@ -43,6 +43,93 @@ fs::path default_saves_root() {
     return d.empty() ? d : d / "saves";
 }
 
+fs::path path_from_utf8(const std::string& s) { return fs::path(std::u8string(s.begin(), s.end())); }
+
+namespace {
+std::string utf8_text(const fs::path& p) {
+    const std::u8string u = p.u8string();
+    return std::string(u.begin(), u.end());
+}
+}  // namespace
+
+fs::path chosen_saves_root(const fs::path& data_dir) {
+    if (data_dir.empty()) return {};
+    std::ifstream f(data_dir / "launcher.ini", std::ios::binary);
+    std::string line, found;
+    auto trim = [](std::string v) {
+        while (!v.empty() && (v.back() == ' ' || v.back() == '\t' || v.back() == '\r')) v.pop_back();
+        std::size_t a = 0;
+        while (a < v.size() && (v[a] == ' ' || v[a] == '\t')) ++a;
+        return v.substr(a);
+    };
+    while (std::getline(f, line)) {   // (the launcher's own reader, core.cpp config_from_ini: the last one wins)
+        const std::size_t eq = line.find('=');
+        if (eq == std::string::npos || line.empty() || line[0] == '#') continue;
+        if (trim(line.substr(0, eq)) == "saves_dir") found = trim(line.substr(eq + 1));
+    }
+    return found.empty() ? fs::path() : path_from_utf8(found);
+}
+
+bool has_saves(const fs::path& root) {
+    std::error_code ec;
+    for (int n = 1; n <= kSlots; ++n)
+        if (fs::is_regular_file(profile_file(root, n), ec) || fs::is_directory(legacy_profile_folder(root, n), ec)) return true;
+    return false;
+}
+
+int copy_saves(const fs::path& from, const fs::path& to, std::string* error, int* kept) {
+    int copied = 0, left = 0;
+    struct Kept { int* out; int& n; ~Kept() { if (out) *out = n; } } report{kept, left};
+    std::error_code ec;
+    fs::create_directories(to, ec);
+    if (ec || !fs::is_directory(to, ec)) {
+        if (error) *error = "cannot make the folder " + utf8_text(to) + (ec ? ": " + ec.message() : std::string());
+        return -1;
+    }
+    // one file, never over one already there
+    auto one = [&](const fs::path& src, const fs::path& dst) -> bool {
+        std::error_code e;
+        if (fs::exists(dst, e)) {
+            ++left;
+            return true;
+        }
+        if (dst.has_parent_path()) fs::create_directories(dst.parent_path(), e);
+        if (!fs::copy_file(src, dst, fs::copy_options::none, e) || e) {
+            if (error) *error = "cannot copy " + utf8_text(src.filename()) + (e ? ": " + e.message() : std::string());
+            return false;
+        }
+        ++copied;
+        return true;
+    };
+    // a folder's files, below it too
+    auto tree = [&](const fs::path& src, const fs::path& dst) -> bool {
+        std::error_code e;
+        for (fs::recursive_directory_iterator it(src, e), end; !e && it != end; it.increment(e)) {
+            std::error_code t;
+            if (!it->is_regular_file(t)) continue;
+            if (!one(it->path(), dst / fs::relative(it->path(), src, t))) return false;
+        }
+        if (e) {
+            if (error) *error = "cannot read " + utf8_text(src) + ": " + e.message();
+            return false;
+        }
+        return true;
+    };
+    for (int n = 1; n <= kSlots; ++n) {
+        const fs::path sav = profile_file(from, n);
+        fs::path bak = sav;
+        bak += ".bak";
+        for (const fs::path& f : {sav, bak})
+            if (fs::is_regular_file(f, ec) && !one(f, to / f.filename())) return -1;
+        if (fs::is_directory(legacy_profile_folder(from, n), ec) &&
+            !tree(legacy_profile_folder(from, n), legacy_profile_folder(to, n)))
+            return -1;
+    }
+    if (fs::is_regular_file(from / "active-slot.txt", ec) && !one(from / "active-slot.txt", to / "active-slot.txt")) return -1;
+    if (fs::is_directory(from / "backups", ec) && !tree(from / "backups", to / "backups")) return -1;
+    return copied;
+}
+
 fs::path profile_file(const fs::path& root, int slot) { return root / ("profile-" + std::to_string(slot) + ".sav"); }
 fs::path legacy_profile_folder(const fs::path& root, int slot) { return root / ("profile-" + std::to_string(slot)); }
 

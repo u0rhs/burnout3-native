@@ -7,7 +7,8 @@
 //                                                   them (save_stats.h; read only); no file: profile N's
 //   save_tool where                                 the user's saves folder
 //
-// --saves defaults to $B3NATIVE_SAVES_ROOT, else the user's folder (default_saves_root); --slot to active-slot.txt's.
+// --saves defaults to $B3NATIVE_SAVES_ROOT, else the folder chosen in the launcher (chosen_saves_root), else the user's
+// folder (default_saves_root); --slot to active-slot.txt's.
 #include "save_stats.h"
 #include "save_store.h"
 
@@ -44,6 +45,7 @@ int main(int argc, char** argv) {
     const std::string cmd = argv[1];
     fs::path saves;
     if (const char* e = std::getenv("B3NATIVE_SAVES_ROOT"); e && *e) saves = e;
+    else if (const fs::path c = chosen_saves_root(user_data_dir()); !c.empty()) saves = c;   // 1.1: the launcher's choice
     else saves = default_saves_root();
     int slot = 0;
     std::string arg;

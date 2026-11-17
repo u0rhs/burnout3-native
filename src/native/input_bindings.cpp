@@ -638,14 +638,24 @@ std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const PlayerC
     std::array<std::uint8_t, 32> s = neutral_sample();
     const float z = std::clamp(t.stick_dead_zone, 0.0f, 0.95f);
     const float theta = std::clamp(t.trigger_threshold, 0.01f, 1.0f);
+    // 1.0.1 ANALOG PEDALS (input_keys.h): the analog inputs on Cross (accelerate) and Square (brake) as pedals on the
+    // right stick, unless both are past the threshold (a powerslide: both buttons, as 1.0.0)
+    const auto analog_travel = [&](Ds2 c) {
+        float v = 0;
+        for (PadInput in : p.pad[idx(c)]) if (pad_input_analog(in)) v = std::max(v, pad_input_amount(g, in, z));
+        return v;
+    };
+    const float acc = analog_travel(Ds2::Cross), brk = analog_travel(Ds2::Square);
+    const bool pedals = t.analog_pedals && !(acc >= theta && brk >= theta);
     for (int b = 0; b < 16; ++b) {
+        const bool pedal = pedals && (Ds2(b) == Ds2::Cross || Ds2(b) == Ds2::Square);
         bool held = false;
         float amount = 0;
         for (PadInput in : p.pad[std::size_t(b)]) {
             const float a = pad_input_amount(g, in, z);
             if (!pad_input_analog(in)) {
                 if (a > 0) { held = true; amount = 1.0f; }
-            } else {
+            } else if (!pedal) {
                 amount = std::max(amount, a);   // the pressure follows the travel (below the threshold too)
                 if (a >= theta) held = true;
             }
@@ -664,7 +674,9 @@ std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const PlayerC
     s[4] = stick_x_byte(steer);
     s[5] = stick_y_byte(half(Ds2::StickDown) - half(Ds2::StickUp));   // SDL's y: down positive, as the report's
     s[2] = stick_x_byte(half(Ds2::RStickRight) - half(Ds2::RStickLeft));
-    s[3] = stick_y_byte(half(Ds2::RStickDown) - half(Ds2::RStickUp));
+    const float up = std::max(half(Ds2::RStickUp), pedals ? pedal_stick(acc) : 0.0f);
+    const float down = std::max(half(Ds2::RStickDown), pedals ? pedal_stick(brk) : 0.0f);
+    s[3] = stick_y_byte(down - up);
     return s;
 }
 

@@ -33,12 +33,18 @@ You can give the port the game in either of two forms:
 
 Section 2 shows how to make either one from your disc.
 
+**Other languages.** The game runs from the US disc, in English. If you also own a European copy (PAL), the launcher's
+**Settings > INTERFACE > IMPORT LANGUAGES** copies its languages once (French, German, Italian, Spanish, Dutch, Swedish
+or UK English, whichever your disc has; two small files each), and **LANGUAGE** then switches the game's menus,
+messages and hints to one of them, from the next start. The launcher and the port's own SETTINGS page follow the same choice (a few live status lines stay in English). English
+stays the default; the European disc is not needed afterwards.
+
 ### Your PC
 
 | | Windows | Linux | Mac |
 |---|---|---|---|
 | System | Windows 10 or 11, 64-bit | 64-bit Linux on an x86-64 PC (not ARM), glibc 2.35 or newer: for example Ubuntu 22.04 or newer, Debian 12, Fedora 36 or newer, Linux Mint 21 or newer, Arch, SteamOS 3 (Steam Deck) | A Mac with Apple Silicon (M1 or later); the macOS version the app's `README-TESTERS.txt` names |
-| Graphics | A graphics card and driver with **Vulkan** | A graphics driver with **Vulkan**, and the Vulkan loader (`libvulkan.so.1`) | Metal (every Apple Silicon Mac has it) |
+| Graphics | A graphics card and driver with **Vulkan** (1.0 or newer) | A graphics driver with **Vulkan** (1.0 or newer), and the Vulkan loader (`libvulkan.so.1`) | Metal (every Apple Silicon Mac has it) |
 | Other | | An X11 or Wayland desktop; sound through PipeWire, PulseAudio or ALSA | Nothing else: SDL 3 is inside the app |
 | How you get it | A zip from the [Releases](../../../releases) page | A tarball from the [Releases](../../../releases) page | A disk image (`.dmg`) from the [Releases](../../../releases) page, or build it yourself (section 3) |
 
@@ -114,6 +120,10 @@ uses its own folder list (section 4).
    to tick instead.
 3. In Gaming Mode it is in your library under Non-Steam. The launcher works with the Deck's controls alone, and the
    touch screen works too. Choose your game data, then START GAME.
+
+On a Steam Deck the launcher's first start sets the **MEDIUM** preset with **VSYNC** on, which holds the Deck's 60 Hz
+screen (HIGH runs at about 55 there). Change them in Settings like any other setting; a lower **RENDER SCALE** with
+**UPSCALING Sharp** (Settings > GRAPHICS) frees more of the GPU.
 
 You need no keyboard or mouse in Gaming Mode. If your disc image or folder is not found by itself, on the **Game Data**
 page press **A** on **Choose disc image...** or **Choose folder...**: the launcher's own folder list opens (a desktop
@@ -304,7 +314,9 @@ The game's PlayStation 2 layout, on the same positions of your pad:
 | Back / View / Share | Select | Select |
 
 On a gamepad the triggers are the pedals, so the PS2's **R2** (Crashbreaker) and **L2** (music track skip) are on the
-stick clicks instead. The game's Crashbreaker prompt shows the right stick (R3 / RS) to match. You can move them on
+stick clicks instead. The triggers work gradually, like real pedals: light pressure, light throttle (SETTINGS >
+INTERFACE > ANALOG TRIGGERS, on by default; off makes a trigger act as a button). Both triggers together still
+powerslide. The game's Crashbreaker prompt shows the right stick (R3 / RS) to match. You can move them on
 the **Controllers** page or in SETTINGS > INTERFACE > CONTROLS.
 
 ### Other keys in the game
@@ -380,11 +392,11 @@ Inside it:
 
 | File or folder | What it holds |
 |---|---|
-| `saves/` | your save files (`profile-1.sav` ...), `backups/` with older copies |
+| `saves/` | your save files (`profile-1.sav` ...), `backups/` with older copies (unless you chose another save folder, below) |
 | `pc_settings.ini` | the port's settings |
 | `controls.ini` | your key and button bindings |
 | `car_look.ini` | only if you tuned the car reflection look with DEVELOPER MODS on (docs/car-look.md) |
-| `launcher.ini` | the launcher's choices (your game data, the update check and its last answer) |
+| `launcher.ini` | the launcher's choices (your game data, the save folder if you chose one, the update check and its last answer) |
 | `logs/` | a log and a controls recording for each of your last 10 runs |
 | `screenshots/` | the pictures F12 takes |
 | `replays/` | recorded sessions, when RECORD REPLAYS is on |
@@ -396,12 +408,27 @@ On the launcher's **Saves** page, or in the game at SETTINGS > SAVES > SAVE FILE
 uses. The change applies from the next start. More files mean more profiles. To take your progress to another
 computer, copy the `profile-N.sav` file.
 
+### Choosing a save folder (sharing saves between computers)
+
+On the launcher's **Saves** page, **Choose save folder...** keeps your saves in a folder of your choice instead, for
+example a OneDrive, Google Drive or Dropbox folder, or a folder on a NAS. Choose the same folder on each computer (a
+PC and a Mac, say) and they play from the same saves. If the folder you choose has no saves yet, the launcher offers
+to copy your current ones into it; it never deletes or replaces a save file, and the old folder keeps its files.
+**Use the default folder** goes back. The choice applies from the next start and is kept in `launcher.ini`.
+
+Play on one computer at a time, and let the folder finish syncing before you start the game on the other: the game
+writes its save file each time it saves. If the chosen folder is not there when the game starts (a network drive not
+connected, say), the game tells you and runs without saving.
+
 ### Importing your PS2 saves
 
 You can bring your own progress over from a PS2 memory card or from PCSX2:
 
 - a PS2 save exported as **`.psu`** or **`.max`** (the formats PS2 save tools make);
-- a PCSX2 memory card file (**`.ps2`**), or a PCSX2 **folder** memory card;
+- a PCSX2 memory card file (**`.ps2`**), or a PCSX2 **folder** memory card. The card in PCSX2's first slot is
+  usually **`Mcd001.ps2`**, in PCSX2's `memcards` folder: `Documents\PCSX2\memcards` on Windows,
+  `~/.config/PCSX2/memcards` on Linux (`~/.var/app/net.pcsx2.PCSX2/config/PCSX2/memcards` for the Flatpak),
+  `~/Library/Application Support/PCSX2/memcards` on a Mac. When that folder is there, the import starts in it;
 - a `.sav` exported from this port.
 
 On the launcher's **Saves** page, press **Import into file N...** (for a file), or **Import a folder card...** (for a

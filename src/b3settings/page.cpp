@@ -1,10 +1,13 @@
 // settings1: the PC SETTINGS page's rows (include/b3settings/page.h).
 // The menu model (class Menu: layout, colours, input, animation) is in menu.cpp.
 #include "b3settings/page.h"
+#include "b3settings/i18n.h"
 
 #include <algorithm>
 #include <iterator>
 #include <cmath>
+#include <map>
+#include <unordered_map>
 
 namespace b3settings {
 
@@ -15,20 +18,21 @@ enum : std::uint32_t {
     kRowPreset = 1, kRowFullscreen, kRowVsync, kRowFrameCap, kRowInterp, kRowHud, kRowFeLayout, kRowMovieFill, kRowLatency, kRowLead, kRowFlight, kRowPauseUnfocused, kRowFastLoading,
     kRowMsaa = 20, kRowFilter, kRowHd, kRowCarDetail, kRowShadows, kRowSkids, kRowSpecular, kRowSun, kRowCoronas, kRowDither, kRowWholeTrack,
     kRowBlur = 40, kRowRadial, kRowBloom, kRowPost, kRowSparks, kRowScrapes, kRowPopcorn, kRowDamage, kRowGlass,
-    kRowFov = 60, kRowFovCorrection,
+    kRowFov = 60, kRowFovCorrection, kRowCameraDistance, kRowCameraHeight,   // 62 / 63: 1.1 chase camera
     kRowGlyphs = 81, kRowSkipHint, kRowElsewhere, kRowDateFormat = 85,
     kRowPlaylistMode = 90, kRowOtherMusicApps,   // kRowOtherMusicApps = 91: nowplaying1
     kRowFlashes = 120, kRowHudColour, kRowBoostMode, kRowHudSize,   // accessibility (kRowHudSize = 123: textsize1)
     kRowGhost = 130,   // ghost1 (Time Attack ghosts)
     kRowSpeedrunTimer = 140, kRowInstantRestart,   // speedrun1
     kRowRumble = 150, kRowRumbleStrength, kRowRumbleTriggers,   // rumble1 (controller rumble)
+    kRowAnalogPedals = 272,   // 1.0.1 ANALOG TRIGGERS
     kRowRecordReplays = 160,   // replay1 (replay files)
     kRowDeveloperMods = 170,   // tune4 (the tuning console)
     kRowSplitLayout = 180,     // splitlayout1 (the 2-player split screen's layout; CAMERA)
     kRowAdaptiveTriggers = 190, kRowAdaptiveStrength,   // pad1 (DualSense adaptive triggers; INTERFACE > CONTROLLER)
     kRowSeriesShoulders = 200,   // carsel1 (car series on L1 / R1; INTERFACE > CONTROLLER)
     kRowLauncherAtStart = 210,   // launchskip1 (OPEN THE LAUNCHER AT START; INTERFACE, after DATE FORMAT)
-    kRowBatterySaver = 245, kRowRenderScale = 246,      // effects2 (BATTERY SAVER; EFFECTS, last section)
+    kRowBatterySaver = 245, kRowRenderScale = 246, kRowUpscaling = 247,   // 247: 1.1 UPSCALING      // effects2 (BATTERY SAVER; EFFECTS, last section)
     kRowCarReflect = 235,        // reflect1 (CAR REFLECTIONS; QUALITY, after CAR DETAIL)
     kRowBloomLevel = 260,        // bloom2 (BLOOM: Off / Soft / Standard; replaces the on / off toggle kRowBloom on the page)
     kRowFps = 255, kRowFpsCorner,   // fpsoverlay2 (FPS COUNTER and its corner; INTERFACE, first)
@@ -172,6 +176,9 @@ Content build_content(const Settings& s, const Env& env) {
             t.rows.push_back(choice(kRowRenderScale, "RENDER SCALE", scales, render_scale_index(s.render_scale),
                                     "How large the 3D picture is drawn, as a share of the window, then scaled up. Lower is faster on a weak "
                                     "graphics chip; the HUD and menus stay sharp. 100% is the normal picture."));
+            t.rows.push_back(choice(kRowUpscaling, "UPSCALING", {"Bilinear", "Sharp"}, std::size_t(std::clamp(s.upscaling, 0, 1)),
+                                    "How a RENDER SCALE below 100% is brought up to the window. Sharp: a sharper picture with "
+                                    "clean edges, for a small cost. Bilinear: softer, the cheapest."));
         }
         t.rows.push_back(toggle(kRowDither, "DITHER", s.dither, "A fine pattern that hides the steps in smooth gradients such as the sky."));
         {   // mac5: the HD pack's folder (remaster-features §8)
@@ -245,6 +252,13 @@ Content build_content(const Settings& s, const Env& env) {
                                 "How much of the road the race view shows, at full boost. The game's camera is unchanged."));
         t.rows.push_back(toggle(kRowFovCorrection, "FOV CORRECTION", s.fov_correction,
                                 "With a changed field of view, moves the view so the car keeps its size."));
+        // 1.1: the chase camera further back / higher (drawn only; View::apply_fov)
+        t.rows.push_back(choice(kRowCameraDistance, "CAMERA DISTANCE", {"-10%", "Game", "+10%", "+20%", "+30%", "+40%", "+50%"},
+                                std::size_t(std::clamp(s.camera_distance, 90, 150) / 10 - 9),
+                                "How far behind the car the chase camera sits. Game: the original camera. Drawn only."));
+        t.rows.push_back(choice(kRowCameraHeight, "CAMERA HEIGHT", {"Game", "+0.25 m", "+0.5 m", "+0.75 m", "+1 m"},
+                                std::size_t(std::clamp(s.camera_height, 0, 100) / 25),
+                                "Raises the chase camera above the car; it tilts down to keep the car in view. Game: the original camera. Drawn only."));
         // splitlayout1 (src/b3replay/splitlayout.h): the 2-player views. On this tab, not DISPLAY: a DISPLAY row would
         // change that tab's scroll bar in the golden record's PC SETTINGS shot (online tour, live_10400)
         t.rows.push_back(choice(kRowSplitLayout, "SPLIT SCREEN", {"Top / bottom", "Side by side"}, std::size_t(std::clamp(s.split_layout, 0, 1)),
@@ -268,6 +282,29 @@ Content build_content(const Settings& s, const Env& env) {
         t.rows.push_back(toggle(kRowPhotoRow, "PHOTO MODE IN PAUSE MENU", s.photo_row,
                                 "On: the race's pause menu has a PHOTO MODE row after SETTINGS, which opens photo mode (the key "
                                 "P, or L3 + R3 on a controller, does too). Off: the pause menu is the game's own. From the next pause."));
+        {   // 1.0.1 (b3asset/language.h): the game's text in an imported language; English is the game's own
+            std::vector<std::string> names{"English"};
+            std::size_t at = 0;
+            for (std::size_t k = 0; k < env.languages.size(); ++k) {
+                names.push_back(env.languages[k].second);
+                if (env.languages[k].first == s.language) at = k + 1;
+            }
+            // whole sentences, so that translate() finds each one (i18n.h)
+            std::string desc = "The language of the game's own text and of these settings: menus, messages, hints and event names. ";
+            desc += env.language_import ? "Other languages come from your own European copy of the game: IMPORT LANGUAGES copies them from its disc image once."
+                                        : "Other languages come from your own European copy of the game (the launcher's IMPORT LANGUAGES).";
+            desc += " Applies at the next start.";
+            if (!s.language.empty() && at == 0) desc += " The chosen language (" + s.language + ") is not imported: English is used.";
+            t.rows.push_back(choice(kRowLanguage, "LANGUAGE", names, at, desc));
+            if (env.language_import) {
+                std::string idesc = "Choose a European disc image (or its folder) of Burnout 3: Takedown: its languages are copied "
+                                    "to this PC (two small files each); the disc is not needed afterwards.";
+                if (!env.language_status.empty()) idesc += " " + env.language_status;
+                Row imp = note(kActionImportLanguages, "IMPORT LANGUAGES", "Choose disc", idesc);
+                imp.disabled = false;
+                t.rows.push_back(imp);
+            }
+        }
         // units1 (tools/native/speed_units.h): the game's own words (kph / mph, KM / MILES, M / FT)
         t.rows.push_back(choice(kRowSpeedUnits, "SPEED UNITS", {"MPH", "KM/H"}, std::size_t(std::clamp(s.speed_units, 0, 1)),
                                 "Speeds and distances in miles or kilometres: the speedometer, the distance messages, "
@@ -306,6 +343,9 @@ Content build_content(const Settings& s, const Env& env) {
                                 "On: in the car select, the shoulder buttons (L1 / R1, LB / RB, or their keys) change the car "
                                 "series as Left / Right do, and show beside the series arrows. Changes the input the game gets; "
                                 "Off is the original."));
+        t.rows.push_back(toggle(kRowAnalogPedals, "ANALOG TRIGGERS", s.analog_pedals,
+                                "On: a trigger set to accelerate or brake works gradually, like a pedal (light pressure, light "
+                                "throttle). Both triggers together still powerslide. Off: a trigger acts as a button."));
         // ghost1 (Time Attack ghosts, src/b3replay/ghost.h): a section here, not a 7th tab (the tab bar's width)
         t.rows.push_back(section(14, "TIME ATTACK"));
         t.rows.push_back(choice(kRowGhost, "GHOST", {"Off", "Best lap"}, std::size_t(std::clamp(s.ghost, 0, 1)),
@@ -456,7 +496,7 @@ Content build_content(const Settings& s, const Env& env) {
         t.rows.push_back(ex);
         Row im = note(kActionImportSave, "IMPORT SAVE", "Import",
                       "Replaces this profile with a saved game: a .sav, a PS2 save (.psu, .max) or a PCSX2 memory card "
-                      "(.ps2, or a folder card). Applies at the next start.");
+                      "(.ps2, or a folder card). PCSX2's card is usually Mcd001.ps2 in its memcards folder. Applies at the next start.");
         im.disabled = false;
         t.rows.push_back(im);
         if (!env.save_status.empty())
@@ -474,6 +514,115 @@ Content build_content(const Settings& s, const Env& env) {
     }
     for (const Tab& t : env.extra_tabs) c.tabs.push_back(t);   // tune4: the host's tabs (DEVELOPER)
     return c;
+}
+
+namespace {
+
+// 1.1 (i18n.h): one language's table, looked up by the English text; the `{}` entries apart, longest first
+struct Lookup {
+    std::unordered_map<std::string, std::string> exact;
+    struct Pattern { std::string head, tail, text; };
+    std::vector<Pattern> patterns;
+};
+const Lookup* lookup_for(const std::string& code) {
+    static const std::map<std::string, Lookup> all = [] {
+        std::map<std::string, Lookup> m;
+        for (const i18n::Table& t : i18n::kTables) {
+            Lookup& l = m[t.code];
+            for (std::size_t k = 0; k < t.count; ++k) {
+                const std::string en = t.entries[k].en;
+                const std::size_t at = en.find("{}");
+                if (at == std::string::npos) l.exact.emplace(en, t.entries[k].text);
+                else l.patterns.push_back({en.substr(0, at), en.substr(at + 2), t.entries[k].text});
+            }
+            std::stable_sort(l.patterns.begin(), l.patterns.end(), [](const Lookup::Pattern& a, const Lookup::Pattern& b) {
+                return a.head.size() + a.tail.size() > b.head.size() + b.tail.size();
+            });
+        }
+        return m;
+    }();
+    const auto it = all.find(code);
+    return it == all.end() ? nullptr : &it->second;
+}
+// One label, value or sentence: the table's, a `{}` entry's with the text it stands for carried over, or itself (and
+// then added to `missing` when given).
+std::string translate_one(const Lookup& l, const std::string& s, std::vector<std::string>* missing = nullptr) {
+    if (const auto it = l.exact.find(s); it != l.exact.end()) return it->second;
+    for (const Lookup::Pattern& p : l.patterns)
+        if (s.size() > p.head.size() + p.tail.size() && s.compare(0, p.head.size(), p.head) == 0 &&
+            s.compare(s.size() - p.tail.size(), p.tail.size(), p.tail) == 0) {
+            std::string out = p.text;
+            const std::size_t at = out.find("{}");
+            if (at != std::string::npos) out.replace(at, 2, s.substr(p.head.size(), s.size() - p.head.size() - p.tail.size()));
+            return out;
+        }
+    if (missing) missing->push_back(s);
+    return s;
+}
+std::string translate_with(const Lookup& l, const std::string& text, std::vector<std::string>* missing = nullptr) {
+    if (text.empty()) return text;
+    if (l.exact.count(text)) return l.exact.at(text);
+    if (const std::string whole = translate_one(l, text); whole != text) return whole;
+    // a description: sentence by sentence (a sentence ends at ". "), each the table's or itself
+    std::string out;
+    std::size_t from = 0;
+    while (from < text.size()) {
+        std::size_t end = text.find(". ", from);
+        end = end == std::string::npos ? text.size() : end + 1;
+        if (!out.empty()) out += ' ';
+        out += translate_one(l, text.substr(from, end - from), missing);
+        from = end;
+        while (from < text.size() && text[from] == ' ') ++from;
+    }
+    return out;
+}
+
+}  // namespace
+
+std::string ui_language(const Settings& s, const Env& env) {
+    for (const auto& l : env.languages)
+        if (!s.language.empty() && l.first == s.language) return s.language;
+    return {};
+}
+
+std::string translate_text(const std::string& text, const std::string& language) {
+    const Lookup* l = language.empty() ? nullptr : lookup_for(language);
+    return l ? translate_with(*l, text) : text;
+}
+
+namespace {
+void translate_into(Content& c, const Lookup& l, std::vector<std::string>* missing) {
+    const auto tr = [&](std::string& s) { s = translate_with(l, s, missing); };
+    for (Tab& t : c.tabs) {
+        tr(t.label);
+        for (Row& r : t.rows) {
+            tr(r.label);
+            for (std::string& v : r.values) tr(v);
+            tr(r.level_text);
+            tr(r.description);
+        }
+    }
+    tr(c.popup);
+    tr(c.title);
+    tr(c.footer_keys);
+    tr(c.footer_back);
+}
+}  // namespace
+
+void translate(Content& c, const std::string& language) {
+    if (const Lookup* l = language.empty() ? nullptr : lookup_for(language)) translate_into(c, *l, nullptr);
+}
+
+std::vector<std::string> untranslated(Content c, const std::string& language) {
+    std::vector<std::string> missing;
+    if (const Lookup* l = lookup_for(language)) translate_into(c, *l, &missing);
+    return missing;
+}
+
+bool language_edit(Settings& s, const Env& env, const Edit& e) {
+    if (e.action || e.id != kRowLanguage) return false;
+    s.language = e.value == 0 || e.value > env.languages.size() ? std::string() : env.languages[e.value - 1].first;
+    return true;
 }
 
 bool apply_edit(Settings& s, const Edit& e) {
@@ -496,6 +645,7 @@ bool apply_edit(Settings& s, const Edit& e) {
     case kRowMsaa: if (v < std::size(kMsaa)) s.msaa = kMsaa[v]; return true;
     case kRowFilter: if (v <= std::size_t(Filter::kAniso16)) s.filter = static_cast<Filter>(v); return true;
     case kRowRenderScale: if (v < std::size(kRenderScales)) s.render_scale = kRenderScales[v]; return true;   // effects2
+    case kRowUpscaling: s.upscaling = v ? 1 : 0; return true;   // 1.1
     case kRowDither: s.dither = v != 0; return true;   // perf1
     case kRowHd: s.hd_textures = v != 0; return true;
     case kRowCarDetail: s.car_detail_highest = v != 0; return true;
@@ -519,6 +669,8 @@ bool apply_edit(Settings& s, const Edit& e) {
     case kRowGlass: s.glass_damage = v != 0; return true;
     case kRowFov: s.fov = fov_of_level(v); return true;
     case kRowFovCorrection: s.fov_correction = v != 0; return true;
+    case kRowCameraDistance: s.camera_distance = int(std::min<std::size_t>(v, 6) + 9) * 10; return true;   // 1.1
+    case kRowCameraHeight: s.camera_height = int(std::min<std::size_t>(v, 4)) * 25; return true;
     case kRowFps: s.fps_view = int(std::min<std::size_t>(v, 3)); return true;   // fpsoverlay2
     case kRowFpsCorner: s.fps_corner = int(std::min<std::size_t>(v, 3)); return true;
     case kRowSkipHint: s.skip_hint = v != 0; return true;   // mac5
@@ -538,6 +690,7 @@ bool apply_edit(Settings& s, const Edit& e) {
     case kRowRumble: s.rumble = v ? 1 : 0; return true;   // rumble1
     case kRowRumbleStrength: s.rumble_strength = int(std::min<std::size_t>(v, 9) + 1) * 10; return true;
     case kRowRumbleTriggers: s.rumble_triggers = v != 0; return true;
+    case kRowAnalogPedals: s.analog_pedals = v != 0; return true;   // 1.0.1
     case kRowAdaptiveTriggers: s.adaptive_triggers = v ? 1 : 0; return true;   // pad1
     case kRowAdaptiveStrength: s.adaptive_triggers_strength = int(std::min<std::size_t>(v, 9) + 1) * 10; return true;
     case kRowSaveScreens: s.hide_save_screens = v == 0; return true;   // autosave1 (Hide, Show)

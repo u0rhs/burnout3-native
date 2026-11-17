@@ -32,6 +32,13 @@ std::string resolve(const std::string& guest_path);
 // no overlay, the disc exactly as before. The first time a mod supplies a path it is printed ("mods: <path> from
 // <id>").
 void set_overlay(const b3mod::Overlay* overlay);
+// 1.0.1 (b3asset/language.h): the game's DATA/GLOBALUS.BIN and DATA/HEADUS.BIN from `disc` (the player's European disc,
+// a folder or an image) as DATA/GLOBAL<code>.BIN / HEAD<code>.BIN. An empty code or disc: the game's own text. A mod's
+// file for those paths still wins. Returns false (and leaves the game's text) when the disc has no such pair.
+bool set_language(const std::string& disc, const std::string& code);
+// 1.1: the code of the language whose GLOBAL table the game reads (set_language, and no mod's GLOBALUS.BIN over it);
+// empty: the disc's own (or a mod's) text
+std::string language_text();
 
 // One disc file open for reads at any offset.
 struct File {

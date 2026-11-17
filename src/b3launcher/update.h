@@ -69,8 +69,25 @@ struct Release {
     std::string published;    // published_at: "2026-12-01T18:00:00Z"
     bool prerelease = false;
     std::vector<std::string> notes;   // the body's first lines (Markdown marks taken off)
+    // 1.1 one-click updates: the release's files (assets: name, browser_download_url, size); only downloads from this
+    // repository's releases on github.com are kept. Not remembered in launcher.ini (the install asks again).
+    struct Asset {
+        std::string name, url;
+        std::uint64_t size = 0;
+        bool operator==(const Asset&) const = default;
+    };
+    std::vector<Asset> assets;
     bool operator==(const Release&) const = default;
 };
+// 1.1: the package of this system in a release (Windows "...-win64.zip", Linux "...-linux-x86_64.tar.gz", macOS
+// "...-macos-arm64.dmg"), and its signed hash list ("SHA256SUMS" and "SHA256SUMS.sig"); nullptr when it has none
+enum class Platform : std::uint8_t { kWindows, kLinux, kMac };
+Platform this_platform();
+const Release::Asset* package_asset(const Release& r, Platform p);
+const Release::Asset* find_asset(const Release& r, std::string_view name);
+// `sha256sum` output ("<64 hex>  <name>" or "<64 hex> *<name>" per line) -> the hash (lower case) listed for `name`;
+// empty when it is not listed (or listed twice with different hashes)
+std::string sum_for(std::string_view sums, std::string_view name);
 // GitHub's releases/latest answer. False (why) when it is not one (not JSON, no tag_name). The launcher opens only pages
 // on https://github.com/: another html_url (or none) becomes the repository's releases page. Text is cleaned of
 // control characters and capped.

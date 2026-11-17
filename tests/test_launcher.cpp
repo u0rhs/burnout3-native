@@ -63,6 +63,11 @@ TEST(config_ini_round_trip) {
     const Config d = config_from_ini("# x\n  game_dir =  C:\\Games\\B3 \r\nunknown = 1\nbad line\n");
     CHECK(d.game_dir == "C:\\Games\\B3");
     CHECK(config_from_ini("").game_dir.empty());
+    // 1.1: the chosen save folder; none: no line (the file as before)
+    CHECK(config_to_ini(c).find("saves_dir") == std::string::npos && config_from_ini(config_to_ini(c)).saves_dir.empty());
+    Config sd = c;
+    sd.saves_dir = "/cloud/My Drive/B3";
+    CHECK(config_from_ini(config_to_ini(sd)) == sd);
     // update1: the update check's keys beside game_dir (update.h), on by default
     CHECK(config_from_ini("").update.enabled && config_from_ini("update_check = 0\n").update.enabled == false);
     Config u = c;
@@ -88,6 +93,7 @@ TEST(files_beside_the_settings) {
     CHECK(run_state_file(p) == p / "run_state.ini");
     CHECK(config_file(p) == p / "launcher.ini");
     CHECK(saves_folder(p) == p / "saves");
+    CHECK(saves_folder(p, "") == p / "saves" && saves_folder(p, "/cloud/B3") == fs::path("/cloud/B3"));   // 1.1
     CHECK(logs_folder(p) == p / "logs");
 #ifndef _WIN32
     CHECK(null_device() == "/dev/null");

@@ -126,7 +126,17 @@ struct GamepadState {
 struct GamepadTuning {   // user-visible settings (docs/specs/input.md §3)
     float stick_dead_zone = 0.24f;     // fraction of the stick's travel ignored around centre (clamped to 0..0.95)
     float trigger_threshold = 0.25f;   // trigger travel from which Cross / Square count as pressed (clamped to 0.01..1)
+    // 1.0.1: ANALOG PEDALS. An analog input (a trigger) on Cross (accelerate) or Square (brake) drives the right stick's
+    // vertical axis instead of the button: the game's analog throttle and brake (CB3ControllerMapping::GetAccelerator
+    // 0x12FA40 / GetBrake 0x12F970 add control 20 / 21, the right stick up / down, through DeadzoneAxis and a 4th power;
+    // the button counts as full from 0.1). Both pedals past the threshold together (a powerslide): both buttons, as
+    // before. Off: the buttons with the trigger's pressure, as 1.0.0.
+    bool analog_pedals = true;
 };
+// 1.0.1: the right stick's travel (0..1) that makes the game's throttle / brake follow a pedal's travel (0..1) in a
+// straight line: DeadzoneAxis 0x216E40 (max 0.9, dead zone 0.1 [C GtInputDevicePS2DualShock 0x2173F0]) then x^4, so
+// the stick is sent at 0.1 + 0.8 * travel^(1/4); 0 for no travel.
+float pedal_stick(float travel);
 // A gamepad's DS2 report with the default bindings (docs/specs/input.md §3): South cross, East circle, West square, North triangle, shoulders L1 / R1,
 // Start, Back select, the D-pad, the left stick; the right trigger also drives cross (analog throttle) and the left
 // trigger square (analog brake), pressed from the threshold on. Stick axes past the dead zone, rescaled to full.

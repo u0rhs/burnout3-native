@@ -324,6 +324,8 @@ public:
     virtual void set_dither(float steps) { (void)steps; }
     // effects2: Options::render_scale, changed at any time (the PC settings' RENDER SCALE row)
     virtual void set_render_scale(float scale) { (void)scale; }
+    // 1.1 UPSCALING: RENDER SCALE's picture brought up to the window bilinear (false) or by the sharp upscale (true)
+    virtual void set_sharp_upscale(bool on) { (void)on; }
 };
 
 // Headless rendering (draw_offscreen only): initialises SDL's video subsystem and creates a device, trying in order

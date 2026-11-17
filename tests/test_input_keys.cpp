@@ -3,6 +3,8 @@
 #include "input_keys.h"
 #include "test.h"
 
+#include <algorithm>
+#include <cmath>
 #include <set>
 
 using namespace b3native::input;
@@ -221,25 +223,26 @@ TEST(remap) {
 }
 
 TEST(gamepad_default_bindings) {
+    const GamepadTuning legacy{0.24f, 0.25f, false};   // 1.0.0's pedals (ANALOG PEDALS off)
     GamepadState g;
     CHECK(gamepad_sample(g) == neutral_sample());
     g.south = true;
-    auto s = gamepad_sample(g);
+    auto s = gamepad_sample(g, legacy);
     CHECK(pressed(s, kCross) && s[12] == 0xFF);
     g = {};
     g.right_trigger = 16384;   // half throttle: cross pressed (>= 0.25), pressure 128 [input.md §3: 255 * 0.5000153 -> 128]
-    s = gamepad_sample(g);
+    s = gamepad_sample(g, legacy);
     CHECK(pressed(s, kCross) && s[12] == 128);
     g.right_trigger = 6000;    // 0.18: below the threshold, pressure still reported
-    s = gamepad_sample(g);
+    s = gamepad_sample(g, legacy);
     CHECK(!pressed(s, kCross) && s[12] == 47);
     g = {};
     g.left_trigger = 32767;    // full brake on square
-    s = gamepad_sample(g);
+    s = gamepad_sample(g, legacy);
     CHECK(pressed(s, kSquare) && s[13] == 0xFF);
     g = {};
     g.east = g.north = g.left_shoulder = g.right_shoulder = g.start = g.back = g.dpad_up = true;
-    s = gamepad_sample(g);
+    s = gamepad_sample(g, legacy);
     CHECK(pressed(s, kCircle) && pressed(s, kTriangle) && pressed(s, kL1) && pressed(s, kR1) && pressed(s, kStart) &&
           pressed(s, kSelect) && pressed(s, kUp));
     CHECK(!pressed(s, kL2) && !pressed(s, kR2) && !pressed(s, kCross));   // no pad binding for L2 / R2 [input.md §3]
@@ -263,12 +266,13 @@ TEST(gamepad_stick_dead_zone) {
 }
 
 TEST(keys_and_gamepad_together) {
+    const GamepadTuning legacy{0.24f, 0.25f, false};
     GamepadState g;
     g.right_trigger = 32767;   // throttle on the pad
     KeyPad k;
     k.key(sc::A, true);        // steer on the keys
     for (int i = 0; i < 10; ++i) k.step(1.0f / 60);
-    const auto pad = gamepad_sample(g);
+    const auto pad = gamepad_sample(g, legacy);
     const auto s = k.compose(pad.data());
     CHECK(pressed(s, kCross) && s[12] == 0xFF && s[4] == 0x00);
 }
@@ -572,18 +576,19 @@ TEST(gamepad_buttons_each) {
 }
 
 TEST(gamepad_triggers_are_pedals) {
+    const GamepadTuning legacy{0.24f, 0.25f, false};   // 1.0.0's pedals: the trigger's pressure on the button
     struct Row { std::int16_t raw; int pressure; };
     const Row rows[] = {{0, 0},       {1, 0},       {128, 1},     {129, 1},       {327, 3},       {328, 3},     {6000, 47},
                         {8191, 64},   {8192, 64},   {16383, 127}, {16384, 128},   {24000, 187},   {32766, 255}, {32767, 255}};
     for (const Row& r : rows) {
         GamepadState g;
         g.right_trigger = r.raw;
-        auto s = gamepad_sample(g);
+        auto s = gamepad_sample(g, legacy);
         CHECK(s[12] == r.pressure && pressed(s, kCross) == (r.raw >= 8192));   // default threshold 0.25
         CHECK(s[13] == 0 && !pressed(s, kSquare));
         g = {};
         g.left_trigger = r.raw;
-        s = gamepad_sample(g);
+        s = gamepad_sample(g, legacy);
         CHECK(s[13] == r.pressure && pressed(s, kSquare) == (r.raw >= 8192));
         CHECK(s[12] == 0 && !pressed(s, kCross));
     }
@@ -591,20 +596,20 @@ TEST(gamepad_triggers_are_pedals) {
     GamepadState g;
     g.south = true;
     g.right_trigger = 6000;
-    auto s = gamepad_sample(g);
+    auto s = gamepad_sample(g, legacy);
     CHECK(pressed(s, kCross) && s[12] == 0xFF);
     g = {};
     g.west = true;
     g.left_trigger = 100;
-    s = gamepad_sample(g);
+    s = gamepad_sample(g, legacy);
     CHECK(pressed(s, kSquare) && s[13] == 0xFF);
     // a negative reading counts as released
     g = {};
     g.right_trigger = -5;
     g.left_trigger = -32768;
-    CHECK(gamepad_sample(g) == neutral_sample());
+    CHECK(gamepad_sample(g, legacy) == neutral_sample());
     // the threshold, clamped to 0.01..1: 0 -> 0.01 (328 / 32767 = 0.01001 pressed, 327 not); 5 -> 1 (only full)
-    GamepadTuning lo{0.24f, 0.0f}, hi{0.24f, 5.0f}, one{0.24f, 0.01f}, full{0.24f, 1.0f};
+    GamepadTuning lo{0.24f, 0.0f, false}, hi{0.24f, 5.0f, false}, one{0.24f, 0.01f, false}, full{0.24f, 1.0f, false};
     for (const GamepadTuning* t : {&lo, &one}) {
         g = {};
         g.right_trigger = 327;
@@ -721,6 +726,47 @@ TEST(restart_macro) {
     CHECK(m.trigger());
     m.cancel();
     CHECK(!m.active());
+}
+
+TEST(analog_pedals_drive_the_right_stick) {
+    // 1.0.1 ANALOG PEDALS (the default): a trigger alone drives the right stick's vertical axis, the game's analog
+    // throttle / brake (GetAccelerator 0x12FA40 control 20, GetBrake 0x12F970 control 21), and leaves the button alone
+    GamepadState g;
+    g.right_trigger = 16384;   // half throttle
+    auto s = gamepad_sample(g);
+    CHECK(!pressed(s, kCross) && s[12] == 0 && s[3] == stick_y_byte(-pedal_stick(16384.0f / 32767.0f)) && s[3] < neutral_sample()[3]);
+    g = {};
+    g.left_trigger = 32767;    // full brake: the stick down
+    s = gamepad_sample(g);
+    CHECK(!pressed(s, kSquare) && s[13] == 0 && s[3] == stick_y_byte(pedal_stick(1.0f)) && s[3] > neutral_sample()[3]);
+    // both pedals past the threshold (a powerslide): both buttons, as 1.0.0, the stick at rest
+    g = {};
+    g.right_trigger = 30000;
+    g.left_trigger = 20000;
+    s = gamepad_sample(g);
+    CHECK(pressed(s, kCross) && pressed(s, kSquare) && s[3] == neutral_sample()[3]);
+    // the face buttons stay digital: full
+    g = {};
+    g.south = true;
+    s = gamepad_sample(g);
+    CHECK(pressed(s, kCross) && s[12] == 0xFF && s[3] == neutral_sample()[3]);
+    // no travel: the stick at rest
+    CHECK(gamepad_sample(GamepadState{}) == neutral_sample());
+}
+
+TEST(pedal_stick_makes_the_throttle_follow_the_pedal) {
+    // the game's own model of the stick (DeadzoneAxis 0x216E40: max 0.9, dead zone 0.1; then x^4, counted above 0.05):
+    // with pedal_stick the throttle is the pedal's travel
+    const auto game = [](float v) {
+        float g = (std::min(v, 0.9f) - 0.1f) / 0.8f;
+        if (g < 0) g = 0;
+        const float h = g * g * g * g;
+        return h > 0.05f ? h : 0.0f;
+    };
+    CHECK(pedal_stick(0.0f) == 0.0f && pedal_stick(-1.0f) == 0.0f);
+    CHECK(std::fabs(pedal_stick(1.0f) - 0.9f) < 1e-6f);
+    for (float t : {0.1f, 0.25f, 0.5f, 0.75f, 1.0f}) CHECK(std::fabs(game(pedal_stick(t)) - t) < 1e-4f);
+    CHECK(game(pedal_stick(0.04f)) == 0.0f);   // the game's own 5 % floor
 }
 
 TEST_MAIN("keyboard -> DS2 report (src/native/input_keys)")
