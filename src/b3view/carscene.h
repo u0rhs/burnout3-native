@@ -37,6 +37,7 @@ struct CarGlobals {
     b3gfx::TextureId env_sky = b3gfx::kNone;
     bool env_frame_units = false;   // fe2: env_sky holds frame units (a baked map, as the GS env map), not display units
     float sun_colour[4] = {0, 0, 0, 0};
+    std::uint32_t env_world = b3gfx::kNone;   // reflect-tunnel: this frame's world env map (Device::render_env), kNone: the sky alone
 };
 // Slots 1..4 from <game>/DATA/GLOBAL.TXD. False (with a reason) if the file or a texture is missing.
 bool load_car_globals(b3gfx::Device& dev, const std::string& game, CarGlobals& out, std::string* why);

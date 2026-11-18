@@ -1,6 +1,6 @@
-# Burnout 3 native 1.1.0 (draft release notes)
+# Burnout 3 native 1.1.0 (release notes)
 
-Status: 🚧 built, being checked. Nothing here is released yet.
+Released 2026-11-18.
 
 ## New
 
@@ -22,6 +22,9 @@ Status: 🚧 built, being checked. Nothing here is released yet.
 - **Easier PCSX2 imports.** Importing a save starts in PCSX2's memory-card folder and points at the card
   (usually `Mcd001.ps2`).
 - **Steam Deck.** The launcher's first start on a Deck picks the MEDIUM preset with vsync on, to hold 60 fps there.
+- **One-click updates.** When a new release is out, the launcher's Play page offers **Install update**: it downloads
+  the package for your system, checks it against the release's signed list, and installs it (Windows, Linux; on macOS
+  it opens the checked disk image). **Undo the last update** in Settings goes back to the previous version.
 
 ## Fixed
 

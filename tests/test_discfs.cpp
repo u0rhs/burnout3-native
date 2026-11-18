@@ -8,11 +8,15 @@
 #include "b3asset/discfs.h"
 #include "b3asset/language.h"   // 1.0.1: language packs on a disc folder
 #include "test.h"
+#include "chd_writer.h"   // chd1
+#include "iso_writer.h"
 
 #include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <iterator>
 #include <map>
 #include <thread>
 
@@ -304,6 +308,241 @@ TEST(file_past_4gb) {
     CHECK(fs::file_size(p, ec) > (4ull << 30));
     check_volume(p, spec, "a file at 4.5 GB (sparse)");
     fs::remove(p, ec);
+}
+
+// ---- chd1: CHD images (tests/chd_writer.h) of the same volume ----
+namespace {
+std::vector<std::uint8_t> file_bytes(const fs::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    return std::vector<std::uint8_t>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+bool put_file(const fs::path& p, const std::vector<std::uint8_t>& b) {
+    std::ofstream f(p, std::ios::binary | std::ios::trunc);
+    f.write(reinterpret_cast<const char*>(b.data()), std::streamsize(b.size()));
+    return bool(f);
+}
+// the cooked .iso of the test volume (small.iso) and its files
+const std::vector<std::uint8_t>& cooked(Spec& spec) {
+    static Spec s;
+    static std::vector<std::uint8_t> bytes;
+    if (bytes.empty()) {
+        fs::create_directories(kDir);
+        CHECK(write_image(build(s, false), kDir / "chd_src.iso", 0));
+        bytes = file_bytes(kDir / "chd_src.iso");
+    }
+    spec = s;
+    return bytes;
+}
+// every file of the CHD has the bytes the .iso path gives
+void same_as_iso(const fs::path& chd, const Spec& spec) {
+    const fs::path iso = kDir / "chd_src.iso";
+    int n = 0;
+    std::function<void(const fs::path&)> walk = [&](const fs::path& rel) {
+        for (const disc::Entry& e : disc::list_dir(rel.empty() ? iso : iso / rel)) {
+            if (e.dir) { walk(rel / e.name); continue; }
+            std::vector<std::uint8_t> a, b;
+            CHECK(disc::read_file(iso / rel / e.name, a));
+            const bool ok = disc::read_file(chd / rel / e.name, b);
+            CHECK(ok && a == b);
+            if (!ok || a != b) std::printf("    %s differs from the .iso's\n", (rel / e.name).generic_string().c_str());
+            ++n;
+        }
+    };
+    walk("");
+    CHECK(n == int(spec.files.size()));
+}
+// a CD's data (frames of 2448 bytes): `before` frames of an audio track first (0: none), then the data track (its
+// pregap frames stored first when `pregap`), each track padded to 4 frames as chdman writes it
+std::vector<std::uint8_t> cd_data(const std::vector<std::uint8_t>& iso, const std::string& type, std::uint32_t before, std::uint32_t pregap,
+                                  chdtest::Options& o, bool old_tags = false) {
+    std::vector<std::uint8_t> d;
+    o.unitbytes = 2448;
+    o.hunkbytes = 8 * 2448;
+    int track = 1;
+    if (before) {
+        d.resize(std::size_t((before + 3) / 4 * 4) * 2448, 0x11);
+        o.metadata.push_back({"CHT2", "TRACK:1 TYPE:AUDIO SUBTYPE:NONE FRAMES:" + std::to_string(before) + " PREGAP:0 PGTYPE:MODE1 PGSUB:NONE POSTGAP:0"});
+        ++track;
+    }
+    d.resize(d.size() + std::size_t(pregap) * 2448, 0x22);   // the pregap's frames (not the volume)
+    const std::vector<std::uint8_t> frames = chdtest::cd_frames(iso, type);
+    d.insert(d.end(), frames.begin(), frames.end());
+    const std::uint32_t n = pregap + std::uint32_t(frames.size() / 2448);
+    if (old_tags)
+        o.metadata.push_back({"CHTR", "TRACK:" + std::to_string(track) + " TYPE:" + type + " SUBTYPE:NONE FRAMES:" + std::to_string(n)});
+    else
+        o.metadata.push_back({"CHT2", "TRACK:" + std::to_string(track) + " TYPE:" + type + " SUBTYPE:RW FRAMES:" + std::to_string(n) +
+                                          " PREGAP:" + std::to_string(pregap) + " PGTYPE:" + (pregap ? "V" : "") + type + " PGSUB:RW POSTGAP:0"});
+    d.resize(d.size() + std::size_t((4 - n % 4) % 4) * 2448, 0);
+    return d;
+}
+}  // namespace
+
+TEST(chd_dvd) {
+    // chdman createdvd: the cooked image in hunks; a plain map (no compressor) and a compressed one (zlib hunks, stored
+    // hunks, repeats of an earlier hunk)
+    Spec spec;
+    const std::vector<std::uint8_t>& iso = cooked(spec);
+    chdtest::Options plain;
+    plain.hunkbytes = 4096;
+    CHECK(put_file(kDir / "dvd_plain.chd", chdtest::write(iso, plain).bytes));
+    CHECK(disc::is_chd(kDir / "dvd_plain.chd") && !disc::is_chd(kDir / "chd_src.iso"));
+    check_volume(kDir / "dvd_plain.chd", spec, "CHD, DVD, uncompressed");
+    same_as_iso(kDir / "dvd_plain.chd", spec);
+    chdtest::Options z;
+    z.codec = chdtest::Codec::kZlib;
+    z.hunkbytes = 8192;
+    z.metadata.push_back({"DVD ", ""});
+    const chdtest::Image zi = chdtest::write(iso, z);
+    CHECK(zi.bytes.size() < iso.size() / 2);   // the pattern files and the zero sectors compress
+    CHECK(put_file(kDir / "dvd_zlib.iso", zi.bytes));   // a CHD by its magic, whatever its name
+    check_volume(kDir / "dvd_zlib.iso", spec, "CHD, DVD, zlib (named .iso)");
+    same_as_iso(kDir / "dvd_zlib.iso", spec);
+    CHECK(disc::image_error(kDir / "dvd_zlib.iso").empty());
+}
+
+TEST(chd_cd) {
+    // chdman createcd: frames of 2352 + 96 bytes, the volume on the data track (MODE1 / MODE2 form 1 user data, as a
+    // raw .bin's); cdzl hunks and a plain map; an audio track before it, a pregap stored in the file, the old track tag
+    Spec spec;
+    const std::vector<std::uint8_t>& iso = cooked(spec);
+    struct Case { const char* name; const char* type; chdtest::Codec codec; std::uint32_t before, pregap; bool old_tags; };
+    for (const Case& c : {Case{"cd_m2raw.chd", "MODE2_RAW", chdtest::Codec::kCdZlib, 0, 0, false},
+                          Case{"cd_m1raw.chd", "MODE1_RAW", chdtest::Codec::kCdZlib, 0, 0, false},
+                          Case{"cd_m1.chd", "MODE1", chdtest::Codec::kNone, 0, 0, true},
+                          Case{"cd_m2.chd", "MODE2", chdtest::Codec::kCdZlib, 0, 0, false},
+                          Case{"cd_audio_first.chd", "MODE2_RAW", chdtest::Codec::kNone, 5, 0, false},
+                          Case{"cd_pregap.chd", "MODE1_RAW", chdtest::Codec::kCdZlib, 13, 150, false}}) {
+        chdtest::Options o;
+        o.codec = c.codec;
+        const std::vector<std::uint8_t> data = cd_data(iso, c.type, c.before, c.pregap, o, c.old_tags);
+        CHECK(put_file(kDir / c.name, chdtest::write(data, o).bytes));
+        check_volume(kDir / c.name, spec, c.name);
+        same_as_iso(kDir / c.name, spec);
+    }
+    // a CD with only an audio track: no data track, no disc image
+    chdtest::Options a;
+    a.unitbytes = 2448;
+    a.hunkbytes = 8 * 2448;
+    a.metadata.push_back({"CHT2", "TRACK:1 TYPE:AUDIO SUBTYPE:NONE FRAMES:40 PREGAP:0 PGTYPE:MODE1 PGSUB:NONE POSTGAP:0"});
+    CHECK(put_file(kDir / "cd_audio.chd", chdtest::write(std::vector<std::uint8_t>(40 * 2448, 3), a).bytes));
+    CHECK(!disc::is_image(kDir / "cd_audio.chd"));
+    CHECK(disc::image_error(kDir / "cd_audio.chd").find("data track") != std::string::npos);
+}
+
+TEST(chd_concurrent_reads) {
+    // the hunk cache shared by threads, with the read-ahead workers: a cache much smaller than the files (B3_CHD_CACHE_KB:
+    // hunks evicted and decoded again), sequential readers of two large files beside random readers; every byte right
+    std::vector<std::uint8_t> big = pattern(21, 3u << 20), other = pattern(22, 1u << 20);
+    for (std::size_t k = 0; k < big.size(); k += 4096) big[k] = std::uint8_t(k >> 12);   // no two hunks alike
+    isotest::Writer w;
+    w.file("BIG.DAT", big);
+    w.file("DATA/OTHER.DAT", other);
+    CHECK(w.write((kDir / "conc.iso").string()));
+    chdtest::Options z;
+    z.codec = chdtest::Codec::kZlib;
+    z.hunkbytes = 4096;
+    CHECK(put_file(kDir / "conc.chd", chdtest::write(file_bytes(kDir / "conc.iso"), z).bytes));
+    setenv("B3_CHD_CACHE_KB", "160", 1);   // 40 hunks
+    const bool image = disc::is_image(kDir / "conc.chd");
+    unsetenv("B3_CHD_CACHE_KB");
+    CHECK(image);
+    std::atomic<int> bad{0};
+    std::vector<std::thread> th;
+    for (int t = 0; t < 8; ++t)
+        th.emplace_back([&, t] {
+            disc::File f;
+            const bool which = t % 2 == 0;
+            const std::vector<std::uint8_t>& want = which ? big : other;
+            if (!f.open(kDir / "conc.chd" / (which ? "BIG.DAT" : "DATA/OTHER.DAT"))) { ++bad; return; }
+            std::vector<std::uint8_t> buf(65536);
+            if (t < 4) {   // sequential, 2 KB to 64 KB at a time (RW Audio's and a load's sizes), twice
+                for (int pass = 0; pass < 2; ++pass)
+                    for (std::uint64_t at = 0; at < want.size();) {
+                        const std::size_t n = std::size_t(2048) << ((at / 65536 + std::uint64_t(t)) % 6);
+                        const std::int64_t r = f.read_at(at, buf.data(), n);
+                        if (r <= 0 || std::memcmp(buf.data(), want.data() + at, std::size_t(r)) != 0) { ++bad; return; }
+                        at += std::uint64_t(r);
+                    }
+            } else {   // random
+                std::uint64_t x = 0x9E3779B97F4A7C15ull * std::uint64_t(t + 1);
+                for (int k = 0; k < 3000; ++k) {
+                    x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+                    const std::uint64_t at = x % want.size();
+                    const std::int64_t r = f.read_at(at, buf.data(), 1 + std::size_t(x >> 40) % 9000);
+                    if (r <= 0 || std::memcmp(buf.data(), want.data() + at, std::size_t(r)) != 0) { ++bad; return; }
+                }
+            }
+        });
+    for (auto& x : th) x.join();
+    CHECK(bad == 0);
+}
+
+TEST(chd_damaged) {
+    // a cut-short or damaged CHD: no disc image (or a file that cannot be read), a message that says so, no crash
+    Spec spec;
+    const std::vector<std::uint8_t>& iso = cooked(spec);
+    chdtest::Options z;
+    z.codec = chdtest::Codec::kZlib;
+    z.hunkbytes = 8192;
+    const chdtest::Image img = chdtest::write(iso, z);
+    auto gone = [](const fs::path& p) {
+        const std::string why = disc::image_error(p);
+        std::printf("  %s: %s\n", p.filename().string().c_str(), why.c_str());
+        CHECK(!disc::is_image(p) && !disc::is_dir(p) && disc::list_dir(p).empty() && !disc::exists(p / "SYSTEM.CNF"));
+        CHECK(!why.empty() && why.find(p.string()) != std::string::npos);
+        return why;
+    };
+    // the header only; the map without the hunks; a few bytes
+    std::vector<std::uint8_t> cut(img.bytes.begin(), img.bytes.begin() + 124);
+    CHECK(put_file(kDir / "cut_header.chd", cut));
+    gone(kDir / "cut_header.chd");
+    cut.assign(img.bytes.begin(), img.bytes.begin() + std::ptrdiff_t(img.first_hunk + 10));
+    CHECK(put_file(kDir / "cut_map.chd", cut));
+    CHECK(gone(kDir / "cut_map.chd").find("damaged or cut short") != std::string::npos);
+    cut.assign(img.bytes.begin(), img.bytes.begin() + 12);
+    CHECK(put_file(kDir / "cut_magic.chd", cut));
+    gone(kDir / "cut_magic.chd");
+    // the volume descriptor's hunk (sector 16: hunk 4) with a byte changed: its CRC fails
+    std::vector<std::uint8_t> bad = img.bytes;
+    CHECK(img.hunk_at[4] != 0);
+    bad[std::size_t(img.hunk_at[4]) + 3] ^= 0x40;
+    CHECK(put_file(kDir / "bad_pvd.chd", bad));
+    CHECK(gone(kDir / "bad_pvd.chd").find("damaged") != std::string::npos);
+    // the last stored hunk damaged: the volume mounts, the file there cannot be read (an error, not other bytes)
+    std::size_t last = img.hunk_at.size();
+    while (last > 0 && img.hunk_at[last - 1] == 0) --last;
+    CHECK(last > 8);
+    bad = img.bytes;
+    bad[std::size_t(img.hunk_at[last - 1]) + 1] ^= 0x01;
+    CHECK(put_file(kDir / "bad_tail.chd", bad));
+    CHECK(disc::is_image(kDir / "bad_tail.chd"));
+    int unreadable = 0;
+    for (const auto& [path, bytes] : spec.files) {
+        std::vector<std::uint8_t> got;
+        if (!disc::read_file(kDir / "bad_tail.chd" / path, got)) ++unreadable;
+        else CHECK(got == bytes);
+    }
+    CHECK(unreadable >= 1);
+    // the end cut off: the same (the files there unreadable)
+    cut.assign(img.bytes.begin(), img.bytes.begin() + std::ptrdiff_t(img.hunk_at[last - 1] + 1));
+    CHECK(put_file(kDir / "cut_tail.chd", cut));
+    CHECK(disc::is_image(kDir / "cut_tail.chd"));
+    unreadable = 0;
+    for (const auto& [path, bytes] : spec.files) {
+        std::vector<std::uint8_t> got;
+        if (!disc::read_file(kDir / "cut_tail.chd" / path, got)) ++unreadable;
+    }
+    CHECK(unreadable >= 1);
+    // a CHD that needs its parent
+    z.parent = true;
+    CHECK(put_file(kDir / "child.chd", chdtest::write(iso, z).bytes));
+    CHECK(gone(kDir / "child.chd").find("parent") != std::string::npos);
+    // a CHD of something else (no ISO 9660 volume): not a disc image, as for an .iso, no CHD error
+    chdtest::Options plain;
+    CHECK(put_file(kDir / "other.chd", chdtest::write(pattern(3, 100000), plain).bytes));
+    CHECK(!disc::is_image(kDir / "other.chd") && disc::is_file(kDir / "other.chd") && disc::image_error(kDir / "other.chd").empty());
+    CHECK(disc::image_error(kDir / "chd_src.iso").empty() && disc::image_error(kDir / "missing.chd").empty());
 }
 
 TEST(not_an_image) {

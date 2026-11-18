@@ -121,8 +121,7 @@ extern "C" void Update__14CB3CrashPickupFf(UnkStruct_003A1010_p *self, ps2f p0)
         }
         CGtV3d d = car->field_204->mPos - *b3host::pcast<CGtV3d>(self->field_0);
         if (!(d.GetLength() < 15.0f)) continue;
-        u_long128 box0 = car->field_1D0;
-        u_long128 box1 = car->field_1E0;
+        u_long128 b3_box_box0[2] = {car->field_1D0, car->field_1E0}; u_long128 &box0 = b3_box_box0[0], &box1 = b3_box_box0[1]; /* decomp2host T41: one array (max after min) */
         CGtMatrix3x4 *m = car->field_204;
         CGtMatrix3x4 inv;
         ps2f *r = b3host::pcast<ps2f>(m);

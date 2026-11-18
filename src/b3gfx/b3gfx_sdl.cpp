@@ -107,6 +107,15 @@ void mat4_perspective_reverse_z(float fovy, float aspect, float znear, float m[1
     m[14] = znear;   // depth = znear / -z_view: 1 at the near plane, 0 at infinity
 }
 
+void env_face(int f, float fwd[3], float right[3], float up[3]) {
+    // mat4_look's basis for forward +X, -X, +Y, -Y, +Z, -Z with up +Y (+Z for the Y faces): right = fwd x up, up = right x fwd
+    static const float kF[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    static const float kR[6][3] = {{0, 0, 1}, {0, 0, -1}, {1, 0, 0}, {-1, 0, 0}, {-1, 0, 0}, {1, 0, 0}};
+    static const float kU[6][3] = {{0, 1, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 1}, {0, 1, 0}, {0, 1, 0}};
+    f = f < 0 ? 0 : f > 5 ? 5 : f;
+    for (int i = 0; i < 3; ++i) { fwd[i] = kF[f][i]; right[i] = kR[f][i]; up[i] = kU[f][i]; }
+}
+
 bool mat4_invert(const float m[16], float out[16]) {
     // cofactors in double (the reverse-Z projection's small terms)
     double a[16], inv[16];
@@ -172,6 +181,7 @@ public:
         for (auto* p : {occ_pipe_[0], occ_pipe_[1], sun_pipe_, blur_pipe_[0], blur_pipe_[1], post_pipe_[0], post_pipe_[1], post_pipe_[2], post_pipe_[3]}) if (p) SDL_ReleaseGPUGraphicsPipeline(dev_, p);
         for (auto* p : {dof_depth_pipe_[0], dof_depth_pipe_[1], dof_depth_pipe_[2], dof_pipe_[0], dof_pipe_[1]}) if (p) SDL_ReleaseGPUGraphicsPipeline(dev_, p);
         if (occ_) SDL_ReleaseGPUTexture(dev_, occ_);
+        for (EnvTarget& e : env_) release_env(e);   // reflect-tunnel
         for (auto* p : {spec_pipe_, present_pipe_win_, present_pipe_off_, car_pipe_, line_pipe_}) if (p) SDL_ReleaseGPUGraphicsPipeline(dev_, p);
         if (clamp_sampler_) SDL_ReleaseGPUSampler(dev_, clamp_sampler_);
         if (effect_sampler_) SDL_ReleaseGPUSampler(dev_, effect_sampler_);
@@ -289,7 +299,25 @@ public:
         buffers_.clear();
         textures_.clear();
         dyn_tex_size_.clear();
+        original_.clear();   // hdkey (the pairs go; hd_shown_ stays)
+        originals_ = {};
     }
+
+    // hdkey (Device::set_texture_original): the texture a draw samples for `id` (white for none)
+    SDL_GPUTexture* tex_of(TextureId id) const {
+        if (id >= textures_.size()) return white_;
+        if (!hd_shown_ && id < original_.size() && original_[id] < textures_.size()) return textures_[original_[id]];
+        return textures_[id];
+    }
+    void set_texture_original(TextureId hd, TextureId original, std::size_t bytes, std::size_t hd_bytes) override {
+        if (hd >= textures_.size() || original >= textures_.size()) return;
+        if (original_.size() <= hd) original_.resize(std::size_t(hd) + 1, kNone);
+        if (original_[hd] == kNone) { ++originals_.textures; originals_.bytes += bytes; originals_.hd_bytes += hd_bytes; }
+        original_[hd] = original;
+    }
+    void set_hd_shown(bool on) override { hd_shown_ = on; }
+    bool hd_shown() const override { return hd_shown_; }
+    HdOriginals hd_originals() const override { return originals_; }
 
     void update_vertex_buffer(BufferId& id, const Vertex* v, std::size_t count) override {
         update_buffer(SDL_GPU_BUFFERUSAGE_VERTEX, id, v, count * sizeof(Vertex));
@@ -587,7 +615,7 @@ private:
         spec_fs_ = shader(specular_frag_spv, sizeof specular_frag_spv, specular_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 1);
         present_fs_ = shader(present_frag_spv, sizeof present_frag_spv, present_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
         car_vs_ = shader(car_vert_spv, sizeof car_vert_spv, car_vert_msl, SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
-        car_fs_ = shader(car_frag_spv, sizeof car_frag_spv, car_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1);
+        car_fs_ = shader(car_frag_spv, sizeof car_frag_spv, car_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 3, 1);   // reflect-tunnel: + the world env map
         sun_vs_ = shader(sun_vert_spv, sizeof sun_vert_spv, sun_vert_msl, SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
         sun_fs_ = shader(sun_frag_spv, sizeof sun_frag_spv, sun_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1);
         blur_fs_ = shader(blur_frag_spv, sizeof blur_frag_spv, blur_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1);
@@ -1005,7 +1033,7 @@ private:
         const bool test = fp.sun_occlusion && occ_ok && occ_;
         const float fu[4] = {float(kOccLevels - 1), test ? 1.0f : 0.0f, 0, 0};
         SDL_PushGPUFragmentUniformData(cmd, 0, fu, sizeof fu);
-        SDL_GPUTextureSamplerBinding tsb[2] = {{textures_[fp.sun_texture], effect_sampler_}, {occ_ ? occ_ : white_, effect_sampler_}};
+        SDL_GPUTextureSamplerBinding tsb[2] = {{tex_of(fp.sun_texture), effect_sampler_}, {occ_ ? occ_ : white_, effect_sampler_}};
         SDL_BindGPUFragmentSamplers(pass, 0, tsb, 2);
         SDL_DrawGPUPrimitives(pass, std::uint32_t(6 * n), 1, 0, 0);
     }
@@ -1499,7 +1527,7 @@ private:
             SDL_BindGPUIndexBuffer(pass, &b, SDL_GPU_INDEXELEMENTSIZE_32BIT);
             bound_ib = it.indices;
         }
-        SDL_GPUTextureSamplerBinding tsb{it.texture < textures_.size() ? textures_[it.texture] : white_,
+        SDL_GPUTextureSamplerBinding tsb{tex_of(it.texture),
                                          it.overlay ? (it.repeat_u || it.repeat_v
                                                        ? overlay_wrap_[(it.point_sample ? 4 : 0) | (it.repeat_u ? 2 : 0) | (it.repeat_v ? 1 : 0)]
                                                        : it.point_sample ? clamp_sampler_ : overlay_sampler_)
@@ -1527,7 +1555,7 @@ private:
         vu.line[3] = fp.line_far;
         SDL_PushGPUVertexUniformData(cmd, 0, &vu, sizeof vu);
         FragmentUniforms fu{{it.tint[0], it.tint[1], it.tint[2], game ? it.blend_fix : it.tint[3]},
-                            {ld[0], ld[1], ld[2], 0},
+                            {ld[0], ld[1], ld[2], env_face_ ? 1.0f : 0.0f},   // reflect-tunnel: opaque track writes alpha 1
                             {it.blend == Blend::kAlphaTest ? it.alpha_ref : 0.0f, it.lighting,
                              it.blend == Blend::kAlpha ? 1.0f : 0.0f, is_line(it) && !occ && !dof ? 4.0f : float(int(shading))},
                             {float(it.gs_test), it.textured ? 1.0f : 0.0f, it.blend == Blend::kAlpha || it.effect ? 1.0f : 0.0f,
@@ -1560,9 +1588,11 @@ private:
         bind_buffers(pass, it, bound_vb, bound_ib);
         const CarParams& c = it.car();
         const bool env = c.env_texture < textures_.size();
-        SDL_GPUTextureSamplerBinding tsb[2] = {{it.texture < textures_.size() ? textures_[it.texture] : white_, sampler_},
-                                               {env ? textures_[c.env_texture] : white_, sampler_}};
-        SDL_BindGPUFragmentSamplers(pass, 0, tsb, 2);
+        SDL_GPUTexture* world = env_world_texture(c.env_world);   // reflect-tunnel
+        SDL_GPUTextureSamplerBinding tsb[3] = {{tex_of(it.texture), sampler_},
+                                               {env ? tex_of(c.env_texture) : white_, sampler_},
+                                               {world ? world : white_, overlay_sampler_}};
+        SDL_BindGPUFragmentSamplers(pass, 0, tsb, 3);
         CarVertexUniforms vu{};
         std::memcpy(vu.view_proj, fp.view_proj, sizeof vu.view_proj);
         std::memcpy(vu.model, it.model, sizeof vu.model);
@@ -1593,7 +1623,8 @@ private:
         fu.refl[2] = cl.fresnel_power;
         fu.refl[3] = cl.fresnel_floor;
         const float l0[4] = {cl.paint_gain, cl.paint_darken, cl.glint_size, cl.glint_gain}, l1[4] = {cl.sky_gain, cl.horizon_gain, cl.ground_level, cl.haze},
-                    l2[4] = {cl.glass_weight, cl.glass_fresnel, cl.glass_gain, cl.glass_darken}, l3[4] = {cl.rim, cl.colour_keep, 0, cl.strength};
+                    l2[4] = {cl.glass_weight, cl.glass_fresnel, cl.glass_gain, cl.glass_darken},
+                    l3[4] = {cl.rim, cl.colour_keep, world ? 1.0f : 0.0f, cl.strength};   // look3.z: the world env map bound
         std::memcpy(fu.look0, l0, sizeof l0);
         std::memcpy(fu.look1, l1, sizeof l1);
         std::memcpy(fu.look2, l2, sizeof l2);
@@ -1601,6 +1632,172 @@ private:
         SDL_PushGPUFragmentUniformData(cmd, 0, &fu, sizeof fu);
         ++stats_.draws;
         SDL_DrawGPUIndexedPrimitives(pass, it.index_count, 1, it.first_index, 0, 0);
+    }
+
+    // reflect-tunnel: the car's world env map (EnvPass). CarParams::env_world = kEnvWorldBase + slot.
+    static constexpr std::uint32_t kEnvWorldBase = 0xFFFFFF00u;
+    struct EnvTarget { SDL_GPUTexture *ms = nullptr, *res = nullptr, *depth = nullptr; std::uint32_t w = 0, h = 0; bool drawn = false; };
+    SDL_GPUTexture* env_world_texture(std::uint32_t id) const {
+        if (id < kEnvWorldBase || id - kEnvWorldBase >= 2) return nullptr;
+        const EnvTarget& e = env_[id - kEnvWorldBase];
+        return e.drawn ? (e.res ? e.res : e.ms) : nullptr;
+    }
+    void release_env(EnvTarget& e) {
+        for (SDL_GPUTexture* t : {e.ms, e.res, e.depth}) if (t) SDL_ReleaseGPUTexture(dev_, t);
+        e = EnvTarget{};
+    }
+    bool ensure_env(EnvTarget& e, std::uint32_t w, std::uint32_t h) {
+        if (e.w == w && e.h == h && e.ms && e.depth) return true;
+        release_env(e);
+        SDL_GPUTextureCreateInfo ti{};
+        ti.type = SDL_GPU_TEXTURETYPE_2D;
+        ti.width = w;
+        ti.height = h;
+        ti.layer_count_or_depth = 1;
+        ti.num_levels = 1;
+        ti.sample_count = sample_count(msaa_);   // the track pipelines' sample count
+        ti.format = kSceneFormat;
+        ti.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | (msaa_ > 1 ? 0 : SDL_GPU_TEXTUREUSAGE_SAMPLER);
+        e.ms = SDL_CreateGPUTexture(dev_, &ti);
+        ti.format = depth_format_;
+        ti.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+        e.depth = SDL_CreateGPUTexture(dev_, &ti);
+        if (msaa_ > 1) {
+            ti.sample_count = SDL_GPU_SAMPLECOUNT_1;
+            ti.format = kSceneFormat;
+            ti.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+            e.res = SDL_CreateGPUTexture(dev_, &ti);
+        }
+        if (!e.ms || !e.depth || (msaa_ > 1 && !e.res)) { release_env(e); return false; }
+        e.w = w;
+        e.h = h;
+        return true;
+    }
+    std::uint32_t render_env(int slot, const EnvPass& ep) override {
+        if (slot < 0 || slot > 1 || ep.face < 8) return kNone;
+        EnvTarget& e = env_[slot];
+        e.drawn = false;
+        flush_uploads();   // this frame's buffer updates go first (the submission order, as update_texture keeps it)
+        const std::uint32_t T = std::uint32_t(ep.face);
+        if (!ensure_env(e, 3 * T, 2 * T)) return kNone;
+        static const bool timed = SDL_getenv("B3_ENV_TIME") != nullptr;   // diagnostics: the pass alone, waited for
+        const std::uint64_t t0 = timed ? SDL_GetTicksNS() : 0;
+        SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(dev_);
+        if (!cmd) return kNone;
+        SDL_GPUColorTargetInfo ci{};
+        ci.clear_color = SDL_FColor{0, 0, 0, 0};   // alpha 0: the sky (car.frag draws it behind the track)
+        ci.load_op = SDL_GPU_LOADOP_CLEAR;
+        ci.texture = e.ms;
+        ci.cycle = true;   // a frame still in flight may be sampling the previous map
+        if (msaa_ > 1) {
+            ci.store_op = SDL_GPU_STOREOP_RESOLVE;
+            ci.resolve_texture = e.res;
+            ci.cycle_resolve_texture = true;
+        } else {
+            ci.store_op = SDL_GPU_STOREOP_STORE;
+        }
+        SDL_GPUDepthStencilTargetInfo di{};
+        di.texture = e.depth;
+        di.clear_depth = 0.0f;   // reverse-Z: far
+        di.load_op = SDL_GPU_LOADOP_CLEAR;
+        di.store_op = SDL_GPU_STOREOP_DONT_CARE;
+        di.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+        di.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+        di.cycle = true;
+        SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &ci, 1, &di);
+        if (!pass) { SDL_SubmitGPUCommandBuffer(cmd); return kNone; }
+        FrameParams fp = ep.fp;
+        fp.no_specular = true;          // RenderMesh(..., 1) for the env cameras [L draft 0x21C780]
+        fp.fog_colour[3] = 0.0f;        // CB3Fog::Render runs on the main frame only
+        float ld[3] = {fp.light_dir[0], fp.light_dir[1], fp.light_dir[2]};
+        const float ll = std::sqrt(ld[0] * ld[0] + ld[1] * ld[1] + ld[2] * ld[2]);
+        if (ll > 0) for (float& c : ld) c /= ll;
+        // each face one texel wider on every side (tan of the half angle T / (T - 2)), so car.frag's bilinear lookup
+        // never reads across a face's edge
+        const float k = float(T) / float(T - 2), n = ep.znear, fr = ep.zfar;
+        float proj[16] = {};
+        proj[0] = proj[5] = 1.0f / k;
+        proj[10] = n / (fr - n);        // reverse-Z with a far plane: depth 1 at znear, 0 at zfar, clipped beyond
+        proj[11] = -1.0f;
+        proj[14] = n * fr / (fr - n);
+        env_face_ = true;
+        SDL_GPUGraphicsPipeline* bound = nullptr;
+        BufferId bound_vb = kNone, bound_ib = kNone;
+        for (int f = 0; f < 6; ++f) {
+            float F[3], R[3], U[3], view[16];
+            env_face(f, F, R, U);
+            mat4_identity(view);
+            for (int i = 0; i < 3; ++i) { view[i * 4 + 0] = R[i]; view[i * 4 + 1] = U[i]; view[i * 4 + 2] = -F[i]; }
+            view[12] = -(R[0] * ep.centre[0] + R[1] * ep.centre[1] + R[2] * ep.centre[2]);
+            view[13] = -(U[0] * ep.centre[0] + U[1] * ep.centre[1] + U[2] * ep.centre[2]);
+            view[14] = F[0] * ep.centre[0] + F[1] * ep.centre[1] + F[2] * ep.centre[2];
+            mat4_mul(proj, view, fp.view_proj);
+            const SDL_GPUViewport vp{float(T * std::uint32_t(f % 3)), float(T * std::uint32_t(f / 3)), float(T), float(T), 0.0f, 1.0f};
+            SDL_SetGPUViewport(pass, &vp);
+            const SDL_Rect r{int(T) * (f % 3), int(T) * (f / 3), int(T), int(T)};
+            SDL_SetGPUScissor(pass, &r);
+            // the opaque draws, then the blended ones, in list order (the main pass's phases 1 and 3)
+            for (int phase = 0; phase < 2; ++phase)
+                for (std::size_t i = 0; i < ep.items.size(); ++i) {
+                    const DrawItem& it = ep.items[i];
+                    if (!ep.faces.empty() && !(i < ep.faces.size() && (ep.faces[i] >> f & 1))) continue;
+                    if (it.overlay || it.effect || it.shading != Shading::kTrack || is_line(it)) continue;
+                    if ((it.blend == Blend::kAlpha) != (phase == 1)) continue;
+                    draw_item(pass, cmd, fp, it, ld, bound, bound_vb, bound_ib);
+                }
+        }
+        env_face_ = false;
+        SDL_EndGPURenderPass(pass);
+        e.drawn = true;
+        if (const char* dump = SDL_getenv("B3_ENV_DUMP")) {   // diagnostics: the atlas as a PPM in display units (x 2), alpha below
+            const std::uint32_t w = e.w, h = e.h, bytes = w * h * 8;
+            SDL_GPUTransferBufferCreateInfo tbi{SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, bytes, 0};
+            SDL_GPUTransferBuffer* tb = SDL_CreateGPUTransferBuffer(dev_, &tbi);
+            SDL_GPUCopyPass* cp = SDL_BeginGPUCopyPass(cmd);
+            SDL_GPUTextureRegion reg{};
+            reg.texture = e.res ? e.res : e.ms;
+            reg.w = w;
+            reg.h = h;
+            reg.d = 1;
+            SDL_GPUTextureTransferInfo dst{tb, 0, w, h};
+            SDL_DownloadFromGPUTexture(cp, &reg, &dst);
+            SDL_EndGPUCopyPass(cp);
+            SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+            if (fence) {
+                SDL_WaitForGPUFences(dev_, true, &fence, 1);
+                SDL_ReleaseGPUFence(dev_, fence);
+                const auto* src = static_cast<const std::uint16_t*>(SDL_MapGPUTransferBuffer(dev_, tb, false));
+                auto half = [](std::uint16_t v) {
+                    const int ex = (v >> 10) & 31, m = v & 1023;
+                    const float f = ex == 0 ? std::ldexp(float(m), -24) : std::ldexp(float(m | 1024), ex - 25);
+                    return (v & 0x8000) ? -f : f;
+                };
+                if (FILE* fo = std::fopen(dump, "wb")) {
+                    std::fprintf(fo, "P6\n%u %u\n255\n", w, 2 * h);
+                    for (int pass2 = 0; pass2 < 2; ++pass2)
+                        for (std::uint32_t i = 0; i < w * h; ++i)
+                            for (int c = 0; c < 3; ++c) {
+                                const float v = pass2 == 0 ? 2.0f * half(src[4 * i + std::uint32_t(c)]) : half(src[4 * i + 3]);
+                                std::fputc(int(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f), fo);
+                            }
+                    std::fclose(fo);
+                }
+                SDL_UnmapGPUTransferBuffer(dev_, tb);
+            }
+            SDL_ReleaseGPUTransferBuffer(dev_, tb);
+        } else if (timed) {
+            if (SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd)) {
+                SDL_WaitForGPUFences(dev_, true, &fence, 1);
+                SDL_ReleaseGPUFence(dev_, fence);
+            }
+            std::size_t n = 0;
+            for (std::size_t i = 0; i < ep.items.size(); ++i)
+                for (int f = 0; f < 6; ++f) n += ep.faces.empty() || (i < ep.faces.size() && (ep.faces[i] >> f & 1));
+            std::fprintf(stderr, "env time: %.3f ms (record + submit + GPU), %zu items, %zu face draws\n", double(SDL_GetTicksNS() - t0) * 1e-6, ep.items.size(), n);
+        } else {
+            SDL_SubmitGPUCommandBuffer(cmd);
+        }
+        return kEnvWorldBase + std::uint32_t(slot);
     }
 
     // Scene pass into the GS frame (sky, opaque and alpha-tested draws, the full-screen specular, blended draws), then
@@ -2097,9 +2294,16 @@ private:
     Targets scaled_win_, scaled_off_;   // effects2: the 3D picture's targets at the scale (single-view frames)
     std::map<BufferId, Dyn> dyn_;   // dynamic buffers (update_*_buffer): their upload buffer and capacity
     SDL_GPUTexture* white_ = nullptr;
+    // reflect-tunnel (render_env): the world env maps, one per split-screen view (MSAA target, its resolve = the sampled
+    // atlas, depth); env_face_ while drawing their faces (mesh.frag: light_dir.w)
+    EnvTarget env_[2];
+    bool env_face_ = false;
     std::vector<SDL_GPUBuffer*> buffers_;
     std::vector<SDL_GPUTexture*> textures_;
     unsigned resource_epoch_ = 0;   // clear_resources calls (Device::resource_epoch)
+    std::vector<TextureId> original_;   // hdkey: by texture id, its original (kNone: not an HD replacement)
+    HdOriginals originals_;
+    bool hd_shown_ = true;
     std::map<TextureId, std::pair<int, int>> dyn_tex_size_;   // update_texture's textures (menu1)
     std::map<int, std::array<SDL_GPUGraphicsPipeline*, 8>> pipelines_;
     Targets win_targets_, off_targets_;

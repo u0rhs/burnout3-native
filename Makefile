@@ -239,9 +239,9 @@ $(BUILD)/test_script_mods: tests/test_script_mods.cpp tests/test.h $(SCRIPT_MODS
 $(BUILD)/test_ipu_model: tests/test_ipu_model.cpp tests/test.h src/native/ipu_model.h src/native/ipu_vlc.h src/native/hw_model.h src/native/hw_model_dev.h src/native/mpeg_dsp.h
 	@mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
-$(BUILD)/test_native_platform: tests/test_native_platform.cpp tests/test.h tests/r5900_mini.h src/native/platform.h src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp include/b3asset/discfs.h src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) $(wildcard include/b3host/*.h)
+$(BUILD)/test_native_platform: tests/test_native_platform.cpp tests/test.h tests/r5900_mini.h src/native/platform.h src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp include/b3asset/discfs.h $(CHD_OBJ) src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) $(wildcard include/b3host/*.h)
 	@mkdir -p $(BUILD)
-	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $(LIBM_DEFS) $(VU_DEFS) -DB3_PS2_FLOAT=1 -DB3_VU0_INTERP=1 $< src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) -pthread -o $@
+	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $(LIBM_DEFS) $(VU_DEFS) -DB3_PS2_FLOAT=1 -DB3_VU0_INTERP=1 $< src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp $(CHD_OBJ) src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) -pthread -o $@
 # The native memory card (boot2, src/native/save_card.h): not in `make test` yet; reads the kit's 100% profile
 # ($B3_SAVES_ROOT, default perf/saves-100; its checks skip without it).
 $(BUILD)/test_save_card: tests/test_save_card.cpp tests/test.h src/native/save_card.h src/native/save_formats.h src/native/save_store.h src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp
@@ -286,6 +286,16 @@ B3ASSET_OBJ := $(B3ASSET_SRC:%.cpp=$(BUILD)/render/%.o)
 # and the VU0 interpreter of a VU0_INTERP=1 dev build
 B3ASSET_RT_SRC := $(filter-out src/b3asset/vu1.cpp src/b3asset/particleshade.cpp,$(B3ASSET_SRC))
 B3ASSET_RT_OBJ := $(B3ASSET_RT_SRC:%.cpp=$(BUILD)/render/%.o)
+# chd1: CHD disc images (include/b3asset/discfs.h): libchdr and its decompressors (src/native/third_party/libchdr) as
+# one C unit, position-independent (also in libb3render.so), its symbols hidden outside the program or library that
+# links it; in every program and test that links discfs
+CHD_SRC := src/b3asset/chd_libchdr.c
+CHD_OBJ := $(BUILD)/render/src/b3asset/chd_libchdr.o
+$(CHD_OBJ): $(CHD_SRC) $(shell find src/native/third_party/libchdr -name '*.[ch]') src/native/third_party/dr_flac.h
+	@mkdir -p $(dir $@)
+	$(CC) -std=gnu11 -O2 -fPIC -fvisibility=hidden -w -c $< -o $@
+B3ASSET_OBJ += $(CHD_OBJ)
+B3ASSET_RT_OBJ += $(CHD_OBJ)
 GAME ?= $(CURDIR)/data/game
 # the 100 % save card the save tests read (optional: they skip without it)
 SAVES ?=
@@ -309,8 +319,8 @@ $(BUILD)/render/%.o: %.cpp $(wildcard include/b3asset/*.h include/b3gfx/*.h src/
 TESTS += $(BUILD)/test_b3asset $(BUILD)/test_hdpack $(BUILD)/test_discfs
 # iso1: the disc's files from a folder or a disc image (include/b3asset/discfs.h): synthetic ISO 9660 images under build/
 # (the real image against the extracted folder: B3_TEST_ISO=<.iso> B3_TEST_ISO_DIR=<folder> build/test_discfs)
-$(BUILD)/test_discfs: tests/test_discfs.cpp tests/test.h include/b3asset/discfs.h $(BUILD)/render/src/b3asset/discfs.o
-	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(BUILD)/render/src/b3asset/discfs.o -pthread -o $@
+$(BUILD)/test_discfs: tests/test_discfs.cpp tests/test.h tests/iso_writer.h tests/chd_writer.h include/b3asset/discfs.h $(BUILD)/render/src/b3asset/discfs.o $(CHD_OBJ)
+	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(BUILD)/render/src/b3asset/discfs.o $(CHD_OBJ) -pthread -lz -o $@
 $(BUILD)/test_hdpack: tests/test_hdpack.cpp tests/test.h $(B3ASSET_OBJ)
 	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(B3ASSET_OBJ) -o $@
 $(BUILD)/test_b3asset: tests/test_b3asset.cpp tests/test.h $(B3ASSET_OBJ) $(VU_STAMP)
@@ -408,6 +418,10 @@ $(BUILD)/test_page_hold: tests/test_page_hold.cpp tests/test.h tools/native/page
 # photorow1: the pause menu's PHOTO MODE row -- the private row array and the index mapping (pause_rows.h)
 TESTS += $(BUILD)/test_pause_rows
 $(BUILD)/test_pause_rows: tests/test_pause_rows.cpp tests/test.h tools/native/pause_rows.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# dll1114: the renderer load's message per Windows error and its diagnosis' folder test (render_load.h)
+TESTS += $(BUILD)/test_render_load
+$(BUILD)/test_render_load: tests/test_render_load.cpp tests/test.h tools/native/render_load.h
 	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
 # fastload1: FAST LOADING -- the loading detector, the pacer with a fake clock, the muted sound (fast_load.h)
 TESTS += $(BUILD)/test_fast_load
@@ -515,9 +529,9 @@ $(BUILD)/test_launcher_installer: tests/test_launcher_installer.cpp tests/test.h
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(INSTALLER_TEST_SRC) -lz -o $@
 TESTS += $(BUILD)/test_launcher
-$(BUILD)/test_launcher: tests/test_launcher.cpp tests/test.h tests/iso_writer.h $(LAUNCHER_CORE_SRC) $(LAUNCHER_DEP) $(B3ASSET_OBJ)
+$(BUILD)/test_launcher: tests/test_launcher.cpp tests/test.h tests/iso_writer.h tests/chd_writer.h $(LAUNCHER_CORE_SRC) $(LAUNCHER_DEP) $(B3ASSET_OBJ)
 	@mkdir -p $(BUILD)
-	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(GAME_DEFS) $< $(LAUNCHER_CORE_SRC) $(B3ASSET_OBJ) -pthread -ldl -o $@
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(GAME_DEFS) $< $(LAUNCHER_CORE_SRC) $(B3ASSET_OBJ) -pthread -ldl -lz -o $@
 $(BUILD)/b3launcher: $(LAUNCHER_SRC) $(LAUNCHER_DEP) $(B3ASSET_RT_OBJ) $(PROMPTS_DEP) $(REPORT_DEP)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(SDL3_CFLAGS) -Isrc/b3gfx $(LAUNCHER_SRC) $(B3ASSET_RT_OBJ) $(SDL3_LIBS) -lz -pthread -ldl -o $@
@@ -539,9 +553,9 @@ $(BUILD)/test_report: tests/test_report.cpp tests/test.h $(REPORT_SRC) $(REPORT_
 TESTS += $(BUILD)/test_mods
 # modkit1b: [requires], file conflicts, installing from crafted zips (zip-slip, links, sizes), the disc layer's overlay
 MODS_TEST_SRC := src/b3mod/mods.cpp src/b3mod/archive.cpp src/b3asset/discfs.cpp src/b3report/zip.cpp
-$(BUILD)/test_mods: tests/test_mods.cpp tests/test.h include/b3mod/mods.h include/b3mod/archive.h include/b3asset/discfs.h $(MODS_TEST_SRC)
+$(BUILD)/test_mods: tests/test_mods.cpp tests/test.h include/b3mod/mods.h include/b3mod/archive.h include/b3asset/discfs.h $(MODS_TEST_SRC) $(CHD_OBJ)
 	@mkdir -p $(BUILD)
-	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(MODS_TEST_SRC) -lz -o $@
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(MODS_TEST_SRC) $(CHD_OBJ) -lz -o $@
 # modtool1 (the mod kit's asset tool, docs/modding/DESIGN.md §3, docs/modding/b3modtool.md): `make modtool` builds
 # build/b3modtool; test_modtool checks b3patch, the string tables, PNG, a TXD written back, pack / verify on synthetic data
 MODTOOL_SRC := $(wildcard src/b3modtool/*.cpp) src/b3mod/mods.cpp src/b3report/zip.cpp src/b3launcher/showroom.cpp   # models3c: car list / export name the cars as the showroom
@@ -704,7 +718,7 @@ $(BUILD)/b3latsim: tools/render/b3latsim.cpp src/b3replay/clock.h
 # effects3: the renderer (and only it) has the VU core again: the particle layer runs the game's program 0x46D750 on the
 # captured arrays (src/b3asset/particleshade.cpp)
 B3RENDER_SO_SRC := $(filter-out src/b3replay/main.cpp,$(B3REPLAY_SRC)) src/b3replay/inproc.cpp $(B3ASSET_RT_SRC) src/b3asset/vu1.cpp src/b3asset/particleshade.cpp
-B3RENDER_SO_OBJ := $(B3RENDER_SO_SRC:%.cpp=$(BUILD)/render-pic/%.o) $(BUILD)/render-pic/b3render_main.o
+B3RENDER_SO_OBJ := $(B3RENDER_SO_SRC:%.cpp=$(BUILD)/render-pic/%.o) $(BUILD)/render-pic/b3render_main.o $(CHD_OBJ)
 $(BUILD)/render-pic/%.o: %.cpp $(wildcard include/b3asset/*.h include/b3gfx/*.h include/b3live/*.h src/b3view/*.h src/b3replay/*.h src/b3gfx/shaders_gen.h include/b3settings/*.h include/b3report/*.h include/b3mod/*.h include/b3tune/*.h) src/native/input_keys.h src/native/input_keys_sdl.h src/native/input_bindings.h src/native/pad_gyro.h src/native/pad_triggers.h
 	@mkdir -p $(dir $@)
 	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) -fPIC $(SDL3_CFLAGS) -Isrc/b3gfx -c $< -o $@
@@ -744,7 +758,7 @@ MAC_TESTS_EXACT := test_ps2float test_fenv test_vufloat test_gtmath_ps2 test_gtm
 MAC_TESTS_OTHER := test_b3asset test_hdpack test_sparkshade test_popcornshade test_hud test_capture test_livelap \
                    test_settings test_effect_levels test_carlook test_clock test_inproc test_rwa_iop test_spu2_mixer test_b3route \
                    test_native_backend test_native_platform test_gameview_native test_save_card \
-                   test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_launcher_installer test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load
+                   test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_render_load test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_launcher_installer test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load
 MAC_TESTS := $(MAC_TESTS_EXACT) $(MAC_TESTS_OTHER)
 RUN ?=
 mac-tests-build:
@@ -831,7 +845,7 @@ VU0_INTERP ?= 0
 VU0_INTERP_SRC := src/b3asset/vu1.cpp
 VU0_INTERP_STAMP := $(BUILD)/native/vu0_interp.txt
 $(shell python3 -c "import os, sys; p, v = sys.argv[1], sys.argv[2]; os.makedirs(os.path.dirname(p), exist_ok=True); (os.path.exists(p) and open(p).read() == v) or open(p, 'w').write(v)" '$(VU0_INTERP_STAMP)' '$(VU0_INTERP)')
-NATIVE_SRC := src/b3host/native_backend.cpp src/native/native_table.cpp src/native/hook_table.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_disc.cpp src/native/platform_gtfs.cpp src/native/platform_distortion.cpp src/native/platform_devices.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_rwa.cpp src/native/custom_music.cpp src/native/music_decoders.cpp src/native/now_playing.cpp src/native/now_playing_mpris.cpp src/native/now_playing_win.cpp src/audio/rwa_iop.cpp src/audio/spu2_stub_mixer.cpp src/audio/spu2_mixer_impl.cpp src/native/platform_movie.cpp src/native/mpeg2_decoder.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/discfs.cpp src/b3mod/mods.cpp src/b3mod/codemod.cpp src/native/code_mods.cpp src/native/script_mods.cpp src/native/script_lua.cpp src/b3settings/settings.cpp src/b3settings/safemode.cpp $(VU0_AOT_GEN) $(if $(filter 1,$(VU0_INTERP)),$(VU0_INTERP_SRC))
+NATIVE_SRC := src/b3host/native_backend.cpp src/native/native_table.cpp src/native/hook_table.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_disc.cpp src/native/platform_gtfs.cpp src/native/platform_distortion.cpp src/native/platform_devices.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_rwa.cpp src/native/custom_music.cpp src/native/music_decoders.cpp src/native/now_playing.cpp src/native/now_playing_mpris.cpp src/native/now_playing_win.cpp src/audio/rwa_iop.cpp src/audio/b3route.cpp src/audio/spu2_stub_mixer.cpp src/audio/spu2_mixer_impl.cpp src/native/platform_movie.cpp src/native/mpeg2_decoder.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/discfs.cpp src/b3mod/mods.cpp src/b3mod/codemod.cpp src/native/code_mods.cpp src/native/script_mods.cpp src/native/script_lua.cpp src/b3settings/settings.cpp src/b3settings/safemode.cpp $(VU0_AOT_GEN) $(if $(filter 1,$(VU0_INTERP)),$(VU0_INTERP_SRC))
 NATIVE_FLAGS = -Isrc/native -I$(NATIVE_GEN) -Itests -Itools/native -DB3_BOUNCE_CANARY=1 $(NATIVE_OPT)
 # mac4 (boot2's condition): a stale bundle is loud -- a decomp-mode build of the native programs warns when gen/native
 # was generated from another decomp commit than $(DECOMP)'s (refresh: make native-bundle, then commit gen/native)
@@ -932,8 +946,8 @@ $(NOBJ)/obj/src/native/vu0_unit.o: $(VU0_INTERP_STAMP)
 # lua6: the Lua unit (the vendored source, compiled as it is: no warnings shown)
 $(NOBJ)/obj/src/native/script_lua.o: FP_ENV_FLAGS = -w
 -include $(shell find $(NOBJ)/obj -name '*.d' 2>/dev/null)
-$(BUILD)/native_boot: tools/native/native_boot.cpp tools/native/gameview_native.cpp $(GAMEVIEW_SRC) include/b3gameview/gameview.h $(NATIVE_SRC) $(wildcard src/native/*.h) $(wildcard tools/native/*.h) $(NATIVE_GEN)/functions.h $(NGEN)/manifest.tsv $(HOST_SRC) $$(NGEN_OBJ) $(GEN_HDRS) include/b3host/native_backend.h $$(NSRC_OBJ) $$(NBOOT_OBJ)
-	$(CXX) $(CPPFLAGS) $(NATIVE_FLAGS) $(REQFLAGS) $(CXXFLAGS) $(NGENFLAGS) -DB3_PS2_FLOAT=1 $< $(NBOOT_OBJ) $(NSRC_OBJ) $(NGEN_OBJ) $(ZLIB_LIBS) -pthread -ldl -o $@
+$(BUILD)/native_boot: tools/native/native_boot.cpp tools/native/gameview_native.cpp $(GAMEVIEW_SRC) include/b3gameview/gameview.h $(NATIVE_SRC) $(wildcard src/native/*.h) $(wildcard tools/native/*.h) $(NATIVE_GEN)/functions.h $(NGEN)/manifest.tsv $(HOST_SRC) $$(NGEN_OBJ) $(GEN_HDRS) include/b3host/native_backend.h $$(NSRC_OBJ) $$(NBOOT_OBJ) $(CHD_OBJ)
+	$(CXX) $(CPPFLAGS) $(NATIVE_FLAGS) $(REQFLAGS) $(CXXFLAGS) $(NGENFLAGS) -DB3_PS2_FLOAT=1 $< $(NBOOT_OBJ) $(NSRC_OBJ) $(CHD_OBJ) $(NGEN_OBJ) $(ZLIB_LIBS) -pthread -ldl -o $@
 # boot2: two passes, so units new in this generation are in the object list of the link (NGEN_OBJ is a wildcard)
 native:
 	$(MAKE) $(NGEN)/manifest.tsv
@@ -959,8 +973,8 @@ $(shell python3 -c "import os, sys; p, v = sys.argv[1], sys.argv[2]; os.makedirs
 NATIVE_FALLBACK ?= 0
 NATIVE_FALLBACK_STAMP := $(BUILD)/native/native_fallback.txt
 $(shell python3 -c "import os, sys; p, v = sys.argv[1], sys.argv[2]; os.makedirs(os.path.dirname(p), exist_ok=True); (os.path.exists(p) and open(p).read() == v) or open(p, 'w').write(v)" '$(NATIVE_FALLBACK_STAMP)' '$(NATIVE_FALLBACK)')
-$(BUILD)/native_play: $(HW_DEV_STAMP) $(NATIVE_FALLBACK_STAMP) tools/native/native_play.cpp $(NATIVE_SRC) $(wildcard src/native/*.h) $(wildcard tools/native/*.h) $(wildcard include/b3tune/*.h) $(NATIVE_GEN)/functions.h $(NGEN)/manifest.tsv $(HOST_SRC) $$(NGEN_OBJ) $(GEN_HDRS) include/b3host/native_backend.h $$(NSRC_OBJ) $$(NBOOT_OBJ) $(VERSION_CPP) $(REPORT_DEP)
-	$(CXX) $(CPPFLAGS) $(NATIVE_FLAGS) $(REQFLAGS) $(CXXFLAGS) $(NGENFLAGS) -DB3_PS2_FLOAT=1 -DB3_HW_DEV=$(HW_DEV) -DB3_NATIVE_FALLBACK=$(NATIVE_FALLBACK) tools/native/native_play.cpp $(VERSION_CPP) $(NBOOT_OBJ) $(NSRC_OBJ) $(NGEN_OBJ) $(ZLIB_LIBS) -pthread -ldl -o $@
+$(BUILD)/native_play: $(HW_DEV_STAMP) $(NATIVE_FALLBACK_STAMP) tools/native/native_play.cpp $(NATIVE_SRC) $(wildcard src/native/*.h) $(wildcard tools/native/*.h) $(wildcard include/b3tune/*.h) $(NATIVE_GEN)/functions.h $(NGEN)/manifest.tsv $(HOST_SRC) $$(NGEN_OBJ) $(GEN_HDRS) include/b3host/native_backend.h $$(NSRC_OBJ) $$(NBOOT_OBJ) $(CHD_OBJ) $(VERSION_CPP) $(REPORT_DEP)
+	$(CXX) $(CPPFLAGS) $(NATIVE_FLAGS) $(REQFLAGS) $(CXXFLAGS) $(NGENFLAGS) -DB3_PS2_FLOAT=1 -DB3_HW_DEV=$(HW_DEV) -DB3_NATIVE_FALLBACK=$(NATIVE_FALLBACK) tools/native/native_play.cpp $(VERSION_CPP) $(NBOOT_OBJ) $(NSRC_OBJ) $(CHD_OBJ) $(NGEN_OBJ) $(ZLIB_LIBS) -pthread -ldl -o $@
 play:
 	$(MAKE) $(NGEN)/manifest.tsv
 	$(MAKE) $(BUILD)/native_play $(BUILD)/libb3render.so

@@ -25,7 +25,7 @@ class B3CarToolsPreferences(bpy.types.AddonPreferences):
         subtype="FILE_PATH")
     disc: StringProperty(
         name="Disc",
-        description="Your Burnout 3 disc: the folder of its files or the disc image (.iso). Nothing is written to it",
+        description="Your Burnout 3 disc: the folder of its files or the disc image (.iso, .bin or .chd). Nothing is written to it",
         subtype="FILE_PATH")
     work_dir: StringProperty(
         name="Work folder",

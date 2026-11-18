@@ -518,6 +518,11 @@ void PhotoMode::enable_game_time() {
     game_time_ = true;
 }
 
+std::uint32_t PhotoMode::game_poll() const {
+    std::lock_guard<std::mutex> l(mu_);
+    return game_poll_;
+}
+
 std::uint32_t PhotoMode::game_time_poll() const {
     std::lock_guard<std::mutex> l(mu_);
     return replay_.poll;

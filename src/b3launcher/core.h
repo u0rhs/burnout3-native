@@ -83,6 +83,9 @@ struct GameCheck {
 };
 // Case-insensitive names (a disc copied on Linux may be lower case).
 GameCheck check_game_folder(const fs::path& dir);
+// chd1: a CHD file the port cannot read (b3asset::disc::image_error: damaged, cut short, one that needs its parent):
+// "The CHD image cannot be read (...): <path>" (translated as one `{}` entry), else empty
+std::string chd_problem(const fs::path& path);
 // Where the launcher looks when none is remembered (or the remembered one is gone), in order: the remembered folder,
 // <launcher folder>/game, <launcher folder>/data/game, <launcher folder>/../data/game (build/ in the repo),
 // <cwd>/data/game.

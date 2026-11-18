@@ -1194,6 +1194,22 @@ _t = d.token_transforms('#include "long.h"\n#define CARID(i) (*(unsigned long *)
 _check("T1/T2 in a #define body",
        '#define CARID(i) (*(b3host::ps2_ulong *)(p + (i)))' in _t and '#define K (1ULL << 32)' in _t and
        '#define F(o) (*(ps2f *)(o))' in _t and '#include "long.h"' in _t and 'b3host::ps2_long x;' in _t, _t)
+CASES += [None]
+# 1.2.0 T46: UpdateSuspension's laImpulse[4] -> [6] inside the marked function only; a changed declaration stops
+_src = ("void g() {\n    CGtV3d laImpulse[4];\n}\n// 0x001CC900\nvoid CB3VehiclePhysics::UpdateSuspension(ps2f t)\n{\n"
+        "    CGtV3d laImpulse[4];\n    laImpulse[0] = laImpulse[1];\n}\n")
+_t, _n = d.t46_local_arrays(_src)
+_stopped = False
+try:
+    d.t46_local_arrays("// 0x001CC900\nvoid f()\n{\n    CGtV3d laImpulse[5];\n}\n")
+except BaseException:
+    _stopped = True
+_check("T46 local array sized as retail's frame",
+       _n == 1 and _t.count("CGtV3d laImpulse[4];") == 1 and _t.index("CGtV3d laImpulse[4];") < _t.index("0x001CC900")
+       and "CGtV3d laImpulse[6];   /* decomp2host T46" in _t and d.t46_local_arrays("void f() {}\n") == ("void f() {}\n", 0)
+       and _stopped, (_n, _t))
+_t2, _n2 = d.t46_local_arrays("// 0x002B7DB0\nps2f f()\n{\n    ps2f d[20];\n}\n")
+_check("T46 func_002B7DB0 d[44] (ps2f)", _n2 == 1 and "ps2f d[44];   /* decomp2host T46" in _t2, _t2)
 
 print("%d cases, %d failures" % (len(CASES), fails))
 sys.exit(1 if fails else 0)

@@ -287,6 +287,19 @@ void dist_construct(const b3host::CallArgs&, b3host::CallResult&);
 void dist_start(const b3host::CallArgs&, b3host::CallResult&);
 void dist_stop(const b3host::CallArgs&, b3host::CallResult&);
 void dist_update(const b3host::CallArgs&, b3host::CallResult&);
+// engpan: the IOP -> EE half -- SIF command 6's handler (func_002FC530), its mono mix _FinalMix (func_002FC820), the DSP
+// block's distortion CB3SoundDSPDataBlock::ProcessB2Distortion (all three hand-written asm in retail), and libsif's
+// sceSifSetDma / isceSifSetDma (the handler's DMA back into B3ROUTE's Fuzzy buffer)
+void dist_cmd6_handler(const b3host::CallArgs&, b3host::CallResult&);
+void dist_final_mix(const b3host::CallArgs&, b3host::CallResult&);
+void dist_b2_distortion(const b3host::CallArgs&, b3host::CallResult&);
+void sif_set_dma(const b3host::CallArgs&, b3host::CallResult&);
+// engpan: B3ROUTE.IRX beside RW Audio's executor (platform_rwa.cpp, src/audio/b3route.h): the distortion's RPC command
+// list (`bytes` from its count word, server 0x150276), applied at the current IOP time; an EE -> IOP SIF DMA into the
+// module's image (false: not B3ROUTE's). B3_B3ROUTE=0 leaves the module out (the port before engpan: the list has no
+// receiver, the engine voices play on the dry bus with their channel pans).
+void b3route_rpc(const void* list, std::uint32_t bytes);
+bool b3route_sif_dma(std::uint32_t iop_addr, const void* src, std::uint32_t n);
 }  // namespace b3native::platform
 
 // sif-lane: library functions whose IOP side the platform answers at the library's own entry point (no SIF RPC), ahead
@@ -304,6 +317,11 @@ void dist_update(const b3host::CallArgs&, b3host::CallResult&);
     X("StartDistortion__18CB3SoundDistortionFv", 0x002FCFC0u, b3native::platform::dist_start, 'n') \
     X("StopDistortion__18CB3SoundDistortionFv", 0x002FCF00u, b3native::platform::dist_stop, 'n') \
     X("Update__18CB3SoundDistortionFv", 0x002FCA60u, b3native::platform::dist_update, 'n') \
+    X("func_002FC530", 0x002FC530u, b3native::platform::dist_cmd6_handler, 'n') \
+    X("func_002FC820", 0x002FC820u, b3native::platform::dist_final_mix, 'n') \
+    X("ProcessB2Distortion__20CB3SoundDSPDataBlockFPsPs", 0x002FBE20u, b3native::platform::dist_b2_distortion, 'n') \
+    X("sceSifSetDma", 0x0010C1E0u, b3native::platform::sif_set_dma, 'i') \
+    X("isceSifSetDma", 0x0010C1F0u, b3native::platform::sif_set_dma, 'i') \
     X("sceCdPOffCallback", 0x0011E858u, b3native::platform::dev_cd_poff_callback, 'i') \
     X("sceCdInit", 0x0011F218u, b3native::platform::dev_cd_init, 'i') \
     X("sceCdDiskReady", 0x0011F6F0u, b3native::platform::dev_cd_disk_ready, 'i') \

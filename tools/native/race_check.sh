@@ -30,7 +30,7 @@ VBL=${VBLANKS:-23400}
 mkdir -p "$OUT/shots" "$OUT/card"
 rm -f "$OUT"/shots/live_*.png   # vu0n: this run's shots only (their hashes are printed)
 [ -x "$NP" ] || { echo "race_check: FAIL no $NP"; exit 1; }
-# iso1: GAME may be the disc image itself (.iso / .bin, read in place: include/b3asset/discfs.h)
+# iso1: GAME may be the disc image itself (.iso / .bin / .chd, read in place: include/b3asset/discfs.h)
 [ -f "$GAME/SLUS_210.50" ] || [ -f "$GAME" ] || { echo "race_check: FAIL no disc folder or image ($GAME)"; exit 1; }
 [ -n "$SAVES" ] && [ -d "$SAVES" ] || { echo "race_check: FAIL no card folder (SAVES=$SAVES: a memory card folder with a profile, e.g. the 100 % save; set it in local.env)"; exit 1; }
 rsync -a --delete "$SAVES/" "$OUT/card/"   # a scratch copy: the game writes to it
@@ -108,6 +108,12 @@ fi
 #                 SAVE PROFILE to it)
 #   ddsettings    DRIVER DETAILS > SETTINGS (GAMEPLAY, AUDIO, VIDEO, CONTROLLERS, EA GAMES TRAX), TRAINING (a video),
 #                 EXTRAS (a series video, the credits)
+#   eatrax        eatrax1 (remaster-features §6.3): DRIVER DETAILS > SETTINGS > EA GAMES TRAX with a music folder of
+#                 synthetic tones made here ($OUT/music: 4 tagged by file name, a long one and a non-Latin-1 one; or
+#                 EATRAX_FILL=<n> more short ones, the cap of 200), PLAYLIST Mixed: down to the first custom row (45),
+#                 its mode to RACE, down three, OFF, confirm; the page again, down to row 45, a change and Back. The log
+#                 must show the list (44 + n), a custom row's preview played, the modes saved ($OUT/music_modes.ini:
+#                 races / off lines) and Back's restore
 #   crashnav      WORLD TOUR's Crash Nav: the regions, a location, its event list, an ELIMINATOR event driven to its
 #                 end (crashes, eliminated), the results, the BURNOUT POINTS page
 #   carselect     SINGLE EVENT > RACE: the car select's series / car pages and the paint (Square: Color), then the race
@@ -130,7 +136,7 @@ fe_keys() {   # fe_keys <vblank>:<scancode> (a 10-VBlank tap) or <vblank>:<scanc
 }
 FE=""
 case "${SCENARIO:-race}" in
-  multiplayer|partycrash|online|ddrewards|ddrecords|ddsettings|crashnav|carselect|carseries|crashresults|nfsdemo) FE=$SCENARIO ;;
+  multiplayer|partycrash|online|ddrewards|ddrecords|ddsettings|eatrax|crashnav|carselect|carseries|crashresults|nfsdemo) FE=$SCENARIO ;;
 esac
 if [ -n "$FE" ]; then
   K="9000:41:1,9010:41:0,15500:29:1,15510:29:0,16300:29:1,16310:29:0"
@@ -180,6 +186,16 @@ if [ -n "$FE" ]; then
       32000:$DN 32400:$X 32900:$DN 33300:$X 34100:$X 34600:$DN 34700:$DN 34800:$DN 34900:$DN 35000:$DN 35100:$DN 35200:$DN \
       35600:$X
     FE_SHOTS=${FE_SHOTS:-10300,10900,11800,12700,14000,15200,16400,17000,18200}
+    ;;
+  eatrax)   # eatrax1: SETTINGS (4 down), EA GAMES TRAX (4 down), then the page's rows (a Down every 40 VBlanks)
+    VBL=${VBLANKS:-32600}
+    fe_keys $DD 19000:$DN 19100:$DN 19200:$DN 19300:$DN 19700:$X 20200:$DN 20300:$DN 20400:$DN 20500:$DN 20900:$X
+    for k in $(seq 0 43); do fe_keys $((21500 + 40 * k)):$DN; done
+    fe_keys 24000:$RT 24500:$DN 24900:$DN 25300:$DN 25600:$RT 25800:$RT 26000:$RT 26600:$X   # (back on SETTINGS' first row)
+    fe_keys 27400:$DN 27500:$DN 27600:$DN 27700:$DN 28000:$X
+    for k in $(seq 0 43); do fe_keys $((28500 + 40 * k)):$DN; done
+    fe_keys 30600:$RT 31000:$BK
+    FE_SHOTS=${FE_SHOTS:-10600,11800,12100,12350,12750,13250,14100,15200,15400,16200}
     ;;
   crashnav)
     VBL=${VBLANKS:-37000}
@@ -367,7 +383,28 @@ tone(sys.argv[1] + '/Test Album/01 Synthetic Band - First Tone.wav', 440.0, 40.0
 tone(sys.argv[1] + '/Test Album/02 Synthetic Band - Second Tone.wav', 330.0, 25.0)
 PY
   fi
-  export B3NATIVE_MUSIC_DIR="$MDIR" B3NATIVE_MUSIC_MODE="${MUSIC_MODE:-1}"
+  export B3NATIVE_MUSIC_DIR="$MDIR" B3NATIVE_MUSIC_MODE="${MUSIC_MODE:-1}" B3NATIVE_MUSIC_MODES_FILE="$OUT/music_modes.ini"
+fi
+if [ "${SCENARIO:-race}" = eatrax ]; then   # eatrax1: the tour's music folder (synthetic tones, tagged by file name)
+  MDIR=$OUT/music
+  rm -rf "$MDIR" "$OUT/music_modes.ini"; mkdir -p "$MDIR/Test Album"
+  python3 -I - "$MDIR" "${EATRAX_FILL:-0}" <<'PY'
+import math, struct, sys, wave
+def tone(path, hz, seconds, rate=22050):
+    with wave.open(path, 'wb') as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+        w.writeframes(b''.join(struct.pack('<h', int(6000 * math.sin(2 * math.pi * hz * k / rate))) for k in range(int(rate * seconds))))
+d = sys.argv[1] + '/Test Album/'
+tone(d + '01 Synthetic Band - First Tone.wav', 440.0, 30.0)
+tone(d + '02 Synthetic Band - Second Tone.wav', 330.0, 20.0)
+tone(d + '03 An Artist Name Long Enough To Test The Rows - A Title Much Longer Than Any Of The Game\'s Own.wav', 550.0, 10.0)
+tone(d + '04 \u03a9mega \u00dcn\u00efcode - Caf\u00e9 \u00d1o\u00f1o \u266a.wav', 660.0, 10.0)
+import os
+if int(sys.argv[2]): os.makedirs(d + 'zz Fill', exist_ok=True)
+for k in range(int(sys.argv[2])):   # (after the four by path)
+    tone(d + 'zz Fill/%03d Fill Band - Fill Song %03d.wav' % (k + 5, k + 5), 220.0 + k, 0.5)
+PY
+  export B3NATIVE_MUSIC_DIR="$MDIR" B3NATIVE_MUSIC_MODE="${MUSIC_MODE:-2}" B3NATIVE_MUSIC_MODES_FILE="$OUT/music_modes.ini"
 fi
 # SCENARIO=nowplaying (nowplaying1, remaster-features §6.2; tools/native/now_playing_popup.h): the race scenario with
 # OTHER MUSIC APPS on and a file in place of the system's reader ($OUT/now_playing.txt: a song, latched from VBlank
@@ -462,10 +499,21 @@ if [ -n "$FE" ]; then   # fe1: the front-end tours' verdict (no race needed)
     grep -q 'PC SETTINGS closed' "$LOG" || why="${why:+$why; }SETTINGS not closed" ;;
   ddrecords)
     grep -q '\[save\] profile [0-9]* saved to' "$LOG" || why="${why:+$why; }SAVE PROFILE wrote nothing" ;;
+  eatrax)   # eatrax1: the list, a custom row previewed, the modes kept on confirm and put back on Back
+    NL=$(grep -m1 -o 'custom_music: VBlank [0-9]*: EA TRAX lists [0-9]* songs' "$LOG" | awk '{print $7}')
+    WANT=$((44 + 4 + ${EATRAX_FILL:-0})); [ "$WANT" -gt 244 ] && WANT=244
+    [ "${NL:-0}" = "$WANT" ] || why="${why:+$why; }EA TRAX lists ${NL:-no} songs, not $WANT"
+    grep -q 'custom_music: VBlank [0-9]*: song 44 is custom 1 of' "$LOG" || why="${why:+$why; }row 45 not previewed as custom 1"
+    grep -q 'custom_music: VBlank [0-9]*: stream [0-9A-F]* plays .*First Tone' "$LOG" || why="${why:+$why; }the first custom song not played"
+    grep -q 'custom_music: VBlank [0-9]*: the custom songs. modes saved' "$LOG" || why="${why:+$why; }the modes not saved"
+    grep -q '^races=Test Album/01 Synthetic Band - First Tone.wav$' "$OUT/music_modes.ini" 2>/dev/null || why="${why:+$why; }no races line for row 45"
+    grep -q '^off=Test Album/04 ' "$OUT/music_modes.ini" 2>/dev/null || why="${why:+$why; }no off line for row 48"
+    grep -q 'custom_music: VBlank [0-9]*: the custom songs. modes put back' "$LOG" || why="${why:+$why; }Back did not put the modes back"
+    EATX="; $(grep -m1 -o 'EA TRAX lists [0-9]* songs' "$LOG"), modes saved and put back" ;;
   esac
   FB=$(grep -m1 -o 'fallback: [0-9]* functions ran retail in the mini ([0-9]* calls)\|fallback: none (compiled out)' "$LOG")   # nofallback1: the default build's line
   if [ -z "$why" ]; then
-    echo "race_check: PASS front-end tour $FE: ${#FS[@]} pages shot, $RACE race shots, ${TL:-0} track loads${FB:+; $FB}$RUMB${VU0:+; $VU0} (log $LOG)"
+    echo "race_check: PASS front-end tour $FE: ${#FS[@]} pages shot, $RACE race shots, ${TL:-0} track loads${EATX:-}${FB:+; $FB}$RUMB${VU0:+; $VU0} (log $LOG)"
     exit 0
   fi
   echo "race_check: FAIL $why (log $LOG)"; exit 1

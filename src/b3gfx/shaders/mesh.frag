@@ -12,7 +12,7 @@ layout(set = 2, binding = 0) uniform sampler2D tex;
 
 layout(set = 3, binding = 0) uniform FragmentUniforms {
     vec4 tint;       // RGBA multiplier (simple model); track model: a >= 0 = blend by this constant (GS ALPHA FIX)
-    vec4 light_dir;  // xyz: direction to the light (normalized)
+    vec4 light_dir;  // xyz: direction to the light (normalized); w: 1 = an env-map face (b3gfx::EnvPass: opaque alpha 1)
     vec4 params;     // x: alpha reference (discard below), y: lighting amount, z: 1 = keep alpha / 0 = opaque,
                      // w: 1 = track model
     vec4 gs;         // track model: x: GS TEST_1, y: 1 = textured, z: 1 = blended draw (keeps its alpha), w: the sharp alpha threshold (0: off)
@@ -83,6 +83,8 @@ void main() {
             c = mix(c, fog_colour.rgb, f);
             if (gs.z < 0.5) oa *= 1.0 - f;
         }
+        // reflect-tunnel (b3gfx::EnvPass): in the car env map's faces an opaque track draw covers the sky behind it
+        if (light_dir.w > 0.5 && gs.z < 0.5) oa = 1.0;
         out_color = vec4(c, oa);
         return;
     }

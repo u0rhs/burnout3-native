@@ -52,6 +52,7 @@ export SAVES=${SAVES:-}
 # photorow1: the pause menu without the PHOTO MODE row (the golden frames are the game's own menu; the setting is on by default)
 export B3_PHOTO_ROW=0
 export B3_CAR_REFLECTIONS=${B3_CAR_REFLECTIONS:-original}   # the reference look (see the header)
+export B3_CAR_ENV=${B3_CAR_ENV:-sky}                          # reflect-tunnel: the car env map without the track (the record predates it)
 export B3_PARTICLES=${B3_PARTICLES:-off}                      # effects3: the particle layer (smoke, dust, glass, fire) not drawn: the record predates it
 export B3_BLOOM_LEVEL=${B3_BLOOM_LEVEL:-standard}            # bloom2: the game's own bloom (the PC default is Soft)
 export B3_BLOOM_SPLIT=${B3_BLOOM_SPLIT:-1}                   # bloom3: the original bloom pass form (the lean MSAA form differs by rounding)

@@ -21,7 +21,8 @@ the game runs and the final values written back into the defaults. Presentation 
   rim (`rim`).
 - Traffic is drawn at `traffic` times the racers' strength. `strength` scales the whole effect.
 - Cars that see little sky (the upward share of their SH irradiance is low: tunnels, cover) show a dark surrounding, not
-  a sky; night skies are dark by themselves.
+  a sky; night skies are dark by themselves. Where the game's env map holds the track (within 100 m of the followed car:
+  tunnel walls and lights, bridges, buildings; docs/car-shading.md §9), the gloss mirrors that instead of the sky.
 
 ## The panel
 

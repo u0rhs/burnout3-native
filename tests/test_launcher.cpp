@@ -9,10 +9,13 @@
 #include "../src/b3launcher/gameart.h"
 #include "../src/b3launcher/spawn.h"
 #include "iso_writer.h"
+#include "chd_writer.h"   // chd1
+#include "b3settings/page.h"   // chd1: translate_text
 
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <thread>
 
 using namespace b3launcher;
@@ -167,6 +170,50 @@ TEST(game_disc_image_check) {
     g = check_game_folder(d / "notes.txt");
     CHECK(!g.exists && g.summary.find("Not a disc image") != std::string::npos);
     CHECK(game_arguments((d / "x.iso").string(), false) == (std::vector<std::string>{"--game", (d / "x.iso").string()}));
+}
+
+// chd1: a CHD of the disc image (tests/chd_writer.h) is checked as the .iso is; a damaged one says so
+TEST(game_disc_chd_check) {
+    const fs::path d = fresh("chd");
+    isotest::Writer w;
+    w.file("SLUS_210.50", {1, 2, 3});
+    w.file("SYSTEM.CNF", {'B', 'O', 'O', 'T', '2'});
+    for (const char* f : {"DATA/GLOBAL.TXD", "TRACKS/EU/C1_V1/STATIC.DAT", "PVEH/COMP/CAR1.BGV", "SOUND/X.BIN"}) w.file(f, {9});
+    CHECK(w.write((d / "disc.iso.tmp").string()));
+    std::vector<std::uint8_t> iso;
+    {
+        std::ifstream f(d / "disc.iso.tmp", std::ios::binary);
+        iso.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    }
+    fs::remove(d / "disc.iso.tmp");
+    chdtest::Options o;
+    o.codec = chdtest::Codec::kZlib;
+    const chdtest::Image img = chdtest::write(iso, o);
+    auto put = [](const fs::path& p, const std::vector<std::uint8_t>& b) {
+        std::ofstream f(p, std::ios::binary | std::ios::trunc);
+        f.write(reinterpret_cast<const char*>(b.data()), std::streamsize(b.size()));
+    };
+    put(d / "Burnout 3 (USA).chd", img.bytes);
+    GameCheck g = check_game_folder(d / "Burnout 3 (USA).chd");
+    CHECK(g.exists && g.ok && g.summary.find("disc image") != std::string::npos);
+    CHECK(g.warning.find("incomplete") == std::string::npos);   // (SLUS_210.50 is not the retail one: that warning only)
+    // the folder that holds it: suggested
+    g = check_game_folder(d);
+    CHECK(!g.ok && g.suggestion == d / "Burnout 3 (USA).chd");
+    // damaged (the volume descriptor's hunk): named as a CHD that cannot be read, in the player's language too
+    std::vector<std::uint8_t> bad = img.bytes;
+    CHECK(img.hunk_at.size() > 8 && img.hunk_at[8] != 0);
+    bad[std::size_t(img.hunk_at[8]) + 2] ^= 0x20;   // 4096-byte hunks: sector 16 is in hunk 8
+    put(d / "bad.chd", bad);
+    g = check_game_folder(d / "bad.chd");
+    CHECK(!g.exists && g.summary.find("The CHD image cannot be read") == 0 && g.summary.find((d / "bad.chd").string()) != std::string::npos);
+    CHECK(chd_problem(d / "Burnout 3 (USA).chd").empty() && !chd_problem(d / "bad.chd").empty());
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"}) {
+        const std::string t = b3settings::translate_text(g.summary, code);
+        CHECK(t.find("cannot be read") == std::string::npos && t.find((d / "bad.chd").string()) != std::string::npos);
+        CHECK(b3settings::translate_text("A .chd image of the disc works too.", code) != "A .chd image of the disc works too.");
+        CHECK(b3settings::translate_text("Disc images (*.iso, *.bin, *.chd)", code).find("*.chd") != std::string::npos);
+    }
 }
 
 // mac5 (integrity): a program that is not the retail one, an image cut short

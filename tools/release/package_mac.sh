@@ -11,7 +11,7 @@
 #       Contents/Resources/  b3.icns  b3-icon.png  b3_car_tools.zip (the Blender add-on, tools/blender/make_addon_zip.py)
 #                            README-TESTERS.txt  KNOWN-ISSUES.txt  VERSION.txt
 #                            LICENSES/ (THIRD-PARTY-NOTICES.txt and the license texts: SDL3, stb_truetype, dr_libs,
-#                                       minimp3, stb_vorbis, Lua)
+#                                       minimp3, stb_vorbis, Lua, libchdr with LZMA SDK / miniz / zstd)
 #       Contents/_CodeSignature/ (ad-hoc: codesign -s -, so Apple Silicon runs it; not notarized)
 #     Applications -> /Applications
 #   No developer tools, no game data, no saves. The user data folder is ~/Library/Application Support/b3port/native.
@@ -128,7 +128,13 @@ if [ "$DRY" != 1 ]; then for f in $PROGS; do [ -f "$OUT/$f" ] || die "no $OUT/$f
 # ---- the version the build carries (version.h: "<base>+<commit>[-dirty]") ----
 BASE=$(tr -d ' \r\n' < "$PORT/VERSION")
 BASE_RE=$(printf '%s' "$BASE" | sed 's/[.]/[.]/g')   # (not ${BASE//./\\.}: bash 3.2 keeps the backslashes)
-stamp() { grep -a -o -m1 -E "$BASE_RE(\+[0-9a-f]+(-dirty)?)?" "$1" | first || true; }
+# the full stamp first ("<base>+<commit>"): a bare "<base>" can also be other text in a program (1.2.0: the memory
+# card's "Sony PS2 Memory Card Format 1.2.0.0" in the launcher's save import)
+stamp() {
+    s=$(grep -a -o -E "$BASE_RE\+[0-9a-f]+(-dirty)?" "$1" | first || true)
+    [ -n "$s" ] || s=$(grep -a -o -m1 -E "$BASE_RE" "$1" | first || true)
+    printf '%s' "$s"
+}
 if [ "$DRY" = 1 ]; then
     VER=$("$PORT/tools/release/version_info.sh" --print)
 else
@@ -305,6 +311,11 @@ lic "$PORT/src/native/third_party/LICENSE-dr_libs.txt" dr_libs-LICENSE.txt
 lic "$PORT/src/native/third_party/LICENSE-minimp3.txt" minimp3-LICENSE.txt
 lic "$PORT/src/native/third_party/LICENSE-stb_vorbis.txt" stb_vorbis-LICENSE.txt
 lic "$PORT/src/third_party/lua-5.4.9/LICENSE.txt" Lua-LICENSE.txt   # lua6: script mods (src/native/script_mods.h)
+# chd1: .chd disc images (src/native/third_party/libchdr: libchdr and the LZMA SDK, miniz and zstd decoders in it)
+lic "$PORT/src/native/third_party/libchdr/LICENSE-libchdr.txt" libchdr-LICENSE.txt
+lic "$PORT/src/native/third_party/libchdr/LICENSE-lzma.txt" lzma-LICENSE.txt
+lic "$PORT/src/native/third_party/libchdr/LICENSE-miniz.txt" miniz-LICENSE.txt
+lic "$PORT/src/native/third_party/libchdr/LICENSE-zstd.txt" zstd-LICENSE.txt
 chmod 644 "$R"/*.txt "$R/b3-icon.png" "$R/b3.icns"
 
 # ---- signing: ad-hoc (Apple Silicon runs only signed code; install_name_tool / strip voided the linker's signature).

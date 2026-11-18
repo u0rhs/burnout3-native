@@ -173,6 +173,8 @@ public:
     void advance_to(std::uint32_t poll, const std::function<bool(std::uint32_t, Camera&)>& game_cam);
     // render thread: the poll the replay has reached
     std::uint32_t game_time_poll() const;
+    // any thread: the newest poll handed to the renderer (set_game_poll; hdkey stamps a script's HD TEXTURES key with it)
+    std::uint32_t game_poll() const;
     // render thread: the free camera at `poll` as a game camera (false when photo mode is off there, not started, or
     // the replay is not at `poll`)
     bool camera_at(std::uint32_t poll, const Camera& game, Camera& out) const;

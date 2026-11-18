@@ -55,6 +55,9 @@ inline constexpr std::size_t kGameSaveBytes = 61772;
 inline constexpr std::uint32_t kGameSaveVersion = 0x10;
 inline constexpr std::size_t kProfilesOffset = 0xE374, kProfileBytes = 0x49C, kChecksumOffset = 0xF148;
 inline constexpr int kProfilesPerSave = 3;
+// eatrax1: the options block's copy in the save (func_00421AF0: D_004F5040 at the card image's +0xE350, the file's
+// +0xE334): the 44 songs' EA TRAX bits, then the other options; +0x37 the last song (D_004F5077; 0xFF: none)
+inline constexpr std::size_t kOptionsOffset = 0xE334, kSongBits = 44, kLastSongOffset = kOptionsOffset + 0x37;
 inline constexpr int kRaceEvents = 73, kCrashEvents = 100, kEvents = kRaceEvents + kCrashEvents;
 inline constexpr int kSignatureTakedowns = 20, kHeadlines = 10, kCars = 67, kTracks = 36;
 

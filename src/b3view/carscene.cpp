@@ -53,9 +53,7 @@ int list_index(const std::string& part) {
 }
 
 b3gfx::TextureId upload(b3gfx::Device& dev, const b3asset::DecodedRaster& r) {
-    std::vector<b3gfx::TextureLevel> levels;
-    for (const auto& l : r.levels) levels.push_back({l.w, l.h, l.rgba.data()});
-    return levels.empty() ? b3gfx::kNone : dev.create_texture(levels);
+    return upload_texture(dev, r.levels, r.original);   // hdkey: and its original
 }
 
 }  // namespace
@@ -103,8 +101,7 @@ void upload_car_globals(b3gfx::Device& dev, const b3asset::DecodedRaster (&slots
 }
 
 void set_car_environment(b3gfx::Device& dev, const b3asset::Enviro& env, CarGlobals& out) {
-    const b3asset::Image back = b3asset::build_backdrop(env, env.to_sun);
-    out.env_sky = dev.create_texture({b3gfx::TextureLevel{back.w, back.h, back.rgba.data()}});
+    out.env_sky = upload_backdrop(dev, env, env.to_sun);   // hdkey: and the original gradient's
     // the env map's sun blob [G colour: RenderBlob's sun colour x 128 MODULATE = the colour in frame units]
     for (int k = 0; k < 3; ++k) out.sun_colour[k] = env.sun_colour[k];
     out.sun_colour[3] = env.sun_corona.levels.empty() ? 0.0f : 1.0f;   // Prepare skips the sun without +0xA4 [C]
@@ -242,6 +239,7 @@ void add_car_draws(const CarModel& car, const CarGlobals& g, const CarPose& pose
             c.env_mode = mc.no_env ? 0 : mc.alpha2 == 0x54 ? 1 : mc.alpha2 == 0x58 ? 2 : 0;
             c.env_texture = g.env_sky;
             c.env_frame_units = g.env_frame_units;
+            c.env_world = g.env_world;
             if (mi.tex_slot >= 1 && mi.tex_slot <= 4) it.texture = g.slot[mi.tex_slot];
             c.sky_open = sky_open;
             c.zones = zone ? zones : 0;

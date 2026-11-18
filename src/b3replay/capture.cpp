@@ -143,6 +143,14 @@ bool decode_vehicle(const Image& im, std::uint32_t ep, std::uint32_t vp, std::ui
     v.kind = kind;
     v.data = im.u32(ep + 0x40);
     if (!ram(v.data) || !im.has(v.data, 0x70) || !im.mat(ep, v.main)) return false;
+    // CB3RaceCar::Draw 0x151A40 [C matched] swaps the matrix at +0x1920 into +0x00 while +0x199B is set (the slammed car's
+    // fishtail: CB3RaceCar::UpdateAggressiveReaction 0x151DC0 [L draft] yaws +0x1920 about the up axis with a decaying
+    // sine) and only then calls RenderVehicle, so the body, the panels (+0x180 x main) and the wheels (+0x0 x main) all
+    // take it. Read here, before the parts are placed: swapped after them, only the body moved (the wobble report).
+    if (kind == VehicleKind::kRaceCar && im.u8(id + 0x199B) != 0) {
+        Mat34 m;
+        if (im.mat(id + 0x1920, m)) v.main = m;
+    }
     v.lit = im.u8(ep + 0x58) & 0xFC;
     v.paint = im.u8(ep + 0x59);
     v.frustum = std::int8_t(im.u8(ep + 0x5B));
@@ -272,6 +280,13 @@ void decode_tick(const Image& im, Tick& t, Capture& cap) {
         t.vis[j] = im.u16(st + 0x58 + 2 * j);
         const std::uint32_t blk = im.u32(st + 0x7C + 4 * j);
         if (ram(blk) && im.has(blk, 0x60)) { t.slot_unit[j] = int(im.u32(blk + 4)); t.slot_kind[j] = int(im.u32(blk + 0x58)); }
+        const std::uint32_t lod = im.u32(st + 0xC4 + 4 * j);   // reflect-tunnel: the block the env-map cameras draw
+        if (ram(lod) && im.has(lod, 0x60)) t.env_unit[j] = int(im.u32(lod + 4));
+    }
+    if (im.has(0x665F20, 1)) t.env_track = im.u8(0x665F20);   // reflect-tunnel: RenderBeforeVehicles' env-camera switch
+    if (im.has(kWorld + 0x12AD50 + 0x19AC, 1)) {   // reflect-tunnel: BuildCustomCameraData's car (player 1's view)
+        const int car = std::int8_t(im.u8(kWorld + 0x12AD50 + 0x19AC));
+        if (car >= 0 && car < 6 && im.has(kWorld + 0x12AD28 + 4 * std::uint32_t(car), 4)) t.env_car = im.u32(kWorld + 0x12AD28 + 4 * std::uint32_t(car));
     }
     if (const std::uint32_t cur = im.u32(st + 0x1C4); ram(cur) && im.has(cur, 8)) t.current_unit = int(im.u32(cur + 4));
     if (im.has(0x665F10, 0x10)) t.water_on = im.u8(0x665F1D) != 0;
@@ -286,6 +301,12 @@ void decode_tick(const Image& im, Tick& t, Capture& cap) {
             v.vis[j] = im.u16(st1 + 0x58 + 2 * std::uint32_t(j));
             const std::uint32_t blk = im.u32(st1 + 0x7C + 4 * std::uint32_t(j));
             if (ram(blk) && im.has(blk, 0x60)) { v.slot_unit[j] = int(im.u32(blk + 4)); v.slot_kind[j] = int(im.u32(blk + 0x58)); }
+            const std::uint32_t lod = im.u32(st1 + 0xC4 + 4 * std::uint32_t(j));   // reflect-tunnel
+            if (ram(lod) && im.has(lod, 0x60)) v.env_unit[j] = int(im.u32(lod + 4));
+        }
+        if (constexpr std::uint32_t p2 = kWorld + 0x12AD50 + 0x27D0 + 0x19AC; im.has(p2, 1)) {   // reflect-tunnel: player 2's car
+            const int car = std::int8_t(im.u8(p2));
+            if (car >= 0 && car < 6 && im.has(kWorld + 0x12AD28 + 4 * std::uint32_t(car), 4)) v.env_car = im.u32(kWorld + 0x12AD28 + 4 * std::uint32_t(car));
         }
         if (const std::uint32_t cur = im.u32(st1 + 0x1C4); ram(cur) && im.has(cur, 8)) v.current_unit = int(im.u32(cur + 4));
         if (const std::uint32_t bk = im.u32(st1 + 0x1C8); ram(bk) && im.has(bk + 0x64, 8)) im.read(bk + 0x64, v.backdrops, 8);
@@ -343,11 +364,7 @@ void decode_tick(const Image& im, Tick& t, Capture& cap) {
         const std::uint32_t car = im.u32(kWorld + 0x12AD28 + 4 * i);
         if (!ram(car) || im.u8(car + 0x18E8) == 0) continue;   // CB3RaceCar::Draw returns when +0x18E8 is clear
         Vehicle v;
-        if (!decode_vehicle(im, car, car + 0x80, car, VehicleKind::kRaceCar, v)) continue;
-        if (im.u8(car + 0x199B) != 0) {   // Draw renders with the matrix at +0x1920 instead
-            Mat34 m;
-            if (im.mat(car + 0x1920, m)) { v.main = m; v.body = m; }
-        }
+        if (!decode_vehicle(im, car, car + 0x80, car, VehicleKind::kRaceCar, v)) continue;   // (+0x1920 while +0x199B)
         note_model(v);
         t.vehicles.push_back(v);
     }

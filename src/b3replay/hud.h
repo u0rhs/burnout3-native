@@ -35,6 +35,7 @@ struct HudTexture {
     bool tcc = true;
     std::vector<std::uint8_t> rgba; // level 0, PS2 alpha 0x80 -> 0xFF
     int img_w = 0, img_h = 0;       // rgba's size: w x h, larger for an HD pack replacement (b3asset/hdpack.h)
+    std::vector<std::uint8_t> original;   // hdkey: w x h, the decode an HD replacement stands for (the HD TEXTURES key)
 };
 
 struct HudVertex {

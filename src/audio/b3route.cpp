@@ -187,6 +187,8 @@ void B3Route::write_fuzzy(uint64_t t) {
         return;
     }
     ++st_.writes;
+    ++(fresh_ ? st_.writes_fresh : st_.writes_stale);
+    fresh_ = false;
     rwa_.mixer().voice_trans(t, 0, kMemin1, img_.data() + kOffFuzzy, kFuzzyBytes);
 }
 
@@ -195,6 +197,7 @@ bool B3Route::sif_dma_to_iop(uint32_t iop_addr, const void* src, uint32_t n) {
     const uint32_t a = iop_addr & 0x1FFFFF, base = opt_.module_base & 0x1FFFFF;
     if (a < base || a - base > kImageBytes || n > kImageBytes - (a - base)) return false;
     ++st_.ee_dmas;
+    fresh_ = true;
     std::memcpy(img_.data() + (a - base), src, n);
     return true;
 }

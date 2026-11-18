@@ -72,6 +72,13 @@ void queue_guest_call_at(std::uint64_t ready, b3host::gaddr handler, std::uint32
 std::uint64_t sif_next_ready();   // the next timed item's time, or ~0
 // The safe point: every due completion delivered in order, if interrupts are on (else they wait for the next one).
 void sif_service();
+// engfix: a command packet delivered to its handler at once, in interrupt context, as sif_service delivers it -- for an
+// IOP side that runs inside the IOP's time and must have its answer before its own next step (B3ROUTE: the EE's frame
+// before the next B / D phase). safept (2026-11-18): only where sif_service may deliver (can_deliver_now: interrupts
+// on, no handler running, no delivery running, the channel open); false (nothing done) otherwise or with no handler
+// for `cid`. The caller holds the command until a point where it can.
+bool can_deliver_now();
+bool deliver_cmd_now(std::uint32_t cid, const void* packet, std::uint32_t size);
 bool sif_pending();
 
 // ---- the controller ports and the card slot (src/native/platform_dbc.cpp: libdbc answered at its entry points) ----

@@ -25,7 +25,8 @@ namespace {
 
 int usage() {
     std::fprintf(stderr, "usage: save_tool info <file|folder> | import <from> [--saves DIR] [--slot N] | "
-                         "export <to.sav> [--saves DIR] [--slot N] | stats [<file|folder>] [--saves DIR] [--slot N] | where\n");
+                         "export <to.sav> [--saves DIR] [--slot N] | stats [<file|folder>] [--saves DIR] [--slot N] | "
+                         "music <file|folder> | where\n");
     return 2;
 }
 
@@ -68,6 +69,22 @@ int main(int argc, char** argv) {
         print(*d);
         std::printf("%s\n", game_save(*d) ? "a Burnout 3 save" : "no Burnout 3 save");
         return 0;
+    }
+    if (cmd == "music" && !arg.empty()) {   // eatrax1: the save's song fields (each must be a disc song: 0..43, or 0xFF)
+        auto d = read_any(arg, &err);
+        auto game = d ? game_save(*d, &err) : std::nullopt;
+        if (!game) { std::fprintf(stderr, "save_tool: %s\n", err.c_str()); return 1; }
+        for (const CardSaveDirectory& dir : *game)
+            for (const CardFile& f : dir.files) {
+                if (f.name != kGameSaveDirectory || f.content.size() != kGameSaveBytes) continue;
+                const std::uint8_t* b = f.content.data();
+                std::printf("last song %u\nsong bits", unsigned(b[kLastSongOffset]));
+                for (std::size_t k = 0; k < kSongBits; ++k) std::printf(" %u", unsigned(b[kOptionsOffset + k]));
+                std::printf("\n");
+                return 0;
+            }
+        std::fprintf(stderr, "save_tool: no game save in %s\n", arg.c_str());
+        return 1;
     }
     if (cmd == "stats") {
         std::optional<std::vector<ProfileStats>> st;

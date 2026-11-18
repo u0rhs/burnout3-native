@@ -5,12 +5,17 @@
 //
 // A path is either a host path, or a path inside a disc image: "<image file>/<path in the image>", where <image file>
 // is an existing regular file holding an ISO 9660 volume -- a cooked image (.iso: 2048-byte sectors, as a PS2 DVD
-// dumps) or a raw one (.bin: 2352-byte sectors, mode 1 or mode 2 form 1). The image file itself is the disc's root
-// directory. Inside an image, names match ASCII-case-insensitively and ";1" version suffixes are not part of them;
-// files may be up to 4 GB (several extents too: ISO 9660 level 3), images any size (64-bit offsets).
+// dumps) or a raw one (.bin: 2352-byte sectors, mode 1 or mode 2 form 1), or a CHD of either (chd1: .chd, known by its
+// "MComprHD" magic, not its name: chdman createdvd's 2048-byte sectors, or createcd's CD frames, the volume on the first
+// data track: MODE1 / MODE2 form 1 user data as from a raw .bin; read through libchdr, src/b3asset/chd_libchdr.c, its
+// hunks decoded on demand, ~64 MB of them kept, and read ahead on up to 4 worker threads while reads go on in order).
+// The image file itself is the disc's root directory. Inside an image, names match ASCII-case-insensitively and ";1"
+// version suffixes are not part of them; files may be up to 4 GB (several extents too: ISO 9660 level 3), images any
+// size (64-bit offsets).
 //
 // The image is opened once per process (its directory tree read at that time) and stays open; reads take positioned
-// reads (pread / ReadFile at an offset), so any thread may read any file at the same time.
+// reads (pread / ReadFile at an offset), so any thread may read any file at the same time (a CHD: one hunk decompressed
+// at a time under the image's lock, other threads' reads in between).
 #ifndef B3ASSET_DISCFS_H
 #define B3ASSET_DISCFS_H
 
@@ -25,6 +30,12 @@ namespace b3asset::disc {
 
 // `path` is a disc image file (an ISO 9660 volume in it). Not cached for a file that is not one.
 bool is_image(const std::filesystem::path& path);
+// chd1: `path` is a CHD file (its first bytes "MComprHD"), whether or not it holds a disc image this module reads
+bool is_chd(const std::filesystem::path& path);
+// chd1: a CHD file that is not read as a disc image because libchdr cannot open it or a part of its data cannot be read
+// (damaged, cut short, a CHD that needs its parent): one English sentence naming it and why, for messages. Empty for
+// every other path (a CHD that is read; one without an ISO 9660 volume is "not a disc image", as an .iso would be).
+std::string image_error(const std::filesystem::path& path);
 
 bool exists(const std::filesystem::path& path);
 bool is_dir(const std::filesystem::path& path);    // a host folder, an image file (its root) or a folder in an image

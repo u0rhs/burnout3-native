@@ -34,6 +34,7 @@ mkvar() { make -s -C "$PORT" --no-print-directory CXX=g++ CXXFLAGS=-O2 --eval="b
 # DMA model misparsed from VBlank 93 on: the race-start hang)
 read -r -a FLAGS <<< "$(mkvar CPPFLAGS) $(mkvar NATIVE_FLAGS) $(mkvar REQFLAGS) -O2 $(mkvar NGENFLAGS) -DB3_PS2_FLOAT=1 -mno-ms-bitfields"
 read -r -a SRCS <<< "$(mkvar NATIVE_SRC) $(mkvar HOST_SRC) $(mkvar GAMEVIEW_SRC) tools/native/gameview_native.cpp"
+CHD_SRC=$(mkvar CHD_SRC)   # chd1: libchdr's C unit (b3asset/discfs.h's CHD images), compiled as C
 
 S=$OUT/stage
 mkdir -p "$S" "$OUT/obj"
@@ -70,10 +71,12 @@ compile() {   # compile <source relative to the stage> <object>
     local extra=()   # rt1: the units on either side of the VU0 float-environment switch (Makefile VU0_FP_ENV)
     case "$1" in *native/vu0_aot_gen.cpp|*native/vu0_unit.cpp) extra=(-frounding-math);; *native/script_lua.cpp) extra=(-w);;   # lua6: the vendored Lua unit
                  tools/native/native_play.cpp) extra=(-DB3_NATIVE_FALLBACK="$NATIVE_FALLBACK");; esac
-    printf '%s\n' "${FLAGS[@]}" "${extra[@]}" -c "$1" -o "$(m "$2")" > "$2.rsp"
+    local cc=g++.exe flags=("${FLAGS[@]}")
+    case "$1" in *.c) cc=gcc.exe; flags=(-std=gnu11 -O2 -DNDEBUG -w);; esac   # chd1: the C unit (libchdr); NDEBUG: no assert() file paths (the build folder) in a release
+    printf '%s\n' "${flags[@]}" "${extra[@]}" -c "$1" -o "$(m "$2")" > "$2.rsp"
     # WSL interop can fail to start a Windows process ("UtilAcceptVsock ... failed"): retried, unlike a compile error
     ( for try in 1 2 3; do
-          if tc g++.exe "$(m "$2.rsp")" > "$2.log" 2>&1; then echo ok > "$2.status"; exit 0; fi
+          if tc "$cc" "$(m "$2.rsp")" > "$2.log" 2>&1; then echo ok > "$2.status"; exit 0; fi
           grep -q 'UtilAcceptVsock\|WSL .*ERROR' "$2.log" || break
       done; echo failed > "$2.status" ) &
     running=$((running + 1)); compiled=$((compiled + 1))
@@ -81,6 +84,7 @@ compile() {   # compile <source relative to the stage> <object>
 }
 common=()   # the platform tier and the programs first: their errors show in minutes
 for s in "${SRCS[@]}"; do o=$OUT/obj/$(echo "${s%.cpp}" | tr / _).o; compile "$s" "$o"; common+=("$o"); done
+o=$OUT/obj/$(echo "${CHD_SRC%.c}" | tr / _).o; compile "$CHD_SRC" "$o"; common+=("$o")
 for t in native_boot native_play; do compile "tools/native/$t.cpp" "$OUT/obj/$t.o"; done
 compile build/version_info.cpp "$OUT/obj/version_info.o"; common+=("$OUT/obj/version_info.o")
 objs=()

@@ -118,7 +118,8 @@ std::string resolve(const std::string& guest_path) {
         if (same_ascii_ci(p, "DATA/HEADUS.BIN") || same_ascii_ci(p, "DATA\\HEADUS.BIN")) return g_lang_head;
     }
     if (!b3asset::disc::is_dir(root()))
-        b3host::fatal("platform disc: " + root() + " is neither a folder of the disc's files nor a disc image (set B3_DISC_ROOT)");
+        b3host::fatal("platform disc: " + root() + " is neither a folder of the disc's files nor a disc image (set B3_DISC_ROOT)" +
+                      (b3asset::disc::image_error(root()).empty() ? std::string() : ": " + b3asset::disc::image_error(root())));   // chd1
     const std::filesystem::path host = b3asset::disc::resolve_ci(root(), p);   // '\' or '/', names case-insensitive
     if (host.empty() || !b3asset::disc::is_file(host)) return {};
     return host.string();

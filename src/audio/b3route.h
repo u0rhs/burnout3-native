@@ -16,9 +16,9 @@
 
 namespace b3native {
 
-// The module's two entries from the EE as the test (tests/test_b3route.cpp) drives them. The shipped game has no
-// B3ROUTE: CB3SoundDistortion's command lists end at the game's own functions (src/native/platform_distortion.cpp),
-// and the mixer does not route voices through a second core; this model is kept for that work.
+// The module's two entries from the EE, as the test (tests/test_b3route.cpp) and the game (engpan, 2026-11-18:
+// src/native/platform_rwa.cpp, beside RW Audio's executor; CB3SoundDistortion's command lists from
+// src/native/platform_distortion.cpp, the command-6 handler's DMA through its sceSifSetDma row) drive them.
 struct SifRpcServer {
     virtual ~SifRpcServer() = default;
     // fno = sceSifCallRpc's function number; send / recv in host memory (recv may be null when recv_size is 0)
@@ -51,6 +51,9 @@ struct B3RouteStats {
     uint64_t rpc_calls = 0, wrong_fno = 0, commands = 0, unknown_commands = 0, truncated = 0;
     uint64_t irqs = 0, unknown_irqa = 0, phases[4] = {0, 0, 0, 0};
     uint64_t sends = 0, reads = 0, writes = 0, skipped_busy = 0, ee_dmas = 0;
+    // engfix: Fuzzy writes into MEMIN with / without a new EE frame since the previous write (a stale write repeats a
+    // frame: the EE's answer came after the B / D phase)
+    uint64_t writes_fresh = 0, writes_stale = 0;
 };
 
 class B3Route final : public SifRpcServer, public SifIopMemory, public Spu2IrqHook {
@@ -97,6 +100,7 @@ private:
     B3RouteOptions opt_;
     std::vector<uint8_t> img_;
     B3RouteStats st_;
+    bool fresh_ = false;   // an EE frame arrived since the last Fuzzy write
 };
 
 }  // namespace b3native

@@ -616,6 +616,23 @@ TEST(fps_view_shortcut) {
     CHECK(!uses_port(d, PortAction::Screenshot, Device::Keyboard, PhysInput{Device::Keyboard, 60, PadInput::None}).empty());
 }
 
+TEST(hd_textures_shortcut) {
+    // hdkey (issue #7): the HD TEXTURES key: F4 by default, keyboard only by default but a gamepad chord can be bound
+    const Controls d = default_controls();
+    constexpr PortAction a = PortAction::HdTextures;
+    CHECK(d.port.keys[std::size_t(a)] == std::vector<std::uint16_t>{61});
+    CHECK(d.port.pad[std::size_t(a)].empty() && port_has_pad(a) && !port_photo(a) && !port_analog(a));
+    CHECK(parse_port_action("hd_textures") == a && std::string(port_label(a)) == "HD TEXTURES ON / OFF");
+    CHECK(port_actions_of_key(d.port, 61) == (std::uint64_t(1) << int(a)));
+    for (int pl = 0; pl < 2; ++pl)   // F4 is free: no game action of either player has it
+        for (const KeyBinding& k : key_map(d.player[std::size_t(pl)])) CHECK(k.scancode != 61);
+    Controls c = d;
+    rebind_port(c, a, Device::Gamepad, PhysInput{Device::Gamepad, 0, PadInput::DpadUp}, Resolve::Swap);
+    CHECK(c.port.pad[std::size_t(a)] == std::vector<PadInput>{PadInput::DpadUp});
+    std::vector<std::string> w;
+    CHECK(controls_from_ini(to_ini(c), &w) == c && w.empty() && to_ini(c).find("hd_textures") != std::string::npos);
+}
+
 TEST(port_chord_amount) {
     const Controls d = default_controls();
     GamepadState g;

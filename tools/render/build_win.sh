@@ -67,12 +67,18 @@ printf '%s\n' $FLAGS -DB3REPLAY_LIBRARY -c "$(W "$ST/src/b3replay/main.cpp")" -o
 throttle
 run g++.exe obj/b3render_main.rsp &
 objs+=(b3render_main)
+# chd1: libchdr's C unit (b3asset/discfs.h's CHD images; src/native/third_party/libchdr), compiled as C, in every
+# program that has discfs (the ASSET lists)
+printf '%s\n' -std=gnu11 -O2 -DNDEBUG -w -c "$(W "$ST/src/b3asset/chd_libchdr.c")" -o "$(W "$ST/obj/chd_libchdr.o")" > "$ST/obj/chd_libchdr.rsp"
+throttle
+run gcc.exe obj/chd_libchdr.rsp &
+objs+=(chd_libchdr)
 wait
 for n in "${objs[@]}"; do [ -f "$ST/obj/$n.o" ] || { echo "compile failed: $n" >&2; exit 1; }; done
-ASSET=$(for f in "$ST"/src/b3asset/*.cpp; do W "$ST/obj/$(basename "${f%.cpp}").o"; done)
+ASSET="$(for f in "$ST"/src/b3asset/*.cpp; do W "$ST/obj/$(basename "${f%.cpp}").o"; done) $(W "$ST/obj/chd_libchdr.o")"
 # nofallback1: the shipped programs (b3render.dll, b3modtool.exe, Burnout3Launcher.exe) without the VU interpreter core
 # (vu1.cpp: the check tools' reference; nothing in them calls it), as the Makefile's B3ASSET_RT_OBJ
-ASSET_RT=$(for f in "$ST"/src/b3asset/*.cpp; do case "$(basename "$f")" in vu1.cpp|particleshade.cpp) ;; *) W "$ST/obj/$(basename "${f%.cpp}").o" ;; esac; done)
+ASSET_RT="$(for f in "$ST"/src/b3asset/*.cpp; do case "$(basename "$f")" in vu1.cpp|particleshade.cpp) ;; *) W "$ST/obj/$(basename "${f%.cpp}").o" ;; esac; done) $(W "$ST/obj/chd_libchdr.o")"
 # effects3: b3render.dll alone has the VU core (the particle layer runs the game's program 0x46D750 on the captured arrays)
 ASSET_DLL="$ASSET_RT $(W "$ST/obj/vu1.o") $(W "$ST/obj/particleshade.o")"
 # Static C++ runtime: the exes then need only SDL3.dll (which imports system DLLs only).

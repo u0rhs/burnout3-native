@@ -202,7 +202,8 @@ Content build_content(const Settings& s, const Env& env) {
             }
         }
         if (env.hd_pack)
-            t.rows.push_back(toggle(kRowHd, "HD TEXTURES", s.hd_textures, "The HD texture pack given at start (reloads the track)."));
+            t.rows.push_back(toggle(kRowHd, "HD TEXTURES", s.hd_textures, "The HD texture pack given at start (reloads the track). "
+                                    "F4 switches the HD textures on and off at once while you play, to compare."));   // hdkey
         t.rows.push_back(choice(kRowCarDetail, "CAR DETAIL", {"Game", "Highest"}, s.car_detail_highest ? 1 : 0,
                                 "Highest draws every car at full detail at any distance."));
         t.rows.push_back(choice(kRowCarReflect, "CAR REFLECTIONS", {"Off", "Original", "Enhanced"}, std::size_t(std::clamp(s.car_reflections, 0, 2)),
@@ -404,7 +405,9 @@ Content build_content(const Settings& s, const Env& env) {
             }
             t.rows.push_back(choice(kRowPlaylistMode, "PLAYLIST", {"EA Trax only", "Custom only", "Mixed"}, std::size_t(std::clamp(s.playlist_mode, 0, 2)),
                                     "Which songs the radio plays: the game's EA TRAX songs, the songs of your music folder, or "
-                                    "both in turn. The game's shuffle setting applies to your songs too. From the next song."));
+                                    "both. Your songs are listed after the game's on its EA TRAX page (200 at most), each set like "
+                                    "the game's songs. Custom only skips the game's songs. The game's shuffle setting applies to "
+                                    "your songs too. From the next song."));
             // nowplaying1 (tools/native/now_playing_popup.h): the system's now-playing interface, drawn only
             Row apps = choice(kRowOtherMusicApps, "OTHER MUSIC APPS", {"Off", "Show now playing"},
                               std::size_t(std::clamp(s.other_music_apps, 0, 1)), other_music_apps_text(s, env));

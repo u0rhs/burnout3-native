@@ -1,5 +1,6 @@
 // gameview_native.cpp -- the game view on the native backend (pic1; header gameview_native.h, docs/native-renderer.md §32).
 #include "gameview_native.h"
+#include "render_load.h"
 
 #include "b3gameview/gameview.h"
 #include "b3host/native_backend.h"
@@ -198,8 +199,9 @@ bool b3gv_native::install(const Options& o, const std::string& exe_dir) {
     // The renderer library (an explicit B3PORT_RENDER wins) and its arguments (an explicit B3PORT_RENDER_ARGS wins). An
     // offscreen run always gets --offscreen-live, whatever library or arguments it was given: it never opens a window.
     if (!std::getenv("B3PORT_RENDER")) {
-#ifdef _WIN32
-        const std::string lib = o.lib.empty() ? exe_dir + "/b3render.dll" : o.lib;
+#ifdef _WIN32   // dll1114: the exe's own folder as UTF-8 (argv[0] is ANSI: a folder outside the code page broke it)
+        const std::string dir = b3native::render_load::module_dir_utf8();
+        const std::string lib = o.lib.empty() ? (dir.empty() ? exe_dir + "/b3render.dll" : dir + "\\b3render.dll") : o.lib;
 #else
         const std::string lib = o.lib.empty() ? exe_dir + "/libb3render.so" : o.lib;
 #endif

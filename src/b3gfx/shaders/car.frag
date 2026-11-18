@@ -20,6 +20,7 @@ layout(location = 0) out vec4 out_color;
 
 layout(set = 2, binding = 0) uniform sampler2D tex;      // the mesh's texture slot (atlas / underside / glass)
 layout(set = 2, binding = 1) uniform sampler2D envsky;   // the 64x32 sky backdrop (display units)
+layout(set = 2, binding = 2) uniform sampler2D envworld; // reflect-tunnel: the track around the car (b3gfx::EnvPass), look3.z = 1
 
 layout(set = 3, binding = 0) uniform CarFragmentUniforms {
     vec4 env_colour;  // VU1 1012 (GS units)
@@ -34,7 +35,7 @@ layout(set = 3, binding = 0) uniform CarFragmentUniforms {
     vec4 look0;       // paint gain, paint darkening, glint size, glint gain          (b3gfx::CarLook)
     vec4 look1;       // sky gain, horizon gain, ground level, haze
     vec4 look2;       // glass weight, glass Fresnel, glass gain, glass darkening
-    vec4 look3;       // rim, paint colour keep, -, strength
+    vec4 look3;       // rim, paint colour keep, 1 = envworld bound, strength
 };
 
 float fog_amount(float w) {
@@ -80,6 +81,43 @@ vec3 env_sky(vec3 r) {
     return c;
 }
 
+// reflect-tunnel: the track part of the env map. The game draws the streamed track's LOD blocks into its env-map cameras
+// around the followed car after the sky and the sun (RenderBeforeVehicles 0x21C780, cameras 1..3, far 100 m [L draft]):
+// tunnels, bridges, walls and the road reflect, and the sky shows only where nothing within 100 m covers it. The faces
+// are a 3 x 2 atlas (b3gfx::env_face: forward +X, -X, +Y, -Y, +Z, -Z), each drawn 1 texel wider than 90 degrees.
+// rgb frame units, a = the track's coverage (0: sky).
+vec4 env_world(vec3 d) {
+    vec3 a = abs(d);
+    vec3 F, R, U;
+    int f;
+    if (a.x >= a.y && a.x >= a.z) {
+        f = d.x > 0.0 ? 0 : 1;
+        F = vec3(d.x > 0.0 ? 1.0 : -1.0, 0.0, 0.0); R = vec3(0.0, 0.0, F.x); U = vec3(0.0, 1.0, 0.0);
+    } else if (a.y >= a.z) {
+        f = d.y > 0.0 ? 2 : 3;
+        F = vec3(0.0, d.y > 0.0 ? 1.0 : -1.0, 0.0); R = vec3(F.y, 0.0, 0.0); U = vec3(0.0, 0.0, 1.0);
+    } else {
+        f = d.z > 0.0 ? 4 : 5;
+        F = vec3(0.0, 0.0, d.z > 0.0 ? 1.0 : -1.0); R = vec3(-F.z, 0.0, 0.0); U = vec3(0.0, 1.0, 0.0);
+    }
+    float T = float(textureSize(envworld, 0).y) * 0.5;
+    float k = T / (T - 2.0);
+    vec2 ndc = vec2(dot(d, R), dot(d, U)) / (max(dot(d, F), 1e-6) * k);
+    vec2 uv = vec2(0.5 + 0.5 * ndc.x, 0.5 - 0.5 * ndc.y);
+    vec2 st = (vec2(float(f % 3), float(f / 3)) + uv) / vec2(3.0, 2.0);
+    vec4 w = textureLod(envworld, st, 0.0);
+    return vec4(w.rgb, clamp(w.a, 0.0, 1.0));
+}
+
+// The game's env map: the sky (and sun) with the track in front of it where the world map is bound.
+vec3 env_map(vec3 r) {
+    vec3 c = env_sky(r);
+    if (look3.z > 0.5) {
+        vec4 w = env_world(normalize(r));
+        c = mix(c, w.rgb, w.a);
+    }
+    return c;
+}
 
 // Enhanced car reflections (the PC port's own, presentation only; refl.x > 0): a clearcoat over the game's lit paint that
 // keeps the paint's colour (the reflection brightens or darkens it, never tints). The reflected view ray looks up the same sky map the game's pass samples, with contrast: clouds
@@ -110,6 +148,14 @@ vec3 env_sharp(vec3 d, float lit, float open, out float dark, out float glint) {
     c = mix(vec3(0.03) + 0.06 * lit, c, mix(0.15, 1.0, open));             // under cover: dark surroundings, not a sky
     dark = mix(0.5, dark, open);
     glint *= open;
+    if (look3.z > 0.5) {
+        // reflect-tunnel: where the track within 100 m covers the sky (a tunnel's walls and lights, a bridge, the road),
+        // the gloss mirrors it as the game's map has it; no sun glint behind it
+        vec4 w = env_world(d);
+        c = mix(c, w.rgb, w.a);
+        dark = mix(dark, 0.0, w.a);
+        glint *= 1.0 - w.a;
+    }
     return c;
 }
 
@@ -135,7 +181,7 @@ void main() {
     vec3 X = k * cs;
     float keep = 1.0 - k;
     if (mode.z > 0.5) {
-        vec3 ce = min(env_sky(v_refl) * (env_colour.rgb / 128.0), vec3(1.0));
+        vec3 ce = min(env_map(v_refl) * (env_colour.rgb / 128.0), vec3(1.0));
         if (mode.z < 1.5) { X = X * (1.0 - a) + a * ce; keep *= 1.0 - a; }
         else X += a * ce;
     }

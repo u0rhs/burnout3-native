@@ -100,14 +100,22 @@ public:
     // Drops the decoded files (each decode keeps its own copy); later hits load again.
     void trim() { cache_.clear(); }
     HdPack pack;
-    std::size_t lookups = 0, hits = 0, failures = 0, files_loaded = 0, masked = 0;
+    // hdkey (the HD TEXTURES key): a hit from pack.dirs[originals_from] or a later folder keeps the decode it replaces in
+    // DecodedRaster::original (the renderer uploads both and switches between them with no reload). hd_enable sets it
+    // to the player's pack (after the mods' packs, which are part of their mods and always shown); none: SIZE_MAX.
+    std::size_t originals_from = SIZE_MAX;
+    std::size_t lookups = 0, hits = 0, failures = 0, files_loaded = 0, masked = 0, originals = 0;
     bool raw_alpha = false;   // $B3_HD_RAW_ALPHA: the pack's alpha as is (as PCSX2 uses it)
     double load_ms = 0, key_ms = 0;
 private:
+    bool keeps_original(const std::string& path) const;   // a hit at `path` is from originals_from or later
     std::unordered_map<std::string, std::shared_ptr<const Image>> cache_;   // decoded DDS by path (nullptr: failed)
 };
 void set_hd_textures(HdTextures* t);   // nullptr = off (the default)
 HdTextures* hd_textures();
+// hdkey: the hook is set and keeps the originals of a player's pack (HdTextures::originals_from): the HD TEXTURES key
+// has something to switch
+bool hd_switchable();
 // The viewers' switch: `dir` (--hd-pack) or else $B3_HD_PACK; `off` (--no-hd) wins. Opens the pack into a process-wide
 // instance, sets the hook and reports on stderr. Returns the instance (nullptr: off or the folder failed).
 // patches3: `before` are the active mods' [textures] packs (b3mod::Overlay::texture_packs), in load order: they come

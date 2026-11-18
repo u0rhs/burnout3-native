@@ -422,10 +422,74 @@ the menus' random generator D_00518680 (a "Random" track) can differ from an EA 
 AI and gameplay code are not touched. Level check: the rip's "Give It Up" as a custom song and the game's own stream of
 it give the same output RMS (2959 vs 2921 over 900 VBlanks; B3NATIVE_MUSIC_RMS=<first>-<last>).
 
-**Not in v1:** custom songs as rows of the in-game playlist editor (CB3MyBurnoutSettingsEATraxPage, func_00431D80: the
-soundtrack's 44 fixed entries D_004A5600 and the profile's flags D_004EE040+0x7000; adding rows needs a longer song
-table and string ids -- the EA TRAX page keeps the game's songs and previews); the DJ's lines between custom songs
-(the DJ talks as for the game's songs; no on/off option yet); album art; AAC.
+**Not in v1:** custom songs as rows of the in-game playlist editor (built in 1.1: §6.3); the DJ's lines between custom
+songs (the DJ talks as for the game's songs; no on/off option yet); album art; AAC.
+
+### 6.3 Custom songs in the game's EA TRAX list (1.1, 2026-11-18, GitHub issue #5)
+
+With PLAYLIST at Custom only or Mixed and a folder with songs, the songs of the folder are rows 45 on of the game's
+own EA TRAX page (DRIVER DETAILS > SETTINGS > EA GAMES TRAX), after the disc's 44, at most 200 (the first by path;
+the launcher's Music page says so above that). Each row is set like the game's (left / right: the game's per-song
+modes ALL / RACE ONLY / MENU ONLY / OFF), previews its song when selected as the game's rows do, and the game's own playlist logic (in order, shuffle,
+repeat; the race / menu contexts; the L2 skip) then picks them. EA Trax only (the default) lists the game's 44 and
+changes nothing (the golden compare).
+
+**PLAYLIST.** Mixed: every song, the game's and yours, by its own mode. Custom only: the same list, but the game's songs
+are never picked (their modes are kept as saved); with every custom song off for a context the radio is silent there,
+as the game is with every song off. The v1 rule (Custom: every song replaced; Mixed: every other one) is gone.
+
+**How the game builds the list** [C gen/native, boot2w snapshot]: the 44 songs are D_004A5600 (0x18 bytes: +0 index,
++8 / +0xC / +0x10 the title / album / artist GLOBALUS.BIN string ids, +0x14 the per-song bits: 7 both, 1 races, 4
+menus, 0 off, 8 "not heard yet", which cannot be set to off), then the soundtrack descriptor D_004A5A20 (+4 count,
++0x4C songs). Every user takes a copy of the descriptor from func_003FBB50(radio, 0, out); func_003FC060 gives it to
+the radio D_01E7A888 (+0x6C count, +0xB4 songs). The page (CB3MyBurnoutSettingsEATraxPage: prepare func_00431D80, rows
+func_00431860 / func_00431160 -- three rows of artist / title / album lines, joined by "\n" in a 128-unit buffer,
+centred on the selection; update func_004313E0; left / right func_00431050 -> func_003FBAA0) reads the radio's count,
+so it scrolls through any length. The profile's copy is the options block D_004F5040 [0..43]; its bytes from 44 on are
+other options (func_0021B770's defaults: 0x0F for each song, then 1, 1, 1, 1).
+
+**What overflows past 44, and the wrappers** (tools/native/custom_soundtrack.h, port layer, all pass-through while the
+list is down):
+
+| Address | Function | With the list up |
+|---|---|---|
+| 0x003FBB50 | the soundtrack descriptor (copy) | its songs = the port's table (guest RAM 0xC1400, `port:eatrax_songs`: the 44 copied, then the custom entries), its count left at 44, so the page's confirm / back loops, func_0028B380 at boot and CB3SoundManager's loop stay within the profile's 44 bytes |
+| 0x003FC060 | the radio takes a soundtrack | the radio's count = 44 + the custom songs |
+| 0x003FCC10 | the profile's bits -> D_004A5600 | also into the table (it is the live copy while the list is up; the bits go back to D_004A5600 when it comes down) |
+| 0x003FBDB0 / 0x003FB8B0 | the next song / the order from the page's song | the game's steps (in order, shuffle, repeat; the context's bit) with the same sound generator CGtSoundUtils::mRandom (0x004E2E78), the shuffle order kept host-side: the game's is a byte array at radio +0xD..+0x3F (51 songs) |
+| 0x003FB7C0 | may the current song play here | Custom only: no for the game's songs |
+| 0x003FC8C0 | the music stream's poll | D_004F5040[song] (bit 8 cleared at a song's end) put back for a custom song: that byte is another option |
+| 0x004313E0 | the EA TRAX page's update | confirm (asked as the page does, before it) keeps the custom rows' modes; back puts them back |
+| 0x00431160 | the page's rows | the row numbers: the page prints them into unsigned short [3][3] (two digits; the game never had row 100); from 100 on the overflowing terminator's two bytes after the array are put back and each row's number text object (+0x20 + 0x50 i, string at +0x48) draws from 0xC3380 (the text region's last slot) |
+| 0x00271A00 | the string lookup | the custom ids 0xF000 + 4k (+0 title, +1 album, +2 artist) answered with the song's tags, UTF-16 in a 15-slot ring at 0xC2C00 (`port:eatrax_text`; Latin-1 kept, others '?', 40 units a line) |
+| 0x003FBC20 | a song start | a custom row's index plays that song (the page's previews too); the stream wrappers of §6.1 play it |
+| 0x00421AF0 | the card's save image (options, profiles, checksum) | the options' last song D_004F5077 (header +0x37), written by func_003FA600 and its siblings as the radio picks a song, holding a custom index becomes the last disc song started (else 0) before the image and its checksum are made |
+
+**Where the modes are kept.** The save holds the 44 songs' bits only (unchanged: the save card format and layout are
+the same). A custom song's mode lives host-side, keyed by its folder and its path in that folder, in
+`music_modes.ini` beside pc_settings.ini (`folder=<path>` then `both|races|menus|off=<path in the folder>` lines;
+B3NATIVE_MUSIC_MODES_FILE overrides it, `-` keeps them for the run only); a song not there is "both", and the "not
+heard yet" bit does not apply to custom songs. Written on the page's confirm only. Entries of files that are not in
+the folder now (moved, renamed, a folder not connected) are kept in the file and ignored.
+
+**The save stays the PS2's.** No custom index (44 on) reaches what the profile saves: the 44 songs' bits are written for
+the disc's songs only (the descriptor's count stays 44; D_004F5040[song] is put back for a custom song), and the last
+song byte is mapped back to a disc song when the save image is made (above), so a save exported to a PS2 or an emulator
+reads as one made there. `tools/native/save_check.sh` run 3 saves a new profile while a custom song plays and checks
+the save's song fields (`save_tool music <file>`: the last song and the 44 bits).
+
+**Which files are listed.** The folder's audio files by path, the first 200; each is opened by its decoder when the folder
+is scanned and one that does not open is left out (the log names the first five). A folder with no file that opens
+(or none at all, or not there) is as EA Trax only.
+
+**Replays and determinism.** Everything stays on the game's thread and on virtual time. A recording keeps each
+folder's modes as the option `music_modes.<folder>` (a digit per song in scan order) next to `music_fp.<folder>`; a
+replay played back uses them and never writes the file. Replays recorded with a music folder before 1.1 followed the
+v1 rule and do not play the same now.
+
+**Checks.** `SCENARIO=eatrax tools/native/race_check.sh` (the page with four synthetic songs: row 45 previewed, two
+modes changed and saved, Back's restore; `EATRAX_FILL=<n>` adds n short songs: the 200 cap); `SCENARIO=music`
+(Custom only: the custom songs play in a race).
 
 ### 6.2 Other music apps: the system's now-playing song in the popup (v1, 2026-11-13)
 
@@ -735,6 +799,10 @@ REFLECTIONS** (PC SETTINGS > GRAPHICS; ini `car_reflections` 0 Off / 1 Original 
   irradiance says it sees little sky (tunnels, cover) and at night the sky is dark by itself. The player's car and the other
   racers at full strength, traffic at about half.
 - **Original**: the game's pass exactly (what the PS2 draws). **Off**: no environment pass.
+- In both, the environment map holds the track around the followed car (within 100 m), as the game draws it into its
+  env-map cameras: in a tunnel the cars mirror the tunnel and its lights, not the sky (docs/car-shading.md §9). Enhanced's
+  gloss mirrors the same where the track covers the sky. The LOW preset uses the sky-only map (for weak hardware): the
+  track in the map goes with ROAD SHINE (the full-screen specular), which LOW turns off.
 - The QUALITY PRESET PS2 ORIGINAL and LOW set Original; the other presets Enhanced.
 
 Drawn only (`b3gfx` car shader, `View::apply_car_reflections`): nothing reaches game memory, so a replay is exact. This is

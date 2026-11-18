@@ -85,7 +85,7 @@ bool read_car(Bytes f, const CarOptions& opt, GsMemory& gs, Model& out, std::str
         std::string err;
         const int npal = f.p[tex_at + 0xA0] ? f.p[tex_at + 0xA0] : 1;
         if (!decode_raster(f, tex_at, gs, r, opt.palette, &err)) return fail(why, "car texture: " + err);
-        out.textures.push_back(Texture{r.hdr.name, std::move(r.levels), r.translucent});
+        out.textures.push_back(Texture{r.hdr.name, std::move(r.levels), r.translucent, std::move(r.original)});
         tex = 0;
         out.stats["palettes"] = npal;
     }

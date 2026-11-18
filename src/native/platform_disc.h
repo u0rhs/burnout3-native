@@ -1,6 +1,6 @@
 // platform_disc.h -- the game's disc as the platform reads it (S4 of the SIF lane, 2026-11-11; src/native/platform_disc.cpp).
 //
-// The disc is a folder of the disc's files or the disc image itself (b3asset/discfs.h: an .iso or raw .bin read in
+// The disc is a folder of the disc's files or the disc image itself (b3asset/discfs.h: an .iso, raw .bin or .chd read in
 // place), named by $B3_DISC_ROOT (native_play sets it from --game), else ./data/game. Two readers use it:
 //   - the game's file system (platform_gtfs.cpp: CGtFileSystemPS2DVD / CGtFilePS2DVD answered at their own functions),
 //     through File;

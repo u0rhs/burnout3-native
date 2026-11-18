@@ -144,6 +144,10 @@ public:
     // mode's act inside.
     std::uint64_t port_mask(std::uint16_t scancode, unsigned sdl_mod = 0) const;
     std::uint64_t take_port_pad();
+    // hdkey: a script's HD TEXTURES key presses (key(): native_play --keys), each stamped with the first poll it applies to
+    // (the newest poll handed to the renderer + 1, PhotoMode::game_poll), and taken by the render thread: those up to
+    // `upto` (an offscreen shot of poll N shows the key's state at N), in order
+    std::vector<std::uint32_t> take_hd_presses(std::uint32_t upto = 0xFFFFFFFFu);
     // The first key bound to a port action as a label ("F9"; "-" when none): for the texts that name it
     std::string port_key_text(b3native::input::PortAction a) const;
     // Ctrl / GUI held, and that modifier is not itself bound to anything: a window shortcut, not a game key
@@ -194,6 +198,7 @@ private:
     bool shortcut_mods_locked(unsigned sdl_mod) const;  // (mu_ held)
     std::uint64_t port_pad_prev_ = 0;                   // (under mu_) the gamepad port actions held at the last poll
     std::atomic<std::uint64_t> port_pad_edges_{0};
+    std::vector<std::uint32_t> hd_presses_;   // hdkey (under mu_)
     std::atomic<std::uint64_t> taken_{0};
     PromptDeviceTracker tracker_;   // mac5 (under mu_)
     bool keyboard_used_ = false;

@@ -171,8 +171,8 @@ Checked by drawing the same car both ways with the scene renderer and a debug re
   both the env pass runs on the paint and the glass: the mask 0x54 weight is the Fresnel alpha times the atlas alpha, about 1
   on the paint seen at a grazing angle (a car seen from behind and above) and 0.15 facing, 0 on lights and plates.
   So the game does draw the env pass on race cars, and the port does not lose it: not a renderer bug.
-- What differs is the environment map. In a race it is the track's sky alone (ENVIRO.DAT components 4 / 5 of the sky,
-  `RenderSkyToEnvironmentMap`): smooth, mid-bright, and on the cars of the retail livery a blue or grey of nearly the paint's
+- What differs is the environment map. In a race its sky part is the track's sky (ENVIRO.DAT components 4 / 5 of the sky,
+  `RenderSkyToEnvironmentMap`; the track drawn in front of it: §9, which corrects "alone" here): smooth, mid-bright, and on the cars of the retail livery a blue or grey of nearly the paint's
   own hue, with no sun glint and no hard-edged shapes. The garage's map is built from the lit room around the car (bright
   panels, dark floor, a strong contrast the paint then shows).
 - So the reflection is faithful: the game's own weight on a low-contrast map. Not that only the garage draws it.
@@ -187,3 +187,46 @@ shows its dark surroundings instead of a sky; traffic at 0.55 strength. Every nu
 Presentation only: `View::apply_car_reflections` sets `CarParams::reflect` per draw after `add_car_draws`; 0 leaves the
 game's math untouched, so Original is byte-identical to before. `tools/render/carlook_check.sh` asserts that the paint's
 hue and saturation survive a render.
+
+## 9. The env map holds the track: tunnels, bridges, walls (reflect-tunnel, 2026-11-18)
+
+A player report: in a tunnel the cars still mirror a bright sky. §8 and native-renderer §24.1 said the race env map is
+the sky alone; the decomp says otherwise.
+
+- `CB3World::Render` 0x276300 [C matched `B3WorldPS2_00276300.cpp`]: `BuildCustomCameraData(cam +0x19AC)`, then per env
+  camera i = 1 .. D_00667054 - 1 `RenderSkyToEnvironmentMap` and `RenderSunToEnvironmentMap`, then
+  `CB3StreamedTrack::RenderBeforeVehicles`, and only then `func_00222CA0` (DistortEnvmapBuffersIntoSphereMap) warps
+  the env cameras' buffers into the 256 x 256 sphere map the car pass samples.
+- `RenderBeforeVehicles` 0x21C780 [L nonmatching draft, 537/537 instructions, logic believed right]: after the main
+  camera's slots, when `D_00665F20` is set, for cameras c = 1..3 it draws every slot's **+0xC4 block** (the unit's LOD
+  data) whose visibility bits `(+0x58[i] >> 2c) & 3` are set (`RenderMesh(.., fl, 1)`: specular off), and pushes
+  cameras 1..3 for the instances flagged `+0x3E & 2` (their own mesh +0x30). `D_00665F20` = graphics manager +0x60, set
+  to 1 by `CB3GraphicsManagerBase::Prepare` 0x19EBF0 [C matched] and never cleared in the matched code: on in every race.
+- `BuildCustomCameraData` 0x223130 [L draft]: with idx != -1 the env cameras sit at race car [idx]'s box middle
+  (essential params `D_0064D388[idx]`, its matrix applied to the middle of +0xE80 / +0xE90), the look-at towards the
+  main camera; three faces (a 45-degree tilted frame stepped 120 degrees) in races, five in the front end.
+  `ConstructEnvMap` 0x225440 [L draft]: near 0.01, far 100.
+- So on the PS2 the cars mirror the track within 100 m of the followed car (one map for every car of the view), the sky
+  only where nothing covers it: under a tunnel roof the paint goes dark with the tunnel lights in it. This is the PS2's
+  own behaviour, not an Xbox one (the Xbox build's real-time reflections are a different renderer and not looked at).
+
+The port (before 1.1) drew the sky alone in both Original and Enhanced; Enhanced only dimmed its own gloss by the car's
+SH sky share, so Original showed the bright sky in tunnels and Enhanced a dark veil without the tunnel in it.
+
+**Now** [C code; checked on offline renders of a tunnel]: `View::env_world_map` takes the capture's +0xC4 block units
+(`Tick::env_unit`, slots with any of vis bits 2..7), `D_00665F20` (`env_track`) and the car `gWorld+0x12AD28
+[s8 gWorld+0x12AD50+0x19AC]` (`env_car`; player 2's from +0x27D0 in a split screen), and asks
+`b3gfx::Device::render_env` for a map: the LOD items within 100 m of the box middle, culled per face, drawn into six
+128-pixel cube faces (a 384 x 256 atlas, each face one texel wider than 90 degrees for seamless filtering) in their own
+command buffer before the frame, no fog, no specular, frame units; an opaque track draw writes alpha 1
+(mesh.frag `light_dir.w`), the cleared sky alpha 0. `car.frag env_map` puts that map in front of the sky lookup it
+had (`env_sky`, sun blob included), so where the sky shows the result is what it was. Enhanced's gloss uses the map too
+where the track covers the sky (no sun glint behind it). Not modelled: the env-camera instances (+0x3E & 2), the
+3-face layout and its sphere-map resolution (the reflected ray looks the cube up directly, as for the sky).
+
+The track part follows ROAD SHINE (`Settings::specular`, `apply_view`): the LOW preset turns that off, so weak hardware
+gets the sky-only map and no env pass at all; CAR REFLECTIONS Off returns before anything is built either.
+`$B3_CAR_ENV=sky` draws the old sky-only map and `=world` forces the track in whatever the settings say; `tools/golden/baseline.sh` exports it, since the golden record predates
+this. `B3_ENV_TRACE=1` prints the map's centre and item count per frame; `B3_ENV_DUMP=<file.ppm>` writes the atlas; `B3_ENV_TIME=1` waits for each pass and prints its time (an RTX 4080 SUPER, race1 polls 5000-9000: p50 0.30 ms record + submit + GPU, 43 LOD items, 107 face draws)
+(colour x 2, then alpha).
+

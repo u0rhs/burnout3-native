@@ -45,7 +45,7 @@ All of these are renderer-only: no guest effect.
 | Front-end layout | `--fe-layout 43/edges`; fe3: `panels` | 43; fe3: panels | no | **fe3's area** |
 | Movie side fill | fe3: `--movie-fill blur/black` | blur (fe3) | no | **fe3's area** |
 | Movies, showroom, globe | M, R, `--no-globe` | on | yes | |
-| HD texture pack | `$B3_HD_PACK` / `--hd-pack`, P | off unless set | yes (P reloads) | |
+| HD texture pack | `$B3_HD_PACK` / `--hd-pack`, P; the game: the HD TEXTURES key (F4, port action `hd_textures`) | off unless set | yes (P reloads; F4 switches at once: hdkey below) | |
 | FPS counter | `--fps-counter` or the page's FPS COUNTER (Off / Minimal / Standard / Detailed, ini `fps_view`) and FPS COUNTER POSITION (`fps_corner`); the FPS COUNTER VIEW key (F3) | off | yes | |
 
 The flags and keys themselves are not persisted; the page's rows (§6) are, in the ini.
@@ -95,7 +95,7 @@ Cost tags for phase 2:
 |---|---|---|---|---|
 | Anti-aliasing | Off / MSAA 2x / 4x / 8x / SSAA (render scale 200 % + MSAA 4x) | MSAA 4x | Off / Off / 2x / 8x | E (MSAA), M (live change) |
 | Texture filtering | Point / Bilinear (PS2) / Trilinear / Aniso 2x / 4x / 8x / 16x | Aniso 16x | Bilinear / Trilinear / Aniso 4x / 16x | M (sampler from settings) |
-| HD textures | Off / On + pack folder | as main (`$B3_HD_PACK`) | Off / Off / = / = | E |
+| HD textures | Off / On + pack folder; the HD TEXTURES key (F4) shows or hides the pack for the run | as main (`$B3_HD_PACK`) | Off / Off / = / = | E |
 | Car detail | Game (PS2 LOD) / Highest (LOD 3 always) | Game | Game / Game / Game / Highest | E (`car_lod`) |
 | Track detail | Game (high or LOD per slot) / Highest (high meshes in every slot) | Game | = / = / = / Highest | M |
 | Scenery detail (instances) | PS2 (the type records' switch and maximum distances) / Full (main: near model, no limit) | Full | PS2 / PS2 / Full / Full | M-B (needs the far model +0x28 decoded; renderer-side distance test, the guest records only read) |
@@ -236,7 +236,7 @@ The tabs and rows as built (settings1, 2026-11-05, then mac5 and the feature lan
 | Tab | Rows | Live |
 |---|---|---|
 | DISPLAY | QUALITY PRESET (PS2 original / Low / Medium / High / Ultra / Custom), FULLSCREEN, VSYNC, FRAME RATE LIMIT, (mac5) PAUSE WHEN UNFOCUSED, (fastload1, §7.8) FAST LOADING (ini `fast_loading`, default on), FRAME INTERPOLATION, RACE HUD LAYOUT, MENU LAYOUT (fe3: edges / 4:3 / panels), MENU MOVIE SIDES (fe3: black / blur); LATENCY: LATENCY MODE (lat1: auto / low / smooth / newest), PREDICTION (auto / 0-100 % of a tick: `--lead`), FRAMES IN FLIGHT (auto / 1-3) | VSync and the latency rows at the next start (auto = the run's own choice: low in a window, smooth headless); the rest live |
-| GRAPHICS | ANTI-ALIASING (MSAA off / 2x / 4x / 8x), TEXTURE FILTERING (point, PS2 bilinear, trilinear, anisotropic 2x-16x), DITHER (off / on, perf1: native-renderer §33.8), HD TEXTURES (only with a pack), CAR DETAIL (game / highest), CAR REFLECTIONS (reflect1: Off / Original / Enhanced, default Enhanced; the PS2 original and Low presets use Original), CAR SHADOWS, SKID MARKS, ROAD SHINE, SUN AND LENS FLARE, CAR AND TRAFFIC LIGHTS | MSAA, filter and HD at the next start; the rest live |
+| GRAPHICS | ANTI-ALIASING (MSAA off / 2x / 4x / 8x), TEXTURE FILTERING (point, PS2 bilinear, trilinear, anisotropic 2x-16x), DITHER (off / on, perf1: native-renderer §33.8), HD TEXTURES (only with a pack), CAR DETAIL (game / highest), CAR REFLECTIONS (reflect1: Off / Original / Enhanced, default Enhanced; the PS2 original and Low presets use Original), CAR SHADOWS, SKID MARKS, ROAD SHINE (also the track in the cars' reflections, car-shading.md §9: off, as in the Low preset, the cars mirror the sky alone and the env pass draws nothing), SUN AND LENS FLARE, CAR AND TRAFFIC LIGHTS | MSAA, filter and HD at the next start; the rest live |
 | EFFECTS | MOTION BLUR, BOOST BLUR (0-100 %, default 50 = main's 0.5), BLOOM, POST QUALITY (PS2 / PC), (effects2, §7.18) SPARKS and CRASH DEBRIS (Off / Low / Medium / High, ini `sparks` / `popcorn` 0-3, default 3), SCRAPES, DAMAGE, GLASS DAMAGE; section POWER: (§7.18) BATTERY SAVER (Off / On, ini `battery_saver`, default off, row id 245) | live |
 | CAMERA | FIELD OF VIEW (60-120, 90 = the game's), FOV CORRECTION, (splitlayout1, §7.11) SPLIT SCREEN (Top / bottom / Side by side, ini `split_layout` 0-1, default 0, row id 180) | live |
 | INTERFACE | FPS COUNTER (fpsoverlay2: Off / Minimal / Standard / Detailed, ini key `fps_view` 0-3, default 0, row id 255; an older `fps_counter = true` reads as 2) and FPS COUNTER POSITION (ini key `fps_corner` 0-3, default 0 = top left, row id 256); BUTTON PROMPTS (mac5: Auto / PlayStation / PS4 / PS5 / Xbox / Nintendo / Generic / Keyboard, ini key `button_prompts` 0-6 (6 = PS4 / PS5, listed second), default 0 = Auto); VIDEO SKIP HINT (mac5: on / off, ini key `skip_hint`, default on); (§7.17, photorow1) PHOTO MODE IN PAUSE MENU (Off / On, ini key `photo_row` true / false, default on, row id 240); (§7.16, units1) SPEED UNITS (MPH / KM/H, ini key `speed_units` 0-1, default 0 = MPH, row id 220); (§7.19, 1.1) LANGUAGE (English / the imported languages, ini key `language`, default English, row id 270) and IMPORT LANGUAGES (launcher only, row id 271); DATE FORMAT (mac5: Month/Day/Year / Day/Month/Year, ini key `date_format` 0-1, default 0); (§7.15, launchskip1) OPEN THE LAUNCHER AT START (Off / On, ini key `launcher_at_start` true / false, default on, row id 210; read by the launcher only); AUDIO AND CONTROLS (a pointer to Driver Details > SETTINGS). Also on the launcher's Settings page | live (OPEN THE LAUNCHER AT START: the launcher's next start; SPEED UNITS: the speedometer from the next race) |
@@ -1417,6 +1417,35 @@ FRAME RATE LIMIT (and BATTERY SAVER's 60) now waits on a fixed schedule (each fr
 last), so the average is the limit exactly. With VSYNC on and a limit at or above the display's refresh, the limiter
 stands aside and vsync alone paces the frames: two clocks at the same rate beat against each other and dropped a
 frame now and then (55-58 fps reported on 60 Hz screens).
+
+### 7.24 The HD TEXTURES key (hdkey, 1.2, 2026-11-18; issue #7)
+
+A port action (CONTROLS > SHORTCUTS: HD TEXTURES ON / OFF, ini key `hd_textures`, default F4, no gamepad chord by
+default but one can be bound) that shows the HD texture pack or the original textures at once, for comparing. It
+needs no reload: the renderer keeps both pictures of every replaced texture on the GPU and each draw samples the one
+shown.
+
+- **How**: `b3asset::HdTextures::apply` keeps the decode it replaces in `DecodedRaster::original` when the hit comes
+  from the player's pack (`originals_from`: `hd_enable` sets it to the player's folder, after the mods' `[textures]`
+  packs; a mod's textures are part of the mod and stay). Every upload of a decoded texture (track and car models, the
+  sky backdrop and clouds, the sun's corona, the crash and effect textures, the HUD and front-end rasters, their HUD
+  COLOUR FILTER and blurred-fill copies) goes through `Device::create_texture_hd`, which uploads the original beside
+  the replacement and pairs them (`set_texture_original`). With HD hidden (`set_hd_shown(false)`) the device binds the
+  original wherever a draw names the replacement. The pairs go with `clear_resources` (a track load); the shown /
+  hidden state stays, so a new track keeps it.
+- **Cost**: the originals are the PS2 textures with their stored mip levels (RGBA8 on the GPU), so a small fraction of
+  the pack's own size; the key's log line gives the count and size of the originals resident
+  (`[b3hd] HD TEXTURES key (...): ...; N original textures kept beside their replacements, X MB (the replacements: Y
+  MB)`). Nothing is kept or
+  uploaded without a player's HD pack.
+- **The setting stays**: the key is a switch for the run. HD TEXTURES (GRAPHICS) still decides whether the pack is
+  read at the start, so what the next start shows; the key never writes it. With no player's pack in the run the key
+  shows NO HD TEXTURE PACK and changes nothing (with a folder chosen and HD TEXTURES off, also how to turn it on).
+- **The notice**: HD TEXTURES ON / HD TEXTURES OFF for 1.5 s in the window's banner (notice.h), in the LANGUAGE
+  setting's language (accented capitals drawn as their base letters by the stroke font).
+- **Scripts and shots**: a script's key (native_play `--keys`, e.g. race_check's `EXTRA_KEYS=<vblank>:61:1,...`) is
+  stamped with the game poll it applies to (`NativePad::take_hd_presses`); an offscreen shot of poll N shows the
+  textures and the notice as the window would at N.
 
 ## Appendix: candidate gameplay mods (for later; not built, not designed)
 

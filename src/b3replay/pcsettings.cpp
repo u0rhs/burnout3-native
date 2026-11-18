@@ -35,6 +35,11 @@ void apply_view(View& v, const b3settings::Settings& s) {
         else if (!std::strcmp(e, "original")) v.car_reflect = 1;
         else if (!std::strcmp(e, "enhanced")) v.car_reflect = 2;
     }
+    // reflect-tunnel: the track in the car env map goes with the track's own reflection pass, SPECULAR (the full-screen
+    // specular): the LOW preset is the one preset that turns it off, so weak hardware gets the sky-only map (no env pass
+    // draws); $B3_CAR_ENV wins (the golden record pins sky)
+    v.car_env_world = s.specular;
+    if (const int o = car_env_override(); o >= 0) v.car_env_world = o == 1;
     v.deform = s.damage;
     v.glass_damage = s.glass_damage;
     v.fov_scale = b3settings::fov_tangent_scale(s.fov);

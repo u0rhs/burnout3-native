@@ -27,7 +27,8 @@ work. The launcher checks the game program on your disc and tells you if it is a
 
 You can give the port the game in either of two forms:
 
-- **a disc image** of your disc: an `.iso` file, or a raw `.bin`. It is read in place and nothing is unpacked.
+- **a disc image** of your disc: an `.iso` file, a raw `.bin`, or a `.chd` (as `chdman` makes it from either). It is
+  read in place and nothing is unpacked.
 - **a folder** with every file and folder of the disc copied into it: `SYSTEM.CNF`, `SLUS_210.50`, `DATA`, `TRACKS`,
   `PVEH`, `SOUND`, `OVID` and the rest.
 
@@ -88,8 +89,8 @@ there. Make the image again in that case.
 2. Start **`Burnout3Launcher.exe`**.
    - Windows may warn that the program is from an unknown publisher (SmartScreen), because the build is not signed.
      Choose **More info**, then **Run anyway**.
-3. Open the **Game Data** page and press **Choose disc image...** (your `.iso` or `.bin`) or **Choose folder...** (the
-   folder with the disc's files). The launcher remembers your choice.
+3. Open the **Game Data** page and press **Choose disc image...** (your `.iso`, `.bin` or `.chd`) or **Choose
+   folder...** (the folder with the disc's files). The launcher remembers your choice.
 4. If you like, look through the **Settings** page: window or fullscreen, quality, frame rate limit, and more.
 5. On the **Play** page, press **START GAME**. The launcher closes once the game runs.
 
@@ -129,9 +130,9 @@ You need no keyboard or mouse in Gaming Mode. If your disc image or folder is no
 page press **A** on **Choose disc image...** or **Choose folder...**: the launcher's own folder list opens (a desktop
 file dialog cannot be used with a controller there). **Home**, the root folder and your SD card or USB drive
 (under `/run/media`) are on its left as starting points; press **Y** to go there. Open folders with **A**, go up with
-**B**, and press **Start** to choose the folder shown (or **A** on an `.iso` / `.bin` file). The same works for the
-Music and HD Textures folders. "Type a path..." opens an on-screen keyboard; Steam's own keyboard may open over it,
-and either one works (section 4).
+**B**, and press **Start** to choose the folder shown (or **A** on an `.iso` / `.bin` / `.chd` file). The same works
+for the Music and HD Textures folders. "Type a path..." opens an on-screen keyboard; Steam's own keyboard may open over
+it, and either one works (section 4).
 
 Leave the shortcut's compatibility tool (Proton) **off**: this is a Linux program. Steam Input's gamepad layout works,
 and the game sees an Xbox-style pad.
@@ -217,7 +218,7 @@ mouse:
 |---|---|
 | **Play** | **START GAME**, or **START IN SAFE MODE** (section 9). It shows whether your game data, save file and settings are in order, how the last run ended, and which mods are on. It also has **Make a bug report**, **Start the game directly next time** (below), and says when a newer version of the port is out. |
 | **Settings** | The same settings as the game's own SETTINGS page, saved to the same file. At the end, the launcher's own **CHECK FOR UPDATES** (see below). |
-| **HD Textures** | Choose an HD texture pack. Packs made for PCSX2 work as they are: choose the pack's `SLUS-21050` folder, or the folder above it. It is used from the next start. |
+| **HD Textures** | Choose an HD texture pack. Packs made for PCSX2 work as they are: choose the pack's `SLUS-21050` folder, or the folder above it. It is used from the next start. In the game, F4 switches the pack off and on at once, to compare. |
 | **Music** | Your own music on the game's radio (section 7). |
 | **Mods** | Install mods, turn them on or off, and set their order (section 8). |
 | **Game Data** | Your disc image or folder, with a check of every file the game needs. |
@@ -328,6 +329,7 @@ These are the defaults. Each one can be moved to any key, and most to a controll
 | F11 or Alt+Enter | switch between fullscreen and a window |
 | F12 | take a screenshot (section 6 says where it goes) |
 | F3 | change the FPS counter's view: minimal, standard, detailed, off |
+| F4 | switch the HD textures off and on at once, to compare them with the original ones (only when an HD texture pack is in use; a note at the top of the screen says HD TEXTURES ON or OFF). It lasts until the game closes: the HD TEXTURES setting stays as you set it |
 | F10 | make a bug report (section 9) |
 | F9 | the tuning overlay in a race, only when **DEVELOPER MODS** is on (section 7) |
 | P (gamepad: L3 + R3) | photo mode, while the game is paused (the PHOTO MODE row in the pause menu does the same; section 7) |
@@ -481,7 +483,8 @@ AI or gameplay, except the few settings marked **opt-in** below. Those are off u
   the other effects (GRAPHICS and EFFECTS).
 - **CAR REFLECTIONS** (GRAPHICS): Enhanced (the default) gives the paint and the glass of the cars in a race (yours, the
   other racers, and a little on traffic) a glossy reflection of the track's sky, the horizon and the sun, strongest at
-  the edges of the body. Original is the game's own faint reflection, and Off draws none. The QUALITY PRESET PS2
+  the edges of the body. In both Enhanced and Original the cars mirror the track around them as on the PS2: in a tunnel
+  you see the tunnel and its lights, not the sky. Original is the game's own faint reflection, and Off draws none. The QUALITY PRESET PS2
   ORIGINAL and LOW use Original. It is drawn only: the game itself is unchanged.
 - **DRAW DISTANCE** (GRAPHICS): Whole track (the default) draws the whole course with no pop-in in the distance, and
   PS2 keeps the original's view.
@@ -541,8 +544,10 @@ L3 + R3 work either way:
 
 Choose a **MUSIC FOLDER** of MP3, FLAC, Ogg Vorbis or WAV files (subfolders count too), then the **PLAYLIST**: EA
 Trax only (the original and the default), Custom only, or Mixed. Your songs play through the game's own radio, with
-its volume, shuffle and the EA TRAX popup showing each song's title, artist and album. Changes apply from the next
-song. **OTHER MUSIC APPS** (Windows and Linux, off by default) shows the song Spotify, a browser or any other player is
+its volume, shuffle and the EA TRAX popup showing each song's title, artist and album. Your songs are also listed
+after the game's 44 on the game's own EA TRAX page (DRIVER DETAILS > SETTINGS > EA GAMES TRAX; the first 200 of the
+folder), where each one is set to ALL, RACE ONLY, MENU ONLY or OFF like the game's songs; Custom only plays
+only yours. Changes apply from the next song. **OTHER MUSIC APPS** (Windows and Linux, off by default) shows the song Spotify, a browser or any other player is
 playing in the same popup; that music still plays from its own app, so turn the game's RADIO VOLUME down to hear only it.
 
 ### Opt-in features (off by default)
@@ -635,9 +640,11 @@ is ever sent anywhere by itself: you send the report yourself.
 | **"SLUS_210.50 is not the US Burnout 3: Takedown program"** | Your disc is another region or version (or the copy is damaged). The port runs only the US disc, SLUS-21050. |
 | **"Not the game's folder: no ..." or "Not a disc image"** | The launcher did not find the game's files where you pointed it. Choose the folder that directly holds `SLUS_210.50`, `DATA`, `TRACKS` and the rest, or the `.iso` file itself. If the game is one folder further down, the launcher says where. |
 | **"The disc image is incomplete"** | The image was cut short. Make it again (section 2). |
+| **Windows: "The renderer ... b3render.dll was found, but Windows could not start it (error 1114)"** | Another program's DLL failed to start inside the game: most often an overlay, recorder, performance monitor or security tool that puts itself into games, or a `.dll` file added to the game folder. Close such programs (or exclude `native_play.exe` from them), keep only the files from the download in the game folder, and try again. The run log (Logs, above) lists the DLLs involved: attach the bug report. |
 | **START GAME is greyed out** | Either the game data is not set (Game Data page), or the game program is not beside the launcher. Keep all the files from the download in one folder. |
 | **Linux: `version 'GLIBC_2.35' not found`** | Your distribution is older than the build supports (section 1). |
 | **Linux: "Permission denied"** | The archive was unpacked without the programs' execute permission: run `chmod +x b3launcher native_play add-to-menu.sh` in the folder. |
+| **Linux: the controller also clicks or types on the desktop (windows open while you play)** | On Linux a game cannot take a controller for itself: other programs see the same presses. Most often it is Steam: with Steam running, its **desktop layout** turns the controller into a mouse and keyboard for everything that Steam does not know as a game. Start the port from Steam (add `b3launcher` as a non-Steam game), or turn the desktop layout off in Steam's Controller settings, or close Steam while you play. Other controller-to-keyboard tools (AntiMicroX and the like) do the same. |
 | **Linux: no file picker opens** | Install `xdg-desktop-portal` (with your desktop's portal) or `zenity`. You can also use **Type a path...** in the launcher. |
 | **The race falls behind or the sound stutters** | Lower the QUALITY PRESET, set a FRAME RATE LIMIT, or try safe mode. If that helps, please send a bug report: it tells us what your PC needed. |
 

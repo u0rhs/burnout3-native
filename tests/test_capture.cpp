@@ -206,4 +206,46 @@ TEST(capture_image_read_matches_bytewise_rule) {
     CHECK(!im.read(base, &b, 1));         // cleared (the lookup cache too)
 }
 
+// wobble1 (2026-11-18): a slammed race car (+0x199B set) is drawn at +0x1920 (CB3RaceCar::Draw 0x151A40 swaps it into
+// +0x00 before RenderVehicle), and its wheels and panels are relative to that matrix too; they used to stay at +0x00's.
+TEST(capture_fishtail_matrix_moves_the_parts) {
+    for (int slammed : {0, 1}) {
+        Image im;
+        scene(im, 0);
+        std::vector<std::uint8_t> d(0x70, 0);
+        d[0x0C] = 1;   // one panel
+        d[0x0D] = 1;   // one wheel
+        im.write(kData, d.data(), std::uint32_t(d.size()));
+        std::vector<std::uint8_t> c(0x2800, 0);
+        im.read(kCarA, c.data(), std::uint32_t(c.size()));
+        auto mat = [&](std::uint32_t off, const float (&r)[4][3]) {
+            for (int a = 0; a < 4; ++a) {
+                for (int k = 0; k < 3; ++k) putf(c, off + 16 * std::uint32_t(a) + 4 * std::uint32_t(k), r[a][k]);
+                putf(c, off + 16 * std::uint32_t(a) + 12, a == 3 ? 1.0f : 0.0f);
+            }
+        };
+        mat(0x80 + 0x000, {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1, 0, 2}});    // wheel 0, relative
+        mat(0x80 + 0x180, {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 1, 0}});    // panel 0, relative
+        mat(0x1920, {{0, 0, -1}, {0, 1, 0}, {1, 0, 0}, {10, 0, 0}});        // the fishtail matrix: yawed 90 degrees
+        c[0x199B] = std::uint8_t(slammed);
+        im.write(kCarA, c.data(), std::uint32_t(c.size()));
+        b3replay::Capture cap;
+        b3replay::Tick t;
+        cap.decode(im, t);
+        const auto* a = find(t, kCarA);
+        CHECK(a != nullptr && a->parts && a->nwheel == 1 && a->nbit == 1);
+        if (!a) continue;
+        const float main_x = slammed ? 10.0f : 0.0f;
+        CHECK_NEAR(a->main.r[3][0], main_x, 1e-6);
+        CHECK_NEAR(a->body.r[3][0], main_x, 1e-6);
+        // the wheel at (1, 0, 2) and the panel at (0, 1, 0) of whichever matrix the body is drawn with
+        CHECK_NEAR(a->wheel[0].r[3][0], slammed ? 12.0f : 1.0f, 1e-5);
+        CHECK_NEAR(a->wheel[0].r[3][2], slammed ? -1.0f : 2.0f, 1e-5);
+        CHECK_NEAR(a->wheel[0].r[0][2], slammed ? -1.0f : 0.0f, 1e-6);
+        CHECK_NEAR(a->bit[0].r[3][0], main_x, 1e-5);
+        CHECK_NEAR(a->bit[0].r[3][1], 1.0f, 1e-5);
+        CHECK_NEAR(a->bit[0].r[0][2], slammed ? -1.0f : 0.0f, 1e-6);
+    }
+}
+
 TEST_MAIN("capture")

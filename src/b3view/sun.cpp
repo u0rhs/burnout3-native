@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdio>
 
+#include "scene.h"   // hdkey: upload_texture
+
 namespace b3view {
 
 Sun::Flare Sun::read_flare(const std::string& game) {
@@ -19,9 +21,8 @@ bool Sun::load(b3gfx::Device& dev, const b3asset::Enviro& env, const std::string
 bool Sun::load(b3gfx::Device& dev, const b3asset::Enviro& env, const std::string& route, const Flare& flare, std::string* why) {
     *this = Sun{};
     if (env.sun_corona.levels.empty() || !b3asset::route_has_sun(route)) return false;   // Prepare: field_13C = 0
-    std::vector<b3gfx::TextureLevel> levels;
-    for (const auto& l : env.sun_corona.levels) levels.push_back({l.w, l.h, l.rgba.data()});
-    texture = dev.create_texture(levels);
+    // hdkey: and its original (tex_w / tex_h stay the replacement's: the flare's half-texel UV insets)
+    texture = upload_texture(dev, env.sun_corona.levels, env.sun_corona.original);
     tex_w = env.sun_corona.levels[0].w;
     tex_h = env.sun_corona.levels[0].h;
     // SunOcclusionTest: SetupCamera(dir, (env +0x70 xyz, w = light entry +0x30 = block 0 +0x20), 12, env +0x90);

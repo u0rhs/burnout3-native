@@ -26,7 +26,7 @@
 //   b3modtool track import <disc> <model.gltf|.glb|export dir> <mod dir | out.b3mod> [--sidecar <file.b3track.json>] [--restrip]
 //   b3modtool track check <disc> <model.gltf|.glb|export dir> [--sidecar <file.b3track.json>]   the import, nothing written
 //   b3modtool preview <file.gltf> <out.png> [--yaw D] [--pitch D] [--skip NAME,...]   a picture of an export, offscreen
-// <disc> is a folder of the disc's files or the disc image (.iso / .bin); a file argument may be a path inside an
+// <disc> is a folder of the disc's files or the disc image (.iso / .bin / .chd); a file argument may be a path inside an
 // image (<image>/DATA/GLOBAL.TXD). Nothing is ever written to the disc: only to the output paths given.
 #include <algorithm>
 #include <cctype>
@@ -91,7 +91,7 @@ const char* kUsage =
     "  track check <disc> <model.gltf | model.glb | export dir> [--sidecar <file.b3track.json>]\n"
     "                                            the same import and its checks, nothing written\n"
     "  preview <file.gltf> <out.png> [--yaw D] [--pitch D] [--skip NAME,NAME]   a quick picture of an export (no window)\n"
-    "<disc>: a folder of the disc's files or the disc image (.iso / .bin). Nothing is written to it.\n";
+    "<disc>: a folder of the disc's files or the disc image (.iso / .bin / .chd). Nothing is written to it.\n";
 
 int usage() { std::fputs(kUsage, stderr); return 2; }
 int fail(const std::string& m) { std::fflush(stdout); std::fprintf(stderr, "b3modtool: %s\n", m.c_str()); return 1; }

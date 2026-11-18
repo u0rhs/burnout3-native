@@ -298,11 +298,7 @@ bool build_scene(b3gfx::Device& dev, b3asset::Model&& model, bool prelit, Scene&
     }
     if (same) tex = share->textures;
     else
-        for (const auto& t : m.textures) {
-            std::vector<b3gfx::TextureLevel> levels;
-            for (const auto& l : t.levels) levels.push_back({l.w, l.h, l.rgba.data()});
-            tex.push_back(dev.create_texture(levels));
-        }
+        for (const auto& t : m.textures) tex.push_back(upload_texture(dev, t.levels, t.original));   // hdkey: and its original
     out.textures = tex;
     for (const auto& d : m.draws) {
         b3gfx::DrawItem it;
@@ -442,17 +438,22 @@ bool read_route_enviro(const std::string& route, b3asset::Enviro& out) {
     return true;
 }
 
+b3gfx::TextureId upload_backdrop(b3gfx::Device& dev, const b3asset::Enviro& env, const float to_sun[3]) {
+    const b3asset::Image back = b3asset::build_backdrop(env, to_sun);
+    std::vector<b3asset::Image> original;
+    if (!env.gradient.original.empty()) {   // hdkey: the backdrop of the original gradient, for the HD TEXTURES key
+        b3asset::Enviro e = env;
+        e.gradient.levels = env.gradient.original;
+        original.push_back(b3asset::build_backdrop(e, to_sun));
+    }
+    return upload_texture(dev, {back}, original);
+}
+
 bool add_enviro(b3gfx::Device& dev, Scene& scene) {
     scene.has_enviro = true;
     scene.fog = b3asset::fog_model(scene.enviro);
-    const b3asset::Image back = b3asset::build_backdrop(scene.enviro, scene.enviro.to_sun);
-    const b3gfx::TextureId back_tex = dev.create_texture({b3gfx::TextureLevel{back.w, back.h, back.rgba.data()}});
-    b3gfx::TextureId cloud_tex = b3gfx::kNone;
-    if (!scene.enviro.clouds.levels.empty()) {
-        std::vector<b3gfx::TextureLevel> levels;
-        for (const auto& l : scene.enviro.clouds.levels) levels.push_back({l.w, l.h, l.rgba.data()});
-        cloud_tex = dev.create_texture(levels);
-    }
+    const b3gfx::TextureId back_tex = upload_backdrop(dev, scene.enviro, scene.enviro.to_sun);
+    const b3gfx::TextureId cloud_tex = upload_texture(dev, scene.enviro.clouds.levels, scene.enviro.clouds.original);
     // Frame order [C CB3World::Render B3WorldPS2_00276300.cpp:121-125]: sky components 0 and 1, (sun blob,) clouds.
     std::vector<b3gfx::DrawItem> sky;
     int cloud_at = -1;

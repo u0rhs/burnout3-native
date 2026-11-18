@@ -1058,6 +1058,75 @@ def cxx_name(mangled):
     return mangled
 
 
+T41_PAIR = re.compile(r"\n([ \t]*)u_long128 (\w+) = ([^;\n]+);\n[ \t]*u_long128 (\w+) = ([^;\n]+);")
+
+
+def t41_box_pairs(text):
+    """1.1.1 T41 (see its call): two adjacent u_long128 locals whose first is passed by address to a function taking a
+    CGtAxisAlignedBox -> one array of two, the names kept as references. Returns (text, count)."""
+    n = 0
+
+    def repl(m):
+        nonlocal n
+        ind, a, ea, b, eb = m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)
+        if not re.search(r"\w*AxisAlignedBox\w*\s*\([^;]*&\s*%s\b" % re.escape(a), text):
+            return m.group(0)
+        n += 1
+        return ("\n%su_long128 b3_box_%s[2] = {%s, %s}; u_long128 &%s = b3_box_%s[0], &%s = b3_box_%s[1]; "
+                "/* decomp2host T41: one array (max after min) */" % (ind, a, ea, eb, a, a, b, a))
+
+    return T41_PAIR.sub(repl, text), n
+
+
+# 1.2.0 T46: a local array a draft declares smaller than retail's frame holds, indexed by a count read at run time.
+# MWCC's frame had room for every index, so retail never overran; on the host the extra elements land on whatever the
+# compiler put next to the array (Apple clang: its stack-protector guard, __stack_chk_fail; GCC: other temporaries).
+# Function address -> [(element type (a regex: the unit may hold it as `float` or T1's `ps2f`), name, the draft's size,
+# retail's)]; the declaration is checked, so a decomp that changes it (or fixes it: then the entry is left over and stops
+# the generation) is noticed.
+T46_LOCAL_ARRAYS = {
+    # CB3VehiclePhysics::UpdateSuspension: the bump impulses, laImpulse[lnWheel] for lnWheel < mnNumWheels (+0x1169: 6
+    # for the six-wheeled vehicles, PVEH/HEVY CAR7 / CAR8 / CAR10.BGV and the traffic CAR22 / CAR23.BTV). Retail keeps them at sp+0x910 (sqc2 0x910(v1), v1 = sp + 16*wheel, 0x1CD508), six
+    # slots to 0x96F (0x970 unused, the next local at sp+0x980, frame 0x990); Revenge's STABS: `CGtV3d laImpulse[6]`
+    # (UpdateSuspension__17CB4VehiclePhysicsf).
+    # The application loop stays `< 4`, as retail's (slti 4, 0x1CCF00). Mac crash 2026-11-18 (stack buffer overflow).
+    0x001CC900: [("CGtV3d", "laImpulse", 4, 6)],
+    # func_002B7DB0 (a convex hull's penetration along a direction, from func_002B7F70: the vehicle hull against the
+    # world): d[i] for i < the hull's plane count (+0x19; CB3ConvexHullVehicle::Initialise 0x2B96A0 reserves 40, and 78
+    # of the 107 PVEH hulls have 22..40). Retail: sw 0x70(a2), a2 = sp + 4*i (0x2B7E34), 44 floats to the next local at
+    # sp+0x120 (frame 0x130), as its twin func_002B7BF0's d[44]. GCC (x86-64) keeps d[i] in a register (it is read only
+    # in its own iteration: no d[] in the frame), so no build has been seen to overrun; still undefined past 20.
+    0x002B7DB0: [("float|ps2f", "d", 20, 44)],
+}
+
+
+def t46_local_arrays(text, report=None):
+    """1.2.0 T46 (see T46_LOCAL_ARRAYS): in the marked function of each entry, `T name[draft];` -> `T name[retail];`.
+    Returns (text, count)."""
+    n = 0
+    for addr, arrays in T46_LOCAL_ARRAYS.items():
+        mk = re.search(r"^//\s*0x%08X\b.*$" % addr, text, re.M | re.I)
+        if not mk:
+            continue
+        end = re.search(r"^\}", text[mk.end():], re.M)
+        if not end:
+            die("T46: no end of the function marked 0x%08X" % addr)
+        lo, hi = mk.end(), mk.end() + end.end()
+        body = text[lo:hi]
+        for typ, name, have, want in arrays:
+            pat = re.compile(r"\b(%s)\s+%s\s*\[\s*%d\s*\]\s*;" % (typ, re.escape(name), have))
+            if len(pat.findall(body)) != 1:
+                die("T46: 0x%08X no longer declares `%s %s[%d];` once (decomp changed it? update T46_LOCAL_ARRAYS)" %
+                    (addr, typ, name, have))
+            body = pat.sub(lambda m: "%s %s[%d];   /* decomp2host T46: retail's frame holds %d (the draft: %d) */" %
+                           (m.group(1), name, want, want, have), body)
+            n += 1
+            if report is not None:
+                report.append("T46 %08X: %s[%d] -> [%d]" % (addr, name, have, want))
+        text = text[:lo] + body + text[hi:]
+    return text, n
+
+
 def fix_markers(fns, names_by_addr, report=None):
     """A `// 0xADDR` marker sometimes sits above an inline helper that the decomp placed before the function itself
     (B3VehicleDeform_003E18E0.cpp: the marker, then func_003E18E0_inl1, then GetClosestBitToPoint). A marked definition
@@ -5400,6 +5469,17 @@ def call_stubs(path, decomp, report, compiled=None, defined_elsewhere=frozenset(
         text += ("\n// ---- decomp2host: calls to other game functions (b3host::call_guest: native override if enabled, "
                  "else the original)\n#include <cstddef>\n#include <utility>\n" + "".join(s + "\n" for s in specs) +
                  "\n".join(stubs) + "\n")
+    # 1.1.1 T41: an axis-aligned box written as two adjacent locals (`u_long128 b0 = min; u_long128 b1 = max;`) whose
+    # first's address goes to a CGtAxisAlignedBox parameter: MWCC put them next to each other; a host compiler need not
+    # (mingw-w64 did not: crash-mode pickups were never collected on Windows, Update__14CB3CrashPickupFf). The two
+    # become one array, so max always follows min; the names stay (references), every use reads as before.
+    text, n_t41 = t41_box_pairs(text)
+    if n_t41:
+        sys.stderr.write("decomp2host: T41 %s: %d box pair(s) made one array\n" % (os.path.basename(path), n_t41))
+    # 1.2.0 T46: a local array the draft declares smaller than retail's frame (T46_LOCAL_ARRAYS)
+    text, n_t46 = t46_local_arrays(text, report)
+    if n_t46:
+        sys.stderr.write("decomp2host: T46 %s: %d local array(s) sized as retail's frame\n" % (os.path.basename(path), n_t46))
     if (macros or stubs) and os.environ.get("DECOMP2HOST_T31C") == "1":
         # boot2 E1 (c): a local aggregate reaching a guest call (the bounce window covers max(256, sizeof(pointee))
         # from the pointer): the whole object onto the guest stack (T31); one count line per unit on stderr
@@ -5449,8 +5529,11 @@ def call_stubs(path, decomp, report, compiled=None, defined_elsewhere=frozenset(
                 " ".join("%s=%d" % kv for kv in sorted(why.items()))))
             for h in left:
                 sys.stderr.write("decomp2host: E1c-left %s: %s (%s) in %s\n" % (os.path.basename(path), h[2], h[1], h[0]))
-    if macros or stubs:
+    # 1.2.0: a T41 / T46 rewrite is kept in a unit with no stub or macro too (func_002B7DB0 calls nothing: its T46
+    # was dropped)
+    if macros or stubs or n_t41 or n_t46:
         open(path, "w").write(text)
+    if macros or stubs:
         report.append("calls: %d extern C, %d C++, %d virtual" % (n_c, n_cpp, n_v))
     if n_direct:
         report.append("calls: %d direct to other selected units" % n_direct)

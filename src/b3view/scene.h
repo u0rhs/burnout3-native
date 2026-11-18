@@ -15,6 +15,20 @@
 
 namespace b3view {
 
+// hdkey: decoded levels as the device takes them (pointing into `levels`)
+inline std::vector<b3gfx::TextureLevel> texture_levels(const std::vector<b3asset::Image>& levels) {
+    std::vector<b3gfx::TextureLevel> out;
+    for (const auto& l : levels) out.push_back({l.w, l.h, l.rgba.data()});
+    return out;
+}
+// A decoded texture on the device (kNone: no levels), and the decode an HD pack replacement stands for beside it
+// (`original`, DecodedRaster::original: the HD TEXTURES key's other picture, Device::create_texture_hd)
+inline b3gfx::TextureId upload_texture(b3gfx::Device& dev, const std::vector<b3asset::Image>& levels,
+                                       const std::vector<b3asset::Image>& original = {}) {
+    if (levels.empty()) return b3gfx::kNone;
+    return dev.create_texture_hd(texture_levels(levels), texture_levels(original));
+}
+
 struct LoadOptions {
     int lod = 3;      // cars
     int palette = 0;  // cars: paint variant
@@ -90,6 +104,8 @@ bool add_enviro(b3gfx::Device& dev, const std::string& route, Scene& scene);
 // or it did not parse); add_enviro(dev, scene) then builds the sky from scene.enviro already filled by it.
 bool read_route_enviro(const std::string& route, b3asset::Enviro& out);
 bool add_enviro(b3gfx::Device& dev, Scene& scene);
+// The sky backdrop (b3asset::build_backdrop) on the device; hdkey: with an HD gradient, the original's beside it
+b3gfx::TextureId upload_backdrop(b3gfx::Device& dev, const b3asset::Enviro& env, const float to_sun[3]);
 
 // Fills the frame parameters of the game model (sun, full-screen specular, fog, present scale) for `scene` and the
 // camera; `fog` / `specular` switch those passes.

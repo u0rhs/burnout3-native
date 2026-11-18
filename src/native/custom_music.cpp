@@ -342,6 +342,135 @@ std::vector<Track> scan_folder(const std::string& dir, std::string* why) {
     return out;
 }
 
+// ---- the custom songs' EA TRAX modes ----
+
+std::uint8_t mode_from_word(const std::string& w) {
+    if (w == "races") return kModeRaces;
+    if (w == "menus") return kModeMenus;
+    if (w == "off") return kModeOff;
+    return kModeBoth;
+}
+
+const char* mode_word(std::uint8_t m) {
+    switch (m & 7u) {
+    case kModeBoth: return "both";
+    case kModeRaces: return "races";
+    case kModeMenus: return "menus";
+    default: return "off";
+    }
+}
+
+std::string relative_key(const std::string& folder, const std::string& path) {
+    std::string k = path;
+    if (k.size() > folder.size() && k.compare(0, folder.size(), folder) == 0) k = k.substr(folder.size());
+    for (char& c : k)
+        if (c == '\\') c = '/';
+    std::size_t lead = 0;
+    while (lead < k.size() && k[lead] == '/') ++lead;
+    return k.substr(lead);
+}
+
+std::uint8_t ModeStore::get(const std::string& folder, const std::string& key) const {
+    for (const auto& [f, songs] : modes_)
+        if (f == folder)
+            for (const auto& [k, m] : songs)
+                if (k == key) return m;
+    return kModeBoth;
+}
+
+void ModeStore::set(const std::string& folder, const std::string& key, std::uint8_t mode) {
+    mode = mode_from_word(mode_word(mode));   // one of the four
+    for (auto& [f, songs] : modes_)
+        if (f == folder) {
+            for (auto& [k, m] : songs)
+                if (k == key) { m = mode; return; }
+            songs.emplace_back(key, mode);
+            return;
+        }
+    modes_.push_back({folder, {{key, mode}}});
+}
+
+bool ModeStore::parse(const std::string& text) {
+    modes_.clear();
+    std::size_t at = 0;
+    std::string folder;
+    bool have_folder = false;
+    while (at < text.size()) {
+        std::size_t end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(at, end - at);
+        at = end + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        const std::size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq), value = line.substr(eq + 1);
+        if (key == "folder") {
+            folder = value;
+            have_folder = true;
+        } else if (have_folder && !value.empty() && (key == "both" || key == "races" || key == "menus" || key == "off")) {
+            set(folder, value, mode_from_word(key));
+        }
+    }
+    return true;
+}
+
+std::string ModeStore::text() const {
+    std::string o = "# Burnout 3 native: the EA TRAX modes of the songs in your music folders (both, races, menus or off)\n";
+    for (const auto& [f, songs] : modes_) {
+        o += "folder=" + f + "\n";
+        for (const auto& [k, m] : songs) o += std::string(mode_word(m)) + "=" + k + "\n";
+    }
+    return o;
+}
+
+bool ModeStore::load(const std::string& file) {
+    file_ = file;
+    modes_.clear();
+    std::FILE* f = file.empty() ? nullptr : open_file(file);
+    if (!f) return false;
+    std::string text;
+    char buf[4096];
+    for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) text.append(buf, n);
+    std::fclose(f);
+    return parse(text);
+}
+
+bool ModeStore::save(std::string* why) const {
+    namespace fs = std::filesystem;
+    if (file_.empty()) {
+        if (why) *why = "no file";
+        return false;
+    }
+    const fs::path to = upath(file_), tmp = upath(file_ + ".tmp");
+    std::error_code ec;
+    if (to.has_parent_path()) fs::create_directories(to.parent_path(), ec);
+    std::FILE* f = nullptr;
+#if defined(_WIN32)
+    f = _wfopen(tmp.c_str(), L"wb");
+#else
+    f = std::fopen(tmp.c_str(), "wb");
+#endif
+    if (!f) {
+        if (why) *why = "cannot write " + file_ + ".tmp";
+        return false;
+    }
+    const std::string t = text();
+    const bool ok = std::fwrite(t.data(), 1, t.size(), f) == t.size();
+    if (std::fclose(f) != 0 || !ok) {
+        if (why) *why = "cannot write " + file_ + ".tmp";
+        fs::remove(tmp, ec);
+        return false;
+    }
+    fs::rename(tmp, to, ec);
+    if (ec) {
+        if (why) *why = ec.message();
+        fs::remove(tmp, ec);
+        return false;
+    }
+    return true;
+}
+
 // ---- the resampler ----
 
 void Resampler::reset(std::uint64_t base) {

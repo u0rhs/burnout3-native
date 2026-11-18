@@ -7,6 +7,10 @@
 #   2. restart on that folder: title -> LOAD PROFILE -> PROFILE 1 -> main menu ("Load successful" answered), then
 #      SETTINGS > SAVES > EXPORT SAVE (the file dialog answered by $B3NATIVE_SAVE_DIALOG): the export must equal the
 #      profile, and loading must not have changed profile-1.sav.
+#   3. eatrax1: run 1 again on a fresh folder (OUT/card3) with a music folder of synthetic tones, PLAYLIST Custom only,
+#      so a custom song (index 44 on) is the radio's song when the profile is saved: the save's song fields (save_tool
+#      music: the last song, the 44 songs' bits) must hold only the disc's songs (0..43, or 255: none), as a PS2 or an
+#      emulator reads them, and the log must show the custom song played and its index kept out of the save.
 #
 #   tools/native/save_check.sh [native_play] [out dir]      (default build/native_play, build/save_check)
 #   Environment: B3_GAME_DIR (the disc folder, default data/game), STRICT=1 (no retail fallback), SHOTS (more polls).
@@ -75,8 +79,26 @@ if [ -f "$OUT/export.sav" ]; then
   build/save_tool info "$OUT/export.sav" | grep -v "^BASLUS-21050  (" > "$OUT/run2/export.txt"
   grep -v "^BASLUS-21050  (" "$OUT/run1/sav.txt" | cmp -s - "$OUT/run2/export.txt" || why="${why:+$why; }the export differs from the profile"
 fi
+# run 3 (eatrax1): a profile saved while a custom song plays keeps no custom index
+mkdir -p "$OUT/card3" "$OUT/run3" "$OUT/music"
+python3 -I - "$OUT/music" <<'PY'
+import math, struct, sys, wave
+with wave.open(sys.argv[1] + '/01 Save Check - Long Tone.wav', 'wb') as w:
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+    w.writeframes(b''.join(struct.pack('<h', int(5000 * math.sin(2 * math.pi * 440 * k / 22050))) for k in range(22050 * 240)))
+PY
+ENVS=(B3HOST_FATAL_ABORT=1 B3NATIVE_SAVES_ROOT="$OUT/card3" B3NATIVE_CARD_PRESENT_VBLANK=0 B3NATIVE_MUSIC_DIR="$OUT/music"
+      B3NATIVE_MUSIC_MODE=1 B3NATIVE_MUSIC_MODES_FILE=-)
+run run3 13000 "$K1" 6400
+grep -q '^crash:' "$OUT/run3/log.txt" && why="${why:+$why; }run 3 crashed"
+grep -q 'custom_music: VBlank [0-9]*: stream [0-9A-F]* plays' "$OUT/run3/log.txt" || why="${why:+$why; }run 3: no custom song played"
+grep -q "custom_music: VBlank [0-9]*: the save's last song is custom" "$OUT/run3/log.txt" || why="${why:+$why; }run 3: no save with a custom song current"
+MS=$(build/save_tool music "$OUT/card3/profile-1.sav" 2>&1)
+echo "$MS" > "$OUT/run3/music.txt"
+echo "$MS" | awk '/^last song/ {n++; if ($3 >= 44 && $3 != 255) bad = 1} /^song bits/ {n++; if (NF != 46) bad = 1; for (i = 3; i <= NF; ++i) if ($i > 15) bad = 1}
+                  END {exit !(n == 2 && !bad)}' || why="${why:+$why; }run 3: the save's song fields hold a custom index: $(echo "$MS" | head -c 200)"
 if [ -z "$why" ]; then
-  echo "save_check: PASS new profile saved silently to profile-1.sav, loaded on restart, exported from SETTINGS (logs $OUT/run1, $OUT/run2)"
+  echo "save_check: PASS new profile saved silently to profile-1.sav, loaded on restart, exported from SETTINGS; saved with a custom song playing, its song fields hold the disc's songs only ($(head -1 "$OUT/run3/music.txt")) (logs $OUT/run1, $OUT/run2, $OUT/run3)"
   exit 0
 fi
 echo "save_check: FAIL $why"

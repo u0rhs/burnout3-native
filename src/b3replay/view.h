@@ -72,6 +72,9 @@ struct Frame {
     int slot_unit[17], slot_kind[17];
     std::uint16_t vis[17] = {};
     std::int8_t backdrops[8];
+    int env_unit[17] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};   // reflect-tunnel: Tick::env_unit / env_car / env_track
+    std::uint32_t env_car = 0;
+    int env_track = -1;
     // props (capture version 2, props1): the tick's mode switch and hidden placements, the dynamic props interpolated
     int props_off = -1;
     std::vector<std::uint16_t> hidden;   // sorted
@@ -206,6 +209,14 @@ struct TrackPrep {
 inline int car_reflect_default() {
     const char* e = std::getenv("B3_CAR_REFLECTIONS");
     return !e ? 2 : !std::strcmp(e, "off") ? 0 : !std::strcmp(e, "original") ? 1 : 2;
+}
+
+// reflect-tunnel: the car env map's track part (docs/car-shading.md §9) on by default; $B3_CAR_ENV = sky draws the
+// map as before (the ENVIRO.DAT sky alone: the golden record's reference look, tools/golden/baseline.sh), = world forces
+// it on whatever the settings say (apply_view: off with SPECULAR off, i.e. the LOW preset). -1: no override.
+inline int car_env_override() {
+    const char* e = std::getenv("B3_CAR_ENV");
+    return !e ? -1 : !std::strcmp(e, "sky") ? 0 : !std::strcmp(e, "world") ? 1 : -1;
 }
 
 // bloom2: the bloom's level, 1 Soft (the default of the PC SETTINGS) or 2 Standard (the game's own strength, drawn the way its GS
@@ -534,6 +545,14 @@ struct View {
     struct UnitBox { float lo[3], hi[3]; std::vector<int> items; };
     std::vector<UnitBox> track_boxes;
     void build_track_boxes();
+    // reflect-tunnel: the car env map's track part. The game draws the sky, the sun and, into env-map cameras 1..3, the
+    // +0xC4 (LOD) blocks of the slots those cameras see (RenderBeforeVehicles 0x21C780, D_00665F20) around race car
+    // [cam +0x19AC]'s box middle (BuildCustomCameraData 0x223130), far 100 m; every car of the view reflects that map.
+    // env_world_map draws it (Device::render_env) and returns CarGlobals::env_world for this frame's cars.
+    bool car_env_world = car_env_override() != 0;
+    int env_slot = 0;                           // alternates: a split screen's two views each keep their own map
+    std::vector<std::array<float, 6>> lo_boxes; // world box (lo xyz, hi xyz) per lo item; lo > hi: none (never culled)
+    std::uint32_t env_world_map(b3gfx::Device& dev, const Frame& f, const std::vector<ModelHead>& heads);
     bool movie_fill = true;                     // fe3: the backdrop's blurred side fill (--movie-fill blur); false: black
     // fe3: blurred copies for the side fill: per guest movie picture buffer (what it was made from), per still texture
     std::map<std::uint32_t, std::pair<std::shared_ptr<const HudPicture>, b3gfx::TextureId>> fill_movie;

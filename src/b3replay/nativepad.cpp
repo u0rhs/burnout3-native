@@ -344,7 +344,7 @@ void NativePad::poll_gamepads() {
         if (combo && !combo_prev_) ask_restart("INSTANT RESTART buttons");
         combo_prev_ = combo;
         std::uint64_t held = 0;
-        for (PA a : {PA::Fullscreen, PA::Screenshot, PA::BugReport})
+        for (PA a : {PA::Fullscreen, PA::Screenshot, PA::BugReport, PA::HdTextures})
             if (btn(a)) held |= std::uint64_t(1) << int(a);
         port_pad_edges_ |= held & ~port_pad_prev_;
         port_pad_prev_ = held;
@@ -697,6 +697,15 @@ std::uint64_t NativePad::port_mask(std::uint16_t scancode, unsigned mod) const {
 
 std::uint64_t NativePad::take_port_pad() { return port_pad_edges_.exchange(0); }
 
+std::vector<std::uint32_t> NativePad::take_hd_presses(std::uint32_t upto) {
+    std::lock_guard<std::mutex> l(mu_);
+    std::vector<std::uint32_t> out;
+    std::size_t n = 0;
+    while (n < hd_presses_.size() && hd_presses_[n] <= upto) out.push_back(hd_presses_[n++]);
+    hd_presses_.erase(hd_presses_.begin(), hd_presses_.begin() + std::ptrdiff_t(n));
+    return out;
+}
+
 std::string NativePad::port_key_text(b3native::input::PortAction a) const {
     std::lock_guard<std::mutex> l(mu_);
     const auto& k = controls_.port.keys[std::size_t(a)];
@@ -706,6 +715,7 @@ std::string NativePad::port_key_text(b3native::input::PortAction a) const {
 void NativePad::key(std::uint16_t scancode, bool down) {
     if (PhotoMode::instance().key(scancode, down)) return;   // photo mode's keys (a script's too); ups still come here
     page_key(scancode, down);   // devnav1
+    const std::uint32_t hd_poll = PhotoMode::instance().game_poll() + 1;   // hdkey (read before mu_: no nested locks)
     std::lock_guard<std::mutex> l(mu_);
     if (capture_ && down) {   // remap1: a script's key during a rebind (as a window key)
         Capture c;
@@ -716,6 +726,10 @@ void NativePad::key(std::uint16_t scancode, bool down) {
     }
     if (b3native::input::port_actions_of_key(controls_.port, scancode) >> int(b3native::input::PortAction::Restart) & 1) {   // speedrun1: a script's restart key
         if (down) ask_restart("restart key (script)");
+        return;
+    }
+    if (b3native::input::port_actions_of_key(controls_.port, scancode) >> int(b3native::input::PortAction::HdTextures) & 1) {   // hdkey
+        if (down) hd_presses_.push_back(hd_poll);
         return;
     }
     keys_.key(scancode, down);

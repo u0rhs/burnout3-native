@@ -588,7 +588,7 @@ What is captured and where it comes from (retail addresses; offsets from the dec
 | Viewports | graphics manager 0x665EC0: selection 1 (player 1) at +0x90, 2 at +0x130, 0 (full screen) at +0x310, each 0xA0; params +0x1D0 / +0x270; open viewport +0x3B0 | [C] `OpenViewport__18CB3GraphicsManager` 0x227360 (matched) |
 | Camera matrix | viewport +0x58 `RwCamera*` -> +0x4 `RwFrame*` -> modelling matrix at frame +0x10 (right, up, at, pos), written from the camera's quaternion by `CGtViewport::Update` | [C] Update 0x211ED0 (draft from the asm); [L] RW 3.x RwFrame layout |
 | Projection | viewport +0x48 / +0x4C = half view window at distance 1 (+0x48 = +0x70 x tan(fov / 2), +0x4C = +0x48 / aspect), +0x84 / +0x88 near / far, +0x00 the game's world -> screen matrix; `CGtCamera` (+0x68): fov (degrees) +0x4, quat +0x10, position +0x20 | [C] Update, OpenViewport, `DrawPositionMarker` |
-| Race cars | count `gWorld+0x12AD1C`, `CB3RaceCar*[6]` at `+0x12AD28`; drawn only if +0x18E8; matrix +0x00, or +0x1920 when +0x199B | [C] `RenderRaceCars` 0x199A20 (draft), `CB3RaceCar::Draw` 0x151A40 (matched) |
+| Race cars | count `gWorld+0x12AD1C`, `CB3RaceCar*[6]` at `+0x12AD28`; drawn only if +0x18E8; matrix +0x00, or +0x1920 when +0x199B: Draw swaps it into +0x00 before RenderVehicle, so the body, panels and wheels all take it (the slammed car's fishtail, written by `CB3RaceCar::UpdateAggressiveReaction` 0x151DC0: a decaying yaw about the up axis for krFishTailTime; wobble1, 2026-11-18: b3replay swapped it in after placing the parts, so only the body wobbled and the panels and wheels stayed put) | [C] `RenderRaceCars` 0x199A20 (draft), `CB3RaceCar::Draw` 0x151A40 (matched); [L] UpdateAggressiveReaction draft |
 | Car render inputs | `CB3VehicleEssentialParams` (= the car, +0x00): matrix +0x00, `CB3VehicleData*` +0x40, tilt sin/cos +0x44..+0x50, light bits +0x58, paint +0x59, frustum result +0x5B; `CB3VehicleParams` (car +0x80): wheel matrices +0x000 (relative unless state +0x4AC = 3), panel matrices +0x180 (relative to the tilted body unless state +0x4B2 >= 3; 4 = not drawn), wheel speeds +0x4E8, glass +0x1014, deformed +0x101B, deform matrices +0x500 (captured while deformed) | [C] `RenderVehicle` 0x21E6F0 (draft, every op from the asm) |
 | Car model identity | vehicle data header [0, 0x70) (version, size, counts, floats before the relocated pointers at +0x4C) and its atlas raster's name (raster +0xA8) | [C] header bytes equal the file's for every car seen (below) |
 | Track route | static track 0x64C990, its data (+0x4) = the loaded STATIC.DAT image: file size +0x04, unit count +0x54 | [C] track-format.md §1.1; match below |
@@ -2904,7 +2904,8 @@ from its `config/symbol_addrs_b3names.txt`, else placeholders. Pictures (game-de
   cameras around the car's box middle in world space (+0xE80 / +0xE90 through the car's matrix), looking at the main
   camera. `RenderFrontEnd` draws the sky, the sun and all three backdrop ranges into them, so the car reflects the
   garage. C5_V1's ENVIRO sky alone is a bright blue sky with clouds (`envmapclouds`): with it the car came out light
-  and blue. The race path's env map is the sky alone (§12.6), which is right for races.
+  and blue. The race path's env map is the sky with the streamed track's LOD blocks in front of it (car-shading.md §9:
+  RenderBeforeVehicles draws them into env cameras 1..3; the "sky alone" read before 1.1 was wrong).
 
 ### 24.2 Renderer
 

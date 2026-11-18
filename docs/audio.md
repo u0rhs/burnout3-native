@@ -336,7 +336,8 @@ without a game run (replay the logged packets, compare its replies). Then the mi
 
 ## 5. Open items found so far
 
-- **B3ROUTE's distortion** (docs/audio-b3route.md; the native build is PS2-faithful):
+- **B3ROUTE's distortion** (docs/audio-b3route.md; the native build is PS2-faithful; in the shipped game since engpan,
+  2026-11-18, §8 there):
   - In play, the distortion runs **throughout every race**:
     - `CB3SoundGameModeManager::Update` calls StartDistortion every frame in race states (state byte +0x52CC >= 0xB,
       race cars > 0) [C 0x289D3C];

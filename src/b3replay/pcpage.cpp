@@ -175,16 +175,7 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
         env.music_status = music_status_;
     }
     env.music = true;   // native_play plays it (tools/native/custom_soundtrack.h)
-    if (!languages_scanned_) {   // 1.0.1: once (a disc scan per frame would cost the frame)
-        languages_scanned_ = true;
-        // 1.1: the folder native_play reads the game's text from (B3NATIVE_LANGUAGES_DIR, set by native_play for every
-        // run); else <prefs>/languages beside the controls file (a window run without native_play's word)
-        std::filesystem::path root;
-        if (const char* d = std::getenv("B3NATIVE_LANGUAGES_DIR"); d && *d) root = b3mod::path_from_utf8(d);
-        else if (!controls_path_.empty()) root = b3asset::language::imported_root(std::filesystem::path(controls_path_).parent_path());
-        for (const auto& l : b3asset::language::on_disc(root))
-            if (l.supported) languages_.emplace_back(l.code, l.name);
-    }
+    scan_languages();
     env.languages = languages_;   // the launcher imports them (IMPORT LANGUAGES)
     {
         std::lock_guard<std::mutex> lock(music_m_);
@@ -639,6 +630,9 @@ void PcPage::save_action(std::uint32_t id, const b3settings::Env& env) {
         url += "/";
 #endif
         url += env.saves_folder;
+        // (the run log names every window the game asks the system to open: issue #3's reports of file manager windows)
+        std::printf("[b3settings] SAVES: SAVE FOLDER > Open: asking the system to show %s\n", url.c_str());
+        std::fflush(stdout);
         if (!SDL_OpenURL(url.c_str())) set_local_status(std::string("CANNOT OPEN THE FOLDER: ") + SDL_GetError());
         return;
     }
@@ -702,6 +696,25 @@ void PcPage::dialog_done(int kind, const char* path, const char* error) {
     }
     save_.request(kind, files.front().string().c_str());
     set_local_status("IMPORTING " + files.front().filename().string() + "...");
+}
+
+void PcPage::scan_languages() {
+    if (languages_scanned_) return;   // 1.0.1: once (a disc scan per frame would cost the frame)
+    languages_scanned_ = true;
+    // 1.1: the folder native_play reads the game's text from (B3NATIVE_LANGUAGES_DIR, set by native_play for every
+    // run); else <prefs>/languages beside the controls file (a window run without native_play's word)
+    std::filesystem::path root;
+    if (const char* d = std::getenv("B3NATIVE_LANGUAGES_DIR"); d && *d) root = b3mod::path_from_utf8(d);
+    else if (!controls_path_.empty()) root = b3asset::language::imported_root(std::filesystem::path(controls_path_).parent_path());
+    for (const auto& l : b3asset::language::on_disc(root))
+        if (l.supported) languages_.emplace_back(l.code, l.name);
+}
+
+std::string PcPage::ui_language() {
+    scan_languages();
+    b3settings::Env env;
+    env.languages = languages_;
+    return b3settings::ui_language(settings_, env);
 }
 
 // mac5: the HD pack folder: a PCSX2 replacement folder has image files (dds / png) somewhere below it; the renderer's

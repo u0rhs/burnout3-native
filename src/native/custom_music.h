@@ -58,6 +58,34 @@ std::vector<Track> scan_folder(const std::string& dir, std::string* why = nullpt
 // scan_folder's paths without their tags (the same files, the same order; the launcher's Music page counts them).
 std::vector<std::string> list_audio_files(const std::string& dir, std::string* why = nullptr);
 
+// ---- the custom songs' EA TRAX modes (remaster-features §6.3) ----
+// The game's per-song bits (the profile's D_004F5040 [0..43], the song table's +0x14 [C decomp func_00431050 /
+// func_00431160]): 7 both (races and menus), 1 races, 4 menus, 0 off. A custom song's mode is kept host-side, keyed by
+// its folder and its path in that folder (the save holds the 44 songs of the disc only).
+enum : std::uint8_t { kModeOff = 0, kModeRaces = 1, kModeMenus = 4, kModeBoth = 7 };
+std::uint8_t mode_from_word(const std::string& w);   // "both" / "races" / "menus" / "off"; anything else: kModeBoth
+const char* mode_word(std::uint8_t m);               // the low three bits: 7 both, 1 races, 4 menus, else off
+// `path` (a file under `folder`, as scan_folder gives it) relative to the folder, '/' separators: the key of its mode
+std::string relative_key(const std::string& folder, const std::string& path);
+// The modes file: "folder=<folder>" starts a folder's lines, then "<mode word>=<path in the folder>" (UTF-8, one per
+// line; '#' lines are comments). A song not in it is kModeBoth.
+class ModeStore {
+public:
+    bool load(const std::string& file);   // false: no such file (the store is then empty) or unreadable
+    bool save(std::string* why = nullptr) const;   // the whole file, through a temporary and a rename
+    void clear() { modes_.clear(); }
+    std::uint8_t get(const std::string& folder, const std::string& key) const;
+    void set(const std::string& folder, const std::string& key, std::uint8_t mode);
+    void set_file(const std::string& file) { file_ = file; }
+    const std::string& file() const { return file_; }
+    std::string text() const;   // the file's text
+    bool parse(const std::string& text);
+
+private:
+    std::string file_;
+    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::uint8_t>>>> modes_;   // folder order kept
+};
+
 // ---- decoding (src/native/music_decoders.cpp) ----
 std::FILE* open_file(const std::string& utf8_path);   // "rb", UTF-8 path on every system
 bool read_ogg_comments(const std::string& path, Tags& t);

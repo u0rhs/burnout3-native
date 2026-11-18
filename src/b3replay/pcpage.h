@@ -67,6 +67,8 @@ public:
     bool frame(const std::array<std::uint8_t, 32>& pad, float seconds, const std::string& ini,
                const MenuMouse::PagePointer* mouse = nullptr, float aspect = 4.0f / 3.0f);
     b3settings::Settings& settings() { return settings_; }
+    // hdkey (1.2): the language our own text is shown in ("" English): LANGUAGE when the disc has it (render thread; hdkey's notice)
+    std::string ui_language();
     // mac5: the tab buttons' labels follow the prompts' device (L1 / R1, LB / RB, L / R, the bound keys)
     void set_prompts(PromptDevice d, const PromptKeys& keys) { prompt_device_ = d; prompt_keys_ = keys; }
     // Offscreen shots: the page's animation clock in game time (b3settings::Menu::set_clock)
@@ -128,6 +130,7 @@ private:
     // 1.0.1 LANGUAGE: the imported languages (<preferences>/languages, beside controls.ini), scanned once
     std::vector<std::pair<std::string, std::string>> languages_;
     bool languages_scanned_ = false;
+    void scan_languages();   // languages_, once
     b3native::input::Controls controls_ = b3native::input::default_controls();
     std::size_t ctl_player_ = 0, ctl_device_ = 0, ctl_view_ = 0;
     b3native::input::RebindFlow flow_;

@@ -7,8 +7,8 @@
 //               [--hz 59.94] [--no-pace] [--quit-after <s>] [--keys <vblank>:<scancode>:<0|1>,...] [--strict] [--no-audio]
 //
 //   --elf / B3_ELF        the retail executable (checked by size and FNV-1a 64); default <game>/SLUS_210.50
-//   --game / B3_GAME_DIR  the disc: a folder of its files (DATA, TRACKS, PVEH, ...) or the disc image (.iso / raw .bin,
-//                         read in place: b3asset/discfs.h); the platform and the renderer read it
+//   --game / B3_GAME_DIR  the disc: a folder of its files (DATA, TRACKS, PVEH, ...) or the disc image (.iso / raw .bin /
+//                         .chd, read in place: b3asset/discfs.h); the platform and the renderer read it
 //   --offscreen           no window (the renderer's offscreen live mode: build/gameview); the pad still takes --keys
 //   --hz / --no-pace      real time: each virtual VBlank waits for its wall-clock time (NTSC 59.94 Hz [C PS2 NTSC field
 //                         rate]); a host that falls more than 250 ms behind resyncs (counted) instead of bursting
@@ -160,6 +160,7 @@ b3native::Path3Check g_path3_check;
 #include "pad_record.h"
 #include "page_hold.h"
 #include "run_log.h"
+#include "render_load.h"   // dll1114: the renderer's load, its diagnosis and message
 #include "b3report/run_logs.h"
 #include "b3report/version.h"
 #include "native_table.h"
@@ -682,6 +683,8 @@ int main(int argc, char** argv) {
             if (k.rfind("music_fp.", 0) == 0 && music_fingerprint(k.substr(9)) != v)
                 return refuse("The replay " + name + " was recorded with your own music from the folder " + k.substr(9) +
                               ". The game's radio follows those songs, so it plays the same only with the same music files there, and they are not.");
+        for (const auto& [k, v] : replay_in->options)   // eatrax1: the recording's modes of the custom songs, not the file's
+            if (k.rfind("music_modes.", 0) == 0) b3native::CustomSoundtrack::seed_modes(k.substr(12), v);
         if (const std::string* o = replay_in->option("idle_skip")) idle_skip = *o == "1";
         if (const std::string* o = replay_in->option("movie_skip")) movie_skip_on = *o == "1";
         if (const std::string* o = replay_in->option("explore_movies")) explore_movies = *o == "1";
@@ -720,10 +723,10 @@ int main(int argc, char** argv) {
             tell_user("no game data",
                       "The game needs the files of your Burnout 3 disc (NTSC-U, SLUS-21050) and does not know where they are.\n\n"
                       "Start Burnout3Launcher instead: its Game Data page finds or asks for them and remembers the choice. "
-                      "Or start this program with --game <folder with the disc's files, or the disc image (.iso)>.",
+                      "Or start this program with --game <folder with the disc's files, or the disc image (.iso, .bin or .chd)>.",
                       exe_dir);
         else
-            std::fprintf(stderr, "native_play: --game <disc folder or .iso> (or B3_GAME_DIR) needed\n");
+            std::fprintf(stderr, "native_play: --game <disc folder or image (.iso / .bin / .chd)> (or B3_GAME_DIR) needed\n");
         return 2;
     }
     if (!(hz > 1 && hz < 1000)) hz = 59.94;
@@ -977,13 +980,17 @@ int main(int argc, char** argv) {
     {
         const char* lib = std::getenv("B3PORT_RENDER");
 #ifdef _WIN32   // win1: the same b3render.dll the capture loads (LoadLibrary returns the one module)
-        HMODULE m = lib ? LoadLibraryExA(lib, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH) : nullptr;
+        // dll1114: a UTF-8 path (gameview_native.cpp), its imports from System32 only; a failure's details go to the
+        // run log and the message says what the error means (tools/native/render_load.h)
+        unsigned long e = ERROR_MOD_NOT_FOUND;
+        HMODULE m = lib ? b3native::render_load::load_renderer(lib, &e) : nullptr;
         if (!m) {
-            const unsigned long e = GetLastError();
             std::fprintf(stderr, "native_play: cannot load the renderer %s (error %lu)\n", lib ? lib : "(none)", e);
+            std::fflush(stderr);
             if (!offscreen)
-                tell_user("cannot start", std::string("The renderer ") + (lib ? lib : "b3render.dll") + " did not load (error " + std::to_string(e) +
-                                              "). Keep native_play.exe, b3render.dll and SDL3.dll together in one folder.", exe_dir);
+                tell_user("cannot start", b3native::render_load::render_load_message(e, lib ? lib : "b3render.dll",
+                                              b3native::runlog::state().active ? b3native::runlog::state().path : std::string()),
+                          exe_dir);
             return 2;
         }
         auto sym = [m](const char* name) { return reinterpret_cast<void*>(GetProcAddress(m, name)); };
@@ -1107,8 +1114,12 @@ int main(int argc, char** argv) {
             std::string err;
             if (d.size() != kElfSize || b3host::fnv1a64(d.data(), d.size()) != kElfFnv) {
                 std::fprintf(stderr, "native_play: %s is not the retail SLUS_210.50 (size %zu)\n", elf.c_str(), d.size());
+                const std::string chd = b3asset::disc::image_error(game);   // chd1: a CHD that cannot be read: why
+                if (!chd.empty()) std::fprintf(stderr, "native_play: %s\n", chd.c_str());
                 if (!offscreen)
-                    tell_user("wrong game data", d.empty() ? "There is no game program (SLUS_210.50) in " + game +
+                    tell_user("wrong game data", !chd.empty() ? chd + "\n\nMake the CHD again from the disc, or choose the disc's .iso or folder in "
+                                                                      "Burnout3Launcher (Game Data)."
+                                                 : d.empty() ? "There is no game program (SLUS_210.50) in " + game +
                                                                  ".\n\nChoose the folder with your Burnout 3 disc's files in Burnout3Launcher (Game Data)."
                                                            : elf + " is not the US Burnout 3: Takedown disc's program (SLUS-21050). The port "
                                                                    "needs that disc's files.", exe_dir);
@@ -1227,8 +1238,11 @@ int main(int argc, char** argv) {
             std::string folder = g_live.music_dir;
             if (const char* e = std::getenv("B3NATIVE_MUSIC_MODE"); e && e[0] >= '0' && e[0] <= '2' && !e[1]) mode = e[0] - '0';
             if (const char* e = std::getenv("B3NATIVE_MUSIC_DIR"); e && *e) folder = e;
-            if (mode != 0 && !folder.empty() && !rrec->replay().option("music_fp." + folder))
+            if (mode != 0 && !folder.empty() && !rrec->replay().option("music_fp." + folder)) {
                 rrec->replay().options.emplace_back("music_fp." + folder, music_fingerprint(folder));
+                // eatrax1: the custom songs' EA TRAX modes as they are now (custom_soundtrack.h modes_digits)
+                rrec->replay().options.emplace_back("music_modes." + folder, b3native::CustomSoundtrack::modes_digits(folder));
+            }
         };
         bool replay_rumble = false;   // rumble1: playback's acknowledging mode (the recording's "rumble" setting)
         auto apply_live = [&](std::uint64_t v) {   // playback: the recorded values from this VBlank on

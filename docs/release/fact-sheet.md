@@ -4,7 +4,7 @@ The facts for the release announcement, each with where it was verified. Keep th
 nothing goes into the post that is not on this page. Status: ✅ in the build · 🚧 built, being checked · 📋 planned.
 The README's feature list uses the same marks and groups; keep the two in step.
 
-Last updated: 2026-11-18 (version 1.1.0).
+Last updated: 2026-11-18 (version 1.2.0).
 
 ## What it is
 
@@ -26,8 +26,8 @@ Last updated: 2026-11-18 (version 1.1.0).
   is checked against that recording item by item.
 - **Ready to play**: compiled ahead of time; unzip, point the launcher at your disc, play. No runtime download, no
   first-run compile.
-- **You need your own copy of the game** (a disc image `.iso` / `.bin`, or the disc's files in a folder). No game data
-  is included, and nothing writes to your disc files.
+- **You need your own copy of the game** (a disc image `.iso` / `.bin` / `.chd`, or the disc's files in a folder). No
+  game data is included, and nothing writes to your disc files.
 - **How it works**, with where each claim above is verified and the limits stated: [docs/TECHNICAL.md](../TECHNICAL.md).
   Quote technical claims from there.
 

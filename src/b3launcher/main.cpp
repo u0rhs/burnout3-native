@@ -1010,7 +1010,7 @@ void open_dialog(App& a, DialogKind kind, const std::string& start) {
         static const SDL_DialogFileFilter f[] = {{"Mods (*.b3mod, *.zip)", "b3mod;zip"}, {"All files", "*"}};
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
     } else if (kind == DialogKind::kGameImage || kind == DialogKind::kLanguageImage) {   // iso1: the disc image, read in place (b3asset/discfs.h)
-        static const SDL_DialogFileFilter f[] = {{"Disc images (*.iso, *.bin)", "iso;bin"}, {"All files", "*"}};
+        static const SDL_DialogFileFilter f[] = {{"Disc images (*.iso, *.bin, *.chd)", "iso;bin;chd"}, {"All files", "*"}};   // chd1: .chd
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
     } else {
         // iso1: the game data was a disc image: its folder to start in
@@ -1197,8 +1197,8 @@ void open_browser(App& a, DialogKind kind, const std::string& start, const std::
     b.title = browse_title(kind);
     switch (kind) {
     case DialogKind::kGameFolder:
-    case DialogKind::kGameImage: b.exts = {"iso", "bin"}; b.pick_files = true; break;   // a folder, or a disc image
-    case DialogKind::kLanguageImage: b.exts = {"iso", "bin"}; b.pick_files = true; break;   // 1.0.1
+    case DialogKind::kGameImage: b.exts = {"iso", "bin", "chd"}; b.pick_files = true; break;   // a folder, or a disc image (chd1: .chd)
+    case DialogKind::kLanguageImage: b.exts = {"iso", "bin", "chd"}; b.pick_files = true; break;   // 1.0.1
     case DialogKind::kHdFolder: b.exts = {"dds", "png"}; break;                          // shown, not chosen
     case DialogKind::kMusicFolder: b.exts = {"mp3", "flac", "ogg", "oga", "wav"}; break;
     case DialogKind::kModArchive: b.exts = {"b3mod", "zip"}; b.pick_files = true; b.pick_folder = false; break;
@@ -1365,7 +1365,7 @@ void handle_path(App& a, DialogKind kind, const std::string& path) {
         std::string why;
         const auto done = b3asset::language::import_from_disc(p, a.pref, &why);
         refresh_languages(a);
-        if (done.empty()) a.language_note = "No languages imported: " + why + ".";
+        if (done.empty()) a.language_note = chd_problem(p).empty() ? "No languages imported: " + why + "." : chd_problem(p);   // chd1
         else {
             std::string names;
             for (const auto& l : done) names += (names.empty() ? "" : ", ") + l.name;
@@ -2441,6 +2441,7 @@ void page_music(App& a, Ui& ui, float x, float y, float w) {
         else {
             dot = col::ok;
             st = std::to_string(m.songs) + (m.songs == 1 ? " song" : " songs") + " found (MP3, FLAC, Ogg Vorbis and WAV, subfolders included).";
+            if (m.songs > 200) st += " The game's EA TRAX page lists the first 200.";   // custom_soundtrack.h kMaxCustom
         }
         if (!m.error.empty()) st += " Not every folder could be read: " + m.error + ".";
     }
@@ -2455,7 +2456,8 @@ void page_music(App& a, Ui& ui, float x, float y, float w) {
         pdot = col::warn;
         pl = std::string(mode == 1 ? "Custom only" : "Mixed") + ", but there are no songs of yours to play: the game's EA TRAX songs play.";
     } else {
-        pl = mode == 1 ? "Custom only: the songs of your music folder." : "Mixed: your songs and the game's EA TRAX songs in turn.";
+        pl = mode == 1 ? "Custom only: the songs of your music folder." : "Mixed: your songs and the game's EA TRAX songs.";
+        pl += " Each song plays as set on the game's EA TRAX page.";
     }
     const float lh = a.text->line_height(kBody);
     auto status_h = [&](const std::string& body) {   // status_line's height, measured
@@ -2906,7 +2908,8 @@ void page_game(App& a, Ui& ui, float x, float y, float w) {
            "The folder you copied the disc's files into (SYSTEM.CNF, SLUS_210.50, DATA, TRACKS, ...). With a controller: the launcher's own folder list.",
            [&a]() { open_dialog(a, DialogKind::kGameFolder, utf8_of(a.game_dir)); });
     button(ui, at(250), "Choose disc image...", Style::kPrimary, true,
-           "Your disc's image file (.iso, or a raw .bin), read in place: nothing is extracted. With a controller: the launcher's own file list.",
+           "Your disc's image file (.iso, or a raw .bin), read in place: nothing is extracted. A .chd image of the disc works too. "
+           "With a controller: the launcher's own file list.",   // chd1: the sentence on .chd
            [&a]() { open_dialog(a, DialogKind::kGameImage, utf8_of(a.game_dir)); });
     button(ui, at(190), "Type a path...", Style::kNormal, true, "Type or paste the folder's or the disc image's path instead. With a controller: an on-screen keyboard.",
            [&a]() { ask_path(a, DialogKind::kGameFolder, "Game data folder or disc image", utf8_of(a.game_dir)); });
@@ -2930,8 +2933,8 @@ void page_game(App& a, Ui& ui, float x, float y, float w) {
     y += 48 + 22;
     y += paragraph(a, "You need your own copy of Burnout 3: Takedown (USA, SLUS-21050). The port includes no game data. Choose "
                       "your disc's image (a .iso as disc dumping tools make it, or a raw .bin), or copy everything on the disc "
-                      "into one folder and choose that folder. The game reads its files from it each start (native_play --game). "
-                      "Nothing in it is changed.",
+                      "into one folder and choose that folder. A .chd image of the disc works too. The game reads its files "
+                      "from it each start (native_play --game). Nothing in it is changed.",
                    x + 4, y, w - 8, kSmall, col::faint);
     a.content_h = y;
 }
@@ -6953,6 +6956,7 @@ int osk_checks(App& a, SDL_JoystickID& vj, const fs::path& shots) {
         for (const char* d : {"Alpha", "Beta/Inner", "Gamma"}) fs::create_directories(broot / d, ec);
         std::ofstream(broot / "Beta" / "tex.png", std::ios::binary) << "not an image";
         std::ofstream(broot / "disc.iso", std::ios::binary) << std::string(4096, '\0');
+        std::ofstream(broot / "disc.chd", std::ios::binary) << std::string(4096, '\0');   // chd1: listed beside it
         std::ofstream(broot / "notes.txt", std::ios::binary) << "not listed";
         auto same = [](const fs::path& p, const fs::path& q) {
             std::error_code e;
@@ -7003,6 +7007,8 @@ int osk_checks(App& a, SDL_JoystickID& vj, const fs::path& shots) {
         const bool found2 = focus_widget("Your disc's image file");
         tap(SDL_GAMEPAD_BUTTON_SOUTH);
         const bool img_open = found2 && a.browser && same(a.browser->dir, broot) && sel_name() == "disc.iso";
+        const bool chd_listed = img_open && std::any_of(a.browser->list.entries.begin(), a.browser->list.entries.end(),
+                                                        [](const BrowseEntry& e) { return e.name == "disc.chd" && !e.folder; });   // chd1
         if (img_open) tap(SDL_GAMEPAD_BUTTON_SOUTH);
         const bool img_ok = img_open && !a.browser && same(a.game_dir, broot / "disc.iso");
         a.browser.reset();
@@ -7016,14 +7022,14 @@ int osk_checks(App& a, SDL_JoystickID& vj, const fs::path& shots) {
         save_settings(a);
         refresh_hd(a, true);
         a.hd_note.clear();
-        const bool ok = opened && up_ok && down_ok && into_ok && places_ok && chosen && img_ok;
+        const bool ok = opened && up_ok && down_ok && into_ok && places_ok && chosen && img_ok && chd_listed;
         if (!ok) ++fails;
         std::printf("b3launcher: browse check %s (a pad alone on HD Textures > Choose folder...: A %s the launcher's folder list in Alpha; "
                     "B up a folder, Alpha highlighted %s; Down to Beta %s; A into Beta (Inner, tex.png) %s; Y the places and back %s (%zu: %s%s); "
-                    "Start %s Beta; Game Data > Choose disc image...: A opened it on disc.iso %s, A chose it %s)\n",
+                    "Start %s Beta; Game Data > Choose disc image...: A opened it on disc.iso %s, disc.chd listed %s, A chose it %s)\n",
                     ok ? "PASS" : "FAIL", opened ? "opened" : "did NOT open", up_ok ? "PASS" : "FAIL", down_ok ? "PASS" : "FAIL",
                     into_ok ? "PASS" : "FAIL", places_ok ? "PASS" : "FAIL", places, place_names.c_str(), places > 4 ? ", ..." : "",
-                    chosen ? "chose" : "did NOT choose", img_open ? "PASS" : "FAIL", img_ok ? "PASS" : "FAIL");
+                    chosen ? "chose" : "did NOT choose", img_open ? "PASS" : "FAIL", chd_listed ? "PASS" : "FAIL", img_ok ? "PASS" : "FAIL");
     }
     fs::remove_all(root, ec);
     for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b) SDL_SetJoystickVirtualButton(joy, b, false);

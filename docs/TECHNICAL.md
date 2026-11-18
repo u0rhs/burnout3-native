@@ -41,7 +41,7 @@ current one.
 9. [Credits](#9-credits)
 
 ```
-   your disc (folder or .iso / .bin, read only)
+   your disc (folder or .iso / .bin / .chd, read only)
         |  game files                    |  SLUS_210.50: checked, its data image loaded
         v                                v
  +------------------------------------------------------------------+
@@ -319,8 +319,9 @@ computes, and the checks in section 6 run with every feature at its default.
 ## 5. The disc and its assets
 
 - **Your own disc, read in place.** The game needs Burnout 3: Takedown NTSC-U (SLUS-21050). Give it a folder of the
-  disc's files or a disc image: a cooked `.iso` (2,048-byte sectors) or a raw `.bin` (2,352-byte sectors), read as
-  an ISO 9660 volume without extracting it ([`include/b3asset/discfs.h`](../include/b3asset/discfs.h)). Every reader
+  disc's files or a disc image: a cooked `.iso` (2,048-byte sectors), a raw `.bin` (2,352-byte sectors) or a `.chd`
+  of either (through libchdr, its hunks decompressed as they are read), read as an ISO 9660 volume without extracting
+  it ([`include/b3asset/discfs.h`](../include/b3asset/discfs.h)). Every reader
   (the game's file system, RW Audio's streams, the executable, the renderer, the launcher) goes through the same
   read-only functions. Nothing writes to the disc folder or image.
 - **No game data in the repository or the packages.** No disc images, game files, executable, BIOS or SDKs are

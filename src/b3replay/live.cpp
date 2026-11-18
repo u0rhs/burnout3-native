@@ -868,6 +868,50 @@ double pct(std::vector<double> v, double p) {
     return v[std::min(v.size() - 1, std::size_t(p / 100.0 * double(v.size())))];
 }
 
+// hdkey: a notice line in the stroke font's letters (A-Z, 0-9, a few marks: glyphdraw.h): a translation's accented
+// capitals as their base letters (UTF-8 Latin-1: É -> E, Ä -> A, ß -> SS), apostrophes left out
+std::string notice_letters(const std::string& s) {
+    static const char* const kBase[64] = {   // U+00C0 .. U+00FF
+        "A", "A", "A", "A", "A", "A", "AE", "C", "E", "E", "E", "E", "I", "I", "I", "I", "D", "N", "O", "O", "O", "O", "O", "x",
+        "O", "U", "U", "U", "U", "Y", "TH", "SS", "A", "A", "A", "A", "A", "A", "AE", "C", "E", "E", "E", "E", "I", "I", "I", "I",
+        "D", "N", "O", "O", "O", "O", "O", "/", "O", "U", "U", "U", "U", "Y", "TH", "Y"};
+    std::string out;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == 0xC3 && i + 1 < s.size()) {
+            const unsigned char d = static_cast<unsigned char>(s[i + 1]);
+            if (d >= 0x80 && d <= 0xBF) { out += kBase[d - 0x80]; ++i; continue; }
+        }
+        if (c != '\'' && c < 0x80) out += char(std::toupper(c));   // (other UTF-8: left out)
+    }
+    return out;
+}
+
+// 1.2 HD TEXTURES key (hdkey, issue #7): the HD pack's replacements or the original textures, at once -- the renderer
+// keeps both on the GPU (Device::set_texture_original) and every draw samples the one shown. A switch for this run, to
+// compare: the HD TEXTURES setting stays as chosen (it decides whether the pack is read at the start, and so what the
+// next start shows). No player's pack loaded: nothing to switch (a mod's textures are part of the mod and stay).
+// Returns the notice's lines, in our own text's language.
+std::vector<std::string> hd_key(b3gfx::Device& dev, const b3settings::Settings& s, const std::string& language, const std::string& by) {
+    const auto tr = [&](const char* t) { return notice_letters(b3settings::translate_text(t, language)); };
+    if (!b3asset::hd_switchable()) {
+        const bool off = !s.hd_pack_dir.empty() && !s.hd_textures;
+        std::printf("[b3hd] HD TEXTURES key (%s): no HD texture pack in this run%s\n", by.c_str(),
+                    off ? " (a folder is chosen; HD TEXTURES is off in the settings)" : "");
+        std::fflush(stdout);
+        std::vector<std::string> lines{tr("NO HD TEXTURE PACK")};
+        if (off) lines.push_back(tr("TURN ON HD TEXTURES IN SETTINGS AND START AGAIN"));
+        return lines;
+    }
+    dev.set_hd_shown(!dev.hd_shown());
+    const b3gfx::Device::HdOriginals o = dev.hd_originals();
+    std::printf("[b3hd] HD TEXTURES key (%s): %s; %zu original textures kept beside their replacements, %.2f MB (the replacements: %.2f MB)\n",
+                by.c_str(), dev.hd_shown() ? "the HD pack shown" : "the original textures shown", o.textures, double(o.bytes) / (1024.0 * 1024.0),
+                double(o.hd_bytes) / (1024.0 * 1024.0));
+    std::fflush(stdout);
+    return {tr(dev.hd_shown() ? "HD TEXTURES ON" : "HD TEXTURES OFF")};
+}
+
 }  // namespace
 
 // perf (2026-11-12): where a window frame's time goes, per kind of frame (race / front end), printed when the window
@@ -984,6 +1028,11 @@ int run_live_offscreen(const LiveOptions& o) {
     std::uint64_t pc_page_ns = 0;
     SkipHint skip_hint;   // mac5
     SpeedrunPanel speedrun_panel;   // speedrun1
+    // hdkey: a script's HD TEXTURES key switches at the poll it was stamped with (NativePad::take_hd_presses), so a shot
+    // of poll N shows the textures, and the key's notice, as the window would at N (the notice's age in game time)
+    Notice hd_notice;
+    std::uint32_t hd_notice_poll = 0;
+    float hd_notice_age = 0.0f;
     // photo mode in game time (photomode.h): the free camera follows the game's polls, its keys stamped on the game
     // thread; a shot of poll N shows it at N however far the game has run ahead. The shots are taken in poll order
     // and the camera is never replayed past a shot still to be taken.
@@ -1145,6 +1194,12 @@ int run_live_offscreen(const LiveOptions& o) {
             if (!ended && ls.feed.at(ls.feed.last()).poll < poll + std::uint32_t(kCameraKeyReach) + 1) continue;
             shot_done[k] = true;
             if (o.native_pad && poll > PhotoMode::instance().game_time_poll()) PhotoMode::instance().advance_to(poll, photo_game_cam);
+            if (o.native_pad)   // hdkey: the script's HD TEXTURES presses up to this poll
+                for (const std::uint32_t p : NativePad::instance().take_hd_presses(poll)) {
+                    hd_notice.show(hd_key(*dev, pc_page.settings(), pc_page.ui_language(), "script, poll " + std::to_string(p)), 1.5f);
+                    hd_notice_poll = p;
+                    hd_notice_age = 0.0f;
+                }
             const long idx = ls.feed.index_of_poll(poll);
             bool spec = o.specular;
             FpsView fps_shot = o.fps_counter ? FpsView::kStandard : FpsView::kOff;   // fpsoverlay2: the view the shot's settings ask for
@@ -1290,6 +1345,12 @@ int run_live_offscreen(const LiveOptions& o) {
                 fps_shot_info.height = h;
                 none.draw_list(*dev, w, h, b3live::now_ns(), fps_shot, fps_shot_corner, ls.view.hud_size, fps_shot_info, nullptr, race, items);
                 std::printf("[b3live] shot poll %u: FPS counter drawn (%s)\n", poll, fps_shot == FpsView::kMinimal ? "minimal" : fps_shot == FpsView::kStandard ? "standard" : "detailed");
+            }
+            if (!photo_shot && hd_notice.visible() && poll >= hd_notice_poll) {   // hdkey: the key's notice, aged to this poll
+                const float age = float(poll - hd_notice_poll) / 60.0f;
+                hd_notice.draw_list(*dev, w, h, std::max(0.0f, age - hd_notice_age), items);
+                hd_notice_age = std::max(hd_notice_age, age);
+                if (hd_notice.visible()) std::printf("[b3live] shot poll %u: HD TEXTURES notice drawn (%.2f s after the key)\n", poll, double(age));
             }
             char path[512];
             std::snprintf(path, sizeof path, "%s/live_%u_%g.png", o.out_dir.c_str(), poll, double(alpha));
@@ -1751,6 +1812,7 @@ int run_live_window(const LiveOptions& o) {
                 if ((pm >> int(PortAction::BugReport) & 1) && npad.enabled()) report_pending = true;
                 if (pm >> int(PortAction::Fullscreen) & 1) SDL_SetWindowFullscreen(win, !(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN));
                 if (pm >> int(PortAction::FpsView) & 1) fps_view = fps_view_next(fps_view);   // fpsoverlay2 (logged below)
+                if (pm >> int(PortAction::HdTextures) & 1) notice.show(hd_key(*dev, pc_page.settings(), pc_page.ui_language(), "key"), 1.5f);   // hdkey
             }
             if (e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) SDL_ResetKeyboard();   // a modifier left held by an OS shortcut (macOS screenshots) is let go
             if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
@@ -1813,7 +1875,10 @@ int run_live_window(const LiveOptions& o) {
             if (pe >> int(PortAction::Screenshot) & 1) shot_pending = true;
             if (pe >> int(PortAction::BugReport) & 1) report_pending = true;
             if (pe >> int(PortAction::Fullscreen) & 1) SDL_SetWindowFullscreen(win, !(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN));
+            if (pe >> int(PortAction::HdTextures) & 1) notice.show(hd_key(*dev, pc_page.settings(), pc_page.ui_language(), "gamepad"), 1.5f);   // hdkey
         }
+        for (const std::uint32_t p : npad.take_hd_presses())   // hdkey: a script's key (native_play --keys)
+            notice.show(hd_key(*dev, pc_page.settings(), pc_page.ui_language(), "script, poll " + std::to_string(p)), 1.5f);
         // mac5 (remaster-features §3): the prompts follow the device in use (or BUTTON PROMPTS' choice)
         ls.view.prompt_device = prompt_resolve(prompts_setting, npad.device());
         ls.view.prompt_keys = npad.prompt_keys(ls.view.prompt_device);   // the keyboard's caps; remap1: a pad's moved buttons

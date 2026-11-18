@@ -58,6 +58,7 @@ struct Texture {
     std::string name;
     std::vector<Image> levels;
     bool translucent = false;
+    std::vector<Image> original;   // hdkey: `levels` are an HD replacement of these (DecodedRaster::original)
 };
 
 struct Model {

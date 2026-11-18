@@ -146,7 +146,7 @@ std::vector<GameItem> game_items() {
 }
 
 // The items of `dir` (no search below it); false when the folder is not there.
-// iso1: `dir` may be a disc image (.iso / .bin): its root is checked the same way (b3asset/discfs.h)
+// iso1: `dir` may be a disc image (.iso / .bin / chd1: .chd): its root is checked the same way (b3asset/discfs.h)
 bool check_items(const fs::path& dir, std::vector<GameItem>& items, std::vector<fs::path>* children = nullptr) {
     if (dir.empty() || !b3asset::disc::is_dir(dir)) return false;
     std::vector<std::pair<std::string, bool>> names;   // lower case name, is a folder
@@ -190,6 +190,7 @@ std::string truncated_file(const fs::path& dir, int depth = 0) {
 // A disc image file whose primary volume descriptor says the volume is longer than the file (a cut-short copy or
 // dump): "<have> of <need> MB", else empty. Cooked (.iso, 2048-byte sectors) and raw (.bin, 2352: mode 1 / mode 2 form 1).
 std::string image_short_by(const fs::path& image) {
+    if (b3asset::disc::is_chd(image)) return {};   // chd1: its data is compressed (a cut-short CHD: truncated_file, chd_problem)
     std::ifstream f(image, std::ios::binary);
     if (!f) return {};
     std::error_code ec;
@@ -231,6 +232,11 @@ std::string game_data_warning(const fs::path& dir, bool image) {
 
 }  // namespace
 
+std::string chd_problem(const fs::path& path) {
+    if (b3asset::disc::image_error(path).empty()) return {};
+    return "The CHD image cannot be read (damaged, cut short, or a CHD that needs its parent): " + path.string();
+}
+
 GameCheck check_game_folder(const fs::path& dir) {
     GameCheck g;
     g.items = game_items();
@@ -239,8 +245,10 @@ GameCheck check_game_folder(const fs::path& dir) {
     const bool file = !dir.empty() && fs::is_regular_file(dir, ec);   // iso1: a disc image
     if (!check_items(dir, g.items, &children)) {
         const std::string short_by = file ? image_short_by(dir) : std::string();   // mac5: a cut-short image
+        const std::string chd = file ? chd_problem(dir) : std::string();   // chd1
         g.summary = dir.empty()        ? "No game data folder chosen."
                     : !short_by.empty() ? incomplete_image(short_by)
+                    : !chd.empty()      ? chd
                     : file              ? "Not a disc image (ISO 9660) or a folder: " + dir.string()
                                         : "The folder is not there: " + dir.string();
         return g;
@@ -261,12 +269,12 @@ GameCheck check_game_folder(const fs::path& dir) {
         }
         if (!g.suggestion.empty()) break;
     }
-    // iso1: the folder that holds the disc image (.iso / .bin)
+    // iso1: the folder that holds the disc image (.iso / .bin / chd1: .chd)
     if (g.suggestion.empty() && !file) {
         std::vector<fs::path> images;
         for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
             const std::string ext = lower(it->path().extension().string());
-            if ((ext == ".iso" || ext == ".bin") && it->is_regular_file(ec)) images.push_back(it->path());
+            if ((ext == ".iso" || ext == ".bin" || ext == ".chd") && it->is_regular_file(ec)) images.push_back(it->path());
         }
         std::sort(images.begin(), images.end());
         for (const fs::path& c : images) {

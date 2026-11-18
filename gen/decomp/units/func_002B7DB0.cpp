@@ -43,7 +43,7 @@ struct UnkStruct_002B7DB0_h {
 extern "C" ps2f func_002B7DB0(int *idx, const UnkStruct_002B7DB0_h *h, CGtV3d p0, CGtV3d p1)
 {
     CGtV3d a = p0;
-    ps2f d[20];
+    ps2f d[44];   /* decomp2host T46: retail's frame holds 44 (the draft: 20) */
     *idx = -1;
     CGtV3d end = p1 * 100.0f;
     end += a;

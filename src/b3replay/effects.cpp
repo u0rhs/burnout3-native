@@ -13,6 +13,7 @@
 #include "a11y.h"
 #include "b3asset/trailshade.h"
 #include "sparks.h"
+#include "../b3view/scene.h"   // hdkey: upload_texture
 
 namespace b3replay {
 
@@ -28,9 +29,7 @@ b3gfx::TextureId load_global(b3gfx::Device& dev, const std::vector<std::uint8_t>
     b3asset::GsMemory gs;
     b3asset::DecodedRaster r;
     if (!b3asset::find_txd_raster(b3asset::Bytes{txd.data(), txd.size()}, name, gs, r)) return b3gfx::kNone;
-    std::vector<b3gfx::TextureLevel> levels;
-    for (const auto& l : r.levels) levels.push_back({l.w, l.h, l.rgba.data()});
-    return levels.empty() ? b3gfx::kNone : dev.create_texture(levels);
+    return b3view::upload_texture(dev, r.levels, r.original);   // hdkey: and its original
 }
 
 }  // namespace

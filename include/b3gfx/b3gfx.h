@@ -83,6 +83,8 @@ struct CarParams {
     bool env_frame_units = false;    // fe2: env_texture holds frame units (texel / 255) instead of display units (x 0.5)
     float reflect = 0.0f;            // > 0: the enhanced reflections' strength (car.frag: Fresnel sky / horizon / sun on the paint
                                      // and glass, in place of the game's env pass); 0: the game's pass as it is
+    std::uint32_t env_world = 0xFFFFFFFFu;  // reflect-tunnel: a Device::render_env map (the track around the car, in front of
+                                     // env_texture's sky), kNone: the sky alone
     float sky_open = 1.0f;           // 0..1: how much sky the car sees (its SH irradiance's upward share; the enhanced reflections'
                                      // gate: low in tunnels and under cover)
     int zones = 0;                   // RenderDeformedObject's zone count (8 body, 2 panel; 0 = RenderObject, undeformed)
@@ -254,6 +256,23 @@ struct FrameParams {
     } dof;
 };
 
+// reflect-tunnel: the car environment map's track part (docs/car-shading.md §9). The game draws the sky, the sun and the
+// streamed track's LOD blocks into its env-map cameras around the followed car every frame (CB3World::Render ->
+// RenderSkyToEnvironmentMap / RenderSunToEnvironmentMap / RenderBeforeVehicles 0x21C780 cameras 1..3, near 0.01, far 100
+// [C/L]); Device::render_env draws `items` into the six faces of a cube around `centre` (an atlas of 3 x 2 faces, face f
+// at column f % 3, row f / 3; forward +X, -X, +Y, -Y, +Z, -Z, see env_face) with alpha 1 where the track covers the
+// face, 0 where the sky shows (car.frag puts the sky behind it). Frame units, no fog, no specular (RenderMesh's 1).
+struct EnvPass {
+    float centre[3] = {0, 0, 0};
+    float znear = 0.01f, zfar = 100.0f;
+    int face = 128;                              // face size in pixels; each face is rendered 1 texel wider on every side
+    FrameParams fp;                              // eye / light / sun inputs of the track model (view_proj set per face)
+    std::vector<DrawItem> items;                 // kTrack draws
+    std::vector<std::uint8_t> faces;             // per item: bit f = drawn into face f (empty: every face)
+};
+// The cube faces' bases (shared with car.frag's env_world): forward, right, up, world axes.
+void env_face(int f, float fwd[3], float right[3], float up[3]);
+
 class Device {
 public:
     // `window` = nullptr creates a device without a swapchain (offscreen rendering only).
@@ -321,11 +340,39 @@ public:
     };
     virtual Stats take_stats() { return {}; }
     // perf1: the present pass's ordered dither (Options::dither), changed at any time (the PC settings' DITHER row)
+    // reflect-tunnel: draws `e` into env map `slot` (0 or 1: a split screen's two views) now, in a command buffer of its own
+    // submitted before the frame that samples it; returns the value for CarParams::env_world (kNone: not drawn)
+    virtual std::uint32_t render_env(int slot, const EnvPass& e) { (void)slot; (void)e; return kNone; }
     virtual void set_dither(float steps) { (void)steps; }
     // effects2: Options::render_scale, changed at any time (the PC settings' RENDER SCALE row)
     virtual void set_render_scale(float scale) { (void)scale; }
     // 1.1 UPSCALING: RENDER SCALE's picture brought up to the window bilinear (false) or by the sharp upscale (true)
     virtual void set_sharp_upscale(bool on) { (void)on; }
+
+    // 1.2 HD TEXTURES key (hdkey): an HD pack replacement's original decode, uploaded beside it. While HD is hidden
+    // (set_hd_shown(false)) every draw that binds `hd` samples `original` instead: the key switches with no reload. The
+    // pairs go with clear_resources; the shown / hidden state stays. `bytes`, `hd_bytes`: the two uploads (hd_originals).
+    virtual void set_texture_original(TextureId hd, TextureId original, std::size_t bytes, std::size_t hd_bytes) {
+        (void)hd; (void)original; (void)bytes; (void)hd_bytes;
+    }
+    virtual void set_hd_shown(bool on) { (void)on; }
+    virtual bool hd_shown() const { return true; }
+    struct HdOriginals { std::size_t textures = 0, bytes = 0, hd_bytes = 0; };   // the pairs resident now: originals, replacements
+    virtual HdOriginals hd_originals() const { return {}; }
+    // create_texture(levels), and the original beside it when `original` has levels (an HD replacement's decode)
+    TextureId create_texture_hd(const std::vector<TextureLevel>& levels, const std::vector<TextureLevel>& original) {
+        const TextureId id = create_texture(levels);
+        if (id == kNone || original.empty()) return id;
+        const TextureId o = create_texture(original);
+        if (o == kNone) return id;
+        const auto size = [](const std::vector<TextureLevel>& ls) {
+            std::size_t b = 0;
+            for (const TextureLevel& l : ls) b += std::size_t(l.w) * std::size_t(l.h) * 4;
+            return ls.size() == 1 ? b + b / 3 : b;   // one level: the generated chain
+        };
+        set_texture_original(id, o, size(original), size(levels));
+        return id;
+    }
 };
 
 // Headless rendering (draw_offscreen only): initialises SDL's video subsystem and creates a device, trying in order

@@ -185,13 +185,13 @@ bool sif_pending() {
     timed_to_due();
     return !g_due.empty();
 }
+namespace { bool g_delivering = false; }   // a handler's own kernel calls (iSignalSema) come back here: not again
 void sif_service() {
     timed_to_due();
     if (g_due.empty() || !nb()->interrupts_enabled()) return;
-    static bool delivering = false;   // a handler's own kernel calls (iSignalSema) come back here: not again
-    if (delivering) return;
-    delivering = true;
-    struct Done { ~Done() { delivering = false; } } done;
+    if (g_delivering) return;
+    g_delivering = true;
+    struct Done { ~Done() { g_delivering = false; } } done;
     while (!g_due.empty()) {
         const Delivery d = std::move(g_due.front());
         g_due.pop_front();
@@ -216,6 +216,25 @@ void sif_service() {
         isr_exit();
         nb()->set_interrupts_enabled(true);
     }
+}
+
+bool can_deliver_now() {
+    return !g_delivering && !g_channel_closed && nb()->interrupts_enabled() && isr_depth() == 0;
+}
+bool deliver_cmd_now(std::uint32_t cid, const void* packet, std::uint32_t size) {
+    std::uint32_t func, data;
+    if (!can_deliver_now() || !handler_for(cid, func, data)) return false;
+    g_delivering = true;
+    struct Done { ~Done() { g_delivering = false; } } done;
+    nb()->set_interrupts_enabled(false);
+    isr_enter();
+    if (std::FILE* f = sif_log())
+        std::fprintf(f, "Q %llu %llu now %x\n", (unsigned long long)vblank_count(), (unsigned long long)virtual_cycles(), cid);
+    b3host::copy_to_guest(kCmdReceiveBuffer, packet, size);
+    b3host::call_guest<int>(func, kCmdReceiveBuffer, data);
+    isr_exit();
+    nb()->set_interrupts_enabled(true);
+    return true;
 }
 
 // ======================================================================================================== EE -> IOP

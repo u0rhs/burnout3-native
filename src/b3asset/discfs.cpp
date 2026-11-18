@@ -4,16 +4,30 @@
 // extent), +32 name length, +33 name ("NAME.EXT;1"; 0x00 / 0x01 = "." / ".."); records never cross a sector (a zero
 // length byte: the rest of the sector is padding). A raw sector (2352 bytes) is sync 00 FF x10 00, header (mode at +15),
 // then the 2048 data bytes at +16 (mode 1) or, after the 8-byte subheader, +24 (mode 2 form 1).
+// chd1: a CHD (MAME's "compressed hunks of data", chdman createdvd / createcd; "MComprHD" at 0) is read through libchdr
+// (src/b3asset/chd_libchdr.c): its data in hunks, decoded on demand into a cache (ChdCache, read ahead on worker threads
+// for sequential reads). A DVD CHD's data is the cooked image (2048-byte sectors); a CD CHD's is frames of 2352 + 96
+// (subcode) bytes per track, as its CD track metadata ("CHT2" / "CHTR": TRACK, TYPE, FRAMES, PREGAP, PGTYPE) lays them
+// out: each track's frames padded to a multiple of 4, its pregap stored first when PGTYPE starts with 'V'. The volume
+// is on the first data track.
 #include "b3asset/discfs.h"
+
+#include "../native/third_party/libchdr/include/libchdr/chd.h"
 
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <deque>
 #include <cstring>
+#include <list>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <system_error>
+#include <thread>
 #include <unordered_map>
 
 #ifdef _WIN32
@@ -176,6 +190,365 @@ struct HostFile {
     }
 };
 
+// ---- a CHD image's data (libchdr) ----
+bool is_chd_magic(const HostFile& f) {
+    char magic[8];
+    return f.size >= 8 && f.read(0, magic, 8) == 8 && std::memcmp(magic, "MComprHD", 8) == 0;
+}
+
+// libchdr reads the file through these (its own position; only ever called under Chd::m or while opening)
+struct ChdIo {
+    HostFile file;
+    std::uint64_t pos = 0;
+};
+const core_file_callbacks kChdIo = {
+    [](void* p) -> std::uint64_t { return static_cast<ChdIo*>(p)->file.size; },
+    [](void* dst, std::size_t size, std::size_t count, void* p) -> std::size_t {
+        ChdIo& io = *static_cast<ChdIo*>(p);
+        if (size == 0 || count > SIZE_MAX / size) return 0;
+        const std::int64_t r = io.file.read(io.pos, dst, size * count);
+        if (r <= 0) return 0;
+        io.pos += static_cast<std::uint64_t>(r);
+        return static_cast<std::size_t>(r) / size;
+    },
+    [](void* p) -> int { delete static_cast<ChdIo*>(p); return 0; },
+    [](void* p, std::int64_t off, int whence) -> int {
+        ChdIo& io = *static_cast<ChdIo*>(p);
+        const std::int64_t from = whence == SEEK_SET ? 0 : whence == SEEK_CUR ? static_cast<std::int64_t>(io.pos)
+                                : whence == SEEK_END ? static_cast<std::int64_t>(io.file.size) : -1;
+        if (from < 0 || (off < 0 && -off > from)) return -1;
+        io.pos = static_cast<std::uint64_t>(from + off);
+        return 0;
+    },
+};
+
+// A CHD's decoded hunks, shared by the threads that read the image and its read-ahead workers (which hold it while they
+// run: they are never joined, so a program's exit never waits on one). Every hunk is decoded once while it is kept:
+// a reader that needs one another thread is decoding waits for it; one only queued for read-ahead it decodes itself.
+// Sequential reads (up to kStreams at a time: a load and RW Audio's streams interleave) queue the hunks after them for
+// the workers, each with its own libchdr handle (chd_read is not thread-safe per handle), so LZMA / FLAC decoding runs
+// beside the game. It changes when the bytes arrive, never which: the game's virtual time does not see it.
+struct ChdCache {
+    static constexpr std::size_t kStreams = 4;
+    // libchdr's compressed read window per handle: consecutive hunks' compressed bytes in one host read (a host file
+    // system with a cost per read, e.g. a network or WSL mount, then reads far fewer times)
+    static constexpr std::size_t kReadWindow = 1u << 20, kReaderWindow = 256u << 10;   // workers' / the readers' handle
+    static constexpr std::size_t kRun = 8;   // a worker takes up to this many consecutive queued hunks at a time
+    std::string path;
+    fs::path file;
+    std::uint32_t hunkbytes = 0, hunks = 0;
+    std::size_t cap = 0;     // hunks kept (decoded)
+    std::uint32_t depth = 0; // hunks read ahead of a sequential stream
+
+    std::mutex m;
+    std::condition_variable cv;
+    enum State : std::uint8_t { kQueued, kDecoding, kReady };
+    struct Slot {
+        State state = kQueued;
+        std::vector<std::uint8_t> data;
+        std::list<std::uint32_t>::iterator lru;   // kReady only
+    };
+    std::unordered_map<std::uint32_t, Slot> slots;
+    std::list<std::uint32_t> lru;                 // the ready hunks, most recently used first
+    std::deque<std::uint32_t> queue;              // read-ahead, oldest first
+    std::vector<std::vector<std::uint8_t>> spare; // evicted hunks' buffers
+    struct Stream { std::uint32_t last = UINT32_MAX, ahead = 0; std::uint64_t used = 0; };
+    Stream streams[kStreams];
+    std::uint64_t tick = 0;
+    bool stop = false, told = false;
+    std::atomic<bool> ahead_on{false};            // set once the image is mounted (not while it is probed)
+    int workers = 0, workers_max = 0;
+
+    chd_file* main = nullptr;                     // the readers' decoder
+    std::mutex main_m;
+
+    ~ChdCache() {
+        if (main) chd_close(main);
+    }
+
+    // a buffer for a hunk (under m)
+    std::vector<std::uint8_t> buffer() {
+        std::vector<std::uint8_t> b;
+        if (!spare.empty()) { b = std::move(spare.back()); spare.pop_back(); }
+        b.resize(hunkbytes);
+        return b;
+    }
+    // hunk h decoded into slot data (under m): the oldest ready hunks go while more than cap are kept
+    void store(std::uint32_t h, std::vector<std::uint8_t>&& data) {
+        Slot& s = slots[h];
+        s.data = std::move(data);
+        s.state = kReady;
+        lru.push_front(h);
+        s.lru = lru.begin();
+        while (lru.size() > cap) {
+            const std::uint32_t old = lru.back();
+            lru.pop_back();
+            const auto it = slots.find(old);
+            spare.push_back(std::move(it->second.data));
+            slots.erase(it);
+        }
+        if (spare.size() > 16) spare.resize(16);
+    }
+    static chd_error decode(chd_file* f, std::uint32_t h, std::uint8_t* dst) {
+        chd_error e = CHDERR_NONE;
+        for (int tries = 0; tries < 3; ++tries)   // a short read of a busy host file system (as platform_disc retries)
+            if ((e = chd_read(f, h, dst)) == CHDERR_NONE) break;
+        return e;
+    }
+
+    // a read of hunk h (under m): a stream that reads on from its last hunk has the next `depth` ones queued
+    void note(std::uint32_t h, const std::shared_ptr<ChdCache>& self) {
+        if (depth == 0 || !ahead_on.load(std::memory_order_relaxed)) return;
+        ++tick;
+        Stream* hit = nullptr;
+        for (Stream& s : streams)
+            if (s.last != UINT32_MAX && (h == s.last || h == s.last + 1)) { hit = &s; break; }
+        if (!hit) {   // a new stream in the least recently used one's place
+            hit = &streams[0];
+            for (Stream& s : streams)
+                if (s.used < hit->used) hit = &s;
+            hit->last = h;
+            hit->ahead = h;
+            hit->used = tick;
+            return;
+        }
+        const bool moved = h != hit->last;
+        hit->last = h;
+        hit->used = tick;
+        if (!moved) return;
+        const std::uint64_t to = std::min<std::uint64_t>(std::uint64_t(h) + depth, hunks - 1);
+        bool queued = false;
+        for (std::uint64_t k = std::max<std::uint64_t>(hit->ahead, h) + 1; k <= to; ++k) {
+            const auto n = static_cast<std::uint32_t>(k);
+            if (slots.count(n)) continue;
+            slots[n].state = kQueued;
+            queue.push_back(n);
+            queued = true;
+        }
+        hit->ahead = static_cast<std::uint32_t>(std::max<std::uint64_t>(hit->ahead, to));
+        if (!queued) return;
+        if (workers < workers_max) {   // started on the first read-ahead, each with its own handle
+            ++workers;
+            std::thread([self]() { self->work(); }).detach();
+        }
+        cv.notify_all();
+    }
+
+    void work() {
+        chd_file* f = nullptr;
+        auto io = std::make_unique<ChdIo>();
+        if (!io->file.open(file) || chd_open_core_file_callbacks(&kChdIo, io.release(), CHD_OPEN_READ, nullptr, &f) != CHDERR_NONE) f = nullptr;
+        if (f) chd_set_cache_budget(f, kReadWindow);
+        std::unique_lock<std::mutex> l(m);
+        std::vector<std::uint32_t> run;
+        while (f) {
+            cv.wait(l, [&] { return stop || !queue.empty(); });
+            if (stop) break;
+            // the first queued hunk a reader has not taken, and the ones queued right after it that follow on from it
+            run.clear();
+            while (!queue.empty() && run.size() < kRun) {
+                const std::uint32_t h = queue.front();
+                if (!run.empty() && h != run.back() + 1) break;
+                queue.pop_front();
+                const auto it = slots.find(h);
+                if (it == slots.end() || it->second.state != kQueued) { if (!run.empty()) break; continue; }   // a reader took it
+                it->second.state = kDecoding;
+                run.push_back(h);
+            }
+            for (const std::uint32_t h : run) {   // in order: the handle's read window serves them
+                std::vector<std::uint8_t> b = buffer();
+                l.unlock();
+                const chd_error e = decode(f, h, b.data());
+                l.lock();
+                if (e == CHDERR_NONE) store(h, std::move(b));
+                else slots.erase(h);   // a reader decodes it again (and reports it)
+                cv.notify_all();
+            }
+        }
+        --workers;
+        l.unlock();
+        if (f) chd_close(f);
+    }
+
+    // `k` bytes of hunk h from `in` (under l): false when it cannot be decoded (reported once)
+    bool copy(std::uint32_t h, std::size_t in, std::size_t k, std::uint8_t* dst, std::unique_lock<std::mutex>& l) {
+        for (;;) {
+            auto it = slots.find(h);
+            if (it != slots.end() && it->second.state == kReady) {
+                lru.splice(lru.begin(), lru, it->second.lru);
+                std::memcpy(dst, it->second.data.data() + in, k);
+                return true;
+            }
+            if (it != slots.end() && it->second.state == kDecoding) {   // another thread's: wait for it
+                cv.wait(l);
+                continue;
+            }
+            Slot& s = slots[h];   // absent, or only queued: decoded here
+            s.state = kDecoding;
+            std::vector<std::uint8_t> b = buffer();
+            l.unlock();
+            chd_error e;
+            {
+                std::lock_guard<std::mutex> g(main_m);
+                e = decode(main, h, b.data());
+            }
+            l.lock();
+            if (e != CHDERR_NONE) {
+                slots.erase(h);
+                cv.notify_all();
+                if (!told)
+                    std::fprintf(stderr, "discfs: %s: hunk %u of the CHD image cannot be read (libchdr: %s): the image is damaged\n", path.c_str(), h,
+                                 chd_error_string(e));
+                told = true;
+                return false;
+            }
+            store(h, std::move(b));
+            cv.notify_all();
+        }
+    }
+};
+
+struct Chd {
+    std::string path;
+    chd_file* chd = nullptr;   // (the cache's main decoder: metadata at open)
+    std::uint32_t hunkbytes = 0;
+    std::uint64_t logical = 0;   // the data's bytes
+    // a CD image: the volume's track (frames of 2352 + 96 bytes), its first sector's frame and its sectors' layout
+    bool cd = false;
+    std::uint64_t first_frame = 0;
+    std::uint32_t data_off = 0;   // the 2048 user bytes' offset in a frame (0: cooked 2048, 8: 2336, 16 / 24: raw)
+    bool raw = false;             // 2352-byte sectors (MODE1_RAW / MODE2_RAW): the sync and mode byte decide
+    std::shared_ptr<ChdCache> cache;
+
+    Chd() = default;
+    Chd(const Chd&) = delete;
+    Chd& operator=(const Chd&) = delete;
+    ~Chd() {
+        if (!cache) {
+            if (chd) chd_close(chd);
+            return;
+        }
+        std::lock_guard<std::mutex> l(cache->m);   // the workers end (and close their handles); the cache goes with the last
+        cache->stop = true;
+        cache->cv.notify_all();
+    }
+    bool damaged() const {
+        std::lock_guard<std::mutex> l(cache->m);
+        return cache->told;
+    }
+    void read_ahead() { cache->ahead_on.store(true, std::memory_order_relaxed); }
+
+    // the image at `p`: null and `why` when libchdr cannot open it (or it is no CD / DVD image)
+    static std::unique_ptr<Chd> open(const fs::path& p, std::string& why) {
+        auto io = std::make_unique<ChdIo>();
+        if (!io->file.open(p)) { why = "the file cannot be opened"; return nullptr; }
+        auto c = std::make_unique<Chd>();
+        c->path = p.string();
+        const chd_error e = chd_open_core_file_callbacks(&kChdIo, io.release(), CHD_OPEN_READ, nullptr, &c->chd);   // owns io now
+        if (e != CHDERR_NONE) {
+            c->chd = nullptr;
+            why = e == CHDERR_REQUIRES_PARENT ? "it is a CHD that needs its parent CHD (make a CHD of the whole disc)"
+                  : e == CHDERR_UNSUPPORTED_VERSION || e == CHDERR_UNSUPPORTED_FORMAT
+                      ? std::string("a kind of CHD this port does not read (libchdr: ") + chd_error_string(e) + ")"
+                      : std::string("the image is damaged or cut short (libchdr: ") + chd_error_string(e) + ")";
+            return nullptr;
+        }
+        const chd_header* h = chd_get_header(c->chd);
+        c->hunkbytes = h->hunkbytes;
+        c->logical = std::min<std::uint64_t>(h->logicalbytes, std::uint64_t(h->totalhunks) * h->hunkbytes);
+        if (c->hunkbytes == 0 || c->logical == 0) { why = "an empty CHD"; return nullptr; }
+        if (!c->cd_layout(why)) return nullptr;
+        auto k = std::make_shared<ChdCache>();
+        k->path = c->path;
+        k->file = p;
+        k->hunkbytes = c->hunkbytes;
+        k->hunks = h->totalhunks;
+        k->cap = std::max<std::size_t>(64, (64u << 20) / c->hunkbytes);   // ~64 MB of decoded hunks
+        if (const char* kb = std::getenv("B3_CHD_CACHE_KB"); kb && *kb)   // tests: a small cache (eviction, read-ahead)
+            k->cap = std::max<std::size_t>(8, std::size_t(std::strtoul(kb, nullptr, 10)) * 1024 / c->hunkbytes);
+        k->depth = static_cast<std::uint32_t>(std::min<std::size_t>(k->cap / 4, std::max<std::size_t>(4, (2u << 20) / c->hunkbytes)));   // ~2 MB
+        const unsigned hw = std::thread::hardware_concurrency();
+        k->workers_max = hw > 1 ? static_cast<int>(std::min(hw - 1, 4u)) : 0;
+        if (k->workers_max == 0) k->depth = 0;
+        k->main = c->chd;
+        chd_set_cache_budget(k->main, ChdCache::kReaderWindow);   // (its reads are mostly the first hunk of a new place)
+        c->cache = std::move(k);
+        return c;
+    }
+
+    // a CD's track metadata: the first data track (false and `why`: a CD image without one)
+    bool cd_layout(std::string& why) {
+        struct Track { int num = 0; std::string type, pgtype; std::uint32_t frames = 0, pregap = 0; };
+        std::vector<Track> tracks;
+        for (const bool v2 : {true, false}) {
+            for (std::uint32_t k = 0; k < 256; ++k) {
+                char meta[256] = {};
+                std::uint32_t len = 0;
+                if (chd_get_metadata(chd, v2 ? CDROM_TRACK_METADATA2_TAG : CDROM_TRACK_METADATA_TAG, k, meta, sizeof meta - 1, &len, nullptr,
+                                     nullptr) != CHDERR_NONE)
+                    break;
+                meta[std::min<std::uint32_t>(len, sizeof meta - 1)] = 0;
+                Track t;
+                char type[32] = {}, sub[32] = {}, pgtype[32] = {}, pgsub[32] = {};
+                int num = 0, frames = 0, pregap = 0, postgap = 0;
+                const int n = v2 ? std::sscanf(meta, "TRACK:%d TYPE:%31s SUBTYPE:%31s FRAMES:%d PREGAP:%d PGTYPE:%31s PGSUB:%31s POSTGAP:%d", &num, type,
+                                               sub, &frames, &pregap, pgtype, pgsub, &postgap)
+                                 : std::sscanf(meta, "TRACK:%d TYPE:%31s SUBTYPE:%31s FRAMES:%d", &num, type, sub, &frames);
+                if (n < 4 || frames < 0 || pregap < 0) { why = "its CD track list is damaged"; return false; }
+                t.num = num;
+                t.type = type;
+                t.pgtype = v2 && n >= 6 ? pgtype : "";
+                t.frames = static_cast<std::uint32_t>(frames);
+                t.pregap = v2 && n >= 5 ? static_cast<std::uint32_t>(pregap) : 0;
+                tracks.push_back(std::move(t));
+            }
+            if (!tracks.empty()) break;
+        }
+        if (tracks.empty()) return true;   // no CD tracks: the data is the image itself (a DVD)
+        cd = true;
+        std::stable_sort(tracks.begin(), tracks.end(), [](const Track& a, const Track& b) { return a.num < b.num; });
+        std::uint64_t frame = 0;
+        for (const Track& t : tracks) {
+            const std::uint32_t skip = !t.pgtype.empty() && t.pgtype[0] == 'V' ? t.pregap : 0;   // the pregap's frames in the file
+            const std::string& y = t.type;
+            int off = -1;
+            if (y == "MODE1" || y == "MODE1/2048" || y == "MODE2_FORM1" || y == "MODE2/2048") off = 0;
+            else if (y == "MODE2" || y == "MODE2/2336" || y == "MODE2_FORM_MIX") off = 8;
+            else if (y == "MODE1_RAW" || y == "MODE1/2352") off = 16;
+            else if (y == "MODE2_RAW" || y == "MODE2/2352") off = 24;
+            if (off >= 0 && skip <= t.frames) {
+                first_frame = frame + skip;
+                data_off = static_cast<std::uint32_t>(off);
+                raw = off >= 16;
+                return true;
+            }
+            frame += t.frames + (4 - t.frames % 4) % 4;   // chdman pads each track to 4 frames
+        }
+        why = "a CD image without a data track";
+        return false;
+    }
+
+    // up to n bytes of the data at off: the count (short only at the end), -1 when a hunk cannot be read
+    std::int64_t read(std::uint64_t off, void* dst, std::size_t n) const {
+        if (off >= logical) return 0;
+        n = static_cast<std::size_t>(std::min<std::uint64_t>(n, logical - off));
+        auto* d = static_cast<std::uint8_t*>(dst);
+        std::size_t got = 0;
+        ChdCache& c = *cache;
+        std::unique_lock<std::mutex> l(c.m);
+        while (got < n) {   // one hunk at a time: other threads' reads go between (while one decodes)
+            const std::uint64_t pos = off + got;
+            const auto h = static_cast<std::uint32_t>(pos / hunkbytes);
+            const std::size_t in = static_cast<std::size_t>(pos % hunkbytes), k = std::min<std::size_t>(hunkbytes - in, n - got);
+            c.note(h, cache);
+            if (!c.copy(h, in, k, d + got, l)) return -1;
+            got += k;
+            if (got < n) { l.unlock(); l.lock(); }
+        }
+        return static_cast<std::int64_t>(got);
+    }
+};
+
 // ---- an ISO 9660 image ----
 struct Node {
     std::string name;   // without ";1" (and a file's trailing '.')
@@ -188,18 +561,24 @@ struct Node {
 struct Image {
     std::string path;
     HostFile file;
+    std::unique_ptr<Chd> chd;                    // chd1: a CHD: its decompressed data stands for the file's bytes
+    std::uint64_t base = 0;                      // the volume's first sector in those bytes (a CD CHD: its track's)
     std::uint32_t stride = 2048, data_off = 0;   // physical sector size, the data's offset in it
     std::vector<Node> nodes;                     // [0] the root
 
+    // the image's bytes (a CHD: decompressed): up to n at off, the count, -1 on an error
+    std::int64_t bytes(std::uint64_t off, void* dst, std::size_t n) const { return chd ? chd->read(off, dst, n) : file.read(off, dst, n); }
+    std::uint64_t size() const { return chd ? chd->logical : file.size; }
+
     // `n` bytes of the 2048-byte logical sectors at byte `off`: the count, -1 on an error
     std::int64_t read(std::uint64_t off, void* dst, std::size_t n) const {
-        if (stride == 2048) return file.read(off, dst, n);
+        if (stride == 2048 && base == 0) return bytes(off, dst, n);
         std::size_t got = 0;
         auto* d = static_cast<std::uint8_t*>(dst);
         while (got < n) {
             const std::uint64_t at = off + got, sector = at / 2048, in = at % 2048;
             const std::size_t k = static_cast<std::size_t>(std::min<std::uint64_t>(2048 - in, n - got));
-            const std::int64_t r = file.read(sector * stride + data_off + in, d + got, k);
+            const std::int64_t r = bytes(base + sector * stride + data_off + in, d + got, k);
             if (r < 0) return -1;
             got += static_cast<std::size_t>(r);
             if (static_cast<std::size_t>(r) < k) break;
@@ -212,8 +591,14 @@ struct Image {
     bool probe(std::uint8_t pvd[2048]) {
         static const std::uint8_t sync[12] = {0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0};
         std::uint8_t raw[16];
-        if (file.size >= 17ull * 2352 && file.read(16ull * 2352, raw, 16) == 16 && std::memcmp(raw, sync, 12) == 0 &&
-            (raw[15] == 1 || raw[15] == 2)) {
+        if (chd && chd->cd) {   // a CD CHD's track: frames of 2352 + 96 bytes; a raw track's sector 16 says mode 1 or 2
+            stride = 2352 + 96;
+            base = chd->first_frame * stride;
+            data_off = chd->data_off;
+            if (chd->raw && bytes(base + 16ull * stride, raw, 16) == 16 && std::memcmp(raw, sync, 12) == 0 && (raw[15] == 1 || raw[15] == 2))
+                data_off = raw[15] == 1 ? 16 : 24;
+        } else if (size() >= 17ull * 2352 && bytes(16ull * 2352, raw, 16) == 16 && std::memcmp(raw, sync, 12) == 0 &&
+                   (raw[15] == 1 || raw[15] == 2)) {
             stride = 2352;
             data_off = raw[15] == 1 ? 16 : 24;
         }
@@ -304,6 +689,7 @@ struct Image {
 
 std::mutex g_m;
 std::map<std::string, std::shared_ptr<const Image>> g_images;   // by the image's normal path
+std::map<std::string, std::string> g_chd_errors;                // chd1: why a CHD file did not mount, by its normal path
 
 // The image at `p` (a regular file), mounted once; null when it is no ISO 9660 image
 std::shared_ptr<const Image> mount(const fs::path& p) {
@@ -315,7 +701,21 @@ std::shared_ptr<const Image> mount(const fs::path& p) {
     auto img = std::make_shared<Image>();
     img->path = key;
     std::uint8_t pvd[2048];
-    if (!img->file.open(p) || !img->probe(pvd) || !img->load_tree(pvd + 156)) return nullptr;
+    if (!img->file.open(p)) return nullptr;
+    std::string why;
+    if (is_chd_magic(img->file)) {   // chd1: by its magic, whatever its name
+        img->chd = Chd::open(p, why);
+        // a hunk that cannot be read: damaged; else no ISO 9660 volume in it: no disc image, as for an .iso
+        const bool ok = img->chd && img->probe(pvd) && img->load_tree(pvd + 156);
+        if (!ok && img->chd && img->chd->damaged()) why = "a part of its data cannot be read: the image is damaged or cut short";
+        if (ok) img->chd->read_ahead();   // (not while it was probed: a file that is no image starts no workers)
+        std::lock_guard<std::mutex> l(g_m);
+        if (!why.empty()) g_chd_errors[key] = why;
+        else g_chd_errors.erase(key);
+        if (!ok) return nullptr;
+    } else if (!img->probe(pvd) || !img->load_tree(pvd + 156)) {
+        return nullptr;
+    }
     std::lock_guard<std::mutex> l(g_m);
     return g_images.emplace(key, std::move(img)).first->second;   // another thread's, if it was first
 }
@@ -449,6 +849,17 @@ std::int64_t File::read_at(std::uint64_t offset, void* dst, std::size_t n) const
 bool is_image(const fs::path& path) {
     std::error_code ec;
     return fs::is_regular_file(path, ec) && mount(path) != nullptr;
+}
+bool is_chd(const fs::path& path) {
+    HostFile f;
+    return f.open(path) && is_chd_magic(f);
+}
+std::string image_error(const fs::path& path) {
+    std::error_code ec;
+    if (!fs::is_regular_file(path, ec) || !is_chd(path) || mount(path)) return {};
+    std::lock_guard<std::mutex> l(g_m);
+    const auto it = g_chd_errors.find(normal(path));
+    return it == g_chd_errors.end() ? std::string() : "The CHD image " + path.string() + " cannot be read: " + it->second + ".";
 }
 bool exists(const fs::path& path) { return overlay_file(path) || overlay_dir(path) || locate(path, false).kind != Loc::kNone; }
 bool is_dir(const fs::path& path) {

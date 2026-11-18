@@ -65,6 +65,7 @@ struct DecodedRaster {
     std::uint8_t max_alpha = 0;  // raw PS2 alpha maximum over level 0 (0x80 = opaque; above 0x80 = "more than 1")
     bool translucent = false;    // any level-0 texel with raw alpha < 0x80
     bool hd = false;             // levels hold an HD pack replacement (hdpack.h set_hd_textures), not the decode
+    std::vector<Image> original; // hdkey: with `hd`, the decode it replaced (a pack that keeps originals: the HD TEXTURES key)
 };
 
 // The CLUT offset (GS blocks past palOffset) of palette variant `palette`, by CB3VehicleRenderer::SetTexture 0x21FF60's

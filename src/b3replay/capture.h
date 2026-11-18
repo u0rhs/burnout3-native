@@ -454,6 +454,8 @@ struct View2In {
     std::uint16_t vis[17] = {};
     std::int8_t backdrops[8];
     int barriers = -1, barrier_group = -1;   // func_0021C010(track 1)'s decision (CrashState's, for view 2)
+    int env_unit[17];                        // reflect-tunnel: Tick::env_unit / env_car for view 2 (track 1, player 2's car)
+    std::uint32_t env_car = 0;
     // CB3TrafficSystem::Draw(1)'s inputs as Tick's for Draw(0): track 1's safe-area slots and their visibility, and
     // whether player 2's traffic list was captured (Vehicle::listed2 / cull2 hold the per-vehicle results)
     std::uint32_t unit_visible = 0, safe_units = 0;
@@ -465,7 +467,7 @@ struct View2In {
     RadialBlurIn blur;
     // player 2's camera manager's IsPlayerVisible (0x4EE040 + 0x28E00 + 0xBB0; true when not captured)
     bool player_visible = true;
-    View2In() { for (int i = 0; i < 17; ++i) slot_unit[i] = slot_kind[i] = -1; for (auto& b : backdrops) b = -1; }
+    View2In() { for (int i = 0; i < 17; ++i) slot_unit[i] = slot_kind[i] = env_unit[i] = -1; for (auto& b : backdrops) b = -1; }
 };
 
 // ghost1 (Time Attack ghosts, src/b3replay/ghost.h): view 0's lap as its CB3Score (race car block gWorld+0x12AD50 +
@@ -531,6 +533,13 @@ struct Tick {
     int slot_unit[17], slot_kind[17];   // +0x7C blocks: unit index, 0 = high / 1 = LOD (-1 = empty)
     std::uint16_t vis[17] = {};  // +0x58: 2 bits per camera (camera 0 = main)
     std::int8_t backdrops[8];    // current unit's high block +0x64
+    // reflect-tunnel: what the game draws into the car's env-map cameras 1..3 (RenderBeforeVehicles 0x21C780 [L draft],
+    // gated by D_00665F20 = graphics manager +0x60, 1 from Prepare 0x19EBF0 [C matched]): per slot the +0xC4 (LOD)
+    // block's unit (-1 none) where vis bits 2..7 are set; the env map's centre is race car [gWorld+0x12AD50+0x19AC]
+    // (BuildCustomCameraData(cam +0x19AC) 0x223130: D_0064D388 = gWorld+0x12AD28 [L draft])
+    int env_unit[17];
+    std::uint32_t env_car = 0;   // that race car's guest address (Vehicle::id), 0 = none / not captured
+    int env_track = -1;          // D_00665F20 (-1 not captured)
     std::vector<Vehicle> vehicles;
     // CB3TrafficSystem::Draw's inputs beyond the vehicles (render6): the streamed track's IsUnitVisibleToMainCamera per
     // safe-area slot (bit k = slot k visible; ForEveryUnitInSafeArea's 9 slots), and the player's traffic list
@@ -582,7 +591,7 @@ struct Tick {
     std::uint32_t fe_car = 0;
     LapState lap;                // ghost1: view 0's lap (Time Attack ghosts)
     ScoreState score;            // speedrun1: view 0's event timing (the speedrun timer)
-    Tick() { for (int i = 0; i < 17; ++i) slot_unit[i] = slot_kind[i] = -1; for (auto& b : backdrops) b = -1; }
+    Tick() { for (int i = 0; i < 17; ++i) slot_unit[i] = slot_kind[i] = env_unit[i] = -1; for (auto& b : backdrops) b = -1; }
 };
 
 struct Segment { std::size_t first = 0, last = 0; std::uint32_t route_size = 0; int route_units = 0; };

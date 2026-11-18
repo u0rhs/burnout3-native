@@ -66,7 +66,7 @@ layer and a renderer of our own. Nothing pretends to be a PS2 and no PS2 code ru
 | **Loading** | The PS2's load times | Fast loading (on by default) |
 | **Online** | Gone with EA's servers | Coming in a future release |
 
-> **Version 1.1.0.** Found a problem? Please [report it](#reporting-a-bug).
+> **Version 1.2.0.** Found a problem? Please [report it](#reporting-a-bug).
 
 ## Screenshots
 
@@ -113,10 +113,10 @@ player's disc and are shown here only to illustrate the port.</sub>
 ## Get started
 
 You need two things: a download from the [Releases page](https://github.com/u0rhs/burnout3-native/releases) (a
-Windows zip, a Linux tarball or a macOS `.dmg`), and your own disc as an `.iso` / `.bin` image or a folder of its files
-([how to make one](docs/PLAYING.md#2-making-a-disc-image-of-your-own-disc)). There is nothing to install, compile or
-convert: the download is the finished game with its shaders built in, and the launcher only needs to know where your
-disc is.
+Windows zip, a Linux tarball or a macOS `.dmg`), and your own disc as an `.iso` / `.bin` / `.chd` image or a folder of
+its files ([how to make one](docs/PLAYING.md#2-making-a-disc-image-of-your-own-disc)). There is nothing to install,
+compile or convert: the download is the finished game with its shaders built in, and the launcher only needs to know
+where your disc is.
 
 <details open>
 <summary><b>🪟 Windows 10 / 11</b></summary>
@@ -388,10 +388,10 @@ PC parts (renderer, sound, input, saves) are written for the PC.
 <br>
 
 Your own copy of Burnout 3: Takedown for the PS2, the North American release (NTSC-U, SLUS-21050), as a disc image
-(`.iso` or `.bin`) or as the disc's files in a folder. Other regions do not run, but if you also own a European disc,
-**IMPORT LANGUAGES** (launcher Settings > INTERFACE) copies its languages into the US game. We don't supply the ISO or
-any game files; the [player guide](docs/PLAYING.md#2-making-a-disc-image-of-your-own-disc) shows how to make an image
-of your own disc.
+(`.iso`, `.bin` or `.chd`) or as the disc's files in a folder. Other regions do not run, but if you also own a European
+disc, **IMPORT LANGUAGES** (launcher Settings > INTERFACE) copies its languages into the US game. We don't supply the
+ISO or any game files; the [player guide](docs/PLAYING.md#2-making-a-disc-image-of-your-own-disc) shows how to make an
+image of your own disc.
 </details>
 
 <details>

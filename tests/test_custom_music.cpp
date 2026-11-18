@@ -294,4 +294,47 @@ TEST(wav_folder_decode_resample_play) {
     fs::remove_all(dir, ec);
 }
 
+TEST(ea_trax_modes_store) {
+    namespace fs = std::filesystem;
+    CHECK(b3music::mode_from_word("both") == 7 && b3music::mode_from_word("races") == 1 && b3music::mode_from_word("menus") == 4 &&
+          b3music::mode_from_word("off") == 0 && b3music::mode_from_word("?") == 7);
+    CHECK(std::string(b3music::mode_word(7)) == "both" && std::string(b3music::mode_word(1)) == "races" &&
+          std::string(b3music::mode_word(4)) == "menus" && std::string(b3music::mode_word(0)) == "off" &&
+          std::string(b3music::mode_word(0xF)) == "both" && std::string(b3music::mode_word(2)) == "off");
+    CHECK(b3music::relative_key("/m/dir", "/m/dir/sub/a=b.mp3") == "sub/a=b.mp3");
+    CHECK(b3music::relative_key("C:\\Music", "C:\\Music\\x\\y.flac") == "x/y.flac");
+    CHECK(b3music::relative_key("/m/dir/", "/m/dir/z.wav") == "z.wav");
+    b3music::ModeStore st;
+    CHECK(st.get("/m", "a.mp3") == b3music::kModeBoth);   // absent: both
+    st.set("/m", "a.mp3", b3music::kModeOff);
+    st.set("/m", "[live] b=c.mp3", b3music::kModeRaces);
+    st.set("/n", "a.mp3", b3music::kModeMenus);
+    st.set("/m", "a.mp3", 0xF);   // the "not heard" bit is not kept
+    CHECK(st.get("/m", "a.mp3") == b3music::kModeBoth);
+    st.set("/m", "a.mp3", b3music::kModeOff);
+    b3music::ModeStore back;
+    CHECK(back.parse(st.text()));
+    CHECK(back.get("/m", "a.mp3") == b3music::kModeOff);
+    CHECK(back.get("/m", "[live] b=c.mp3") == b3music::kModeRaces);
+    CHECK(back.get("/n", "a.mp3") == b3music::kModeMenus);
+    CHECK(back.get("/n", "[live] b=c.mp3") == b3music::kModeBoth);
+    // a file: written through a temporary, read back; a missing file is an empty store
+    std::error_code ec;
+    const fs::path dir = fs::path("build") / "test_custom_music_modes.d";
+    fs::remove_all(dir, ec);
+    const std::u8string u = (dir / "sub" / "music_modes.ini").u8string();
+    const std::string file(u.begin(), u.end());
+    b3music::ModeStore none;
+    CHECK(!none.load(file));
+    CHECK(none.get("/m", "a.mp3") == b3music::kModeBoth);
+    st.set_file(file);
+    std::string why;
+    CHECK(st.save(&why));
+    b3music::ModeStore disk;
+    CHECK(disk.load(file));
+    CHECK(disk.get("/m", "a.mp3") == b3music::kModeOff && disk.get("/n", "a.mp3") == b3music::kModeMenus);
+    CHECK(!fs::exists(dir / "sub" / "music_modes.ini.tmp"));
+    fs::remove_all(dir, ec);
+}
+
 TEST_MAIN("custom_music (remaster-features §6: tags, folder, decoders, player)")

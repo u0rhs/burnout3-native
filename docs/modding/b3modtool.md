@@ -12,8 +12,8 @@ by `tools/native/build_win.sh RENDER=1`) gives `b3modtool.exe`. Code: `tools/mod
 `src/b3modtool/` and `include/b3modtool/modtool.h` (the formats; the model export `include/b3modtool/export3d.h`,
 JSON and glTF `include/b3modtool/gltf.h`); tests: `tests/test_modtool.cpp` (`make test`).
 
-In the examples `<disc>` is your disc: a folder (`../game`) or an image (`../burnout3.iso`). A file argument may
-also be a path inside an image: `../burnout3.iso/DATA/GLOBAL.TXD`.
+In the examples `<disc>` is your disc: a folder (`../game`) or an image (`../burnout3.iso`; a `.bin` or `.chd` too). A
+file argument may also be a path inside an image: `../burnout3.iso/DATA/GLOBAL.TXD`.
 
 ## What can be changed today
 

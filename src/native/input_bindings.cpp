@@ -386,6 +386,7 @@ const PortInfo kPort[kPortActions] = {
     {"photo_help", "PHOTO: HELP", "Photo mode: hide or show the help box.", true, true, false},
     {"photo_exit", "PHOTO: LEAVE", "Photo mode: leave it (Escape and the photo mode key leave too).", true, true, false},
     {"car_look", "CAR LOOK PANEL", "Open or close the live car reflection tuner (needs DEVELOPER MODS on).", false, false, false},
+    {"hd_textures", "HD TEXTURES ON / OFF", "Switch between the HD texture pack and the original textures at once, to compare (this run only).", false, true, false},
 };
 
 PortControls make_default_port() {
@@ -401,6 +402,7 @@ PortControls make_default_port() {
     set(PortAction::BugReport, {67}, {});                          // F10
     set(PortAction::TuneOverlay, {66}, {});                        // F9
     set(PortAction::CarLook, {65}, {});                            // F8
+    set(PortAction::HdTextures, {61}, {});                         // F4 (hdkey; a gamepad binding can be added)
     set(PortAction::PhotoMode, {19}, {P::LeftStick, P::RightStick});   // P; L3 + R3
     set(PortAction::SectionPrev, {75}, {});                        // Page Up
     set(PortAction::SectionNext, {78}, {});                        // Page Down

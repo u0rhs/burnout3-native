@@ -190,8 +190,15 @@ bool open_render(Scene::Render& r, const char* dll) {
     const int wn = MultiByteToWideChar(CP_UTF8, 0, dll, -1, nullptr, 0);
     std::wstring w(wn > 0 ? std::size_t(wn) : 1, L'\0');
     if (wn > 0) MultiByteToWideChar(CP_UTF8, 0, dll, -1, w.data(), wn);
-    // its folder first for its own dependencies (none beyond system DLLs: SDL3 and the C++ runtime are static)
-    HMODULE m = LoadLibraryExW(w.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    {   // an absolute path: with the System32 search flag a relative one would be looked for in System32 only
+        std::wstring full(32768, L'\0');
+        const DWORD n = GetFullPathNameW(w.c_str(), DWORD(full.size()), full.data(), nullptr);
+        if (n > 0 && n < full.size()) w.assign(full.c_str(), n);
+    }
+    // its dependencies are system DLLs only (SDL3 and the C++ runtime are static): from System32, never from the game
+    // folder (dll1114: a stray version.dll there failed the load with 1114); 87: a Windows without the search flags
+    HMODULE m = LoadLibraryExW(w.c_str(), nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (m == nullptr && GetLastError() == ERROR_INVALID_PARAMETER) m = LoadLibraryExW(w.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (m == nullptr) { std::fprintf(stderr, "[B3SCENE] B3PORT_RENDER: cannot load %s (%lu)\n", dll, GetLastError()); return false; }
     auto open = reinterpret_cast<int (*)(const char*)>(reinterpret_cast<void*>(GetProcAddress(m, "b3r_open")));
     r.want_key = reinterpret_cast<int (*)()>(reinterpret_cast<void*>(GetProcAddress(m, "b3r_want_key")));

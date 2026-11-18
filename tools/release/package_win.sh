@@ -5,8 +5,8 @@
 #       Burnout3Launcher.exe  native_play.exe  b3render.dll  SDL3.dll  b3-icon.png  b3modtool.exe
 #       b3_car_tools.zip  (the Blender add-on for car mods, a front end on b3modtool: tools/blender/make_addon_zip.py)
 #       README-TESTERS.txt  KNOWN-ISSUES.txt  VERSION.txt
-#       LICENSES/  (THIRD-PARTY-NOTICES.txt and the license texts: SDL3, zlib, stb_truetype, the decoders, Lua, MinGW-w64,
-#                  GCC runtime)
+#       LICENSES/  (THIRD-PARTY-NOTICES.txt and the license texts: SDL3, zlib, stb_truetype, the decoders, Lua, libchdr
+#                  with LZMA SDK / miniz / zstd, MinGW-w64, GCC runtime)
 #   No developer tools (b3view, b3replay, b3assetdump, gameview_replay, native_boot), no game data, no saves.
 #
 #   tools/release/package_win.sh              builds first: tools/native/build_win.sh RENDER=1 STRIP=1 into
@@ -38,11 +38,19 @@ for f in "${FILES[@]}"; do [ -f "$OUT/$f" ] || die "no $OUT/$f (OUT=<a build wit
 
 # the version the build carries (version.h: "<base>+<commit>[-dirty]", from the repo's VERSION base)
 BASE=$(tr -d ' \r\n' < "$PORT/VERSION")
-VER=$(grep -a -o -m1 -E "${BASE//./\\.}(\+[0-9a-f]+(-dirty)?)?" "$OUT/native_play.exe" | head -1 || true)
+# the full stamp first ("<base>+<commit>"): a bare "<base>" can also be other text in a program (1.2.0: the memory
+# card's "Sony PS2 Memory Card Format 1.2.0.0" in the launcher's save import)
+stamp() {
+    local s
+    s=$(grep -a -o -E "${BASE//./\\.}\+[0-9a-f]+(-dirty)?" "$1" | head -1 || true)
+    [ -n "$s" ] || s=$(grep -a -o -m1 -E "${BASE//./\\.}" "$1" | head -1 || true)
+    printf '%s' "$s"
+}
+VER=$(stamp "$OUT/native_play.exe")
 [ -n "$VER" ] || die "no version string ($BASE...) in $OUT/native_play.exe: a build from before the version stamp?"
 # nofallback1: a release runs no PS2 code -- no R5900 interpreter in native_play.exe (build_win.sh NATIVE_FALLBACK=0)
 grep -a -q 'r5900_mini: \|ran retail in the mini' "$OUT/native_play.exe" && die "native_play.exe has the retail fallback in it (a NATIVE_FALLBACK=1 build)"
-LVER=$(grep -a -o -m1 -E "${BASE//./\\.}(\+[0-9a-f]+(-dirty)?)?" "$OUT/Burnout3Launcher.exe" | head -1 || true)
+LVER=$(stamp "$OUT/Burnout3Launcher.exe")
 [ "$LVER" = "$VER" ] || die "native_play.exe is $VER but Burnout3Launcher.exe is ${LVER:-unstamped}: build them together"
 case "$VER" in *-dirty) echo "package_win: WARNING: $VER was built from a tree with uncommitted changes" >&2;; esac
 NAME=burnout3-native-$(echo "$VER" | tr -c 'A-Za-z0-9._\n-' '-')-win64
@@ -90,6 +98,11 @@ lic "$PORT/src/native/third_party/LICENSE-dr_libs.txt" dr_libs-LICENSE.txt
 lic "$PORT/src/native/third_party/LICENSE-minimp3.txt" minimp3-LICENSE.txt
 lic "$PORT/src/native/third_party/LICENSE-stb_vorbis.txt" stb_vorbis-LICENSE.txt
 lic "$PORT/src/third_party/lua-5.4.9/LICENSE.txt" Lua-LICENSE.txt   # lua6: script mods (src/native/script_mods.h)
+# chd1: .chd disc images (src/native/third_party/libchdr: libchdr and the LZMA SDK, miniz and zstd decoders in it)
+lic "$PORT/src/native/third_party/libchdr/LICENSE-libchdr.txt" libchdr-LICENSE.txt
+lic "$PORT/src/native/third_party/libchdr/LICENSE-lzma.txt" lzma-LICENSE.txt
+lic "$PORT/src/native/third_party/libchdr/LICENSE-miniz.txt" miniz-LICENSE.txt
+lic "$PORT/src/native/third_party/libchdr/LICENSE-zstd.txt" zstd-LICENSE.txt
 
 # ---- privacy: no trace of the build machine's user (its account name or home folder) in anything packaged ----
 privacy_scan() {   # $1: the staged folder

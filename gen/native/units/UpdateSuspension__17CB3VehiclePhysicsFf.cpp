@@ -157,7 +157,7 @@ void CB3VehiclePhysics::UpdateSuspension(ps2f lrTimeStep)
     CGtV3d lAxis(0.0f, 0.0f, 1.0f);
     ps2f lrLooseAngle = 20.0f;
     CGtV3d *lpUpVec = &field_204->mUp;
-    CGtV3d laImpulse[4];
+    CGtV3d laImpulse[6];   /* decomp2host T46: retail's frame holds 6 (the draft: 4) */
     int lnWheel;
     for (lnWheel = 0; lnWheel < field_1169; lnWheel++) {
         field_820[lnWheel].field_B2 = 0;

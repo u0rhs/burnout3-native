@@ -329,6 +329,7 @@ double ms_since(std::chrono::steady_clock::time_point t0) {
 
 void set_hd_textures(HdTextures* t) { g_hd = t; }
 HdTextures* hd_textures() { return g_hd; }
+bool hd_switchable() { return g_hd && g_hd->originals_from < g_hd->pack.dirs.size(); }
 
 std::vector<std::string> hd_folders(const std::string& dir, bool off, const std::vector<std::string>& before) {
     std::string d = dir;
@@ -355,6 +356,9 @@ HdTextures* hd_enable(const std::string& dir, bool off, const std::vector<std::s
     if (!why.empty()) std::fprintf(stderr, "hd pack: %s\n", why.c_str());
     std::fprintf(stderr, "hd pack %s: %zu replacements indexed (%zu other files) in %.0f ms\n", names.c_str(), instance.pack.files.size(),
                  instance.pack.skipped, ms_since(t0));
+    // hdkey: the player's pack (the last folder, after the mods'; a folder that is not there is left out of dirs) keeps
+    // the originals for the HD TEXTURES key
+    if (folders.size() > before.size() && instance.pack.dirs.back() == folders.back()) instance.originals_from = instance.pack.dirs.size() - 1;
     set_hd_textures(&instance);
     return &instance;
 }
@@ -368,17 +372,32 @@ void hd_trim() {
 
 void hd_report() {
     if (!g_hd) return;
-    std::fprintf(stderr, "hd pack: %zu rasters looked up, %zu replaced (%zu files decoded, %zu failed, %zu with alpha held to the original's coverage / maximum%s); keys %.0f ms, DDS %.0f ms\n",
+    std::fprintf(stderr, "hd pack: %zu rasters looked up, %zu replaced (%zu files decoded, %zu failed, %zu with alpha held to the original's coverage / maximum%s, %zu originals kept); keys %.0f ms, DDS %.0f ms\n",
                  g_hd->lookups, g_hd->hits, g_hd->files_loaded, g_hd->failures, g_hd->masked, g_hd->raw_alpha ? ", B3_HD_RAW_ALPHA: off" : "",
-                 g_hd->key_ms, g_hd->load_ms);
+                 g_hd->originals, g_hd->key_ms, g_hd->load_ms);
 }
 
 bool HdTextures::open(const std::string& folder, std::string* why) { return open(std::vector<std::string>{folder}, why); }
 
+bool HdTextures::keeps_original(const std::string& path) const {
+    if (originals_from >= pack.dirs.size()) return false;
+    // the folder the file was found in: the longest of the folders its path starts with (a scan names its files below it)
+    std::size_t best = SIZE_MAX, best_len = 0;
+    for (std::size_t i = 0; i < pack.dirs.size(); ++i) {
+        const std::string& d = pack.dirs[i];
+        if (d.empty() || path.size() <= d.size() || path.compare(0, d.size(), d) != 0) continue;
+        const char next = path[d.size()], last = d.back();
+        if (last != '/' && last != '\\' && next != '/' && next != '\\') continue;
+        if (d.size() >= best_len) { best = i; best_len = d.size(); }
+    }
+    return best != SIZE_MAX && best >= originals_from;
+}
+
 bool HdTextures::open(const std::vector<std::string>& folders, std::string* why) {
     cache_.clear();
     raw_alpha = std::getenv("B3_HD_RAW_ALPHA") != nullptr;
-    lookups = hits = failures = files_loaded = masked = 0;
+    lookups = hits = failures = files_loaded = masked = originals = 0;
+    originals_from = SIZE_MAX;
     load_ms = key_ms = 0;
     return pack.open(folders, why);
 }
@@ -448,6 +467,10 @@ bool HdTextures::apply(const GsMemory& gs, DecodedRaster& r, std::uint32_t cbp_a
             }
         }
         masked += any;
+    }
+    if (keeps_original(*path)) {   // hdkey
+        r.original = std::move(r.levels);
+        ++originals;
     }
     r.levels.clear();
     r.levels.push_back(std::move(out));

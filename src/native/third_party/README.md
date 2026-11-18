@@ -20,3 +20,6 @@ e5e8cc2a449ad312fbb2e97bd8b085aab9362bf99ddd8e34684f317ef048381f  dr_mp3.h
 ```
 
 AAC is not decoded (no permissively licensed single-file decoder).
+
+`libchdr/` (`.chd` disc images, `include/b3asset/discfs.h`): libchdr with the LZMA SDK, miniz and zstd decoders it
+bundles, its FLAC through the `dr_flac.h` above. Version, source and hashes: `libchdr/README.md`.

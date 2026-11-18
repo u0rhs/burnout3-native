@@ -250,7 +250,38 @@ boot2's platform_sif (`b3route_call`) completed the two RPC call shapes the EE m
 0xF2700: the init call {1, 0x8000, target, 0} (records the EE target) and a "routing" call with count 2 (records three
 raw words), and signalled the client's semaphore; it sent no command 6. Since S4 of the SIF lane (2026-11-11) the port makes no RPC for it at all:
 CB3SoundDistortion's functions are platform rows (src/native/platform_distortion.cpp) that take the RPC's time and
-empty the list; the list has no receiver in the shipped game (this model is not linked into it).
+empty the list. Until engpan (2026-11-18) the list had no receiver in the shipped game, so the engine-model voices
+SetChannels names played on core 0's dry bus with the engine model's own channel pans (each stereo layer's left half
+hard left, its right half hard right: on headphones the bass on one side, the mids / highs on the other), where a PS2
+plays them only through this round trip, as one mono signal panned by the car's gains.
+
+Since engpan the shipped game has the module (§9) beside RW Audio's executor (src/native/platform_rwa.cpp, created
+with it; lists sent earlier are kept and applied then):
+- each list the rows send (0x400 bytes from the count word, as sceSifCallRpc sends it) goes to `B3Route::call` at
+  the current IOP time;
+- command 6 is held by the platform and delivered to the cid-6 handler in interrupt context (platform_sif
+  `deliver_cmd_now`) between IOP slices: with B3ROUTE the executor catches up in slices of at most 64 samples, so every
+  block is answered before its B / D phase, 128 samples on (§9's requirement). engfix (2026-11-18): engpan first
+  queued it for the next safe point like RW Audio's replies, but the IOP catches up hundreds of samples at a time (the
+  VBlank hook after the idle loop jumps to the VBlank, a command's catch-up), so several phases ran in one advance: in a
+  race 44 % of the Fuzzy writes repeated the previous frame and a second Clean block overwrote the first before the
+  handler read it (the engine quiet and crackling, a jump at every 128-sample seam 3.8 times the average step;
+  correlation with the engine voices 0.685). Since: no stale write (`B3RouteStats::writes_stale` 0 of 7,500), seams
+  1.02 times the average step, correlation 0.989 at exactly 1024 samples. safept (2026-11-18): delivered only where
+  the port delivers interrupts -- a time check or a VBlank with interrupts on, no handler or SIF delivery running
+  (`sif::can_deliver_now`), and no ptr_arg window open on the thread -- never inside the game's cid-0 send or the
+  distortion RPC rows; elsewhere the IOP waits at the slice boundary after the send until such a point (race: 8 samples
+  at most), so the answers land at the same IOP times and the sound is unchanged. `B3_B3ROUTE_STATS=1` prints the
+  counts at exit (fresh / stale writes, deliveries, waits);
+- the handler func_002FC530 and the DSP block's `ProcessB2Distortion` (0x2FBE20; both hand-written asm in retail, so
+  not generated) and its mono mix `_FinalMix` (0x2FC820, hand-written MMI asm too) are platform rows written from the
+  retail instructions; `CB3SoundDSPDataBlock::Process` and the type-2 filter func_002FB890 are the generated ones.
+  libsif's sceSifSetDma / isceSifSetDma is a row (platform_distortion.cpp) that delivers into B3ROUTE's image (and is
+  fatal for any other IOP address). The three rows were compared call by call against the retail code
+  (`B3NATIVE_DIFF=...` in a NATIVE_FALLBACK=1 build, races): no difference.
+- In the race the engine model uses DSP type 1 (ProcessB2Distortion) on both blocks; the gains at the player car are
+  about 0xC000 / 0xC000 (16.16).
+- `B3_B3ROUTE=0` leaves the module out (the port before engpan), for comparisons.
 
 ## 9. Native implementation (src/audio/b3route.{h,cpp})
 The SPU2 model already has everything B3ROUTE uses (the output rings, MEMIN with BVOL, core-1 IRQA on ring positions,

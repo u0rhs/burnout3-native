@@ -6,6 +6,7 @@
 
 #include "b3asset/enviro.h"
 #include "b3asset/export.h"
+#include "scene.h"   // hdkey: upload_texture
 
 namespace b3view {
 
@@ -41,9 +42,7 @@ b3gfx::TextureId global_texture(b3gfx::Device& dev, const std::vector<std::uint8
         std::fprintf(stderr, "crash objects: GLOBAL.TXD has no %s\n", name);
         return b3gfx::kNone;
     }
-    std::vector<b3gfx::TextureLevel> levels;
-    for (const auto& l : r.levels) levels.push_back({l.w, l.h, l.rgba.data()});
-    return levels.empty() ? b3gfx::kNone : dev.create_texture(levels);
+    return upload_texture(dev, r.levels, r.original);   // hdkey: and its original
 }
 
 }  // namespace

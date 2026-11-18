@@ -14,6 +14,13 @@ dr_mp3, dr_flac, dr_wav (David Reid) -- public domain / MIT-0, either           
   stb_vorbis (Sean Barrett) -- public domain / MIT, either                              stb_vorbis-LICENSE.txt
   Linked into native_play: your own music folder's MP3 / FLAC / WAV / Ogg Vorbis files.
 
+libchdr (Romain Tisserand; MAME's CHD code by Aaron Giles) -- BSD 3-clause                libchdr-LICENSE.txt
+  LZMA SDK decoder (Igor Pavlov) -- public domain                                         lzma-LICENSE.txt
+  miniz (Rich Geldreich, RAD Game Tools, Valve) -- MIT                                    miniz-LICENSE.txt
+  zstd decoder (Meta Platforms) -- BSD 3-clause                                           zstd-LICENSE.txt
+  Linked into native_play, libb3render.so, b3launcher and b3modtool:
+  reading a .chd disc image (its FLAC parts with the dr_flac above).
+
 Lua 5.4.9 (Lua.org, PUC-Rio) -- MIT license                                              Lua-LICENSE.txt
   Linked into native_play: the scripting language of script mods.
   Copyright (C) 1994-2026 Lua.org, PUC-Rio

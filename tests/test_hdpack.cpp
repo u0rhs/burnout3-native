@@ -215,6 +215,7 @@ TEST(hook_replaces_with_the_raster_extent_of_the_pack_image) {
     CHECK(hd.pack.files.size() == 1 && hd.pack.skipped == 1);
     CHECK(hd.apply(gs, r, 0));
     CHECK(r.hd && r.levels.size() == 1);
+    CHECK(r.original.empty());   // hdkey: no originals_from (a viewer's pack): the decode is not kept
     CHECK(r.levels[0].w == 192 && r.levels[0].h == 128);
     const std::uint8_t* p = &r.levels[0].rgba[(5 * 192 + 191) * 4];
     CHECK(p[0] == 191 && p[1] == 5 && p[2] == 9 && p[3] == 0x80);   // DDS alpha 0x40 = half: 0x80
@@ -278,13 +279,57 @@ TEST(packs_merge_in_priority_order) {
     // the renderer's switch: the mods' packs before the player's; --no-hd leaves the mods' on
     HdTextures* t = hd_enable(user.string(), false, {a.string(), b.string()});
     CHECK(t && hd_textures() == t && *t->pack.find(k1) == a1 && *t->pack.find(k3) == u3);
+    CHECK(t->originals_from == 2 && hd_switchable());   // hdkey: the player's pack keeps its originals
     t = hd_enable(user.string(), true, {a.string()});
     CHECK(t && t->pack.find(k1) && !t->pack.find(k3));
+    CHECK(!hd_switchable());   // the mods' packs alone: nothing for the HD TEXTURES key
     CHECK(!hd_enable(user.string(), true, {}) && !hd_textures());
     // showhd1: the list hd_enable opens (the launcher's showroom opens the same one)
     CHECK(hd_folders(user.string(), false, {a.string(), b.string()}) == (std::vector<std::string>{a.string(), b.string(), user.string()}));
     CHECK(hd_folders(user.string(), true, {a.string()}) == std::vector<std::string>{a.string()});
     CHECK(hd_folders(user.string(), true, {}).empty());
+    set_hd_textures(nullptr);
+    fs::remove_all(root);
+}
+
+// hdkey (the HD TEXTURES key): a replacement from the player's pack keeps the decode it replaced; a mod's does not
+TEST(player_pack_hits_keep_the_original) {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::path("build") / "test_hdpack_originals.scratch";
+    fs::remove_all(root);
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 5 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster base;
+    base.hdr = header(PSMT8, 6, 5, 0, 2, 64, 64, 32);
+    base.levels.push_back(Image{64, 32, std::vector<std::uint8_t>(64 * 32 * 4, 0x7F)});
+    base.levels.push_back(Image{32, 16, std::vector<std::uint8_t>(32 * 16 * 4, 0x3F)});
+    base.max_alpha = 0x80;
+    HdKey k;
+    CHECK(hd_key(gs, base.hdr, 0, 1, k));
+    auto d = dds_header(128, 64, nullptr);
+    d.resize(d.size() + 128 * 64 * 4, 0x80);
+    const auto put = [&](const fs::path& dir) {
+        fs::create_directories(dir);
+        std::ofstream(dir / (hd_key_name(k) + ".dds"), std::ios::binary).write(reinterpret_cast<const char*>(d.data()), std::streamsize(d.size()));
+    };
+    // a mod folder whose name the player's folder starts with: told apart by the separator
+    const fs::path mod = root / "pack", user = root / "pack2";
+    put(user);
+    HdTextures* t = hd_enable(user.string(), false, {(root / "gone").string()});   // a mod folder that is not there
+    CHECK(t && t->pack.dirs.size() == 1 && t->originals_from == 0 && hd_switchable());
+    fs::create_directories(mod);
+    t = hd_enable(user.string(), false, {mod.string()});
+    CHECK(t && t->originals_from == 1 && hd_switchable());
+    DecodedRaster r = base;
+    CHECK(t->apply(gs, r, 0) && r.hd && r.levels.size() == 1 && r.levels[0].w == 128);
+    CHECK(r.original.size() == 2 && r.original[0].w == 64 && r.original[1].w == 32 && r.original[0].rgba == base.levels[0].rgba);
+    CHECK(t->originals == 1);
+    put(mod);   // now the mod's pack has it (and wins): part of the mod, no original kept
+    t = hd_enable(user.string(), false, {mod.string()});
+    DecodedRaster m = base;
+    CHECK(t && t->apply(gs, m, 0) && m.hd && m.original.empty() && t->originals == 0);
     set_hd_textures(nullptr);
     fs::remove_all(root);
 }

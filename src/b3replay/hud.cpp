@@ -211,6 +211,7 @@ std::shared_ptr<const HudFrame> HudDecoder::decode(const Image& im, std::shared_
                 t->img_w = d.levels[0].w;
                 t->img_h = d.levels[0].h;
                 t->rgba = std::move(d.levels[0].rgba);
+                if (!d.original.empty() && d.original[0].w == t->w && d.original[0].h == t->h) t->original = std::move(d.original[0].rgba);   // hdkey
                 t->tw = 1 << ((d.hdr.tex0 >> 26) & 0xF);
                 t->th = 1 << ((d.hdr.tex0 >> 30) & 0xF);
                 t->psm = d.hdr.psm();

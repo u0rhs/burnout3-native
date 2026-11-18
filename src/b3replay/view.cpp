@@ -305,6 +305,9 @@ Frame frame_at(const Timeline& tl, std::size_t i, double frac, bool interpolate,
     std::memcpy(f.slot_kind, a.slot_kind, sizeof f.slot_kind);
     std::memcpy(f.vis, a.vis, sizeof f.vis);
     std::memcpy(f.backdrops, a.backdrops, sizeof f.backdrops);
+    std::memcpy(f.env_unit, a.env_unit, sizeof f.env_unit);   // reflect-tunnel
+    f.env_car = a.env_car;
+    f.env_track = a.env_track;
     f.props_off = a.props_off;
     f.current_unit = a.current_unit;
     f.water_on = a.water_on;
@@ -418,6 +421,7 @@ void View::clear(b3gfx::Device& dev) {
     fill_still.clear();
     fill_still_filtered.clear();
     track_boxes.clear();
+    lo_boxes.clear();   // reflect-tunnel
     movie_tex.clear();
     movie_up.clear();
     movie_placeholder = b3gfx::kNone;
@@ -773,6 +777,99 @@ void View::build_track_boxes() {
     }
 }
 
+namespace { bool file_shadow(const std::vector<std::uint8_t>& b, Vehicle::Shadow& s); }   // below (fe2)
+
+// reflect-tunnel: see view.h. kNone (the sky alone) when off, when CAR REFLECTIONS is Off, without the car or the
+// capture's inputs, or when the game's switch D_00665F20 is clear.
+std::uint32_t View::env_world_map(b3gfx::Device& dev, const Frame& f, const std::vector<ModelHead>& heads) {
+    if (!car_env_world || car_reflect == 0 || f.env_track == 0 || f.env_car == 0 || !sky.has_enviro) return b3gfx::kNone;
+    const Vehicle* car = nullptr;
+    for (const auto& v : f.vehicles) if (v.kind == VehicleKind::kRaceCar && v.id == f.env_car) car = &v;
+    if (!car || car->model < 0 || std::size_t(car->model) >= heads.size()) return b3gfx::kNone;
+    // BuildCustomCameraData's lEnvMapCentre: the car's matrix applied to the middle of its box (+0xE80 / +0xE90)
+    Vehicle::Shadow box;
+    const int file = car_file(heads[std::size_t(car->model)]);
+    if (file < 0 || !file_shadow(cars[std::size_t(file)].bytes, box)) return b3gfx::kNone;
+    b3gfx::EnvPass ep;
+    float mid[3];
+    for (int k = 0; k < 3; ++k) mid[k] = 0.5f * (box.sup[k] + box.inf[k]);
+    for (int k = 0; k < 3; ++k) ep.centre[k] = mid[0] * car->main.r[0][k] + mid[1] * car->main.r[1][k] + mid[2] * car->main.r[2][k] + car->main.r[3][k];
+    const float up[3] = {0, 1, 0};
+    b3view::frame_params(sky, ep.centre, up, false, false, ep.fp);
+    ep.fp.present_scale = 1.0f;
+    if (lo_boxes.size() != lo.items.size()) {
+        lo_boxes.assign(lo.items.size(), {1, 1, 1, 0, 0, 0});
+        for (std::size_t k = 0; k < lo.items.size(); ++k) {
+            const std::size_t d = k - lo.item_base;
+            if (k < lo.item_base || d >= lo.model.draws.size()) continue;
+            const auto& r = lo.model.draws[d];
+            float a[3] = {1e30f, 1e30f, 1e30f}, b[3] = {-1e30f, -1e30f, -1e30f};
+            bool got = false;
+            for (std::uint32_t i = r.first_index; i < r.first_index + r.index_count && i < lo.model.indices.size(); ++i) {
+                const std::uint32_t vi = lo.model.indices[i];
+                if (vi >= lo.model.vertices.size()) continue;
+                const float* p = lo.model.vertices[vi].pos;
+                for (int c = 0; c < 3; ++c) { a[c] = std::min(a[c], p[c]); b[c] = std::max(b[c], p[c]); }
+                got = true;
+            }
+            if (!got) continue;
+            const float* M = lo.items[k].model;
+            std::array<float, 6> w = {1e30f, 1e30f, 1e30f, -1e30f, -1e30f, -1e30f};
+            for (int c = 0; c < 8; ++c) {
+                const float x = (c & 1) ? b[0] : a[0], y = (c & 2) ? b[1] : a[1], z = (c & 4) ? b[2] : a[2];
+                const float q[3] = {M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14]};
+                for (int i = 0; i < 3; ++i) { w[std::size_t(i)] = std::min(w[std::size_t(i)], q[i]); w[std::size_t(3 + i)] = std::max(w[std::size_t(3 + i)], q[i]); }
+            }
+            lo_boxes[k] = w;
+        }
+    }
+    const float kw = float(ep.face) / float(ep.face - 2);   // render_env's widened faces
+    std::set<int> done;
+    for (int j = 0; j < 17; ++j) {
+        const int u = f.env_unit[j];
+        if (u < 0 || ((f.vis[j] >> 2) & 0x3F) == 0 || !done.insert(u).second) continue;   // env cameras 1..3: bits 2..7
+        const auto it = lo_unit.find(u);
+        if (it == lo_unit.end()) continue;
+        for (int k : it->second) {
+            if (k < 0 || std::size_t(k) >= lo.items.size()) continue;
+            const auto& w = lo_boxes[std::size_t(k)];
+            std::uint8_t mask = 0x3F;
+            if (w[0] <= w[3]) {
+                float d2 = 0;   // the box's distance from the centre against the env cameras' far plane
+                for (int i = 0; i < 3; ++i) {
+                    const float e = std::max({w[std::size_t(i)] - ep.centre[i], 0.0f, ep.centre[i] - w[std::size_t(3 + i)]});
+                    d2 += e * e;
+                }
+                if (d2 > ep.zfar * ep.zfar) continue;
+                mask = 0;
+                for (int fc = 0; fc < 6; ++fc) {
+                    float F[3], R[3], U[3];
+                    b3gfx::env_face(fc, F, R, U);
+                    int out[5] = {0, 0, 0, 0, 0};
+                    for (int c = 0; c < 8; ++c) {
+                        const float p[3] = {((c & 1) ? w[3] : w[0]) - ep.centre[0], ((c & 2) ? w[4] : w[1]) - ep.centre[1], ((c & 4) ? w[5] : w[2]) - ep.centre[2]};
+                        const float x = R[0] * p[0] + R[1] * p[1] + R[2] * p[2], y = U[0] * p[0] + U[1] * p[1] + U[2] * p[2];
+                        const float z = (F[0] * p[0] + F[1] * p[1] + F[2] * p[2]) * kw;
+                        out[0] += x < -z; out[1] += x > z; out[2] += y < -z; out[3] += y > z; out[4] += z <= 0.0f;
+                    }
+                    bool cull = false;
+                    for (int q = 0; q < 5; ++q) cull = cull || out[q] == 8;
+                    if (!cull) mask |= std::uint8_t(1U << fc);
+                }
+                if (!mask) continue;
+            }
+            ep.items.push_back(lo.items[std::size_t(k)]);
+            ep.faces.push_back(mask);
+        }
+    }
+    if (std::getenv("B3_ENV_TRACE"))   // diagnostics: what the env map holds this frame
+        std::fprintf(stderr, "env: tick %zu car %08x centre %.1f %.1f %.1f items %zu\n", f.tick, unsigned(f.env_car), ep.centre[0], ep.centre[1], ep.centre[2], ep.items.size());
+    if (ep.items.empty()) return b3gfx::kNone;   // nothing within 100 m: the sky alone, as before
+    const int slot = env_slot;
+    env_slot ^= 1;
+    return dev.render_env(slot, ep);
+}
+
 void View::draw_list(b3gfx::Device& dev, const Frame& f, const std::vector<ModelHead>& heads, bool game_cull,
                      const float eye[3], std::vector<b3gfx::DrawItem>& out) {
     // perf1: per-stage CPU times for b3replay --profile (prof_on)
@@ -850,7 +947,11 @@ void View::draw_list(b3gfx::Device& dev, const Frame& f, const std::vector<Model
     lap(0);
     // Cars (render5): RenderVehicle's draws per vehicle, at the LOD the game's Draw code picks from its camera
     frame_now = f.fx.now;   // traffic-popin: the clock the traffic fade-in (Vehicle::since) is measured on
-    vehicle_draws(dev, f.cam, f.vehicles, f.vehicles, heads, game_cull, eye, car_globals, out, true);
+    {
+        b3view::CarGlobals g = car_globals;
+        g.env_world = env_world_map(dev, f, heads);   // reflect-tunnel: the track in the env map
+        vehicle_draws(dev, f.cam, f.vehicles, f.vehicles, heads, game_cull, eye, g, out, true);
+    }
     vehicle_fades.resize(f.vehicles.size());   // traffic-popin: the shadows and lights fade with their cars
     for (std::size_t k = 0; k < f.vehicles.size(); ++k) vehicle_fades[k] = traffic_fade(f.vehicles[k], frame_now, f.cam.m.r[3]);
     if (ghost) ghost_draws(dev, f, eye, out);   // ghost1: the Time Attack ghost (none unless GHOST is on and a lap is loaded)
@@ -1252,6 +1353,25 @@ constexpr std::uint32_t kStylisedTextRender = 0x003CFE40U;
 constexpr float kFillInner = 0.8f, kFillOuter = 0.35f, kFillDepth = 96.0f;
 
 // fe3: a small, soft copy of an image for the side fill: an 8 x 8 box average, then two [1 2 1] passes each way
+// hdkey: a HUD texture on the device: its picture (rgba, img_w x img_h), made over by `make` when given (rgba, w, h ->
+// the pixels, their ow x oh), and for an HD pack replacement the same of its original (w x h) beside it
+// (Device::create_texture_hd: the HD TEXTURES key's other picture)
+using HudMake = std::function<std::vector<std::uint8_t>(const std::uint8_t*, int, int, int&, int&)>;
+static b3gfx::TextureId hud_upload(b3gfx::Device& dev, const HudTexture& t, const HudMake& make = {}) {
+    std::vector<std::uint8_t> keep[2];
+    const auto level = [&](const std::uint8_t* px, int w, int h, std::vector<std::uint8_t>& k) {
+        if (!make) return b3gfx::TextureLevel{w, h, px};
+        int ow = w, oh = h;
+        k = make(px, w, h, ow, oh);
+        return b3gfx::TextureLevel{ow, oh, k.data()};
+    };
+    const b3gfx::TextureLevel hd = level(t.rgba.data(), t.img_w, t.img_h, keep[0]);
+    std::vector<b3gfx::TextureLevel> original;
+    if (!t.original.empty() && t.original.size() == std::size_t(t.w) * std::size_t(t.h) * 4)
+        original.push_back(level(t.original.data(), t.w, t.h, keep[1]));
+    return dev.create_texture_hd({hd}, original);
+}
+
 static std::vector<std::uint8_t> fill_blur(const std::uint8_t* rgba, int w, int h, int& ow, int& oh) {
     ow = std::max(4, w / 8);
     oh = std::max(4, h / 8);
@@ -1484,8 +1604,7 @@ void View::hud_list(b3gfx::Device& dev, const std::shared_ptr<const HudFrame>& h
                     if (tt == hud_textures.end()) {
                         const auto t = textures.find(key);
                         b3gfx::TextureId id = b3gfx::kNone;
-                        if (t != textures.end() && t->second->ok)
-                            id = dev.create_texture({b3gfx::TextureLevel{t->second->img_w, t->second->img_h, t->second->rgba.data()}});
+                        if (t != textures.end() && t->second->ok) id = hud_upload(dev, *t->second);   // hdkey: and its original
                         tt = hud_textures.emplace(key, id).first;
                     }
                     return tt->second;
@@ -1877,11 +1996,12 @@ void View::hud_list(b3gfx::Device& dev, const std::shared_ptr<const HudFrame>& h
                 if (tt == hud_textures_filtered.end()) {
                     const auto t = textures.find(key);
                     b3gfx::TextureId id = b3gfx::kNone;
-                    if (t != textures.end() && t->second->ok) {
-                        std::vector<std::uint8_t> px = t->second->rgba;
-                        a11y::remap_pixels(filter_m, px.data(), px.size() / 4);
-                        id = dev.create_texture({b3gfx::TextureLevel{t->second->img_w, t->second->img_h, px.data()}});
-                    }
+                    if (t != textures.end() && t->second->ok)
+                        id = hud_upload(dev, *t->second, [&](const std::uint8_t* rgba, int w, int h, int&, int&) {   // hdkey: and its original
+                            std::vector<std::uint8_t> px(rgba, rgba + std::size_t(w) * std::size_t(h) * 4);
+                            a11y::remap_pixels(filter_m, px.data(), px.size() / 4);
+                            return px;
+                        });
                     tt = hud_textures_filtered.emplace(std::make_pair(key, hud_colour_filter), id).first;
                 }
                 it.texture = tt->second;
@@ -1893,7 +2013,7 @@ void View::hud_list(b3gfx::Device& dev, const std::shared_ptr<const HudFrame>& h
                     const auto t = textures.find(key);
                     b3gfx::TextureId id = b3gfx::kNone;
                     if (t != textures.end() && t->second->ok) {
-                        id = dev.create_texture({b3gfx::TextureLevel{t->second->img_w, t->second->img_h, t->second->rgba.data()}});
+                        id = hud_upload(dev, *t->second);   // hdkey: and its original
                         if (const char* dir = std::getenv("B3HUD_TEXDIR"))   // debugging: the decoded rasters as PNG
                             b3asset::write_png_rgba(std::string(dir) + "/" + t->second->name + "_" + std::to_string(t->second->palette) + ".png",
                                                     t->second->img_w, t->second->img_h, t->second->rgba.data());
@@ -2205,12 +2325,12 @@ void View::side_fill(b3gfx::Device& dev, const HudFrame& hud, const HudDraw& d, 
         if (it == fill_still_filtered.end()) {
             b3gfx::TextureId id = b3gfx::kNone;
             const auto t = textures.find(d.texture);
-            if (t != textures.end() && t->second->ok) {
-                int bw = 0, bh = 0;
-                std::vector<std::uint8_t> px = fill_blur(t->second->rgba.data(), t->second->img_w, t->second->img_h, bw, bh);
-                a11y::remap_pixels(a11y::daltonize_matrix(a11y::colour_filter(hud_colour_filter)), px.data(), px.size() / 4);
-                id = dev.create_texture({b3gfx::TextureLevel{bw, bh, px.data()}});
-            }
+            if (t != textures.end() && t->second->ok)
+                id = hud_upload(dev, *t->second, [&](const std::uint8_t* rgba, int w, int h, int& bw, int& bh) {   // hdkey: and its original
+                    std::vector<std::uint8_t> px = fill_blur(rgba, w, h, bw, bh);
+                    a11y::remap_pixels(a11y::daltonize_matrix(a11y::colour_filter(hud_colour_filter)), px.data(), px.size() / 4);
+                    return px;
+                });
             it = fill_still_filtered.emplace(std::make_pair(d.texture, hud_colour_filter), id).first;
         }
         tex = it->second;
@@ -2219,11 +2339,8 @@ void View::side_fill(b3gfx::Device& dev, const HudFrame& hud, const HudDraw& d, 
         if (it == fill_still.end()) {
             b3gfx::TextureId id = b3gfx::kNone;
             const auto t = textures.find(d.texture);
-            if (t != textures.end() && t->second->ok) {
-                int bw = 0, bh = 0;
-                const std::vector<std::uint8_t> px = fill_blur(t->second->rgba.data(), t->second->img_w, t->second->img_h, bw, bh);
-                id = dev.create_texture({b3gfx::TextureLevel{bw, bh, px.data()}});
-            }
+            if (t != textures.end() && t->second->ok)   // hdkey: and its original
+                id = hud_upload(dev, *t->second, [](const std::uint8_t* rgba, int w, int h, int& bw, int& bh) { return fill_blur(rgba, w, h, bw, bh); });
             it = fill_still.emplace(d.texture, id).first;
         }
         tex = it->second;
@@ -2315,7 +2432,7 @@ void View::host_ui_list(b3gfx::Device& dev, const std::shared_ptr<const HostUi>&
                     if (host_ui_hud_textures)
                         for (const auto& [key, t] : *host_ui_hud_textures)
                             if (t && t->ok && t->raster == raster && !t->rgba.empty()) {
-                                id = dev.create_texture({b3gfx::TextureLevel{t->img_w, t->img_h, t->rgba.data()}});
+                                id = hud_upload(dev, *t);   // hdkey: and its original
                                 break;
                             }
                     if (id == b3gfx::kNone) return id;   // not captured yet: try again next build (no cache entry)
@@ -2417,6 +2534,7 @@ void View::split_frame(b3gfx::Device& dev, const Frame& f, const std::vector<Mod
         if (k == 1) {
             fk.cam = f.cam2;
             fk.tick_cam = f.tick_cam2;
+            if (!f.view2.track_valid) fk.env_car = 0;   // reflect-tunnel: no player 2 env inputs captured: the sky alone
             // split2 (§29.6): RenderRaceCars(1) hides player 2's own car while its camera manager says so (the look-back
             // camera); RenderShadows(1) and the corona submits are view 2's
             for (Vehicle& v : fk.vehicles) {
@@ -2439,6 +2557,8 @@ void View::split_frame(b3gfx::Device& dev, const Frame& f, const std::vector<Mod
                 std::memcpy(fk.slot_kind, t2.slot_kind, sizeof fk.slot_kind);
                 std::memcpy(fk.vis, t2.vis, sizeof fk.vis);
                 std::memcpy(fk.backdrops, t2.backdrops, sizeof fk.backdrops);
+                std::memcpy(fk.env_unit, t2.env_unit, sizeof fk.env_unit);   // reflect-tunnel: player 2's env map
+                fk.env_car = t2.env_car;
                 fk.current_unit = t2.current_unit;
                 fk.crash.barriers = t2.barriers;
                 fk.crash.barrier_group = t2.barrier_group;

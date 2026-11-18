@@ -43,6 +43,7 @@ of their owners; they are not offered under MIT.
 | stb_truetype | `src/b3launcher/third_party/` | MIT or public domain |
 | dr_mp3, dr_flac, dr_wav; minimp3 inside dr_mp3 | `src/native/third_party/` | public domain or MIT-0; minimp3: CC0 |
 | stb_vorbis | `src/native/third_party/` | MIT or public domain |
+| libchdr (.chd disc images); the LZMA SDK, miniz and zstd decoders it bundles | `src/native/third_party/libchdr/` | BSD 3-clause; LZMA SDK: public domain; miniz: MIT; zstd: BSD 3-clause |
 | fdlibm (through newlib): the structure of the bit-exact PS2 maths library | `include/b3libm/` | see below |
 
 The release packages list what they ship in `tools/release/THIRD-PARTY-NOTICES.txt` (Windows) and

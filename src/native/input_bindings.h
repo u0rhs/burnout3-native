@@ -111,6 +111,7 @@ enum class PortAction : std::uint8_t {
     PhotoWider, PhotoNarrower, PhotoFocusNear, PhotoFocusFar, PhotoFast, PhotoSlow,
     PhotoDof, PhotoBlurLess, PhotoBlurMore, PhotoBlurCycle, PhotoTarget, PhotoReset, PhotoHelp, PhotoExit,
     CarLook,   // reflect2: the CAR LOOK panel (DEVELOPER MODS)
+    HdTextures,   // 1.2 (hdkey): the HD texture pack or the original textures, at once (the renderer keeps both)
     Count
 };
 constexpr int kPortActions = int(PortAction::Count);
