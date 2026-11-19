@@ -242,11 +242,11 @@ The tabs and rows as built (settings1, 2026-11-05, then mac5 and the feature lan
 | INTERFACE | FPS COUNTER (fpsoverlay2: Off / Minimal / Standard / Detailed, ini key `fps_view` 0-3, default 0, row id 255; an older `fps_counter = true` reads as 2) and FPS COUNTER POSITION (ini key `fps_corner` 0-3, default 0 = top left, row id 256); BUTTON PROMPTS (mac5: Auto / PlayStation / PS4 / PS5 / Xbox / Nintendo / Generic / Keyboard, ini key `button_prompts` 0-6 (6 = PS4 / PS5, listed second), default 0 = Auto); VIDEO SKIP HINT (mac5: on / off, ini key `skip_hint`, default on); (§7.17, photorow1) PHOTO MODE IN PAUSE MENU (Off / On, ini key `photo_row` true / false, default on, row id 240); (§7.16, units1) SPEED UNITS (MPH / KM/H, ini key `speed_units` 0-1, default 0 = MPH, row id 220); (§7.19, 1.1) LANGUAGE (English / the imported languages, ini key `language`, default English, row id 270) and IMPORT LANGUAGES (launcher only, row id 271); DATE FORMAT (mac5: Month/Day/Year / Day/Month/Year, ini key `date_format` 0-1, default 0); (§7.15, launchskip1) OPEN THE LAUNCHER AT START (Off / On, ini key `launcher_at_start` true / false, default on, row id 210; read by the launcher only); AUDIO AND CONTROLS (a pointer to Driver Details > SETTINGS). Also on the launcher's Settings page | live (OPEN THE LAUNCHER AT START: the launcher's next start; SPEED UNITS: the speedometer from the next race) |
 | INTERFACE, section ACCESSIBILITY | (§7.1) SCREEN FLASHES (Full / Reduced, ini `screen_flashes` 0-1, default 0); HUD COLOUR FILTER (Off / Deuteranopia / Protanopia / Tritanopia, ini `hud_colour_filter` 0-3, default 0); HUD SIZE (100% / 115% / 130% / 150%, ini `hud_size` 0-3, default 0: the race HUD only); BOOST (Hold / Toggle, ini `boost_mode` 0-1, default 0; **input-changing**, opt-in). Also on the launcher's Settings page (same rows) | live |
 | INTERFACE, section CONTROLLER | (§7.4, rumble1) RUMBLE (Off / On, ini `rumble` 0-1, default 0), RUMBLE STRENGTH (10-100 %, ini `rumble_strength`, default 100), TRIGGER RUMBLE (Off / On, ini `rumble_triggers`, default off); (§7.12, pad1) ADAPTIVE TRIGGERS (Off / On, ini `adaptive_triggers` 0-1, default 0, row id 190; DualSense only, presentation only), TRIGGER STRENGTH (10-100 %, ini `adaptive_triggers_strength`, default 100, row id 191); (§7.13, carsel1) CAR SERIES ON L1 / R1 (Off / On, ini `series_shoulders` 0-1, default 0, row id 200; **input-changing**, opt-in); (§7.20, 1.1) ANALOG TRIGGERS (Off / On, ini `analog_pedals`, default on, row id 272). Also on the launcher's Settings page | live (native_play reads RUMBLE and CAR SERIES each VBlank) |
-| INTERFACE, section CONTROLS | (§7.9, remap1) PLAYER, DEVICE, KEYS FOR, the 24 actions, RESET TO DEFAULTS; (§7.12, pad1) with DEVICE Controller: GYRO STEERING (Off / Mix / Replace; **input-changing**, opt-in), GYRO AXIS, GYRO SENSITIVITY, GYRO DEAD ZONE, GYRO RECENTRE (row ids 305-309; saved per player in controls.ini `[playerN.gyro]`, default off). native_play's page only; the launcher's Controllers page has the same | live |
+| INTERFACE, section CONTROLS | (§7.9, remap1) PLAYER, DEVICE, KEYS FOR, the 24 actions, RESET TO DEFAULTS; (§7.25, padlayout) with DEVICE Controller: CONTROLLER LAYOUT (Auto / Xbox / PlayStation / Custom, row id 351) and BUTTONS FOR (Driving / Menus); (§7.12, pad1) with DEVICE Controller: GYRO STEERING (Off / Mix / Replace; **input-changing**, opt-in), GYRO AXIS, GYRO SENSITIVITY, GYRO DEAD ZONE, GYRO RECENTRE (row ids 305-309; saved per player in controls.ini `[playerN.gyro]`, default off). native_play's page only; the launcher's Controllers page has the same | live |
 | INTERFACE, section TIME ATTACK | (§7.2) GHOST (Off / Best lap, ini `ghost` 0-1, default 0): Time Attack ghosts, drawn only. Also on the launcher's Settings page | live (a lap from its next start) |
 | INTERFACE, section SPEEDRUN | (§7.3) SPEEDRUN TIMER (Off / Event / Event + splits, ini `speedrun_timer` 0-2, default 0): drawn only; INSTANT RESTART (Off / On, ini `instant_restart` 0-1, default 0; **input-injecting**, opt-in). Also on the launcher's Settings page | live |
 | INTERFACE, section REPLAYS | (§7.5) RECORD REPLAYS (Off / On, ini `record_replays` 0-1, default 0): each session kept as a replay file. Also on the launcher's Settings and Replays pages | next start |
-| INTERFACE, section MUSIC | (native_play; remaster-features §6.1) MUSIC FOLDER (the system's folder dialog, $B3_MUSIC_DIALOG for scripts; ini key `music_folder`), REMOVE MUSIC FOLDER, PLAYLIST (EA Trax only / Custom only / Mixed, ini key `playlist_mode` 0-2, default 0 = the game's music untouched); (§7.14, nowplaying1) OTHER MUSIC APPS (Off / Show now playing, ini `other_music_apps` 0-1, default 0, row id 91; Windows and Linux, disabled on macOS; drawn only). Also on the launcher's Music page | from the next song (OTHER MUSIC APPS: live) |
+| INTERFACE, section MUSIC | (native_play; remaster-features §6.1) MUSIC FOLDER (the system's folder dialog, $B3_MUSIC_DIALOG for scripts; ini key `music_folder`), REMOVE MUSIC FOLDER, PLAYLIST (EA Trax only / Custom only / Mixed, ini key `playlist_mode` 0-2, default 0 = the game's music untouched); (musicvol1, 1.2.1) CUSTOM MUSIC VOLUME (0-200 % in steps of 10, ini `custom_music_volume`, default 100, row id 92: the custom songs only, times the game's own music gain (RADIO VOLUME, ducking, fades); 100 = the level the game plays its own songs at; a look-ahead limiter keeps the songs' peaks at -1 dBFS; sound only, kept in a replay when not 100; B3NATIVE_MUSIC_VOLUME overrides it); (§7.14, nowplaying1) OTHER MUSIC APPS (Off / Show now playing, ini `other_music_apps` 0-1, default 0, row id 91; Windows and Linux, disabled on macOS; drawn only). Also on the launcher's Music page | from the next song (OTHER MUSIC APPS, CUSTOM MUSIC VOLUME: live) |
 | INTERFACE, section DEVELOPER | (§7.10, tune4) DEVELOPER MODS (Off / On, ini `developer_mods` 0-1, default 0): the tuning console. Also on the launcher's Settings page | next start |
 | DEVELOPER | (§7.10, tune4; only while DEVELOPER MODS is on and the console is in the run, the last tab) SAVE AS PRESET; LIVE OVERLAY (status, F9); RESET ALL (asks: a second Cross); then the tabs of the game's tuning variables (CHANGED: what differs from its default now) one row per element with its value: Left / Right step it, Cross back to its default. **Gameplay-changing**: each edit is recorded | each edit at the next VBlank |
 | SAVES | (native_play with a card; save1, remaster-features §8.1) SAVE FILE IN USE; SAVE FILE AT START (1-5, writes active-slot.txt); (autosave1, remaster-features §8) SAVE SCREENS (Hide / Show, ini `hide_save_screens`, default Hide, row id 230: the AUTOSAVE page after a race is not shown; presentation only); SAVE FOLDER (opens it); EXPORT SAVE; IMPORT SAVE (.sav / .psu / .max / PCSX2 card; system file dialog, $B3NATIVE_SAVE_DIALOG for scripts); LAST RESULT | next start (file, import); at once (export, SAVE SCREENS) |
@@ -913,7 +913,7 @@ understood. Version 2 (padr2) made the stick clicks L2 / R2's defaults: in a ver
 line) that binds a stick click to another action and leaves L2 / R2 alone, that click stays the other action's only,
 as it was when the file was written; L2 / R2 keep their other defaults. A version 2 file is read as written.
 
-**The page.** CONTROLS: PLAYER (1 / 2), DEVICE (Keyboard / Controller), KEYS FOR (Driving / Menus; the keyboard only),
+**The page.** (1.2.1: a controller has CONTROLLER LAYOUT and a Driving / Menus view too, §7.25.) CONTROLS: PLAYER (1 / 2), DEVICE (Keyboard / Controller), KEYS FOR (Driving / Menus; the keyboard only),
 then a row per action with what is bound to it in that view (a controller's inputs named for the pad last used: Cross
 / A / B ...), RESET TO DEFAULTS (this player's device) and LAST CHANGE. On an action row:
 - CONFIRM: rebind -- a popup asks for the input (a key; or a controller's button, or a stick / trigger pushed past half
@@ -1398,8 +1398,12 @@ Drawn only, like FIELD OF VIEW (src/b3replay/view.cpp `View::apply_fov`): on vie
 FOV CORRECTION: a race car ahead within chase reach, near the view axis) the eye moves back along the view to the
 chosen share of its distance to the car (a closer view stops short of the car's rear), rises along the camera's up,
 and turns down about the axis between the old and new view directions so the point it looked at stays centred.
-In-car, bumper, replay and crash cameras without a chased car are unchanged. The game's camera, physics and replays
-are not touched; with Game / Game the picture is the original (golden unchanged).
+Only the game's chase cameras take it (1.2, sigcam): the player camera manager's active behaviours (+0xB80, captured)
+say which camera the game shows, and only its CB3BehaviourRaceCarFollow slots 2 and 3 move; the takedown camera (slot
+1, a signature takedown's too), the crash cameras, in-car, bumper and replay cameras are drawn as the game frames them,
+although a race car sits near their view axis too. While the game blends between a chase camera and another (slot 10,
+CB3BehaviourInterpolate, 0.5 s), the offset follows the blend (`Camera::chase`, capture.cpp `chase_share`). The game's
+camera, physics and replays are not touched; with Game / Game the picture is the original (golden unchanged).
 
 ### 7.22 Upscaling (1.1, 2026-11-18)
 
@@ -1417,6 +1421,59 @@ FRAME RATE LIMIT (and BATTERY SAVER's 60) now waits on a fixed schedule (each fr
 last), so the average is the limit exactly. With VSYNC on and a limit at or above the display's refresh, the limiter
 stands aside and vsync alone paces the frames: two clocks at the same rate beat against each other and dropped a
 frame now and then (55-58 fps reported on 60 Hz screens).
+
+### 7.25 Controller layouts (padlayout, 1.2.1, 2026-11-19)
+
+**CONTROLLER LAYOUT** (CONTROLS with DEVICE Controller, row id 351; the launcher's Controllers page: "Layout"), per
+player: **Auto** (default) / **Xbox** / **PlayStation** / **Custom**. Code: `src/native/input_bindings.{h,cpp}`
+(`PadLayout`, `pad_family`, `layout_bindings`, `pad_bindings`, the contexts of `PadBind`), `src/b3replay/nativepad.cpp`
+(each pad's layout by its type; the prompts' glyphs in the game's context), `src/b3replay/pcpage.cpp`,
+`src/b3launcher/main.cpp` (`controls_editor`). docs/PLAYING.md §5 has the players' table.
+
+- **Auto** picks per pad from SDL's gamepad type (`SDL_GetGamepadType`): PS3 / PS4 / PS5 get the PlayStation layout;
+  Xbox 360 / One, the Nintendo types (Switch Pro, Joy-Cons, GameCube), Standard and Unknown get the Xbox layout. Every
+  pad is sampled with its own type's layout, so a player with two pads, or two players with different pads, each get
+  theirs; plugging another pad in re-picks at once. The page shows the pad the player last used ("Auto: Xbox
+  controller", "Auto: PlayStation controller", "Auto: Nintendo, Xbox layout", "Auto: controller, Xbox layout", "Auto:
+  no controller, Xbox layout"); the log says `[b3pad] controller layout: player N ...` when it changes.
+- **The Xbox layout** (the original Xbox game's), in PS2 buttons: RT Cross and LT Square in both contexts (the
+  ANALOG TRIGGERS pedals; the race's intro and countdown are the menus' context, so the throttle must work there);
+  while driving A R1 (boost, Impact Time), B R2 (Crashbreaker), X L1 (look back), Y Triangle (camera), View / Back L2
+  (music track skip), the left stick click Circle (horn); in menus A Cross (confirm), B Triangle (back), X Square, Y
+  Circle, View / Back Select; LB / RB are L1 / R1 in both (a second look back and boost while driving, the car series
+  on L1 / R1 in menus); Start, the D-pad and the left stick as the game's; the right stick and its click unbound.
+- **The PlayStation layout** (owner, 2026-11-19): the PS2's with the triggers as the pedals: South / RT Cross and West
+  / LT Square (the triggers the ANALOG TRIGGERS pedals, as the Xbox layout's), the right stick click R2 (the
+  Crashbreaker) and the left one L2 (the music track skip), East Circle, North Triangle, the shoulders L1 / R1, Share /
+  Create Select, Start, the D-pad and the left stick, and the right stick as the game's own right stick (up
+  accelerates, down brakes: the game's controls 20 / 21), in both contexts. It is the 1.x layout with the right stick
+  added; its prompts show L3 / R3 for L2 / R2 as 1.x's did, and ADAPTIVE TRIGGERS act on its triggers.
+- **Nintendo pads** take the Xbox layout by position (SDL3's South / East / West / North are positions): the bottom
+  button (B on a Switch controller) is boost / confirm, the right one (A) Crashbreaker / back.
+- **Contexts.** A gamepad binding has a context like a key's (`south@driving`, `east@menus`; none: both). The context
+  is the keys' (native_play: driving while the game read the player's accelerator in the last 4 VBlanks, which a crash
+  does too through GetCrashingDrivingControls; the pause menu, results, photo mode and the PC page are the menus').
+  Checked on a crash junction run: driving from the start of the event to its results without a break, so Impact Time
+  (A) and the Crashbreaker (B) both work through the crash. The page's KEYS FOR row is BUTTONS FOR on a controller.
+- **Custom** is the player's own bindings (`PlayerControls::pad`); Xbox / PlayStation / Auto never change them.
+  Editing a controller binding (rebind, add, remove, SQUARE) applies to the bindings shown and makes them the player's
+  own: the layout becomes Custom. SQUARE on a Custom binding gives Auto's binding for the pad shown. RESET TO DEFAULTS
+  (the controller) is Auto with the 1.x bindings as the Custom ones.
+- **controls.ini version 3**: `[playerN.gamepad] layout = auto / xbox / playstation / custom`, written when it is not
+  Auto or the Custom bindings are not the 1.x defaults; the gamepad lines are the Custom bindings against the 1.x
+  defaults, with `@menus` / `@driving`. **Migration**: a file without a layout line (every file before 1.2.1) is Custom
+  for a player whose gamepad lines change a binding (exactly as written), else Auto. Keyboard lines are untouched.
+- **Replays and the golden**: the layouts act where the bindings do, in front of the pad record; replays keep the
+  reports the game read. The offscreen checks drive the keyboard and scripted keys, not SDL pads, so they are
+  unchanged.
+- **Tests**: `tests/test_input_bindings.cpp` `layout_selection_by_pad_type`, `xbox_layout_both_contexts`,
+  `playstation_layout_both_contexts`, `layout_migration`, `layout_choice_then_edit_is_custom`,
+  `layout_two_players_two_pads` (the tests written before the layouts run on the 1.x bindings as Custom);
+  `test_settings.cpp` `controls_section`, `translations_cover_the_controller_layout`, `translations_cover_the_player_rows`
+  (the controller's two views); `test_pad_motion.cpp` `trigger_roles_from_the_bindings`. Launcher `--screenshot`:
+  controls_layout, controls_layout_xbox, controls_layout_xbox_menus. race_check `SCENARIO=padlayout PAD=xbox|ps`: the
+  Single Event path driven by a scripted pad of that type (`B3NATIVE_TEST_PAD`, NativePad's test pad: script codes
+  1024 + an SDL button), the verdict from the pad recording.
 
 ### 7.24 The HD TEXTURES key (hdkey, 1.2, 2026-11-18; issue #7)
 

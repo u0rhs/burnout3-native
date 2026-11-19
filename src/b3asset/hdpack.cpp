@@ -436,15 +436,21 @@ bool HdTextures::apply(const GsMemory& gs, DecodedRaster& r, std::uint32_t cbp_a
     if (!h.tcc()) {
         for (std::size_t i = 3; i < out.rgba.size(); i += 4) out.rgba[i] = 0xFF;
     } else if (!raw_alpha) {
-        // The replacement keeps to the original's alpha: transparent where the original, bilinear-filtered, is below a
-        // quarter (around the centre of each transparent texel; the cut follows the filter's smooth contours, so the
-        // replacement's softer outlines stay), and never above the original's maximum (PS2 units; some rasters top out at
-        // 0x7F, packs store opaque as 0x80..0x8D). The game hides geometry on transparent texels (alpha-tested, AREF 0)
-        // and upscaled outlines drift onto them; and the frame alpha it writes feeds later passes [C: race2's flag frames
+        // The replacement keeps to the original's alpha: transparent over the original's transparent texels (alpha 0)
+        // where the original, bilinear-filtered, is below a quarter (the cut follows the filter's smooth contour around
+        // them, so the replacement's softer outlines stay), and never above the original's maximum (PS2 units; some
+        // rasters top out at 0x7F, packs store opaque as 0x80..0x8D). Low but nonzero alpha is never cut: blended overlays
+        // (the sun haze over US/C2_V2's buildings, the light pattern in EU/P1_V2's tunnel, road and sign masks) keep the
+        // pack's alpha [C: an identity pack (each texture's own decode at 1x) frames byte-identical to B3_HD_RAW_ALPHA=1 on
+        // US/C2_V2 and EU/P1_V2 polls 10400 / 11100; the earlier cut of every texel below a quarter changed 9-61 % of
+        // their pixels]. Why the cut: the game hides geometry on transparent texels (alpha-tested, AREF 0) and upscaled
+        // outlines drift onto them; and the frame alpha it writes feeds later passes [C: race2's flag frames
         // Chgo_Flag1..10 (US/C3_V1, max 0x7F): with the pack's alpha a solid wedge appears under the gateway sign; the
-        // coverage cut alone or the clamp alone leaves it (wedge region 28.4 / 29.0 levels mean difference to the
-        // original), both together match (2.2: the HD detail). A nearest-texel cut also fixes it but turns foliage
-        // outlines into the original's texel squares].
+        // coverage cut alone or the clamp alone leaves it, both together match. A cut only where the bilinear alpha is 0
+        // also leaves it (the hidden triangle samples a transparent texel beside opaque ones: wedge region 20.1 levels
+        // mean difference to no pack, as raw alpha; this rule 1.9, as the old quarter cut). A nearest-texel cut also fixes
+        // it but turns foliage outlines into the original's texel squares; on textures with only transparent and opaque
+        // texels this rule equals the old quarter cut].
         const Image& o = r.levels[0];
         const std::uint8_t limit = r.max_alpha >= 0x80 ? 0xFF : std::uint8_t(r.max_alpha * 2);
         auto oa = [&](int x, int y) {
@@ -462,7 +468,8 @@ bool HdTextures::apply(const GsMemory& gs, DecodedRaster& r, std::uint32_t cbp_a
                 const int x0 = int(std::floor(fx));
                 const float wx = fx - float(x0);
                 const float b = (oa(x0, y0) * (1 - wx) + oa(x0 + 1, y0) * wx) * (1 - wy) + (oa(x0, y0 + 1) * (1 - wx) + oa(x0 + 1, y0 + 1) * wx) * wy;
-                const std::uint8_t lim = b < 64.0f ? 0 : limit;
+                const bool cut = b < 64.0f && oa(x0 + (wx >= 0.5f), y0 + (wy >= 0.5f)) == 0.0f;   // the nearest texel transparent
+                const std::uint8_t lim = cut ? 0 : limit;
                 if (a > lim) { a = lim; any = true; }
             }
         }

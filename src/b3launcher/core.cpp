@@ -64,6 +64,9 @@ std::string config_to_ini(const Config& c) {
     o << "game_dir = " << c.game_dir << "\n";
     if (!c.saves_dir.empty()) o << "saves_dir = " << c.saves_dir << "\n";   // 1.1 (a default folder: no line, as before)
     update::write_ini(o, c.update);   // update1
+    if (!c.steam_cover.empty()) o << "steam_cover = " << c.steam_cover << "\n";   // issue #8
+    if (!c.steam_hero.empty()) o << "steam_hero = " << c.steam_hero << "\n";
+    if (!c.steam_logo.empty()) o << "steam_logo = " << c.steam_logo << "\n";
     return o.str();
 }
 
@@ -80,6 +83,9 @@ Config config_from_ini(std::string_view text) {
         const std::string_view key = trim(line.substr(0, eq)), val = trim(line.substr(eq + 1));
         if (key == "game_dir") c.game_dir = std::string(val);
         else if (key == "saves_dir") c.saves_dir = std::string(val);   // 1.1
+        else if (key == "steam_cover") c.steam_cover = std::string(val);   // issue #8
+        else if (key == "steam_hero") c.steam_hero = std::string(val);
+        else if (key == "steam_logo") c.steam_logo = std::string(val);
         else update::read_ini_key(c.update, key, val);   // update1
     }
     return c;
@@ -420,6 +426,12 @@ std::vector<b3settings::Row> music_rows(const b3settings::Settings& s, const std
 b3settings::Row playlist_row(const b3settings::Settings& s) {
     for (const b3settings::Row& r : music_rows(s))
         if (r.label == "PLAYLIST") return r;
+    return {};
+}
+
+b3settings::Row custom_music_volume_row(const b3settings::Settings& s) {
+    for (const b3settings::Row& r : music_rows(s))
+        if (r.label == "CUSTOM MUSIC VOLUME") return r;
     return {};
 }
 

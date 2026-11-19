@@ -80,7 +80,11 @@ struct Env {
         bool on = false;
         std::size_t player = 0;        // 0 / 1; rebind2: 2 the port actions (window shortcuts, photo mode: PortAction)
         std::size_t device = 0;        // 0 keyboard, 1 controller
-        std::size_t view = 0;          // the keyboard's: 0 driving, 1 menus
+        std::size_t view = 0;          // 0 driving, 1 menus (the keyboard's; padlayout: the controller's too)
+        // padlayout (1.2.1): CONTROLLER LAYOUT (the controller device): 0 Auto, 1 Xbox, 2 PlayStation, 3 Custom, and
+        // Auto's value as the host words it for the player's pad (input_bindings.h auto_text: "Auto: Xbox controller")
+        std::size_t layout = 0;
+        std::string layout_auto = "Auto: no controller, Xbox layout";
         struct Action { std::string label, value, description; };
         std::vector<Action> actions;   // in input_bindings.h action_order()
         std::string status;            // the last change
@@ -107,7 +111,8 @@ enum : std::uint32_t { kActionTuneSavePreset = 108, kActionTuneOverlay = 109, kR
 // remap1: the CONTROLS section (Env::controls): the player, device and keyboard view choices (Edit::value), an action
 // row per binding (kActionCtlFirst + its index: confirm rebinds, right adds an input, left removes the last), reset
 enum : std::uint32_t { kRowCtlPlayer = 300, kRowCtlDevice = 301, kRowCtlView = 302, kRowCtlStatus = 303, kActionCtlReset = 304,
-                       kActionCtlFirst = 310, kActionCtlLast = 349, kActionCtlResetAll = 350 };
+                       kActionCtlFirst = 310, kActionCtlLast = 349, kActionCtlResetAll = 350,
+                       kRowCtlLayout = 351 /* padlayout: CONTROLLER LAYOUT (Edit::value: 0 Auto .. 3 Custom) */ };
 // rebind2: Edit::direction 2 on an action row is "put this one back to its default" (Input::reset: SQUARE)
 // pad1: the CONTROLS section's gyro steering rows (the controller device; Edit::value = the value index: mode 0 off /
 // 1 mix / 2 replace, axis 0 roll / 1 yaw, sensitivity (value + 1) x 25 %, dead zone value degrees, recentre the index in

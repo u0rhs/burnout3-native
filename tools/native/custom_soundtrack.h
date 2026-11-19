@@ -69,8 +69,21 @@
 // Replays: native_play records each folder's modes as the replay option "music_modes.<folder>" (one digit per song
 // in scan order, modes_digits()) and a replay played back uses them (seed_modes()) and never writes the file.
 //
-// Settings: PC SETTINGS > INTERFACE > MUSIC (b3r_music: the folder and the mode); B3NATIVE_MUSIC_DIR / B3NATIVE_MUSIC_MODE
-// (0 / 1 / 2) override them (tests). B3NATIVE_MUSIC_LOG=1 logs the game's own popup texts too.
+// Settings: PC SETTINGS > INTERFACE > MUSIC (b3r_music: the folder and the mode; b3r_music_volume: CUSTOM MUSIC VOLUME);
+// B3NATIVE_MUSIC_DIR / B3NATIVE_MUSIC_MODE (0 / 1 / 2) / B3NATIVE_MUSIC_VOLUME (0..200) override them (tests).
+// B3NATIVE_MUSIC_LOG=1 logs the game's own popup texts too, and the music stream's gain (the stream's volume, the
+// category's gain) whenever it changes, for the game's own songs and the custom ones.
+//
+// The level (musicvol1, 1.2.1): the player's gain is the game's own for its music stream (the stream's volume, which
+// is RADIO VOLUME x the radio's ducking, times the music category's gain), times kStreamLevel, times CUSTOM MUSIC
+// VOLUME. kStreamLevel is what RW Audio and the SPU2 add between that gain and the output for the game's own songs
+// (ApplyVolumesAndPitch -> _rwaStreamSetStreamGain -> the IOP's voice volumes, written halved to VOLL / VOLR and doubled
+// back by the mixer, (s * level) >> 15; MVOL 0x3FFF -> level 0x7FFE, unity): measured, it is unity. The same 30 s of
+// "Give It Up" in the same run (the 100 % card, VBlanks 16500-18300, the menus), once as the game's own EA Trax stream
+// and once as a player's 320 kbps rip of that stream in a music folder: output RMS -19.09 dBFS and -18.98 dBFS (0.11 dB
+// apart, within the rip's second lossy encode); the rip through the player came out at exactly the stream's gain
+// (0.4495 there). So a custom song at 100 % plays as loud as a game song mastered as loud (the disc's songs are about
+// -8 LUFS, a modern master's level); a quieter file is quieter, which CUSTOM MUSIC VOLUME is for.
 #ifndef B3NATIVE_CUSTOM_SOUNDTRACK_H
 #define B3NATIVE_CUSTOM_SOUNDTRACK_H
 
@@ -101,6 +114,12 @@ public:
     // config(folder, n): the playlist mode (Mode), the music folder copied to `folder` (UTF-8); read at each song start
     using ConfigFn = int (*)(char* folder, int n);
     bool install(HookTable& hooks, ConfigFn config);
+    // volume(): CUSTOM MUSIC VOLUME in percent (0..200, 100 = as loud as the game's own songs); read every poll (null: 100)
+    using VolumeFn = int (*)();
+    void set_volume_source(VolumeFn volume) { volume_ = volume; }
+    // RW Audio + the SPU2 between the music stream's gain and the output, for the game's own songs: unity (the header)
+    static constexpr float kStreamLevel = 1.0f;
+    static float custom_volume(int percent) { return float(std::clamp(percent, 0, 200)) / 100.0f; }
     ~CustomSoundtrack();
 
     static constexpr b3host::gaddr kStartSong = 0x003FBC20u, kPrepare = 0x003865A0u, kPlay = 0x00386290u,
@@ -249,6 +268,17 @@ private:
     bool is_virtual(std::uint32_t stream) const { return stream != 0 && stream == virtual_; }
     void end_virtual(const char* why);
     bool write_text(b3host::gaddr at, const std::string& utf8);
+    void log_gain(bool custom, float vol, float cat, float user) {   // B3NATIVE_MUSIC_LOG: the music stream's gain, on a change
+        if (custom == logged_virtual_ && std::fabs(vol - logged_vol_) < 0.005f && std::fabs(cat - logged_cat_) < 0.005f && user == logged_user_) return;
+        logged_virtual_ = custom;
+        logged_vol_ = vol;
+        logged_cat_ = cat;
+        logged_user_ = user;
+        std::printf("custom_music: VBlank %llu: %s music stream gain: volume %.3f x category %.3f%s = %.3f\n",
+                    static_cast<unsigned long long>(vb()), custom ? "custom" : "game's", vol, cat,
+                    custom ? (" x custom volume " + std::to_string(int(std::lround(user * 100.0f))) + "%").c_str() : "",
+                    vol * cat * (custom ? kStreamLevel * user : 1.0f));
+    }
     static std::uint64_t vb() { return platform::vblank_count(); }
 
     Fn start_song_ = nullptr, prepare_ = nullptr, play_ = nullptr, stop_ = nullptr, release_ = nullptr, pause_ = nullptr,
@@ -256,6 +286,9 @@ private:
        trax_ = nullptr, set_soundtrack_ = nullptr, profile_songs_ = nullptr, next_song_ = nullptr, play_from_ = nullptr,
        song_allowed_ = nullptr, run_stream_ = nullptr, page_update_ = nullptr, lookup_ = nullptr, save_image_ = nullptr, page_rows_ = nullptr;
     ConfigFn config_ = nullptr;
+    VolumeFn volume_ = nullptr;
+    float logged_vol_ = -1.0f, logged_cat_ = -1.0f, logged_user_ = -1.0f;   // B3NATIVE_MUSIC_LOG: the gain last logged
+    bool logged_virtual_ = false;
     std::string folder_;                       // the folder scanned
     std::vector<b3music::Track> tracks_;       // its songs (at most kMaxCustom)
     std::size_t found_ = 0;                    // the files found there (tracks_ is the first kMaxCustom)
@@ -287,6 +320,10 @@ inline CustomSoundtrack::~CustomSoundtrack() {
                     static_cast<unsigned long long>(songs_played_), static_cast<unsigned long long>(popups_),
                     static_cast<unsigned long long>(player_.frames_mixed()), double(player_.frames_mixed()) / b3music::kOutputRate,
                     static_cast<unsigned long long>(player_.peak()));
+    if (player_.limiter().limited())   // musicvol1: the limiter at work (a loud song at a high gain)
+        std::printf("custom_music: limiter: %llu frames turned down (%.1f s), lowest gain %.3f\n",
+                    static_cast<unsigned long long>(player_.limiter().limited()), double(player_.limiter().limited()) / b3music::kOutputRate,
+                    double(player_.limiter().min_gain()));
 }
 
 inline std::string CustomSoundtrack::modes_file() {
@@ -864,18 +901,27 @@ inline void CustomSoundtrack::pause(const b3host::CallArgs& a, b3host::CallResul
 inline void CustomSoundtrack::update(const b3host::CallArgs& a, b3host::CallResult& r) {
     CustomSoundtrack* p = instance();
     const std::uint32_t stream = a.gpr[0].w[0];
-    if (!p->is_virtual(stream)) { p->update_(a, r); return; }
+    static const bool log = std::getenv("B3NATIVE_MUSIC_LOG") != nullptr;
+    if (!p->is_virtual(stream)) {
+        if (log && stream != 0 && b3host::load<std::uint8_t>(stream + 0x1ECu) == 13)   // the game's own music stream
+            p->log_gain(false, b3host::load<float>(stream + 0x1A4u), b3host::load<float>(kCategories + 8u * 13u + 4u), 1.0f);
+        p->update_(a, r);
+        return;
+    }
     const std::uint32_t s = b3host::load<std::uint32_t>(stream + 0x1D0u);
     if ((s == 6 && (p->player_.finished() || !p->player_.open())) || s == 5) {
         b3host::store<std::uint32_t>(stream + 0x1D0u, 4);
         if (s == 6)
             std::printf("custom_music: VBlank %llu: custom song ended (%u ms)\n", static_cast<unsigned long long>(vb()), p->player_.position_ms());
     }
-    // ApplyVolumesAndPitch's values: the stream's volume x its category's gain, the category's pitch
+    // ApplyVolumesAndPitch's values: the stream's volume x its category's gain, the category's pitch; then the SPU2
+    // path's level (kStreamLevel) and CUSTOM MUSIC VOLUME (the header)
     const std::uint32_t cat = b3host::load<std::uint8_t>(stream + 0x1ECu);
     const float vol = b3host::load<float>(stream + 0x1A4u);
     const float cat_pitch = b3host::load<float>(kCategories + 8u * cat), cat_gain = b3host::load<float>(kCategories + 8u * cat + 4u);
-    const float g = game_music_muted() && cat == 13 ? 0.0f : vol * cat_gain;
+    const float user = custom_volume(p->volume_ ? p->volume_() : 100);
+    if (log) p->log_gain(true, vol, cat_gain, user);
+    const float g = game_music_muted() && cat == 13 ? 0.0f : vol * cat_gain * kStreamLevel * user;
     p->player_.set_gain(g == g ? g : 0.0f);
     p->player_.set_pitch(cat_pitch == cat_pitch && cat_pitch > 0.0f ? cat_pitch : 1.0f);
 }

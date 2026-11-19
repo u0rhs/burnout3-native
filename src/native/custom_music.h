@@ -126,6 +126,34 @@ private:
     bool ended_ = false;
 };
 
+// A look-ahead peak limiter (stereo, both channels turned down together) for a song after its gain: a loud master at
+// a high gain (CUSTOM MUSIC VOLUME above 100 %, RADIO VOLUME at the top) is turned down smoothly instead of clipping.
+// Each frame's need (ceiling / peak) is held for kLookahead frames, released slowly towards 1 and then averaged over
+// kLookahead frames, which the signal is delayed by: so the gain is already down when a peak comes out, the output's
+// peaks stay at the ceiling, and the gain never steps (no clicks, no clipped waves). Below the ceiling it is an exact
+// delay of kLookahead - 1 frames (the gain exactly 1). Plain float arithmetic only: the same output on every system.
+class Limiter {
+public:
+    static constexpr std::size_t kLookahead = 64;          // frames: 1.3 ms at 48 kHz (the attack and the delay)
+    static constexpr float kCeiling = 0.891f;              // -1 dBFS: room for the game's own sounds on top
+    static constexpr float kRelease = 1.0f / 4800.0f;      // per frame, towards a gain of 1 (~0.1 s time constant)
+    Limiter() { reset(); }
+    void reset();
+    // In place: `frames` interleaved stereo frames (full scale 1.0) in, the same number out, kLookahead - 1 later.
+    void run(float* lr, std::size_t frames);
+    std::uint64_t limited() const { return limited_; }     // frames that came out turned down
+    float min_gain() const { return min_gain_; }           // the lowest gain used
+
+private:
+    float x_[2 * kLookahead];   // the last kLookahead frames in (a ring at at_)
+    float need_[kLookahead];    // their needs (ceiling / peak, at most 1)
+    float env_[kLookahead];     // the released envelope (the average's ring)
+    std::size_t at_ = 0;
+    float env_now_ = 1.0f;
+    std::uint64_t limited_ = 0;
+    float min_gain_ = 1.0f;
+};
+
 // One song at the output rate, driven by the game's music stream (prepare, play, pause, stop, the volume each poll).
 class Player {
 public:
@@ -140,9 +168,10 @@ public:
     void set_gain(float g) { gain_target_ = g < 0.0f ? 0.0f : (g > 4.0f ? 4.0f : g); }
     void set_pitch(float p) { pitch_ = p < 0.25f ? 0.25f : (p > 4.0f ? 4.0f : p); }
     float gain() const { return gain_; }
-    // Adds this many output frames of the song (at the current gain) into `lr` (s16 stereo, saturated) and advances;
-    // silent and still while not playing.
+    // Adds this many output frames of the song (at the current gain, through the Limiter) into `lr` (s16 stereo,
+    // saturated) and advances; silent and still while not playing.
     void mix(std::int16_t* lr, std::size_t frames);
+    const Limiter& limiter() const { return lim_; }
     std::uint64_t source_frame() const;            // the song's position in its own frames
     std::uint32_t position_ms() const;
     unsigned source_rate() const { return dec_ ? dec_->rate() : 0; }
@@ -158,6 +187,7 @@ private:
     float gain_ = -1.0f, gain_target_ = 0.0f, pitch_ = 1.0f;   // gain_ < 0: none yet (the first target taken as is)
     std::uint64_t mixed_ = 0, peak_ = 0;
     std::vector<float> tmp_;
+    Limiter lim_;
 };
 
 }  // namespace b3music

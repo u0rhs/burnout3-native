@@ -309,6 +309,10 @@ struct Camera {
     float lod_pos[3] = {};
     float lod_scale = 1.0f;
     float lod_dist[5] = {15, 30, 60, 20, 80};
+    // sigcam (1.2): the share of the drawn-only chase camera offset (CAMERA DISTANCE / HEIGHT, View::apply_fov) this
+    // tick's game camera takes: 1 on the game's chase cameras, 0 on its takedown, crash and other cameras, in between
+    // while the game blends one into the other (chase_share, capture.cpp); 1 when the camera manager is not captured
+    float chase = 1.0f;
 };
 
 // A prop off its placement: an entry of the prop manager's dynamic list (0x64A854 +0x1C, CB3Prop {u16 placement, u8

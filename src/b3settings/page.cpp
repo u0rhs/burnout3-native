@@ -21,6 +21,7 @@ enum : std::uint32_t {
     kRowFov = 60, kRowFovCorrection, kRowCameraDistance, kRowCameraHeight,   // 62 / 63: 1.1 chase camera
     kRowGlyphs = 81, kRowSkipHint, kRowElsewhere, kRowDateFormat = 85,
     kRowPlaylistMode = 90, kRowOtherMusicApps,   // kRowOtherMusicApps = 91: nowplaying1
+    kRowCustomMusicVolume = 92,   // musicvol1 (CUSTOM MUSIC VOLUME; after PLAYLIST)
     kRowFlashes = 120, kRowHudColour, kRowBoostMode, kRowHudSize,   // accessibility (kRowHudSize = 123: textsize1)
     kRowGhost = 130,   // ghost1 (Time Attack ghosts)
     kRowSpeedrunTimer = 140, kRowInstantRestart,   // speedrun1
@@ -202,7 +203,7 @@ Content build_content(const Settings& s, const Env& env) {
             }
         }
         if (env.hd_pack)
-            t.rows.push_back(toggle(kRowHd, "HD TEXTURES", s.hd_textures, "The HD texture pack given at start (reloads the track). "
+            t.rows.push_back(toggle(kRowHd, "HD TEXTURES", s.hd_textures, "The HD texture pack given at start (applies when the game next starts). "
                                     "F4 switches the HD textures on and off at once while you play, to compare."));   // hdkey
         t.rows.push_back(choice(kRowCarDetail, "CAR DETAIL", {"Game", "Highest"}, s.car_detail_highest ? 1 : 0,
                                 "Highest draws every car at full detail at any distance."));
@@ -408,6 +409,13 @@ Content build_content(const Settings& s, const Env& env) {
                                     "both. Your songs are listed after the game's on its EA TRAX page (200 at most), each set like "
                                     "the game's songs. Custom only skips the game's songs. The game's shuffle setting applies to "
                                     "your songs too. From the next song."));
+            {   // musicvol1 (tools/native/custom_soundtrack.h): the custom songs' own level, on top of RADIO VOLUME
+                const int pct = std::clamp(s.custom_music_volume, 0, 200) / 10 * 10;
+                t.rows.push_back(slider(kRowCustomMusicVolume, "CUSTOM MUSIC VOLUME", 21, std::size_t(pct / 10), std::to_string(pct) + "%",
+                                        "How loud your own songs play, on top of RADIO VOLUME. At 100% a song plays as loud as "
+                                        "the game plays its own songs; raise it for quiet files. A limiter keeps loud songs "
+                                        "from clipping. The game's songs and the DJ do not change. Live."));
+            }
             // nowplaying1 (tools/native/now_playing_popup.h): the system's now-playing interface, drawn only
             Row apps = choice(kRowOtherMusicApps, "OTHER MUSIC APPS", {"Off", "Show now playing"},
                               std::size_t(std::clamp(s.other_music_apps, 0, 1)), other_music_apps_text(s, env));
@@ -432,10 +440,22 @@ Content build_content(const Settings& s, const Env& env) {
                                     "mode's controls."));
             t.rows.push_back(choice(kRowCtlDevice, "DEVICE", {"Keyboard", "Controller"}, k.device,
                                     "The keyboard's keys, or the buttons, sticks and triggers of this player's controllers."));
+            if (k.device == 1 && k.player < 2)   // padlayout (1.2.1)
+                t.rows.push_back(choice(kRowCtlLayout, "CONTROLLER LAYOUT", {k.layout_auto, "Xbox", "PlayStation", "Custom"},
+                                        std::min<std::size_t>(k.layout, 3),
+                                        "Which buttons do what on this player's controller. Auto: the layout of the controller's "
+                                        "console, picked again when the controller changes: a PlayStation controller gets the PS2 "
+                                        "game's, any other controller the original Xbox game's. Xbox, PlayStation: that layout on "
+                                        "any controller. Custom: your own bindings in the rows below. Changing a binding below "
+                                        "makes it Custom."));
             if (k.device == 0 && k.player < 2)
                 t.rows.push_back(choice(kRowCtlView, "KEYS FOR", {"Driving", "Menus"}, k.view,
                                         "A key can do one thing while you drive and another in the menus (W accelerates, and "
                                         "moves up in a menu). The rows below show and change one of the two."));
+            if (k.device == 1 && k.player < 2)   // padlayout: the controller's views
+                t.rows.push_back(choice(kRowCtlView, "BUTTONS FOR", {"Driving", "Menus"}, k.view,
+                                        "A button can do one thing while you drive and another in the menus (on the Xbox layout "
+                                        "A boosts, and confirms in a menu). The rows below show and change one of the two."));
             for (std::size_t a = 0; a < k.actions.size() && kActionCtlFirst + a <= kActionCtlLast; ++a) {
                 Row r = note(kActionCtlFirst + std::uint32_t(a), k.actions[a].label, k.actions[a].value, k.actions[a].description);
                 r.disabled = false;
@@ -683,6 +703,7 @@ bool apply_edit(Settings& s, const Edit& e) {
     case kRowLauncherAtStart: s.launcher_at_start = v != 0; return true;   // launchskip1
     case kRowPlaylistMode: s.playlist_mode = int(std::min<std::size_t>(v, 2)); return true;   // custom soundtrack
     case kRowOtherMusicApps: s.other_music_apps = v ? 1 : 0; return true;   // nowplaying1
+    case kRowCustomMusicVolume: s.custom_music_volume = int(std::min<std::size_t>(v, 20)) * 10; return true;   // musicvol1
     case kRowFlashes: s.screen_flashes = v ? 1 : 0; return true;   // accessibility
     case kRowHudColour: s.hud_colour_filter = int(std::min<std::size_t>(v, 3)); return true;
     case kRowBoostMode: s.boost_mode = v ? 1 : 0; return true;

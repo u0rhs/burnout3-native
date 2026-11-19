@@ -533,6 +533,7 @@ bool Player::start(const Track& t, std::uint64_t at_frame, std::string* why) {
     finished_ = false;
     playing_ = paused_ = loop_ = false;
     gain_ = -1.0f;
+    lim_.reset();
     return true;
 }
 
@@ -540,6 +541,7 @@ void Player::close() {
     dec_.reset();
     playing_ = paused_ = false;
     finished_ = false;
+    lim_.reset();
 }
 
 std::uint64_t Player::source_frame() const {
@@ -567,16 +569,63 @@ void Player::mix(std::int16_t* lr, std::size_t frames) {
     const float g0 = gain_ < 0.0f ? gain_target_ : gain_, g1 = gain_target_;
     for (std::size_t k = 0; k < got; ++k) {
         const float g = g0 + (g1 - g0) * (float(k + 1) / float(got));
-        for (int c = 0; c < 2; ++c) {
-            const float v = tmp_[2 * k + std::size_t(c)] * g * 32767.0f;
-            const long add = std::lround(std::max(-65536.0f, std::min(65536.0f, v)));
-            peak_ = std::max<std::uint64_t>(peak_, std::uint64_t(add < 0 ? -add : add));
-            const long s = long(lr[2 * k + std::size_t(c)]) + add;
-            lr[2 * k + std::size_t(c)] = std::int16_t(s < -32768 ? -32768 : (s > 32767 ? 32767 : s));
-        }
+        tmp_[2 * k] *= g;
+        tmp_[2 * k + 1] *= g;
+    }
+    // the song's end: silence after it pushes the limiter's last frames out (as far as this block has room)
+    std::size_t out = got;
+    if (finished_) {
+        const std::size_t tail = std::min(frames - got, Limiter::kLookahead - 1);
+        std::fill(tmp_.begin() + std::ptrdiff_t(2 * got), tmp_.begin() + std::ptrdiff_t(2 * (got + tail)), 0.0f);
+        out += tail;
+    }
+    lim_.run(tmp_.data(), out);
+    for (std::size_t k = 0; k < 2 * out; ++k) {
+        const float v = tmp_[k] * 32767.0f;
+        const long add = std::lround(std::max(-65536.0f, std::min(65536.0f, v)));
+        peak_ = std::max<std::uint64_t>(peak_, std::uint64_t(add < 0 ? -add : add));
+        const long s = long(lr[k]) + add;
+        lr[k] = std::int16_t(s < -32768 ? -32768 : (s > 32767 ? 32767 : s));
     }
     gain_ = g1;
     mixed_ += got;
+}
+
+// ---- the limiter ----
+
+void Limiter::reset() {
+    std::fill(std::begin(x_), std::end(x_), 0.0f);
+    std::fill(std::begin(need_), std::end(need_), 1.0f);
+    std::fill(std::begin(env_), std::end(env_), 1.0f);
+    at_ = 0;
+    env_now_ = 1.0f;
+}
+
+void Limiter::run(float* lr, std::size_t frames) {
+    for (std::size_t k = 0; k < frames; ++k) {
+        const float l = lr[2 * k], r = lr[2 * k + 1];
+        const float peak = std::max(std::fabs(l), std::fabs(r));
+        x_[2 * at_] = l;
+        x_[2 * at_ + 1] = r;
+        need_[at_] = peak > kCeiling ? kCeiling / peak : 1.0f;
+        // the need held over the window (every frame still in the delay), released slowly towards 1
+        float hold = 1.0f;
+        for (float n : need_) hold = std::min(hold, n);
+        env_now_ = std::min(hold, env_now_ + (1.0f - env_now_) * kRelease);
+        env_[at_] = env_now_;
+        // the gain: the envelope averaged over the window; each value in it is at most the need of the frame leaving
+        // the delay now (every hold window covers that frame), so that frame comes out at or under the ceiling
+        float sum = 0.0f;
+        for (float e : env_) sum += e;
+        const float g = sum * (1.0f / float(kLookahead));
+        at_ = (at_ + 1) % kLookahead;   // the oldest frame: the one that leaves now
+        lr[2 * k] = x_[2 * at_] * g;
+        lr[2 * k + 1] = x_[2 * at_ + 1] * g;
+        if (g < 1.0f) {
+            ++limited_;
+            min_gain_ = std::min(min_gain_, g);
+        }
+    }
 }
 
 }  // namespace b3music

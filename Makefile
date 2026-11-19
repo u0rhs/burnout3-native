@@ -365,8 +365,8 @@ $(BUILD)/test_pad_actuator: tests/test_pad_actuator.cpp tests/test.h src/native/
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< src/b3mod/codemod.cpp src/b3mod/mods.cpp -o $@
 # settings1 (docs/pc-settings.md): the PC settings model, ini, HSET record and the page's menu model
 TESTS += $(BUILD)/test_settings
-$(BUILD)/test_settings: tests/test_settings.cpp tests/test.h include/b3settings/settings.h include/b3settings/page.h include/b3settings/i18n.h include/b3settings/safemode.h src/b3settings/settings.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3settings/safemode.cpp
-	$(CXX) -Iinclude $(REQFLAGS) $(CXXFLAGS) $< src/b3settings/settings.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3settings/safemode.cpp -o $@
+$(BUILD)/test_settings: tests/test_settings.cpp tests/test.h include/b3settings/settings.h include/b3settings/page.h include/b3settings/i18n.h include/b3settings/safemode.h src/b3settings/settings.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3settings/safemode.cpp src/native/input_bindings.h src/native/input_bindings.cpp src/native/input_keys.h src/native/input_keys.cpp src/native/input_report.cpp
+	$(CXX) -Iinclude -Isrc/native $(REQFLAGS) $(CXXFLAGS) $< src/b3settings/settings.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3settings/safemode.cpp src/native/input_bindings.cpp src/native/input_keys.cpp src/native/input_report.cpp -o $@
 # effects2 (src/b3replay/sparks.h): the particle effects' levels on hand-made captures (sparks, popcorn)
 TESTS += $(BUILD)/test_effect_levels
 $(BUILD)/test_effect_levels: tests/test_effect_levels.cpp tests/test.h src/b3replay/sparks.cpp src/b3replay/sparks.h src/b3replay/capture.h $(B3ASSET_OBJ) $(VU_STAMP)
@@ -528,6 +528,16 @@ TESTS += $(BUILD)/test_launcher_installer
 $(BUILD)/test_launcher_installer: tests/test_launcher_installer.cpp tests/test.h src/b3launcher/installer.h include/b3mod/archive.h include/b3mod/mods.h $(INSTALLER_TEST_SRC)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(INSTALLER_TEST_SRC) -lz -o $@
+# issue #8: ADD TO STEAM (Settings > Launcher; src/b3launcher/steam.h: shortcuts.vdf, the grid's pictures, where Steam is;
+# steam_art.h: the port's own pictures, the logo built in as include/b3port/steam_logo_data.h by
+# tools/release/make_steam_logo.py). test_launcher_steam: made-up Steam folders in a temporary folder of its own
+STEAM_SRC := src/b3launcher/steam.cpp src/b3launcher/steam_art.cpp
+LAUNCHER_SRC += $(STEAM_SRC)
+LAUNCHER_DEP += include/b3port/steam_logo_data.h
+TESTS += $(BUILD)/test_launcher_steam
+$(BUILD)/test_launcher_steam: tests/test_launcher_steam.cpp tests/test.h src/b3launcher/steam.h src/b3launcher/steam_art.h include/b3port/steam_logo_data.h $(STEAM_SRC)
+	@mkdir -p $(BUILD)
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(STEAM_SRC) -lz -o $@
 TESTS += $(BUILD)/test_launcher
 $(BUILD)/test_launcher: tests/test_launcher.cpp tests/test.h tests/iso_writer.h tests/chd_writer.h $(LAUNCHER_CORE_SRC) $(LAUNCHER_DEP) $(B3ASSET_OBJ)
 	@mkdir -p $(BUILD)
@@ -758,7 +768,7 @@ MAC_TESTS_EXACT := test_ps2float test_fenv test_vufloat test_gtmath_ps2 test_gtm
 MAC_TESTS_OTHER := test_b3asset test_hdpack test_sparkshade test_popcornshade test_hud test_capture test_livelap \
                    test_settings test_effect_levels test_carlook test_clock test_inproc test_rwa_iop test_spu2_mixer test_b3route \
                    test_native_backend test_native_platform test_gameview_native test_save_card \
-                   test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_render_load test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_launcher_installer test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load
+                   test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_render_load test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_launcher_installer test_launcher_steam test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load
 MAC_TESTS := $(MAC_TESTS_EXACT) $(MAC_TESTS_OTHER)
 RUN ?=
 mac-tests-build:
@@ -791,6 +801,7 @@ test:
 	@echo "== eeasm.py --selftest"; python3 -I tools/decomp2host/eeasm.py --selftest > $(BUILD)/eeasm_selftest.log
 	@echo "== tests/test_decomp2host.py"; python3 -I tests/test_decomp2host.py
 	@echo "== tools/release/make_icons.py --check (the icon files match the drawing)"; python3 -I tools/release/make_icons.py --check
+	@echo "== tools/release/make_steam_logo.py --check (the launcher's built-in logo matches docs/logo.png)"; python3 -I tools/release/make_steam_logo.py --check
 	@echo "== tools/blender/test_b3_car_tools.py"; $(if $(wildcard $(GAME)/SLUS_210.50),B3_GAME_DIR="$${B3_GAME_DIR:-$(GAME)}") python3 -I tools/blender/test_b3_car_tools.py
 	@# boot2 (2026-11-07): one set of kinds per extern "C" name in the port tracks (hard), and the generated
 	@# native units' count as a watched number (report only: gen1's direct-link routing makes it fall)

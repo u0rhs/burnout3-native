@@ -720,27 +720,48 @@ void decode_crash(const Image& im, Tick& t) {
     }
 }
 
+// GetTimeElapsed 0x373940 [C matched] of the player camera manager's CB3BehaviourInterpolate (at `m` + 0x8C0).
+float interp_elapsed(const Image& im, std::uint32_t m) {
+    const std::uint32_t b = m + 0x8C0, o = im.u32(b + 0x120);
+    float t = 0;
+    switch (im.u32(b + 0x144)) {
+    case 0: t = im.f32(o + 0xB88); break;
+    case 1: t = im.f32(o + 0xB8C); break;
+    case 2: t = im.f32(b + 0x12C); break;
+    default: break;
+    }
+    return t - im.f32(b + 0x124);
+}
+
 // IsPlayerVisible 0x2E7340 of the player camera manager at `m` [C matched]: flags +0xB80 (16, 32: hidden; 1024: the
 // two timed checks), its CB3BehaviourInterpolate at +0x8C0 and GetTimeElapsed 0x373940 [C matched].
 bool player_visible(const Image& im, std::uint32_t m) {
     const std::uint32_t f = im.u32(m + 0xB80);
     bool vis = (f & 16) == 0 && (f & 32) == 0;
     if (!vis || (f & 1024) == 0) return vis;
-    auto elapsed = [&]() {
-        const std::uint32_t b = m + 0x8C0, o = im.u32(b + 0x120);
-        float t = 0;
-        switch (im.u32(b + 0x144)) {
-        case 0: t = im.f32(o + 0xB88); break;
-        case 1: t = im.f32(o + 0xB8C); break;
-        case 2: t = im.f32(b + 0x12C); break;
-        default: break;
-        }
-        return t - im.f32(b + 0x124);
-    };
+    auto elapsed = [&]() { return interp_elapsed(im, m); };
     const int a = int(im.u32(m + 0x9F0)), b = int(im.u32(m + 0x9F4));
     if ((a == 4 || a == 5) && elapsed() < 0.2f) vis = false;
     if ((b == 4 || b == 5) && im.f32(m + 0x9E8) - elapsed() < 0.2f) vis = false;
     return vis;
+}
+
+// sigcam (1.2, a report: "the signature takedown camera is broken"): Camera::chase, the share of the drawn-only chase
+// camera offset the player camera manager at `m` takes. Its behaviours are slots 0..19 (Prepare 0x2E7810 [C]): 2 and 3
+// are its CB3BehaviourRaceCarFollow, the chase cameras; +0xB80 is the mask of the active ones (SetActiveBehaviour
+// 0x2E7150, ActivateBehaviour 0x2E72D0 [C]). Seen in road rage on US/C2_V2 [C: guest RAM by VBlank, a dev script]: the
+// race 0x4 (with slot 15, the effect: 0x8004), the takedown camera 0x2 (slot 1; a signature takedown's too), the own
+// crash 0x40 (slot 6), the intro slots 17..19; 0x400 (slot 10, CB3BehaviourInterpolate) while the game
+// blends from slot +0x9F0 to slot +0x9F4 over +0x9E8 seconds (IsPlayerVisible's operands). The apply_fov test (a race
+// car near the view axis) also holds on the takedown and crash cameras, which then were pulled back and raised.
+float chase_share(const Image& im, std::uint32_t m) {
+    if (!im.has(m + 0x9E0, 0x30) || !im.has(m + 0xB80, 0x10)) return 1.0f;
+    const auto chase = [](std::uint32_t slot) { return slot == 2 || slot == 3; };
+    const std::uint32_t f = im.u32(m + 0xB80);
+    if ((f & 1024) == 0) return (f & (4 | 8)) != 0 ? 1.0f : 0.0f;
+    const float total = im.f32(m + 0x9E8);
+    const float p = total > 0.0f ? std::clamp(interp_elapsed(im, m) / total, 0.0f, 1.0f) : 1.0f;
+    return (chase(im.u32(m + 0x9F0)) ? 1.0f - p : 0.0f) + (chase(im.u32(m + 0x9F4)) ? p : 0.0f);
 }
 
 // The shadow box and wheel base of a vehicle data (RenderAmbientShadow 0x303170 [L draft]).
@@ -764,6 +785,7 @@ void decode_effects(const Image& im, Tick& t, Capture& cap) {
     t.shadows_on = im.u8(kGm + 0x67) != 0;   // D_00665F27
     t.effects_on = im.u8(kGm + 0x6C) != 0;   // D_00665F2C
     t.player_visible = player_visible(im, 0x4EE040 + 0x28E00);
+    t.cam.chase = chase_share(im, 0x4EE040 + 0x28E00);   // sigcam
     // split2: player 2's camera manager (captured in split frames since split2; not captured: visible)
     if (constexpr std::uint32_t m2 = 0x4EE040 + 0x28E00 + 0xBB0; t.split && im.has(m2 + 0x9E0, 0x30) && im.has(m2 + 0xB80, 0x10))
         t.view2.player_visible = player_visible(im, m2);

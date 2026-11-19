@@ -1210,6 +1210,26 @@ _check("T46 local array sized as retail's frame",
        and _stopped, (_n, _t))
 _t2, _n2 = d.t46_local_arrays("// 0x002B7DB0\nps2f f()\n{\n    ps2f d[20];\n}\n")
 _check("T46 func_002B7DB0 d[44] (ps2f)", _n2 == 1 and "ps2f d[44];   /* decomp2host T46" in _t2, _t2)
+# 1.2.1 T47: the RECORDS car icons (SetRecordsContentPanelContents) at retail's y offset and anchor, inside the marked
+# function only; a draft that no longer has the statement stops
+_body = ("{\n    ps2f base = 168.0f;\n    if (names2 == 0) {\n        base = base + 100.0f / 2.0f;\n    }\n"
+         "    func_001D6C40(o, CGtV2d(cols[2], 0.0f + base + (ps2f)(i - 1) * 32.0f), CGtV2d(0.0f, 0.0f), mgr->field_10, f, t, 20.0f);\n"
+         "    Prepare(o, CGtV2d(cols[2] - 10.0f, 0.0f + base + (ps2f)(i - 1) * 32.0f), CGtV2d(0.0f, 0.0f), D_004C9E88.v, col, tex, "
+         "CGtV2d(0.0f, 0.0f), CGtV2d(1.0f, 1.0f), v);\n}\n")
+_src = "void g()\n" + _body + "// 0x003A4A80\nextern \"C\" void func_003A4A80(int n)\n" + _body
+_t, _n = d.t47_draft_fixes(_src)
+_stopped = False
+try:
+    d.t47_draft_fixes("// 0x003A4A80\nvoid f()\n{\n    base = base + 16.0f;\n}\n")
+except BaseException:
+    _stopped = True
+_mine = _t[_t.index("0x003A4A80"):]
+_check("T47 the RECORDS car icons at retail's offset and anchor",
+       _n == 2 and _t.count("base = base + 100.0f / 2.0f;") == 1 and _t.index("100.0f / 2.0f") < _t.index("0x003A4A80")
+       and "base = base + D_004C9E88.v.marValues[1] / 2.0f;" in _mine
+       and "32.0f), CGtV2d(0.0f, 0.5f) /* decomp2host T47" in _mine and "D_004C9E88.v, col, tex, CGtV2d(0.0f, 0.0f), CGtV2d(1.0f, 1.0f)" in _mine
+       and "mgr->field_10" in _mine and "32.0f), CGtV2d(0.0f, 0.0f), mgr->field_10" in _mine
+       and d.t47_draft_fixes("void f() {}\n") == ("void f() {}\n", 0) and _stopped, (_n, _t))
 
 print("%d cases, %d failures" % (len(CASES), fails))
 sys.exit(1 if fails else 0)

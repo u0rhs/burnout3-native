@@ -118,7 +118,8 @@ uses its own folder list (section 4).
 1. In Desktop Mode, unpack the archive, for example into `/home/deck/Games`.
 2. In Steam: **Games > Add a Non-Steam Game to My Library > BROWSE...**, show "All Files", choose `b3launcher` in the
    folder, then **ADD SELECTED PROGRAMS**. If you ran `./add-to-menu.sh` first, the Burnout 3 entry is in the list
-   to tick instead.
+   to tick instead. Or, with Steam closed, press **Add to Steam** on the launcher's **Settings** page: it adds the
+   entry with its cover, background and logo ([Adding the game to Steam](#adding-the-game-to-steam)).
 3. In Gaming Mode it is in your library under Non-Steam. The launcher works with the Deck's controls alone, and the
    touch screen works too. Choose your game data, then START GAME.
 
@@ -231,19 +232,60 @@ mouse:
 
 ### Update check
 
-Once a day, when you open it, the launcher checks in the background whether a newer release of the port is out. If
-one is, the Play page shows **Update available** with the new version's name and a **Download** button, which opens
-the release's page in your browser. The launcher never downloads or installs anything itself: you download the new
-version and unpack it as you did the first time (your settings and saves stay where they are, in your user data
-folder). The Credits page shows the result: "Up to date", or "Couldn't check for updates" when there was no answer
-(no internet, for example). Nothing else changes when the check fails.
+Each time you open it, the launcher checks in the background whether a newer release of the port is out (a restart
+within a few minutes reuses the last answer). If one is, the Play page shows **Update available** with the new
+version's name and two buttons:
+
+- **Install update** downloads the package for your system, checks it against the release's signed list of files
+  (`SHA256SUMS` and `SHA256SUMS.sig`, signed with the port's release key), and installs it over your current copy (the
+  old version is kept, for Undo);
+  **Restart now** then starts the new version. On a Mac it opens the checked disk image: drag the app to Applications
+  as the first time. If the download or its signature does not check out, nothing is installed.
+- **Release page** opens the release in your browser, to download it yourself.
+
+Your settings and saves stay where they are, in your user data folder. **Undo the last update** on the Settings page
+goes back to the version you had before. The Credits page shows the result: "Up to date", or "Couldn't check for
+updates" when there was no answer (no internet, for example). Nothing else changes when the check fails.
 
 **Privacy:** the check is one request to GitHub, where the port is published
 (`https://api.github.com/repos/u0rhs/burnout3-native/releases/latest`). As with any web page you open, GitHub sees your
 IP address. Nothing else is sent: no name, no email, no information about your PC, your game or your saves; the
-request names only the launcher and its version. To turn it off, set **CHECK FOR UPDATES** to Off at the end of the
+request names only the launcher and its version. Install update downloads only the release's own files from
+GitHub. To turn it off, set **CHECK FOR UPDATES** to Off at the end of the
 launcher's **Settings** page: the launcher then makes no network request at all. **Check now** beside it checks at
 once.
+
+### Adding the game to Steam
+
+**Add to Steam**, at the end of the launcher's **Settings** page, puts Burnout 3: Takedown into your Steam library as
+a non-Steam game, with its own cover, background, logo and icon, so that it looks right in the library, in Big
+Picture mode and on a Steam Deck. The entry starts the launcher (`Burnout3Launcher.exe`, `b3launcher`, or the app on a
+Mac) in its own folder.
+
+1. **Close Steam first** (Steam > Exit; on a Steam Deck, in Desktop Mode, from Steam's icon in the taskbar). Steam
+   keeps its list of games in memory and writes it back when it closes, which would drop the new entry, so the
+   launcher adds nothing while Steam runs, and says so.
+2. Press **Add to Steam**. Every Steam account that has signed in on this computer gets the entry. Your other
+   non-Steam games stay exactly as they were; the list as it was before is kept beside it as `shortcuts.vdf.b3backup`
+   (in Steam's `userdata/<account>/config/` folder).
+3. Start Steam: Burnout 3: Takedown is in your library.
+
+Pressing it again adds no second entry: it puts the pictures in again. If you move the port's folder, press it again
+from the new place, and remove the old entry in Steam (it still points to the old folder).
+
+**Your own pictures.** The port's pictures are made from its logo; the port never ships the game's box art. To use
+pictures of your own (a photo of your own box, for example), choose **Cover image...**, **Background image...** or
+**Logo image...** (PNG or JPEG files), then press **Add to Steam**; **Use the port's art** goes back to the port's.
+What fits best: a 600 x 900 cover, a 1920 x 620 (or 3840 x 1240) background, a logo as a PNG with a transparent
+background. Steam's own **Manage > Set custom artwork** works on the entry too.
+
+Started from Steam, the game also gets Steam Input and the Steam overlay, and on Linux Steam's desktop controller
+layout no longer clicks around the desktop while you play (section 9, Common problems).
+
+Where it looks for Steam: on Windows, the folder the registry names, else `C:\Program Files (x86)\Steam`; on Linux
+and the Steam Deck, `~/.local/share/Steam` (also reached as `~/.steam/steam`) and Flatpak's
+`~/.var/app/com.valvesoftware.Steam`; on a Mac, `~/Library/Application Support/Steam`. Flatpak's Steam also needs to
+be allowed to see the port's folder: the launcher then shows the `flatpak override` command for it.
 
 ### Starting the game without the launcher
 
@@ -298,27 +340,51 @@ does nothing. On the profile name screen you can **type** the name with your key
 
 ### Gamepad (defaults)
 
-The game's PlayStation 2 layout, on the same positions of your pad:
+Each controller gets the layout of its own console: a PlayStation controller (PS3, PS4, PS5) the PS2 game's, and
+every other controller (Xbox, Switch, the Steam Deck, generic pads) the original Xbox game's. This is **CONTROLLER
+LAYOUT: Auto**, and it picks again when you change controllers; two players with different controllers each get
+their own. The CONTROLS settings show which one is in use ("Auto: Xbox controller").
 
-| Button | While driving | In the menus |
+| | PlayStation layout | Xbox layout |
 |---|---|---|
-| A / Cross, or the right trigger (analog) | accelerate | confirm |
-| X / Square, or the left trigger (analog) | brake / reverse | car colour, change names |
-| Right shoulder (RB / R1) | boost | |
-| Left shoulder (LB / L1) | look back | |
-| B / Circle | horn | |
-| Y / Triangle | change camera | back |
-| Left stick or D-pad | steer (the stick also does Aftertouch in a crash) | move |
-| Press the right stick (RS / R3) | Crashbreaker (the PS2's R2) | |
-| Press the left stick (LS / L3) | skip the music track (the PS2's L2) | |
-| Start / Menu / Options | pause | Start (and resume) |
-| Back / View / Share | Select | Select |
+| Accelerate | Cross or R2 (analog), or the right stick up | right trigger (analog) |
+| Brake / reverse | Square or L2 (analog), or the right stick down | left trigger (analog) |
+| Steer (and Aftertouch in a crash) | left stick or D-pad | left stick or D-pad |
+| Boost (hold it as you crash for Impact Time) | R1 | A (RB too) |
+| Crashbreaker | press the right stick (R3) | B |
+| Look back | L1 | X (LB too) |
+| Change camera | Triangle | Y |
+| Skip the music track | press the left stick (L3) | View / Back |
+| Horn | Circle | press the left stick |
+| Pause | Start / Options | Start / Menu |
+| Menus: move | left stick or D-pad | left stick or D-pad |
+| Menus: confirm | Cross | A |
+| Menus: back | Triangle | B |
+| Menus: car colour, change names | Square | X |
 
-On a gamepad the triggers are the pedals, so the PS2's **R2** (Crashbreaker) and **L2** (music track skip) are on the
-stick clicks instead. The triggers work gradually, like real pedals: light pressure, light throttle (SETTINGS >
+On the Xbox layout A and B do one thing while you drive and another in the menus, as in the original Xbox game. In a
+crash A (Impact Time, Aftertouch) and B (the Crashbreaker) both work. The triggers are the pedals in the menus too, so
+you can rev on the grid, and they work gradually, like real pedals: light pressure, light throttle (SETTINGS >
 INTERFACE > ANALOG TRIGGERS, on by default; off makes a trigger act as a button). Both triggers together still
-powerslide. The game's Crashbreaker prompt shows the right stick (R3 / RS) to match. You can move them on
-the **Controllers** page or in SETTINGS > INTERFACE > CONTROLS.
+powerslide. The PlayStation layout is the PS2's with the triggers as the pedals too (R2 accelerates and L2 brakes, as
+well as Cross and Square), so the PS2's R2 (Crashbreaker) and L2 (music track skip) are on the stick clicks, R3 and
+L3; the game's button prompts show R3 and L3 for them. The right stick is the game's own analog throttle and brake.
+
+A Nintendo controller gets the Xbox layout **by position**: its bottom button (B on a Switch controller) boosts and
+confirms, and its right button (A) is the Crashbreaker and goes back. To swap them, edit the bindings (Custom).
+
+**CONTROLLER LAYOUT** (SETTINGS > INTERFACE > CONTROLS with DEVICE: Controller, or the launcher's Controllers page),
+per player:
+
+- **Auto** (the default): the layout of the controller's console, as above.
+- **Xbox** or **PlayStation**: that layout on any controller.
+- **Custom**: your own bindings. Changing any controller binding switches to Custom (starting from the layout you
+  were on); choosing Auto, Xbox or PlayStation again keeps your Custom bindings for later.
+
+Controls you changed in an earlier version stay exactly as they were (Custom). If you never changed a controller
+binding, you get Auto. Before 1.2.1 every controller had one layout: the PlayStation layout above without the right
+stick; Custom without changes is still that layout. The keyboard is not
+affected by any of this.
 
 ### Other keys in the game
 
@@ -342,8 +408,9 @@ These are the defaults. Each one can be moved to any key, and most to a controll
 Go to **SETTINGS > INTERFACE > CONTROLS** in the game, or the launcher's **Controllers** page. Both edit the same
 `controls.ini` file in your user data folder (section 6). Every control can be moved to any key or button you like.
 
-- Choose the **PLAYER** (1 or 2, or **Shortcuts**) and the **DEVICE** (keyboard or controller). For the keyboard,
-  choose whether you are changing the keys for **Driving** or for **Menus**. **Shortcuts** lists the keys above
+- Choose the **PLAYER** (1 or 2, or **Shortcuts**) and the **DEVICE** (keyboard or controller). For a controller,
+  choose its **CONTROLLER LAYOUT** (above). Then choose whether you are changing the keys or buttons for **Driving**
+  or for **Menus**. **Shortcuts** lists the keys above
   (restart, fullscreen, screenshot, bug report, the tuning overlay, the settings sections), photo mode's controls and
   the controller buttons for them. A controller shortcut is every input of it held at once, like Select + Start:
   Confirm sets the first one, and Right adds another to hold with it.
@@ -547,7 +614,11 @@ Trax only (the original and the default), Custom only, or Mixed. Your songs play
 its volume, shuffle and the EA TRAX popup showing each song's title, artist and album. Your songs are also listed
 after the game's 44 on the game's own EA TRAX page (DRIVER DETAILS > SETTINGS > EA GAMES TRAX; the first 200 of the
 folder), where each one is set to ALL, RACE ONLY, MENU ONLY or OFF like the game's songs; Custom only plays
-only yours. Changes apply from the next song. **OTHER MUSIC APPS** (Windows and Linux, off by default) shows the song Spotify, a browser or any other player is
+only yours. Changes apply from the next song. **CUSTOM MUSIC VOLUME** (0% to 200% in steps of 10, default 100%) sets
+how loud your songs play, on top of the game's RADIO VOLUME: at 100% a song plays exactly as loud as the game plays its
+own songs, so a quiet file (many downloads are mastered or normalised quieter than the game's songs) can be raised to
+match, up to twice as loud. A limiter keeps loud songs from clipping; the game's songs and the DJ do not change. It
+applies at once. **OTHER MUSIC APPS** (Windows and Linux, off by default) shows the song Spotify, a browser or any other player is
 playing in the same popup; that music still plays from its own app, so turn the game's RADIO VOLUME down to hear only it.
 
 ### Opt-in features (off by default)
@@ -644,7 +715,7 @@ is ever sent anywhere by itself: you send the report yourself.
 | **START GAME is greyed out** | Either the game data is not set (Game Data page), or the game program is not beside the launcher. Keep all the files from the download in one folder. |
 | **Linux: `version 'GLIBC_2.35' not found`** | Your distribution is older than the build supports (section 1). |
 | **Linux: "Permission denied"** | The archive was unpacked without the programs' execute permission: run `chmod +x b3launcher native_play add-to-menu.sh` in the folder. |
-| **Linux: the controller also clicks or types on the desktop (windows open while you play)** | On Linux a game cannot take a controller for itself: other programs see the same presses. Most often it is Steam: with Steam running, its **desktop layout** turns the controller into a mouse and keyboard for everything that Steam does not know as a game. Start the port from Steam (add `b3launcher` as a non-Steam game), or turn the desktop layout off in Steam's Controller settings, or close Steam while you play. Other controller-to-keyboard tools (AntiMicroX and the like) do the same. |
+| **Linux: the controller also clicks or types on the desktop (windows open while you play)** | On Linux a game cannot take a controller for itself: other programs see the same presses. Most often it is Steam: with Steam running, its **desktop layout** turns the controller into a mouse and keyboard for everything that Steam does not know as a game. Start the port from Steam (add `b3launcher` as a non-Steam game, or use **Add to Steam** on the launcher's Settings page), or turn the desktop layout off in Steam's Controller settings, or close Steam while you play. Other controller-to-keyboard tools (AntiMicroX and the like) do the same. |
 | **Linux: no file picker opens** | Install `xdg-desktop-portal` (with your desktop's portal) or `zenity`. You can also use **Type a path...** in the launcher. |
 | **The race falls behind or the sound stutters** | Lower the QUALITY PRESET, set a FRAME RATE LIMIT, or try safe mode. If that helps, please send a bug report: it tells us what your PC needed. |
 

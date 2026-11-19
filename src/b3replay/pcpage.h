@@ -50,6 +50,7 @@ public:
     // Any thread (native_play's game thread, b3r_music): the playlist mode and the music folder as the page last had
     // them (published at each frame)
     int music(char* folder, int n);
+    int music_volume();   // musicvol1: CUSTOM MUSIC VOLUME in percent, as the page last had it (any thread, b3r_music_volume)
     // nowplaying1: what OTHER MUSIC APPS detects (any thread: native_play's game thread), shown in its description
     void set_now_playing(const std::string& line) {
         std::lock_guard<std::mutex> lock(music_m_);
@@ -96,6 +97,7 @@ private:
     bool controls_edit(const b3settings::Edit& e);
     void controls_flow(const std::array<std::uint8_t, 32>& pad, float seconds, const MenuMouse::PagePointer* mouse);
     void controls_changed(const std::string& what);
+    void controls_family();   // padlayout: each player's pad family (the layout Auto shows) from the window's pads
     // rebind2: the shortcuts the page lists for a device (the keyboard: all; a controller: the ones that take a button)
     static std::vector<b3native::input::PortAction> port_list(b3native::input::Device d);
     bool reset_all_armed_ = false;   // RESET ALL CONTROLS asks first
@@ -139,6 +141,7 @@ private:
     std::string music_folder_pub_;
     std::string now_playing_;   // nowplaying1 (music_m_)
     int playlist_mode_pub_ = 0;
+    int music_volume_pub_ = 100;   // musicvol1: CUSTOM MUSIC VOLUME
     std::mutex mod_m_;            // sdk2b: the code mods' rows and the changes made here
     std::vector<b3mod::SettingRow> mod_rows_;
     std::deque<std::string> mod_changes_;

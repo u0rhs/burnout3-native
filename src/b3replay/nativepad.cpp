@@ -17,6 +17,12 @@ namespace {
 
 // prompts.h keeps SDL's values for its pure mapping
 static_assert(kSdlTypePS3 == SDL_GAMEPAD_TYPE_PS3 && kSdlTypePS4 == SDL_GAMEPAD_TYPE_PS4 && kSdlTypePS5 == SDL_GAMEPAD_TYPE_PS5);
+// padlayout: input_bindings.h pad_family keeps SDL's values too
+static_assert(b3native::input::kSdlPadXbox360 == SDL_GAMEPAD_TYPE_XBOX360 && b3native::input::kSdlPadXboxOne == SDL_GAMEPAD_TYPE_XBOXONE &&
+              b3native::input::kSdlPadPS3 == SDL_GAMEPAD_TYPE_PS3 && b3native::input::kSdlPadPS4 == SDL_GAMEPAD_TYPE_PS4 &&
+              b3native::input::kSdlPadPS5 == SDL_GAMEPAD_TYPE_PS5 && b3native::input::kSdlPadSwitchPro == SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO &&
+              b3native::input::kSdlPadJoyConPair == SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR &&
+              b3native::input::kSdlPadGameCube == SDL_GAMEPAD_TYPE_GAMECUBE);
 static_assert(kSdlLabelA == SDL_GAMEPAD_BUTTON_LABEL_A && kSdlLabelB == SDL_GAMEPAD_BUTTON_LABEL_B &&
               kSdlLabelCross == SDL_GAMEPAD_BUTTON_LABEL_CROSS);
 
@@ -61,6 +67,15 @@ NativePad& NativePad::instance() {
 
 void NativePad::enable() {
     if (enabled_.exchange(true)) return;
+    if (const char* e = std::getenv("B3NATIVE_TEST_PAD"); e && *e) {   // padlayout: a scripted pad (checks only)
+        const std::string v = e;
+        const int t = v == "xbox" ? int(SDL_GAMEPAD_TYPE_XBOXONE) : v == "ps" ? int(SDL_GAMEPAD_TYPE_PS5)
+                    : v == "switch" ? int(SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO) : v == "generic" ? int(SDL_GAMEPAD_TYPE_STANDARD) : -1;
+        std::lock_guard<std::mutex> l(mu_);
+        test_pad_type_ = t;
+        if (t >= 0) pad_type_[0] = t;
+        std::printf("[b3pad] test pad: %s (SDL gamepad type %d), player 1's%s\n", e, t, t < 0 ? ": unknown (xbox, ps, switch, generic): none" : "");
+    }
     if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) std::fprintf(stderr, "[b3pad] no gamepads: %s\n", SDL_GetError());
     std::printf("[b3pad] the window is the game's pad: keys (docs/mac.md) and SDL gamepads\n");
     std::fflush(stdout);
@@ -76,6 +91,7 @@ bool NativePad::handle(const SDL_Event& e) {
             seats_.added(e.gdevice.which);   // pad2: player 1's, player 2's, or waiting (composed into player 1's)
             const bool p2 = seats_.role(e.gdevice.which) == b3native::input::PadSeats::Role::Player2;
             if (!p2) tracker_.press(device_of(e.gdevice.which), now_s());   // mac5: a pad just connected is the one about to be used
+            pad_used(e.gdevice.which);   // padlayout
             std::printf("[b3pad] gamepad: %s, %s (prompts: %s)\n", SDL_GetGamepadName(g) ? SDL_GetGamepadName(g) : "?",
                         p2 ? "player 2 (port 2 connected)" : "player 1", prompt_device_name(tracker_.active()));
             std::fflush(stdout);
@@ -97,6 +113,7 @@ bool NativePad::handle(const SDL_Event& e) {
             return true;
         }
         if (seats_.drives_player1(e.gbutton.which)) tracker_.press(device_of(e.gbutton.which), now_s());   // pad2: player 1's
+        pad_used(e.gbutton.which);   // padlayout
         MenuMouse::instance().other_device(now_s());
         return false;
     }
@@ -242,6 +259,7 @@ void NativePad::poll_gamepads() {
             past_half = past_half || v > 16384 || v < -16384;
         }
         if (p1) tracker_.axis(device_of(id), past_half, t);
+        if (past_half) pad_used(id);   // padlayout
         b3native::input::GamepadState s = b3native::input::gamepad_state(g);
         {   // pad1: gyro steering (opt-in, per player; off: s untouched, the report as before)
             const b3native::input::GyroControls& gy = controls_.player[p1 ? 0 : 1].gyro;
@@ -291,10 +309,13 @@ void NativePad::poll_gamepads() {
                 }
             }
         }
-        // remap1: the seat's bindings (player 1's for player 1's and the waiting pads; defaults: gamepad_sample's layout)
+        // remap1: the seat's bindings (player 1's for player 1's and the waiting pads); padlayout: the player's layout for
+        // this pad's type (Auto), in the context the game is in (driving / menus, as the keys')
         b3native::input::GamepadTuning tuning;   // 1.0.1: ANALOG TRIGGERS
         tuning.analog_pedals = analog_pedals_.load();
-        const auto one = b3native::input::gamepad_sample(s, controls_.player[p1 ? 0 : 1], tuning);
+        const auto one = b3native::input::gamepad_sample(s, controls_.player[p1 ? 0 : 1], tuning,
+                                                         keys_.driving() ? b3native::input::KeyCtx::Drive : b3native::input::KeyCtx::Menu,
+                                                         b3native::input::pad_family(int(SDL_GetGamepadType(g))));
         if (!p1) {   // pad2: player 2's pad (port 2); not photo mode's (player 1's camera)
             two = one;
             continue;
@@ -309,6 +330,28 @@ void NativePad::poll_gamepads() {
         }
     }
     pads_ = all;
+    {   // padlayout: each player's pad (the last used; else the first open one) and the layout it gets, logged on a change
+        for (int p = 0; p < 2; ++p) {
+            int type = -1;
+            for (SDL_Gamepad* g : open_) {
+                const SDL_JoystickID id = SDL_GetGamepadID(g);
+                const bool mine = p == 0 ? seats_.role(id) != b3native::input::PadSeats::Role::Player2
+                                         : seats_.role(id) == b3native::input::PadSeats::Role::Player2;
+                if (!mine) continue;
+                if (type < 0 || id == active_pad_[std::size_t(p)]) type = int(SDL_GetGamepadType(g));
+            }
+            if (p == 0 && type < 0 && test_pad_type_ >= 0) type = test_pad_type_;   // the scripted pad (checks)
+            pad_type_[std::size_t(p)] = type;
+            const b3native::input::PlayerControls& pc = controls_.player[std::size_t(p)];
+            const int shown = type < 0 ? -1 : int(pc.layout) * 16 + int(b3native::input::pad_family(type));
+            if (shown != layout_logged_[std::size_t(p)] && type >= 0) {
+                const b3native::input::PadStyle fam = b3native::input::pad_family(type);
+                std::printf("[b3pad] controller layout: player %d %s\n", p + 1, b3native::input::layout_text(pc, fam, true).c_str());
+                std::fflush(stdout);
+            }
+            layout_logged_[std::size_t(p)] = shown;
+        }
+    }
     {
         using PA = b3native::input::PortAction;
         const auto amt = [&](PA a) { return port_amt[std::size_t(a)]; };
@@ -387,8 +430,10 @@ void NativePad::give_triggers(const std::vector<std::pair<SDL_Gamepad*, int>>& p
         for (int p = 0; p < 2; ++p) {
             game[p] = trigger_game_[p];
             game[p].active = game[p].active && on && keys_.driving();
-            roles[p][0] = b3native::input::trigger_role(controls_.player[std::size_t(p)], false);
-            roles[p][1] = b3native::input::trigger_role(controls_.player[std::size_t(p)], true);
+            // padlayout: a DualSense's layout (Auto: the PlayStation one; its triggers are the pedals, as the Xbox one's)
+            const auto& b = b3native::input::pad_bindings(controls_.player[std::size_t(p)], b3native::input::PadStyle::PlayStation);
+            roles[p][0] = b3native::input::trigger_role(b, false);
+            roles[p][1] = b3native::input::trigger_role(b, true);
         }
     }
     static const bool log = [] { const char* e = std::getenv("B3NATIVE_TRIGGER_LOG"); return e && *e && *e != '0'; }();
@@ -500,7 +545,13 @@ std::array<std::uint8_t, 32> NativePad::sample(float dt) {
     keys_.step(dt);
     keys2_.step(dt);   // remap1: player 2's keys (none by default: neutral)
     ++taken_;
-    last_ = keys_.compose(have_pads_ ? pads_.data() : nullptr);
+    if (test_pad_type_ >= 0) {   // padlayout: the scripted pad, merged as a window pad of player 1
+        const auto t = test_report();
+        const auto both = have_pads_ ? b3native::input::merge_samples(pads_.data(), t.data()) : t;
+        last_ = keys_.compose(both.data());
+    } else {
+        last_ = keys_.compose(have_pads_ ? pads_.data() : nullptr);
+    }
     if (restart_pending_) {   // speedrun1: INSTANT RESTART, at this VBlank (the pad's grid)
         restart_pending_ = false;
         const bool go = restart_on_.load() && keys_.driving() && restart_.trigger();
@@ -557,7 +608,15 @@ PromptDevice NativePad::device() const {
 
 PromptKeys NativePad::prompt_keys(PromptDevice d) const {
     std::lock_guard<std::mutex> l(mu_);
-    if (d != PromptDevice::kKeyboard) return prompt_pad_glyphs(b3native::input::pad_glyphs(controls_.player[0]));   // remap1
+    if (d != PromptDevice::kKeyboard) {   // remap1; padlayout: player 1's pad's layout, in the game's context
+        // (no pad: the layout of the prompts' own look -- the PlayStation look, the game's own pictures, before any input)
+        using PS = b3native::input::PadStyle;
+        const int type = pad_type_[0];
+        const PS look = d == PromptDevice::kPlayStation || d == PromptDevice::kPlayStationModern ? PS::PlayStation
+                      : d == PromptDevice::kXbox ? PS::Xbox : d == PromptDevice::kNintendo ? PS::Nintendo : PS::Generic;
+        const auto& b = b3native::input::pad_bindings(controls_.player[0], type < 0 ? look : b3native::input::pad_family(type));
+        return prompt_pad_glyphs(b3native::input::pad_glyphs(b, keys_.driving() ? b3native::input::KeyCtx::Drive : b3native::input::KeyCtx::Menu));
+    }
     return b3replay::prompt_keys(keys_.map(), keys_.driving());
 }
 
@@ -601,6 +660,15 @@ bool NativePad::take_capture(Capture& out) {
     out = capture_out_;
     capture_have_ = false;
     return true;
+}
+
+int NativePad::pad_type(int player) const {
+    std::lock_guard<std::mutex> l(mu_);
+    return pad_type_[std::size_t(player & 1)];
+}
+
+void NativePad::pad_used(SDL_JoystickID id) {
+    active_pad_[seats_.role(id) == b3native::input::PadSeats::Role::Player2 ? 1 : 0] = id;
 }
 
 void NativePad::set_driving(bool on) {
@@ -712,7 +780,54 @@ std::string NativePad::port_key_text(b3native::input::PortAction a) const {
     return k.empty() ? "-" : b3native::input::key_label(k.front());
 }
 
+std::array<std::uint8_t, 32> NativePad::test_report() const {
+    b3native::input::GamepadTuning tuning;
+    tuning.analog_pedals = analog_pedals_.load();
+    return b3native::input::gamepad_sample(test_pad_, controls_.player[0], tuning,
+                                           keys_.driving() ? b3native::input::KeyCtx::Drive : b3native::input::KeyCtx::Menu,
+                                           b3native::input::pad_family(test_pad_type_));
+}
+
 void NativePad::key(std::uint16_t scancode, bool down) {
+    if (scancode >= kTestPadCode && scancode < kTestPadCode + 64) {   // padlayout: the scripted pad's input
+        std::lock_guard<std::mutex> l(mu_);
+        if (test_pad_type_ < 0) return;
+        const int k = scancode - kTestPadCode;
+        b3native::input::GamepadState& g = test_pad_;
+        switch (k) {
+        case SDL_GAMEPAD_BUTTON_SOUTH: g.south = down; break;
+        case SDL_GAMEPAD_BUTTON_EAST: g.east = down; break;
+        case SDL_GAMEPAD_BUTTON_WEST: g.west = down; break;
+        case SDL_GAMEPAD_BUTTON_NORTH: g.north = down; break;
+        case SDL_GAMEPAD_BUTTON_BACK: g.back = down; break;
+        case SDL_GAMEPAD_BUTTON_START: g.start = down; break;
+        case SDL_GAMEPAD_BUTTON_LEFT_STICK: g.left_stick = down; break;
+        case SDL_GAMEPAD_BUTTON_RIGHT_STICK: g.right_stick = down; break;
+        case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: g.left_shoulder = down; break;
+        case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: g.right_shoulder = down; break;
+        case SDL_GAMEPAD_BUTTON_DPAD_UP: g.dpad_up = down; break;
+        case SDL_GAMEPAD_BUTTON_DPAD_DOWN: g.dpad_down = down; break;
+        case SDL_GAMEPAD_BUTTON_DPAD_LEFT: g.dpad_left = down; break;
+        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: g.dpad_right = down; break;
+        case 32: g.left_trigger = down ? 32767 : 0; break;
+        case 33: g.right_trigger = down ? 32767 : 0; break;
+        case 34: g.right_y = down ? -32768 : 0; break;
+        default: return;
+        }
+        if (down) tracker_.press(prompt_device_for_pad(test_pad_type_, int(SDL_GetGamepadButtonLabelForType(SDL_GamepadType(test_pad_type_), SDL_GAMEPAD_BUTTON_SOUTH))), now_s());
+        // the report's 16 buttons (active low) as this context gives them: the check reads the pad recording too
+        const auto r = test_report();
+        const unsigned held = ~(unsigned(r[0]) | (unsigned(r[1]) << 8)) & 0xFFFFu;
+        static const char* const kNames[16] = {"SELECT", "L3", "R3", "START", "UP", "RIGHT", "DOWN", "LEFT", "L2", "R2", "L1", "R1",
+                                               "TRIANGLE", "CIRCLE", "CROSS", "SQUARE"};
+        std::string names;
+        for (int b = 0; b < 16; ++b)
+            if (held >> b & 1) names += (names.empty() ? "" : " ") + std::string(kNames[b]);
+        std::printf("[b3pad] test pad: input %d %s (%s): the game gets %s%s\n", k, down ? "down" : "up", keys_.driving() ? "driving" : "menus",
+                    names.empty() ? "no button" : names.c_str(), r[3] != 0x7F ? (r[3] < 0x7F ? ", right stick up (throttle)" : ", right stick down (brake)") : "");
+        std::fflush(stdout);
+        return;
+    }
     if (PhotoMode::instance().key(scancode, down)) return;   // photo mode's keys (a script's too); ups still come here
     page_key(scancode, down);   // devnav1
     const std::uint32_t hd_poll = PhotoMode::instance().game_poll() + 1;   // hdkey (read before mu_: no nested locks)

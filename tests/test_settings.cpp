@@ -4,6 +4,7 @@
 #include "b3settings/page.h"
 #include "b3settings/safemode.h"
 #include "b3settings/settings.h"
+#include "input_bindings.h"   // 1.2.1: the CONTROLS page's shortcut rows (kPort)
 
 #include <algorithm>
 #include <cstring>
@@ -134,12 +135,18 @@ TEST(controls_section) {
         Settings s;
         CHECK(!apply_edit(s, Edit{t.rows[k].id, t.rows[k].value, 0, t.rows[k].kind == RowKind::kAction}));
     }
-    // a controller: no KEYS FOR row; a status row once there is one
+    // a controller: CONTROLLER LAYOUT and BUTTONS FOR (padlayout) in KEYS FOR's place; a status row once there is one
     e.controls.device = 1;
     e.controls.status = "PLAYER 1 CROSS: B";
     const Content g = build_content(Settings{}, e);
-    CHECK(g.tabs[4].rows.size() == before + 8);
+    CHECK(g.tabs[4].rows.size() == before + 10);
+    CHECK(g.tabs[4].rows[before + 3].id == kRowCtlLayout && g.tabs[4].rows[before + 3].values.size() == 4);
+    CHECK(g.tabs[4].rows[before + 4].id == kRowCtlView && g.tabs[4].rows[before + 4].label == "BUTTONS FOR");
     CHECK(g.tabs[4].rows.back().id == kRowCtlStatus);
+    for (std::size_t k = before; k < g.tabs[4].rows.size(); ++k) {   // the host's rows, all of them
+        Settings s;
+        CHECK(!apply_edit(s, Edit{g.tabs[4].rows[k].id, g.tabs[4].rows[k].value, 0, g.tabs[4].rows[k].kind == RowKind::kAction}));
+    }
 }
 
 TEST(controls_shortcuts_and_reset) {
@@ -1043,6 +1050,26 @@ TEST(music_folder_and_playlist) {
     }
     CHECK(pick && clear && mode);
     for (const Row& r : tab(build_content(Settings{}, e))->rows) CHECK(r.id != kActionClearMusic);
+    // musicvol1: CUSTOM MUSIC VOLUME, 0..200 % in steps of 10 (default 100), right after PLAYLIST, in the ini
+    CHECK(Settings{}.custom_music_volume == 100);
+    Settings v{};
+    v.custom_music_volume = 170;
+    CHECK(from_ini(to_ini(v)).custom_music_volume == 170 && from_ini(to_ini(v)) == v);
+    w.clear();
+    CHECK(from_ini("custom_music_volume = 250\n", &w).custom_music_volume == 100 && !w.empty());
+    CHECK(from_ini("custom_music_volume = 0\n").custom_music_volume == 0);
+    bool after_playlist = false, vol = false;
+    for (const Row& r : t->rows) {
+        if (r.label == "CUSTOM MUSIC VOLUME") {
+            vol = after_playlist && r.kind == RowKind::kSlider && r.levels == 21 && r.value == 10 && r.level_text == "100%";
+            Settings x;
+            CHECK(apply_edit(x, Edit{r.id, 20, 0, false}) && x.custom_music_volume == 200);
+            CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.custom_music_volume == 0);
+            CHECK(apply_edit(x, Edit{r.id, 15, 0, false}) && x.custom_music_volume == 150);
+        }
+        after_playlist = r.label == "PLAYLIST";
+    }
+    CHECK(vol);
 }
 
 TEST(accessibility_rows) {
@@ -1302,13 +1329,14 @@ TEST(other_music_apps_row) {
     Settings x;
     CHECK(apply_edit(x, Edit{r->id, 1, 0, false}) && x.other_music_apps == 1);
     CHECK(apply_edit(x, Edit{r->id, 0, 0, false}) && x.other_music_apps == 0);
-    // right after PLAYLIST
+    // right after PLAYLIST and its CUSTOM MUSIC VOLUME (musicvol1)
     const Tab* in = nullptr;
     for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
     CHECK(in != nullptr);
     if (!in) return;
-    for (std::size_t i = 0; i + 1 < in->rows.size(); ++i)
-        if (in->rows[i].label == "PLAYLIST") CHECK(in->rows[i + 1].label == "OTHER MUSIC APPS");
+    for (std::size_t i = 0; i + 2 < in->rows.size(); ++i)
+        if (in->rows[i].label == "PLAYLIST")
+            CHECK(in->rows[i + 1].label == "CUSTOM MUSIC VOLUME" && in->rows[i + 2].label == "OTHER MUSIC APPS");
 }
 
 TEST(adaptive_trigger_rows) {
@@ -1856,6 +1884,192 @@ TEST(translations_cover_the_page) {
             }
     }
     CHECK(untranslated(build_content(s, env), "XX").empty());   // no table: English, nothing to check
+}
+
+TEST(translations_cover_the_shortcuts) {
+    // 1.2.1: CONTROLS > Shortcuts (player 2 on the page): every port action's label and use sentence, and the Bound /
+    // CONFIRM sentences, in each language. The rows as PcPage::controls_env builds them (src/b3replay/pcpage.cpp); the
+    // bound inputs are key and button names and stay as they are.
+    namespace in = b3native::input;
+    const in::Controls defaults = in::default_controls();
+    Env env{true};
+    env.languages = {{"FR", "Fran\xC3\xA7" "ais (French)"}};
+    env.controls.on = true;
+    env.controls.player = 2;
+    for (std::size_t device = 0; device < 2; ++device) {
+        const in::Device dev = device == 0 ? in::Device::Keyboard : in::Device::Gamepad;
+        env.controls.device = device;
+        env.controls.actions.clear();
+        std::vector<std::string> values;
+        for (int a = 0; a < in::kPortActions; ++a) {
+            const in::PortAction pa = in::PortAction(a);
+            if (dev == in::Device::Gamepad && !in::port_has_pad(pa)) continue;
+            Env::Controls::Action row;
+            row.label = in::port_label(pa);
+            row.value = in::bound_port_text(defaults, pa, dev, in::PadStyle::PlayStation);
+            row.description = std::string(in::port_use(pa)) + " Bound: " + row.value + ". CONFIRM: press a new " +
+                              (dev == in::Device::Keyboard ? "key" : "button, stick or trigger") + " for it; RIGHT: add one more" +
+                              (dev == in::Device::Gamepad ? " (held together with the rest)" : "") +
+                              "; LEFT: remove the last; SQUARE: back to the default.";
+            values.push_back(row.value);
+            env.controls.actions.push_back(std::move(row));
+        }
+        CHECK(env.controls.actions.size() >= (dev == in::Device::Keyboard ? std::size_t(in::kPortActions) : std::size_t(20)));
+        for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"}) {
+            const Content c = build_content(Settings{}, env);
+            for (const std::string& m : untranslated(c, code))
+                // numbers (the other tabs' values) and the bound inputs are not words
+                if (m.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") != std::string::npos &&
+                    std::find(values.begin(), values.end(), m) == values.end() && m != env.languages[0].second) {
+                    std::printf("  %s lacks: %s\n", code, m.c_str());
+                    CHECK(false);
+                }
+            // the labels and use sentences really change (no entry left English by mistake), the inputs do not
+            Content t = c;
+            translate(t, code);
+            std::size_t rows = 0;
+            for (std::size_t k = 0; k < t.tabs.size(); ++k)
+                for (std::size_t r = 0; r < t.tabs[k].rows.size(); ++r)
+                    for (const Env::Controls::Action& a : env.controls.actions)
+                        if (c.tabs[k].rows[r].label == a.label && c.tabs[k].rows[r].description == a.description) {
+                            ++rows;
+                            CHECK(t.tabs[k].rows[r].description.find(a.value) != std::string::npos);
+                            CHECK(t.tabs[k].rows[r].description.compare(0, 20, a.description, 0, 20) != 0);
+                            // French has its own word for every label (other languages keep a few: SCREENSHOT)
+                            if (std::string(code) == "FR") CHECK(t.tabs[k].rows[r].label != a.label);
+                        }
+            CHECK(rows == env.controls.actions.size());
+        }
+    }
+}
+
+TEST(translations_cover_the_player_rows) {
+    // 1.2.1: CONTROLS > Player 1 / Player 2: every game action's label, its "Driving: ..." and "Menus: ..." sentences and
+    // the Bound / CONFIRM sentences, in each language, on the keyboard (driving and menus views) and the controller. The
+    // rows as PcPage::controls_env builds them (src/b3replay/pcpage.cpp); the launcher's Controls page (src/b3launcher/
+    // main.cpp) builds the same descriptions. The bound inputs are key and button names and stay as they are.
+    namespace in = b3native::input;
+    const in::Controls defaults = in::default_controls();
+    Env env{true};
+    env.languages = {{"FR", "Fran\xC3\xA7" "ais (French)"}};
+    env.controls.on = true;
+    for (std::size_t player = 0; player < 2; ++player)
+        for (std::size_t view = 0; view < 4; ++view) {   // keyboard driving, keyboard menus, controller driving, controller menus
+            const in::Device dev = view >= 2 ? in::Device::Gamepad : in::Device::Keyboard;
+            const in::KeyCtx ctx = view % 2 == 0 ? in::KeyCtx::Drive : in::KeyCtx::Menu;   // padlayout: the controller's views too
+            env.controls.player = player;
+            env.controls.device = view >= 2 ? 1 : 0;
+            env.controls.view = view % 2;
+            env.controls.actions.clear();
+            std::vector<std::string> values;
+            for (in::Ds2 a : in::action_order()) {
+                Env::Controls::Action row;
+                row.label = in::action_label(a);
+                row.value = in::bound_text(defaults, int(player), dev, a, ctx, in::PadStyle::PlayStation);
+                const std::string drive = in::action_use(a, true), menus = in::action_use(a, false);
+                std::string use;
+                if (!drive.empty()) use += "Driving: " + drive + ". ";
+                if (!menus.empty()) use += "Menus: " + menus + ". ";
+                row.description = use + "Bound: " + row.value + ". CONFIRM: press a new " +
+                                  (dev == in::Device::Keyboard ? "key" : "button, stick or trigger") +
+                                  " for it; RIGHT: add one more; LEFT: remove the last; SQUARE: back to the default.";
+                values.push_back(row.value);
+                env.controls.actions.push_back(std::move(row));
+            }
+            CHECK(env.controls.actions.size() == std::size_t(in::kActions));
+            for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"}) {
+                const Content c = build_content(Settings{}, env);
+                for (const std::string& m : untranslated(c, code))
+                    if (m.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") != std::string::npos &&
+                        std::find(values.begin(), values.end(), m) == values.end() && m != env.languages[0].second) {
+                        std::printf("  %s lacks: %s\n", code, m.c_str());
+                        CHECK(false);
+                    }
+                // every use sentence really changes (no entry left English by mistake), the bound inputs do not
+                Content t = c;
+                translate(t, code);
+                std::size_t rows = 0;
+                for (std::size_t k = 0; k < t.tabs.size(); ++k)
+                    for (std::size_t r = 0; r < t.tabs[k].rows.size(); ++r)
+                        for (const Env::Controls::Action& a : env.controls.actions)
+                            if (c.tabs[k].rows[r].label == a.label && c.tabs[k].rows[r].description == a.description) {
+                                ++rows;
+                                const std::string& d = t.tabs[k].rows[r].description;
+                                CHECK(d.find(a.value) != std::string::npos);
+                                CHECK(d.find("Driving:") == std::string::npos && d.find("Menus:") == std::string::npos);
+                                CHECK(d.find("Bound:") == std::string::npos);
+                            }
+                CHECK(rows == env.controls.actions.size());
+            }
+        }
+}
+
+TEST(translations_cover_the_controller_layout) {
+    // 1.2.1 padlayout: CONTROLS > a player > Controller: the CONTROLLER LAYOUT row (its label, every value Auto can be
+    // worded as for a pad, Xbox, PlayStation, Custom, its description) and BUTTONS FOR (label, values, description), in
+    // each language, as PcPage::controls_env builds them; the launcher's Controls page uses the same words ("Layout",
+    // "Buttons for")
+    namespace in = b3native::input;
+    Env env{true};
+    env.languages = {{"FR", "Fran\xC3\xA7" "ais (French)"}};
+    env.controls.on = true;
+    env.controls.device = 1;
+    std::vector<std::string> autos;
+    for (in::PadStyle f : {in::PadStyle::Generic, in::PadStyle::PlayStation, in::PadStyle::Xbox, in::PadStyle::Nintendo})
+        for (bool connected : {false, true}) autos.push_back(in::auto_text(f, connected));
+    in::PlayerControls p;
+    for (in::PadLayout l : {in::PadLayout::Xbox, in::PadLayout::PlayStation, in::PadLayout::Custom}) {
+        p.layout = l;
+        autos.push_back(in::layout_text(p, in::PadStyle::Xbox, true));   // the change notes' names (the fixed values)
+    }
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"}) {
+        for (const std::string& a : autos) {   // every value really changes or is a name kept as it is
+            const std::string t = translate_text(a, code);
+            CHECK(!t.empty());
+            if (a.rfind("Auto:", 0) == 0 || a == "Custom") {
+                if (t == a) std::printf("  %s lacks: %s\n", code, a.c_str());
+                CHECK(t != a);
+            }
+        }
+        for (const char* w : {"Buttons for", "CONTROLLER LAYOUT", "BUTTONS FOR"}) CHECK(translate_text(w, code) != w);
+        for (std::size_t player = 0; player < 2; ++player)
+            for (std::size_t view = 0; view < 2; ++view)
+                for (std::size_t layout = 0; layout < 4; ++layout)
+                    for (const std::string& a : autos) {
+                        if (a.rfind("Auto:", 0) != 0) continue;
+                        env.controls.player = player;
+                        env.controls.view = view;
+                        env.controls.layout = layout;
+                        env.controls.layout_auto = a;
+                        const Content c = build_content(Settings{}, env);
+                        bool row = false, buttons = false;
+                        for (const Tab& tab : c.tabs)
+                            for (const Row& r : tab.rows) {
+                                if (r.id == kRowCtlLayout) {
+                                    row = r.values.size() == 4 && r.values[0] == a && r.value == layout;
+                                }
+                                if (r.id == kRowCtlView) buttons = r.label == "BUTTONS FOR";
+                            }
+                        CHECK(row && buttons);
+                        for (const std::string& m : untranslated(c, code))
+                            if (m.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") != std::string::npos &&
+                                m != env.languages[0].second && m != "Xbox" && m != "PlayStation") {
+                                std::printf("  %s lacks: %s\n", code, m.c_str());
+                                CHECK(false);
+                            }
+                    }
+    }
+    // no layout row on the keyboard nor the shortcuts
+    env.controls.device = 0;
+    env.controls.player = 0;
+    bool any = false;
+    for (const Tab& tab : build_content(Settings{}, env).tabs)
+        for (const Row& r : tab.rows) any = any || r.id == kRowCtlLayout;
+    env.controls.device = 1;
+    env.controls.player = 2;
+    for (const Tab& tab : build_content(Settings{}, env).tabs)
+        for (const Row& r : tab.rows) any = any || r.id == kRowCtlLayout;
+    CHECK(!any);
 }
 
 TEST(translate_page) {

@@ -160,8 +160,8 @@ TEST(once_a_day_and_the_cache) {
     const std::int64_t t0 = 1800000000;
     CHECK(due(c, t0));                    // never checked
     c.checked_at = t0;
-    CHECK(!due(c, t0 + 3600) && !due(c, t0 + kInterval - 1));
-    CHECK(due(c, t0 + kInterval) && due(c, t0 - 10));   // a day later; the clock went back
+    CHECK(!due(c, t0 + 60) && !due(c, t0 + kInterval - 1));
+    CHECK(due(c, t0 + kInterval) && due(c, t0 - 10));   // kInterval later; the clock went back
     c.enabled = false;
     CHECK(!due(c, t0 + 10 * kInterval));  // off: never
     c.enabled = true;

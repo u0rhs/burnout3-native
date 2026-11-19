@@ -53,6 +53,12 @@ public:
     // mac5: the report the last sample() made (the PC SETTINGS page reads the window's pad while the game sees neutral)
     std::array<std::uint8_t, 32> last() const;
     // Scripted input (tests, b3r_pad_key): as a key event on the window.
+    // padlayout (checks only): with B3NATIVE_TEST_PAD=xbox|ps|switch|generic a scripted pad of that SDL type is player 1's
+    // (tools/native/race_check.sh SCENARIO=padlayout). Its inputs are script codes kTestPadCode + an SDL_GamepadButton
+    // (0..20), + 32 / 33 the left / right trigger fully pressed, + 34 the right stick up; the pad goes through the
+    // player's bindings (its layout for the type, in the game's context) as a window pad does. Without the variable
+    // these codes are ignored.
+    static constexpr std::uint16_t kTestPadCode = 1024;
     void key(std::uint16_t scancode, bool down);
     // devnav1: PageUp (bit 0) / PageDown (bit 1) held on the keyboard (the window's or a script's): the PC SETTINGS
     // page's previous / next section. No pad button: the game never sees them.
@@ -127,6 +133,11 @@ public:
     // the reports of before, byte for byte.
     void set_controls(const b3native::input::Controls& c);
     b3native::input::Controls controls() const;
+    // padlayout (1.2.1, CONTROLLER LAYOUT): the SDL_GamepadType of the pad a player uses (0 player 1, 1 player 2): the
+    // last of the player's pads to press a button, connect or push a stick / trigger past half way (else the first
+    // open one); -1: none connected. Each pad drives its player's layout for its own type (Auto); this one is what the
+    // prompts and the CONTROLS page show.
+    int pad_type(int player) const;
     // remap1: the PC SETTINGS page's rebind: the next physical input of the device (a key down, a gamepad button, a stick
     // or trigger pushed past half way from rest) is taken instead of reaching the pad; Escape (or a right click; a
     // keyboard capture also a gamepad's East / Back) cancels. take_capture: true once with what came.
@@ -201,6 +212,13 @@ private:
     std::vector<std::uint32_t> hd_presses_;   // hdkey (under mu_)
     std::atomic<std::uint64_t> taken_{0};
     PromptDeviceTracker tracker_;   // mac5 (under mu_)
+    std::array<SDL_JoystickID, 2> active_pad_{};   // padlayout: each player's last used pad (under mu_)
+    std::array<int, 2> pad_type_{-1, -1};          // padlayout: its SDL_GamepadType, -1 none (under mu_)
+    std::array<int, 2> layout_logged_{-2, -2};     // padlayout: the layout last logged per player (under mu_)
+    int test_pad_type_ = -1;                       // padlayout: B3NATIVE_TEST_PAD's SDL type, -1 none (under mu_)
+    b3native::input::GamepadState test_pad_;       // its state (under mu_)
+    std::array<std::uint8_t, 32> test_report() const;   // (mu_ held)
+    void pad_used(SDL_JoystickID id);              // (mu_ held)
     bool keyboard_used_ = false;
     std::atomic<bool> text_mode_{false};   // mac5
     bool text_started_ = false;            // (window thread)

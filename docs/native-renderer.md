@@ -2068,13 +2068,20 @@ raster: 3,670 by base keys, 4,106 by mip-path keys (mostly level 1 and 2 drawn o
 - HUD: `HudTexture.w/h` stay the raster's extent (its UV normalisation), new `img_w/img_h` carry the pixel size for the
   upload (3 lines in hud.h / hud.cpp / view.cpp).
 - **Alpha** [C]: DDS alpha is PS2 units (PCSX2's loaders write 0x80 for opaque), mapped like GS alpha (>= 0x80 -> 255,
-  a -> 2a); TCC 0 forces 1. Then it is **held to the original's**: 0 where the original's bilinear alpha is below 1/4,
-  never above the original's maximum. Why: race2's flag frames `Chgo_Flag1..10` (US/C3_V1, alpha-tested GREATER AREF 0,
-  original maximum 0x7F) have a triangle mapped onto one transparent texel, which the game never draws; the pack's
-  outline (slightly wider, opaque 0x80..0x8D) drew it as a solid cream wedge under the gateway sign. Bisected to that
-  one replacement (`B3_HD_LIMIT`-style experiment, not kept); the coverage cut alone or the clamp alone leaves it
-  (28.4 / 29.0 levels mean difference to the original in that region), both match (2.2). A nearest-texel coverage
-  mask also fixes it but squares foliage outlines; the bilinear cut keeps the pack's outlines (zoom compared).
+  a -> 2a); TCC 0 forces 1. Then it is **held to the original's**: 0 over the original's transparent texels (alpha 0)
+  where its bilinear alpha is below 1/4, never above the original's maximum. Low but nonzero alpha is never cut: the
+  blended overlays (the sun haze over US/C2_V2's buildings, the light pattern in EU/P1_V2's tunnel, road and sign
+  masks) keep the pack's alpha. Up to 1.2.0 every texel whose bilinear alpha was below 1/4 was cut, which made those
+  overlays vanish or turn blotchy with any pack; with an identity pack (each texture's own decode at 1x) 9-61 % of a
+  frame's pixels differed from no pack, now the frames are byte-identical to `B3_HD_RAW_ALPHA=1`. Why the cut: race2's
+  flag frames `Chgo_Flag1..10` (US/C3_V1, alpha-tested GREATER AREF 0, original maximum 0x7F) have a triangle mapped onto
+  one transparent texel beside opaque ones, which the game never draws; the pack's outline (slightly wider, opaque
+  0x80..0x8D) drew it as a solid cream wedge under the gateway sign. Bisected to that one replacement (`B3_HD_LIMIT`-style
+  experiment, not kept); the coverage cut alone or the clamp alone leaves it (28.4 / 29.0 levels mean difference to the
+  original in that region), both match (2.2). A cut only where the bilinear alpha is 0 leaves it too (20.1 levels, as
+  raw alpha; this rule 1.9, the same as the old cut). A nearest-texel coverage mask also fixes it but squares foliage
+  outlines; the bilinear contour keeps the pack's outlines (zoom compared), and on textures with only transparent and
+  opaque texels the rule equals the old cut (race2's trees: 0 pixels differ).
   `B3_HD_RAW_ALPHA=1` uses the pack's alpha unchanged (as PCSX2 does). PCSX2 with this pack most likely shows the wedge
   too [L: the same values meet the same test].
 - **Speed**: `hd_prefetch` reads the route's hits on 8 threads before the track decode (reads over WSL's /mnt/c are
@@ -4054,6 +4061,14 @@ the native renderer never drew (§12.9 "not done").
   edge unless a CB3RoundedPanel2dObject dialog drawn after it covers it (the quit question: the PS2 shows the column
   dimmed under it); the selected row's CB3SelectionBar2dObject bar has its vertices at the 4:3 edges at the window edges and
   its brackets with the column; centred content (the dialog, the event's text, the results' stat panels) stays.
+- **Stat labels on their plates** (1.2.1, the known issue "Takedowns label at 32:9 on the record screen"): a race's
+  results stats page draws each stat as a plate (func_003CD920, `hud_element01`, 2D x 80..560) with its label on it
+  (CGt2dObjectItalicText 0x33CCD0 at x 110: BEST LAP, TAKEDOWNS, LONGEST DRIFT, ...) and its value and RECORD tag at
+  the plate's right end [C crashnav's ELIMINATOR results, poll 17300]. The labels lie left of x 280, so the column rule
+  sent them to the window's left edge while their plates stayed centred: a label just off its plate at 16:9, a
+  window's width away from it at 32:9. A draw lying inside such a plate's box (2 units of slack) is now the plate's and
+  stays with it; it is not counted for the column either. The CONTINUE / RETRY page (plates at 260..600, labels at
+  290) is unchanged: its column still goes left. Test `race_results_stat_labels_stay_on_their_plates` (test_hud).
 - **Identity** (b3replay --offscreen, main 5509737's b3replay.exe): 4:3 (default size) race2 2229..5181 and roadrage1
   3600..13400 every 20th poll: 587 of 587 byte-identical. 712 x 244: race2 111 of 111; roadrage1 457 of 476, the other 19
   being the event intro (3600..3720, 3840..3880) and the results (12920..13100), as intended.

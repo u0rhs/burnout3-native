@@ -75,6 +75,7 @@ const Key kKeys[] = {
     {"battery_saver", &Settings::battery_saver, nullptr, 0, 0},   // effects2 (BATTERY SAVER)
     {"launcher_at_start", &Settings::launcher_at_start, nullptr, 0, 0},   // launchskip1 (the launcher's own start)
     {"playlist_mode", nullptr, &Settings::playlist_mode, 0, 2},   // custom soundtrack (remaster-features §6)
+    {"custom_music_volume", nullptr, &Settings::custom_music_volume, 0, 200},   // musicvol1 (CUSTOM MUSIC VOLUME)
     {"other_music_apps", nullptr, &Settings::other_music_apps, 0, 1},   // nowplaying1 (remaster-features §6.2)
     {"screen_flashes", nullptr, &Settings::screen_flashes, 0, 1},         // accessibility
     {"hud_colour_filter", nullptr, &Settings::hud_colour_filter, 0, 3},

@@ -25,6 +25,9 @@
   through.
 - **Cars wobbling apart when hit.** When a car is slammed, its panels and wheels now move with the body, instead of
   staying behind.
+- **A crash with six-wheeled trucks.** When a six-wheeled vehicle (the heavyweight trucks in Crash mode, or traffic
+  trucks thrown into a crash) bottomed out its rear suspension, the game could stop on a Mac, and could quietly
+  misbehave elsewhere. Also in 1.1.0.
 - **Windows: "b3render.dll did not load (error 1114)"** when another program's DLL (an overlay, a mod loader, a stray
   `version.dll` in the folder) got in the way: the renderer now takes Windows' own DLLs from Windows only. If it still
   cannot load, the message says why and the run log lists what was involved.

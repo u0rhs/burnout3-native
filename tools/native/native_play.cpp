@@ -245,6 +245,7 @@ struct Render {
     int (*date_format)() = nullptr;       // mac5, optional: b3r_date_format (an older b3render: the game's month/day/year)
     int (*speed_units)() = nullptr;       // units1, optional: b3r_speed_units (an older b3render: the game's miles)
     int (*music)(char*, int) = nullptr;   // optional: b3r_music, the playlist mode and music folder (custom_soundtrack.h)
+    int (*music_volume)() = nullptr;      // optional: b3r_music_volume, CUSTOM MUSIC VOLUME in percent (musicvol1)
     int (*other_music_apps)() = nullptr;  // nowplaying1, optional: b3r_other_music_apps (now_playing_popup.h; an older b3render: off)
     void (*now_playing)(const char*) = nullptr;   // nowplaying1, optional: b3r_now_playing, what is detected (the row's text)
     int (*settings_active)() = nullptr;   // mac5, optional: 1 while the page is open (the game then sees a neutral pad)
@@ -428,6 +429,7 @@ struct LiveSettings {
     int date = 0, music_mode = 0;
     bool photo_row = false;   // photorow1: the pause menu's PHOTO MODE row (a recording without the entry: none, as before)
     int units = 0;   // units1: SPEED UNITS (tools/native/speed_units.h)
+    int music_volume = 100;   // musicvol1: CUSTOM MUSIC VOLUME (custom_soundtrack.h; host audio only, the game never reads it)
     std::string music_dir;
     std::string now_playing;   // nowplaying1: a replay's latched track (b3nowplaying::encode; empty: none recorded)
 };
@@ -530,6 +532,11 @@ int main(int argc, char** argv) {
     // (vu0n: make VU0_INTERP=1); the default build has no VU0 interpreter, so 1 is its only mode
 #ifdef _WIN32
     timeBeginPeriod(1);   // mac5: 1 ms timer resolution for the pacing's sleeps (winmm)
+    // winhitch (1.2.1): the process above normal, so busy normal-priority programs (an emulator, a build, a browser)
+    // no longer preempt the render thread (BELOW_NORMAL inside the class: base 9, still below the game thread's 10).
+    // Measured on a saturated CPU: frames over 50 ms 15-262 -> 1 (the race start). B3_PRIORITY=normal: as before.
+    if (const char* pr = std::getenv("B3_PRIORITY"); !(pr && std::strcmp(pr, "normal") == 0))
+        SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
     // the exe and b3render.dll each have their own (static) C runtime: an end the exe's runtime does not see would lose
     // its buffered lines, so they go out at once
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -1020,6 +1027,7 @@ int main(int argc, char** argv) {
         r.speed_units = reinterpret_cast<int (*)()>(sym("b3r_speed_units"));   // units1
         r.record_replays = reinterpret_cast<int (*)()>(sym("b3r_record_replays"));   // replay1
         r.music = reinterpret_cast<int (*)(char*, int)>(sym("b3r_music"));   // custom soundtrack (remaster-features §6)
+        r.music_volume = reinterpret_cast<int (*)()>(sym("b3r_music_volume"));   // musicvol1
         r.other_music_apps = reinterpret_cast<int (*)()>(sym("b3r_other_music_apps"));   // nowplaying1
         r.now_playing = reinterpret_cast<void (*)(const char*)>(sym("b3r_now_playing"));
         // save1: the page's SAVES tab drives the card's profile file (export / import on the game's thread)
@@ -1218,6 +1226,7 @@ int main(int argc, char** argv) {
         std::unique_ptr<b3native::replay::Player> rplay;
         std::unique_ptr<b3native::TuningConsole> tuning;   // tune4 (installed below, before the table is sealed)
         bool units_recorded = false;   // units1: a "speed_units" entry is in the recording
+        bool music_volume_recorded = false;   // musicvol1: a "music_volume" entry is in the recording
         auto sample_live = [&](std::uint64_t v) {   // recording: the renderer's values for this VBlank
             char buf[1024] = {};
             g_live.date = r.date_format ? r.date_format() : 0;
@@ -1233,6 +1242,13 @@ int main(int argc, char** argv) {
                 units_recorded = true;
             }
             rrec->setting(v, "music", std::to_string(g_live.music_mode) + "|" + g_live.music_dir);
+            // musicvol1: CUSTOM MUSIC VOLUME, kept from the first VBlank it is not 100 % (a recording at 100 % has no
+            // entry: as before). Sound only: a replay plays the custom songs as loud as they were recorded
+            g_live.music_volume = r.music_volume ? r.music_volume() : 100;
+            if (g_live.music_volume != 100 || music_volume_recorded) {
+                rrec->setting(v, "music_volume", std::to_string(g_live.music_volume));
+                music_volume_recorded = true;
+            }
             // the music folder the game would play from (custom_soundtrack.h mode(): the environment wins)
             int mode = g_live.music_mode;
             std::string folder = g_live.music_dir;
@@ -1256,6 +1272,7 @@ int main(int argc, char** argv) {
                 else if (op->key == "date_format") g_live.date = std::atoi(op->value.c_str());
                 else if (op->key == "speed_units") g_live.units = std::atoi(op->value.c_str()) == 1 ? 1 : 0;   // units1
                 else if (op->key == "now_playing") g_live.now_playing = op->value;   // nowplaying1
+                else if (op->key == "music_volume") g_live.music_volume = std::atoi(op->value.c_str());   // musicvol1
                 else if (op->key == "music") {
                     const std::size_t bar = op->value.find('|');
                     g_live.music_mode = std::atoi(op->value.substr(0, bar).c_str());
@@ -1335,7 +1352,18 @@ int main(int argc, char** argv) {
         online_message.install(hooks);
         static int (*g_music)(char*, int) = nullptr;   // PC SETTINGS > INTERFACE > MUSIC (tools/native/custom_soundtrack.h)
         g_music = r.music;
+        static int (*g_music_volume)() = nullptr;   // musicvol1: CUSTOM MUSIC VOLUME
+        g_music_volume = r.music_volume;
         b3native::CustomSoundtrack custom_soundtrack;
+        custom_soundtrack.set_volume_source([] {   // B3NATIVE_MUSIC_VOLUME=<0..200> overrides it (tests), as _MODE does
+            static const int forced = [] {
+                const char* e = std::getenv("B3NATIVE_MUSIC_VOLUME");
+                return e && *e ? std::clamp(std::atoi(e), 0, 200) : -1;
+            }();
+            if (forced >= 0) return forced;
+            if (g_live.on) return g_live.music_volume;   // replay1: the latched value
+            return g_music_volume ? g_music_volume() : 100;
+        });
         if (!std::getenv("B3NATIVE_MUSIC_OFF"))   // B3NATIVE_MUSIC_OFF=1: not installed (comparisons)
             custom_soundtrack.install(hooks, [](char* folder, int max) {
                 if (g_live.on) {   // replay1: the latched value

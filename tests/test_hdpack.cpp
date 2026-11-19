@@ -232,8 +232,11 @@ TEST(hook_replaces_with_the_raster_extent_of_the_pack_image) {
     HdTextures hd2;
     CHECK(hd2.open(dir.string()));
     CHECK(hd2.apply(gs, lim, 0));
-    // bilinear coverage below 1/4 of full: the transparent half and the faint (0x20) half both, alpha 0
+    // the cut takes only transparent texels: the transparent half alpha 0; the faint (0x20) half keeps its alpha (low but
+    // not transparent: a blended overlay such as US/C2_V2's haze), held to the original's maximum
     CHECK(lim.levels[0].rgba[(5 * 192 + 10) * 4 + 3] == 0);
+    CHECK(lim.levels[0].rgba[(5 * 192 + 150) * 4 + 3] == 0x20);
+    CHECK(lim.levels[0].rgba[(5 * 192 + 94) * 4 + 3] == 0);      // the last transparent texel, beside the faint ones
     for (int y = 0; y < 32; ++y)
         for (int x = 24; x < 48; ++x) lim.levels[0].rgba[(std::size_t(y) * 48 + x) * 4 + 3] = 0xFF;   // opaque right half
     lim.hd = false;
@@ -246,6 +249,11 @@ TEST(hook_replaces_with_the_raster_extent_of_the_pack_image) {
     CHECK(hd2.apply(gs, lim, 0));
     CHECK(lim.levels[0].rgba[(5 * 192 + 10) * 4 + 3] == 0);       // over the original's transparent half
     CHECK(lim.levels[0].rgba[(5 * 192 + 150) * 4 + 3] == 0x20);   // covered: clamped to the original's maximum
+    // the outline: over the last transparent texel (23) the cut follows the bilinear contour at 1/4 (HD 94: 0.125 of the
+    // opaque neighbour, cut; HD 95: 0.375, kept), so the pack's soft outline stays and no texel squares appear
+    CHECK(lim.levels[0].rgba[(5 * 192 + 93) * 4 + 3] == 0);
+    CHECK(lim.levels[0].rgba[(5 * 192 + 94) * 4 + 3] == 0);
+    CHECK(lim.levels[0].rgba[(5 * 192 + 95) * 4 + 3] == 0x20);
     DecodedRaster other = r;
     other.hd = false;
     CHECK(!hd.apply(gs, other, 4));   // another CLUT: no key in the pack

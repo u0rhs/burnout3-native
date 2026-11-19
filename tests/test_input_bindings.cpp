@@ -21,6 +21,14 @@ std::array<std::uint8_t, 32> run(KeyPad& k, std::initializer_list<std::uint16_t>
 }
 
 PhysInput key(std::uint16_t s) { return {Device::Keyboard, s, PadInput::None}; }
+// padlayout: the 1.x controls (every player on the Custom layout, its bindings the 1.x defaults): the tests written
+// before the layouts edit these
+Controls classic_controls() {
+    Controls c = default_controls();
+    for (PlayerControls& p : c.player) p.layout = PadLayout::Custom;
+    return c;
+}
+PlayerControls classic_player(int p) { return classic_controls().player[std::size_t(p)]; }
 PhysInput pad(PadInput p) { return {Device::Gamepad, 0, p}; }
 
 GamepadState random_state(std::mt19937& r) {
@@ -97,14 +105,14 @@ TEST(default_gamepad_byte_identical) {
         GamepadTuning t;
         if (i % 3 == 1) { t.stick_dead_zone = float(r() % 100) / 100.0f; t.trigger_threshold = float(r() % 120) / 100.0f; }
         const auto want = gamepad_sample(g, t);
-        same += gamepad_sample(g, default_player(0), t) == want && gamepad_sample(g, default_player(1), t) == want;
+        same += gamepad_sample(g, classic_player(0), t) == want && gamepad_sample(g, classic_player(1), t) == want;
     }
     CHECK(same == n);
     // pad1: a player's gyro turned on in the controls changes nothing by itself (the window's pad layer sets gyro_use
     // only while driving with sensor data: tests/test_pad_motion.cpp), and mixing in a zero steering is the report too
     {
         std::mt19937 q(13);
-        PlayerControls on = default_player(0);
+        PlayerControls on = classic_player(0);
         on.gyro.mode = 1;
         on.gyro.axis = 1;
         on.gyro.sensitivity = 300;
@@ -115,13 +123,13 @@ TEST(default_gamepad_byte_identical) {
             const bool a = gamepad_sample(g, on) == want;
             g.gyro_use = 1;
             g.gyro_steer = 0;
-            eq += a && gamepad_sample(g, default_player(0)) == want;
+            eq += a && gamepad_sample(g, classic_player(0)) == want;
         }
         CHECK(eq == n);
     }
     // every button alone, and the extremes of each axis
     GamepadState g;
-    CHECK(gamepad_sample(g, default_player(0)) == gamepad_sample(g));
+    CHECK(gamepad_sample(g, classic_player(0)) == gamepad_sample(g));
     CHECK(gamepad_sample(g) == neutral_sample());
 }
 
@@ -131,8 +139,8 @@ TEST(default_controls_shape) {
     CHECK(!d.player[1].has_keys());
     CHECK(d.player[0].pad == d.player[1].pad);
     // padr2: the stick clicks are L2 / R2; the right stick and L3 / R3 have no gamepad input by default (gamepad_sample's layout)
-    CHECK(d.player[0].pad[std::size_t(Ds2::L2)] == std::vector<PadInput>{PadInput::LeftStick});
-    CHECK(d.player[0].pad[std::size_t(Ds2::R2)] == std::vector<PadInput>{PadInput::RightStick});
+    CHECK(d.player[0].pad[std::size_t(Ds2::L2)] == std::vector<PadBind>{PadInput::LeftStick});
+    CHECK(d.player[0].pad[std::size_t(Ds2::R2)] == std::vector<PadBind>{PadInput::RightStick});
     for (Ds2 a : {Ds2::L3, Ds2::R3, Ds2::RStickLeft, Ds2::RStickRight, Ds2::RStickUp, Ds2::RStickDown})
         CHECK(d.player[0].pad[std::size_t(a)].empty());
     // every action has a name and a label, parsed back
@@ -142,9 +150,9 @@ TEST(default_controls_shape) {
     }
     CHECK(!parse_action("boost"));
     // the prompts: every button at its own position but L2 / R2, at the stick clicks' (L3 / R3)
-    CHECK(pad_glyphs(d.player[0])[std::size_t(Ds2::Cross)] == Ds2::Cross);
+    CHECK(pad_glyphs(d.player[0].pad)[std::size_t(Ds2::Cross)] == Ds2::Cross);
     for (int b = 0; b < 16; ++b)
-        CHECK(pad_glyphs(d.player[0])[std::size_t(b)] == (Ds2(b) == Ds2::L2 ? Ds2::L3 : Ds2(b) == Ds2::R2 ? Ds2::R3 : Ds2(b)));
+        CHECK(pad_glyphs(d.player[0].pad)[std::size_t(b)] == (Ds2(b) == Ds2::L2 ? Ds2::L3 : Ds2(b) == Ds2::R2 ? Ds2::R3 : Ds2(b)));
 }
 
 // padr2: the default pad's stick clicks press L2 (music track skip) and R2 (Crashbreaker), digital bit and full
@@ -155,7 +163,7 @@ TEST(default_stick_clicks_are_l2_r2) {
         g.left_stick = which == 1 || which == 3;
         g.right_stick = which == 2 || which == 3;
         const auto built_in = gamepad_sample(g);
-        for (const auto& s : {built_in, gamepad_sample(g, default_player(0)), gamepad_sample(g, default_player(1))}) {
+        for (const auto& s : {built_in, gamepad_sample(g, classic_player(0)), gamepad_sample(g, classic_player(1))}) {
             CHECK(s == built_in);
             CHECK(pressed(s, kL2) == g.left_stick && pressed(s, kR2) == g.right_stick);
             CHECK(s[16] == (g.left_stick ? 0xFF : 0) && s[17] == (g.right_stick ? 0xFF : 0));
@@ -224,12 +232,12 @@ TEST(rebind_keyboard_driving_view_keeps_menus) {
 }
 
 TEST(rebind_add_and_remove_last) {
-    Controls c = default_controls();
+    Controls c = classic_controls();
     rebind(c, 0, Device::Keyboard, Ds2::Circle, key(15), KeyCtx::Drive, Resolve::Keep, true);   // L added for driving
     CHECK(bound_text(c, 0, Device::Keyboard, Ds2::Circle, KeyCtx::Drive, PadStyle::Generic) == "X, H, L");
     CHECK(bound_text(c, 0, Device::Keyboard, Ds2::Circle, KeyCtx::Menu, PadStyle::Generic) == "X, H");
     remove_last(c, 0, Device::Keyboard, Ds2::Circle, KeyCtx::Drive);
-    CHECK(c.player[0] == default_player(0));
+    CHECK(c.player[0] == classic_player(0));
     remove_last(c, 0, Device::Keyboard, Ds2::Circle, KeyCtx::Drive);   // H (both contexts) leaves driving only
     CHECK(bound_text(c, 0, Device::Keyboard, Ds2::Circle, KeyCtx::Drive, PadStyle::Generic) == "X");
     CHECK(bound_text(c, 0, Device::Keyboard, Ds2::Circle, KeyCtx::Menu, PadStyle::Generic) == "X, H");
@@ -239,7 +247,7 @@ TEST(rebind_add_and_remove_last) {
     remove_last(c, 0, Device::Gamepad, Ds2::L2, KeyCtx::Any);
     CHECK(c.player[0].pad == default_player(0).pad);
     reset(c, 0, Device::Keyboard);
-    CHECK(c == default_controls());
+    CHECK(c == classic_controls());
 }
 
 TEST(conflicts_swap_clear_keep_keyboard) {
@@ -281,13 +289,13 @@ TEST(conflicts_swap_clear_keep_keyboard) {
 }
 
 TEST(conflicts_gamepad) {
-    Controls c = default_controls();
+    Controls c = classic_controls();
     const std::vector<Use> u = uses(c, 0, Device::Gamepad, Ds2::Cross, pad(PadInput::East), KeyCtx::Any);
     CHECK(u.size() == 1 && u[0] == (Use{0, Ds2::Circle}));
     CHECK(uses(c, 1, Device::Gamepad, Ds2::Cross, pad(PadInput::East), KeyCtx::Any).size() == 1);   // player 2's own
     rebind(c, 0, Device::Gamepad, Ds2::Cross, pad(PadInput::East), KeyCtx::Any, Resolve::Swap);   // Cross <-> Circle
-    CHECK(c.player[0].pad[std::size_t(Ds2::Cross)] == std::vector<PadInput>{PadInput::East});
-    CHECK(c.player[0].pad[std::size_t(Ds2::Circle)] == std::vector<PadInput>{PadInput::South});
+    CHECK(c.player[0].pad[std::size_t(Ds2::Cross)] == std::vector<PadBind>{PadInput::East});
+    CHECK(c.player[0].pad[std::size_t(Ds2::Circle)] == std::vector<PadBind>{PadInput::South});
     CHECK(c.player[1].pad == default_player(1).pad);   // player 2 untouched
     GamepadState g;
     g.east = true;
@@ -298,7 +306,7 @@ TEST(conflicts_gamepad) {
     s = gamepad_sample(g, c.player[0]);
     CHECK(pressed(s, kCircle) && !pressed(s, kCross));
     // the prompts show the bound positions
-    const auto glyphs = pad_glyphs(c.player[0]);
+    const auto glyphs = pad_glyphs(c.player[0].pad);
     CHECK(glyphs[std::size_t(Ds2::Cross)] == Ds2::Circle && glyphs[std::size_t(Ds2::Circle)] == Ds2::Cross);
     // the right trigger was Cross's second input: replaced, so it drives nothing now
     g = {};
@@ -308,7 +316,7 @@ TEST(conflicts_gamepad) {
 
 TEST(analog_digital_conversions) {
     const GamepadTuning legacy{0.24f, 0.25f, false};   // 1.0.0's pedals (ANALOG PEDALS off)
-    PlayerControls p = default_player(0);
+    PlayerControls p = classic_player(0);
     // a button on a stick half axis: full deflection; a key likewise (the right stick, the keyboard)
     p.pad[std::size_t(Ds2::RStickLeft)] = {PadInput::North};
     p.pad[std::size_t(Ds2::RStickDown)] = {PadInput::LeftTrigger};
@@ -365,7 +373,7 @@ TEST(ini_round_trip) {
     Controls d = default_controls();
     const std::string e = to_ini(d);
     CHECK(e.find('[') == std::string::npos);   // the defaults write no section
-    CHECK(e.find("version = 2") != std::string::npos);
+    CHECK(e.find("version = 3") != std::string::npos);
     std::vector<std::string> w;
     CHECK(controls_from_ini(e, &w) == d);
     CHECK(w.empty());
@@ -425,7 +433,7 @@ TEST(ini_invalid_entries) {
     CHECK(p.keys[std::size_t(Ds2::R1)].empty() && p.keys[std::size_t(Ds2::L1)].empty());
     CHECK(p.keys[std::size_t(Ds2::Start)].size() == 1);
     CHECK(p.keys[std::size_t(Ds2::Cross)] == default_player(0).keys[std::size_t(Ds2::Cross)]);
-    CHECK(p.pad[std::size_t(Ds2::Cross)] == std::vector<PadInput>{PadInput::South});
+    CHECK(p.pad[std::size_t(Ds2::Cross)] == std::vector<PadBind>{PadInput::South});
     CHECK(p.pad[std::size_t(Ds2::Square)] == default_player(0).pad[std::size_t(Ds2::Square)]);
     CHECK((c.player[1].keys[std::size_t(Ds2::Cross)] == std::vector<KeyBind>{{12, KeyCtx::Any}}));
     int unknown_section = 0, unknown_action = 0, unknown_key = 0, context = 0, kept = 0, pad_bad = 0, outside = 0, not_kv = 0;
@@ -443,8 +451,8 @@ TEST(ini_invalid_entries) {
           outside == 1 && not_kv == 1);
     // a newer file is read as far as understood, with a warning
     w.clear();
-    const Controls n = controls_from_ini("version = 3\n[player1.gamepad]\nl2 = left_trigger\n", &w);
-    CHECK(n.player[0].pad[std::size_t(Ds2::L2)] == std::vector<PadInput>{PadInput::LeftTrigger});
+    const Controls n = controls_from_ini("version = 4\n[player1.gamepad]\nl2 = left_trigger\n", &w);
+    CHECK(n.player[0].pad[std::size_t(Ds2::L2)] == std::vector<PadBind>{PadInput::LeftTrigger});
     CHECK(w.size() == 1 && w[0].find("newer") != std::string::npos);
 }
 
@@ -489,19 +497,19 @@ TEST(ini_gyro) {
 // that action's only; a version 2 file, or one that sets L2 / R2 itself, is read as written
 TEST(ini_version1_stick_clicks) {
     const Controls a = controls_from_ini("version = 1\n[player1.gamepad]\nl3 = left_stick\n[player2.gamepad]\ncross = south, right_stick\n");
-    CHECK(a.player[0].pad[std::size_t(Ds2::L3)] == std::vector<PadInput>{PadInput::LeftStick});
+    CHECK(a.player[0].pad[std::size_t(Ds2::L3)] == std::vector<PadBind>{PadInput::LeftStick});
     CHECK(a.player[0].pad[std::size_t(Ds2::L2)].empty());
-    CHECK(a.player[0].pad[std::size_t(Ds2::R2)] == std::vector<PadInput>{PadInput::RightStick});   // not rebound: the new default
-    CHECK(a.player[1].pad[std::size_t(Ds2::R2)].empty() && a.player[1].pad[std::size_t(Ds2::L2)] == std::vector<PadInput>{PadInput::LeftStick});
+    CHECK(a.player[0].pad[std::size_t(Ds2::R2)] == std::vector<PadBind>{PadInput::RightStick});   // not rebound: the new default
+    CHECK(a.player[1].pad[std::size_t(Ds2::R2)].empty() && a.player[1].pad[std::size_t(Ds2::L2)] == std::vector<PadBind>{PadInput::LeftStick});
     GamepadState g;
     g.left_stick = true;
     CHECK(!pressed(gamepad_sample(g, a.player[0]), kL2) && pressed(gamepad_sample(g, a.player[0]), int(Ds2::L3)));
     const Controls nov = controls_from_ini("[player1.gamepad]\nl3 = left_stick\n");   // no version line: version 1
     CHECK(nov.player[0].pad[std::size_t(Ds2::L2)].empty());
     const Controls b = controls_from_ini("version = 2\n[player1.gamepad]\nl3 = left_stick\n");
-    CHECK(b.player[0].pad[std::size_t(Ds2::L2)] == std::vector<PadInput>{PadInput::LeftStick});   // both (KEEP BOTH)
+    CHECK(b.player[0].pad[std::size_t(Ds2::L2)] == std::vector<PadBind>{PadInput::LeftStick});   // both (KEEP BOTH)
     const Controls k = controls_from_ini("version = 1\n[player1.gamepad]\nl3 = left_stick\nl2 = left_stick, left_paddle1\n");
-    CHECK((k.player[0].pad[std::size_t(Ds2::L2)] == std::vector<PadInput>{PadInput::LeftStick, PadInput::LeftPaddle1}));
+    CHECK((k.player[0].pad[std::size_t(Ds2::L2)] == std::vector<PadBind>{PadInput::LeftStick, PadInput::LeftPaddle1}));
     // a file of the defaults reads back as them, whatever its version
     CHECK(controls_from_ini("version = 1\n") == default_controls());
     CHECK(controls_from_ini(to_ini(a)) == a);
@@ -510,7 +518,7 @@ TEST(ini_version1_stick_clicks) {
 // ---- the rebind flow ----
 
 TEST(rebind_flow) {
-    Controls c = default_controls();
+    Controls c = classic_controls();
     RebindFlow f;
     CHECK(!f.active());
     f.begin(0, Device::Keyboard, Ds2::Cross, KeyCtx::Drive, false);
@@ -519,7 +527,7 @@ TEST(rebind_flow) {
     CHECK(f.input(c, pad(PadInput::South)) == RebindFlow::State::Waiting);   // a gamepad input: ignored
     CHECK(f.input(c, key(41)) == RebindFlow::State::Waiting);                 // Escape: reserved
     CHECK(key_reserved(41) && !key_reserved(68) && !key_reserved(62) && !key_reserved(224));   // only Escape (rebind2)
-    CHECK(c == default_controls());
+    CHECK(c == classic_controls());
     CHECK(f.input(c, key(14)) == RebindFlow::State::Done);                    // K: no other use
     CHECK(bound_text(c, 0, Device::Keyboard, Ds2::Cross, KeyCtx::Drive, PadStyle::Generic) == "K");
     // timeout
@@ -549,8 +557,8 @@ TEST(rebind_flow) {
     f.step(-1);
     CHECK(f.choice() == 2);
     CHECK(f.choose(c) == RebindFlow::State::Done);   // keep both
-    CHECK(c.player[0].pad[std::size_t(Ds2::Cross)] == std::vector<PadInput>{PadInput::East});
-    CHECK(c.player[0].pad[std::size_t(Ds2::Circle)] == std::vector<PadInput>{PadInput::East});
+    CHECK(c.player[0].pad[std::size_t(Ds2::Cross)] == std::vector<PadBind>{PadInput::East});
+    CHECK(c.player[0].pad[std::size_t(Ds2::Circle)] == std::vector<PadBind>{PadInput::East});
     // a conflict cancelled: nothing changes
     const Controls mid = c;
     f.begin(0, Device::Gamepad, Ds2::Square, KeyCtx::Any, false);
@@ -718,9 +726,13 @@ TEST(reset_one_and_all) {
     CHECK(bound_text(c, 0, Device::Keyboard, Ds2::Cross, KeyCtx::Menu, PadStyle::Generic) == "L");   // the menus' stayed
     reset_action(c, 0, Device::Keyboard, Ds2::Cross, KeyCtx::Menu);
     CHECK(c == default_controls());
+    // padlayout: a gamepad edit makes the shown layout (Auto: the Xbox one without a pad) the player's Custom bindings;
+    // back to the defaults one by one gives that layout's bindings again (still Custom: the player's own)
     rebind(c, 1, Device::Gamepad, Ds2::Cross, pad(PadInput::East), KeyCtx::Any, Resolve::Clear);
-    reset_action(c, 1, Device::Gamepad, Ds2::Cross, KeyCtx::Any);
-    reset_action(c, 1, Device::Gamepad, Ds2::Circle, KeyCtx::Any);
+    CHECK(c.player[1].layout == PadLayout::Custom);
+    for (Ds2 a : action_order()) reset_action(c, 1, Device::Gamepad, a, KeyCtx::Any);
+    CHECK(c.player[1].pad == layout_bindings(PadLayout::Xbox) && c.player[1].layout == PadLayout::Custom);
+    reset(c, 1, Device::Gamepad);
     CHECK(c == default_controls());
     c.port.keys[0].clear();
     c.player[1].gyro.mode = 1;
@@ -731,7 +743,7 @@ TEST(reset_one_and_all) {
 TEST(analog_pedals_with_the_bindings) {
     // 1.0.1 ANALOG PEDALS on the bindings path: the default player's triggers (Cross / Square's analog inputs) drive the
     // right stick; a button bound to the right stick still adds its full deflection (the larger wins)
-    PlayerControls p = default_player(0);
+    PlayerControls p = classic_player(0);
     GamepadState g;
     g.right_trigger = 16384;
     auto s = gamepad_sample(g, p);
@@ -747,6 +759,345 @@ TEST(analog_pedals_with_the_bindings) {
     g.right_trigger = 4000;   // a light pedal under a full stick: the stick's full deflection
     s = gamepad_sample(g, p);
     CHECK(s[3] == stick_y_byte(-1.0f));
+}
+
+// ---- padlayout (1.2.1): CONTROLLER LAYOUT ----
+
+namespace {
+// SDL_GamepadType's values (SDL3: UNKNOWN 0, STANDARD 1, XBOX360 2, XBOXONE 3, PS3 4, PS4 5, PS5 6, SWITCH_PRO 7,
+// JOYCON_LEFT 8, JOYCON_RIGHT 9, JOYCON_PAIR 10, GAMECUBE 11; nativepad.cpp static_asserts the header's constants)
+constexpr int kUnknown = 0, kStandard = 1, kX360 = 2, kXOne = 3, kPs3 = 4, kPs4 = 5, kPs5 = 6, kSwitchPro = 7, kJoyL = 8,
+              kJoyR = 9, kJoyPair = 10, kGameCube = 11;
+constexpr int kL1 = 10, kR1 = 11, kTriangle = 12, kSelect = 0, kStart = 3;
+// the buttons pressed in a report (bits of the 16)
+unsigned held(const std::array<std::uint8_t, 32>& s) { return ~(unsigned(s[0]) | (unsigned(s[1]) << 8)) & 0xFFFFu; }
+unsigned bits(std::initializer_list<int> b) {
+    unsigned m = 0;
+    for (int x : b) m |= 1u << x;
+    return m;
+}
+}  // namespace
+
+TEST(layout_selection_by_pad_type) {
+    CHECK(pad_family(kPs3) == PadStyle::PlayStation && pad_family(kPs4) == PadStyle::PlayStation && pad_family(kPs5) == PadStyle::PlayStation);
+    CHECK(pad_family(kX360) == PadStyle::Xbox && pad_family(kXOne) == PadStyle::Xbox);
+    for (int t : {kSwitchPro, kJoyL, kJoyR, kJoyPair, kGameCube}) CHECK(pad_family(t) == PadStyle::Nintendo);
+    for (int t : {kUnknown, kStandard, 12, 99, -1}) CHECK(pad_family(t) == PadStyle::Generic);
+    // Auto: PlayStation pads the PlayStation layout, every other pad the Xbox one; an explicit choice whatever the pad
+    for (int t = -1; t <= 12; ++t) {
+        const PadStyle f = pad_family(t);
+        CHECK(resolved_layout(PadLayout::Auto, f) == (f == PadStyle::PlayStation ? PadLayout::PlayStation : PadLayout::Xbox));
+        CHECK(resolved_layout(PadLayout::Xbox, f) == PadLayout::Xbox);
+        CHECK(resolved_layout(PadLayout::PlayStation, f) == PadLayout::PlayStation);
+        CHECK(resolved_layout(PadLayout::Custom, f) == PadLayout::Custom);
+    }
+    // the defaults: Auto for both players, the Custom bindings the 1.x layout (the report of before for a Custom player)
+    const Controls d = default_controls();
+    CHECK(d.player[0].layout == PadLayout::Auto && d.player[1].layout == PadLayout::Auto);
+    CHECK(&pad_bindings(d.player[0], PadStyle::PlayStation) == &layout_bindings(PadLayout::PlayStation));
+    CHECK(&pad_bindings(d.player[0], PadStyle::Xbox) == &layout_bindings(PadLayout::Xbox));
+    CHECK(&pad_bindings(d.player[0], PadStyle::Nintendo) == &layout_bindings(PadLayout::Xbox));
+    CHECK(&pad_bindings(d.player[0], PadStyle::Generic) == &layout_bindings(PadLayout::Xbox));
+    CHECK(pad_bindings(classic_player(0), PadStyle::PlayStation) == default_player(0).pad);
+    // names: the ini's and the pages'
+    for (PadLayout l : {PadLayout::Auto, PadLayout::Xbox, PadLayout::PlayStation, PadLayout::Custom}) CHECK(parse_pad_layout(pad_layout_key(l)) == l);
+    CHECK(parse_pad_layout(" PlayStation ") == PadLayout::PlayStation && !parse_pad_layout("nintendo"));
+    PlayerControls p = d.player[0];
+    CHECK(layout_text(p, PadStyle::Xbox, true) == "Auto: Xbox controller");
+    CHECK(layout_text(p, PadStyle::PlayStation, true) == "Auto: PlayStation controller");
+    CHECK(layout_text(p, PadStyle::Nintendo, true) == "Auto: Nintendo, Xbox layout");
+    CHECK(layout_text(p, PadStyle::Generic, false) == "Auto: no controller, Xbox layout");
+    CHECK(layout_text(p, PadStyle::Generic, true) == "Auto: controller, Xbox layout");
+    p.layout = PadLayout::PlayStation;
+    CHECK(layout_text(p, PadStyle::Xbox, true) == "PlayStation");
+    p.layout = PadLayout::Custom;
+    CHECK(layout_text(p, PadStyle::Xbox, true) == "Custom");
+}
+
+// The Xbox layout: the original Xbox game's while driving, A / B confirm / back in menus; the triggers the pedals in both
+TEST(xbox_layout_both_contexts) {
+    const PadBindings& x = layout_bindings(PadLayout::Xbox);
+    const GamepadTuning t;   // ANALOG TRIGGERS on (the default)
+    const auto one = [&](auto set, KeyCtx now) {
+        GamepadState g;
+        set(g);
+        return gamepad_sample(g, x, t, now);
+    };
+    struct Row { void (*set)(GamepadState&); unsigned drive, menus; };
+    const Row rows[] = {
+        {[](GamepadState& g) { g.south = true; }, bits({kR1}), bits({kCross})},             // A: boost / confirm
+        {[](GamepadState& g) { g.east = true; }, bits({kR2}), bits({kTriangle})},           // B: Crashbreaker / back
+        {[](GamepadState& g) { g.west = true; }, bits({kL1}), bits({kSquare})},             // X: look back / Square
+        {[](GamepadState& g) { g.north = true; }, bits({kTriangle}), bits({kCircle})},      // Y: camera / Circle
+        {[](GamepadState& g) { g.back = true; }, bits({kL2}), bits({kSelect})},             // View: music / Select
+        {[](GamepadState& g) { g.left_stick = true; }, bits({kCircle}), 0},                 // LS: the horn
+        {[](GamepadState& g) { g.right_stick = true; }, 0, 0},
+        {[](GamepadState& g) { g.left_shoulder = true; }, bits({kL1}), bits({kL1})},        // LB / RB: L1 / R1 in both
+        {[](GamepadState& g) { g.right_shoulder = true; }, bits({kR1}), bits({kR1})},
+        {[](GamepadState& g) { g.start = true; }, bits({kStart}), bits({kStart})},
+        {[](GamepadState& g) { g.dpad_up = true; }, bits({kUp}), bits({kUp})},
+        {[](GamepadState& g) { g.right_trigger = 32767; g.left_trigger = 32767; }, bits({kCross, kSquare}), bits({kCross, kSquare})},
+    };
+    for (const Row& r : rows) {
+        CHECK(held(one(r.set, KeyCtx::Drive)) == r.drive);
+        CHECK(held(one(r.set, KeyCtx::Menu)) == r.menus);
+    }
+    // a face button's pressure is full in its context, 0 in the other's (R1 byte 15, Cross byte 12)
+    CHECK(one(rows[0].set, KeyCtx::Drive)[15] == 0xFF && one(rows[0].set, KeyCtx::Drive)[12] == 0);
+    CHECK(one(rows[0].set, KeyCtx::Menu)[12] == 0xFF && one(rows[0].set, KeyCtx::Menu)[15] == 0);
+    // RT alone: the analog throttle (1.1's pedals: the right stick, not the button) in both contexts (the countdown
+    // is the menus' context); LT the brake
+    for (KeyCtx now : {KeyCtx::Drive, KeyCtx::Menu}) {
+        GamepadState g;
+        g.right_trigger = 16384;
+        auto s = gamepad_sample(g, x, t, now);
+        CHECK(!pressed(s, kCross) && s[3] == stick_y_byte(-pedal_stick(16384.0f / 32767.0f)));
+        g = {};
+        g.left_trigger = 32767;
+        s = gamepad_sample(g, x, t, now);
+        CHECK(!pressed(s, kSquare) && s[3] == stick_y_byte(pedal_stick(1.0f)));
+        // ANALOG TRIGGERS off: the buttons with the trigger's pressure, as 1.0.0
+        g = {};
+        g.right_trigger = 32767;
+        s = gamepad_sample(g, x, GamepadTuning{0.24f, 0.25f, false}, now);
+        CHECK(pressed(s, kCross) && s[12] == 0xFF && s[3] == 0x7F);
+    }
+    // in a crash both work at once: A (R1, Impact Time / Aftertouch) and B (R2, the Crashbreaker), steering on the stick
+    GamepadState g;
+    g.south = g.east = true;
+    g.left_x = -32768;
+    const auto s = gamepad_sample(g, x, t, KeyCtx::Drive);
+    CHECK(held(s) == bits({kR1, kR2}) && s[4] == 0x00 && s[15] == 0xFF && s[17] == 0xFF);
+    // the adaptive triggers' roles: LT the brake, RT the accelerator
+    CHECK(trigger_role(x, false) == 1 && trigger_role(x, true) == 2);
+    // the prompts: A / B confirm / back in menus; A boost, B Crashbreaker, X look back, RT accelerate while driving
+    const auto m = pad_glyphs(x, KeyCtx::Menu), d = pad_glyphs(x, KeyCtx::Drive);
+    CHECK(m[std::size_t(Ds2::Cross)] == Ds2::Cross && m[std::size_t(Ds2::Triangle)] == Ds2::Circle && m[std::size_t(Ds2::Square)] == Ds2::Square);
+    CHECK(d[std::size_t(Ds2::R1)] == Ds2::Cross && d[std::size_t(Ds2::R2)] == Ds2::Circle && d[std::size_t(Ds2::L1)] == Ds2::Square);
+    CHECK(d[std::size_t(Ds2::Cross)] == Ds2::R2 && d[std::size_t(Ds2::Square)] == Ds2::L2 && d[std::size_t(Ds2::Triangle)] == Ds2::Triangle);
+    CHECK(d[std::size_t(Ds2::L2)] == Ds2::Select && d[std::size_t(Ds2::Circle)] == Ds2::L3);
+    // the pages' text per view
+    Controls c = default_controls();
+    set_page_family(c, 0, PadStyle::Xbox);
+    CHECK(bound_text(c, 0, Device::Gamepad, Ds2::R1, KeyCtx::Drive, PadStyle::Xbox) == "A, RB");
+    CHECK(bound_text(c, 0, Device::Gamepad, Ds2::R1, KeyCtx::Menu, PadStyle::Xbox) == "RB");
+    CHECK(bound_text(c, 0, Device::Gamepad, Ds2::Cross, KeyCtx::Menu, PadStyle::Xbox) == "RT, A");
+    CHECK(bound_text(c, 0, Device::Gamepad, Ds2::Cross, KeyCtx::Drive, PadStyle::Xbox) == "RT");
+    CHECK(bound_text(c, 0, Device::Gamepad, Ds2::Triangle, KeyCtx::Menu, PadStyle::Xbox) == "B");
+}
+
+// The PlayStation layout: the PS2's, with the triggers as the pedals (Cross / R2 accelerate, Square / L2 brake), the
+// Crashbreaker on R3 and the music on L3; the same in both contexts; the right stick the game's
+TEST(playstation_layout_both_contexts) {
+    const PadBindings& ps = layout_bindings(PadLayout::PlayStation);
+    const GamepadTuning t;
+    std::mt19937 r(29);
+    int same = 0;
+    for (int i = 0; i < 20000; ++i) {
+        const GamepadState g = random_state(r);
+        same += gamepad_sample(g, ps, t, KeyCtx::Drive) == gamepad_sample(g, ps, t, KeyCtx::Menu);
+    }
+    CHECK(same == 20000);
+    struct Row { void (*set)(GamepadState&); unsigned want; };
+    const Row rows[] = {
+        {[](GamepadState& g) { g.south = true; }, bits({kCross})},
+        {[](GamepadState& g) { g.east = true; }, bits({kCircle})},
+        {[](GamepadState& g) { g.west = true; }, bits({kSquare})},
+        {[](GamepadState& g) { g.north = true; }, bits({kTriangle})},
+        {[](GamepadState& g) { g.left_shoulder = true; }, bits({kL1})},
+        {[](GamepadState& g) { g.right_shoulder = true; }, bits({kR1})},
+        {[](GamepadState& g) { g.left_stick = true; }, bits({kL2})},    // L3: the music track skip
+        {[](GamepadState& g) { g.right_stick = true; }, bits({kR2})},   // R3: the Crashbreaker
+        {[](GamepadState& g) { g.back = true; }, bits({kSelect})},
+        {[](GamepadState& g) { g.start = true; }, bits({kStart})},
+        {[](GamepadState& g) { g.right_trigger = 32767; g.left_trigger = 32767; }, bits({kCross, kSquare})},   // a powerslide
+    };
+    for (const Row& w : rows) {
+        GamepadState g;
+        w.set(g);
+        const auto s = gamepad_sample(g, ps, t, KeyCtx::Drive);
+        CHECK(held(s) == w.want);
+        CHECK(s[2] == 0x80 && s[3] == 0x7F);
+    }
+    // R2 / L2: the analog pedals (1.1's ANALOG TRIGGERS: the right stick, not the button), in both contexts
+    for (KeyCtx now : {KeyCtx::Drive, KeyCtx::Menu}) {
+        GamepadState g;
+        g.right_trigger = 16384;
+        auto s = gamepad_sample(g, ps, t, now);
+        CHECK(held(s) == 0 && s[3] == stick_y_byte(-pedal_stick(16384.0f / 32767.0f)));
+        g = {};
+        g.left_trigger = 32767;
+        s = gamepad_sample(g, ps, t, now);
+        CHECK(held(s) == 0 && s[3] == stick_y_byte(pedal_stick(1.0f)));
+    }
+    // the right stick: up accelerates, down brakes (the game's own right stick: control 20 / 21)
+    GamepadState g;
+    g.right_y = -32768;
+    auto s = gamepad_sample(g, ps, t);
+    CHECK(s[3] == 0x00 && held(s) == 0);
+    g.right_y = 32767;
+    g.right_x = -32768;
+    s = gamepad_sample(g, ps, t);
+    CHECK(s[3] == 0xFF && s[2] == 0x00);
+    // in a crash: R1 (Impact Time, Aftertouch) and R3 (the Crashbreaker) together
+    g = {};
+    g.right_shoulder = g.right_stick = true;
+    s = gamepad_sample(g, ps, t);
+    CHECK(held(s) == bits({kR1, kR2}) && s[15] == 0xFF && s[17] == 0xFF);
+    CHECK(trigger_role(ps, false) == 1 && trigger_role(ps, true) == 2);   // the adaptive triggers: L2 brake, R2 throttle
+    // the prompts: every button its own but L2 / R2, at the stick clicks (L3 / R3)
+    for (KeyCtx now : {KeyCtx::Menu, KeyCtx::Drive})
+        for (int b = 0; b < 16; ++b)
+            CHECK(pad_glyphs(ps, now)[std::size_t(b)] == (Ds2(b) == Ds2::L2 ? Ds2::L3 : Ds2(b) == Ds2::R2 ? Ds2::R3 : Ds2(b)));
+    // the 1.x layout (Custom's starting bindings) with the right stick added: the rest the same
+    PadBindings x = default_player(0).pad;
+    for (Ds2 a : {Ds2::RStickLeft, Ds2::RStickRight, Ds2::RStickUp, Ds2::RStickDown}) x[std::size_t(a)] = ps[std::size_t(a)];
+    CHECK(x == ps);
+}
+
+// Migration: a controls.ini from before 1.2.1 with a gamepad remap is Custom and stays exactly as it was; one with the
+// 1.x pad defaults (keyboard or gyro changes only, or no gamepad lines) is Auto. The keyboard is not touched.
+TEST(layout_migration) {
+    // the 1.x defaults: Auto
+    for (const char* f : {"", "version = 2\n", "version = 2\n[player1.keyboard]\ncross = K\n", "version = 2\n[player1.gyro]\nmode = mix\n",
+                          "version = 2\n[player1.gamepad]\ncross = south, right_trigger\n", "[player2.keyboard]\ncross = L\n"}) {
+        std::vector<std::string> w;
+        const Controls c = controls_from_ini(f, &w);
+        CHECK(c.player[0].layout == PadLayout::Auto && c.player[1].layout == PadLayout::Auto);
+        CHECK(c.player[0].pad == default_player(0).pad);
+    }
+    {   // a remap: Custom, the bindings exactly the file's; the other player Auto; the keyboard as the file says
+        const char* f = "version = 2\n[player1.keyboard]\ncross = K\n[player1.gamepad]\ncross = east\ncircle = south\n";
+        const Controls c = controls_from_ini(f);
+        CHECK(c.player[0].layout == PadLayout::Custom && c.player[1].layout == PadLayout::Auto);
+        CHECK(c.player[0].pad[std::size_t(Ds2::Cross)] == std::vector<PadBind>{PadInput::East});
+        CHECK(c.player[0].pad[std::size_t(Ds2::Circle)] == std::vector<PadBind>{PadInput::South});
+        CHECK(bound_text(c, 0, Device::Keyboard, Ds2::Cross, KeyCtx::Drive, PadStyle::Generic) == "K");
+        PlayerControls want = classic_player(0);
+        want.keys = c.player[0].keys;
+        want.pad[std::size_t(Ds2::Cross)] = {PadInput::East};
+        want.pad[std::size_t(Ds2::Circle)] = {PadInput::South};
+        CHECK(c.player[0] == want);
+        // whatever the pad: the remap (a PlayStation pad and an Xbox one alike)
+        GamepadState g;
+        g.east = true;
+        CHECK(pressed(gamepad_sample(g, c.player[0], {}, KeyCtx::Drive, PadStyle::PlayStation), kCross));
+        CHECK(pressed(gamepad_sample(g, c.player[0], {}, KeyCtx::Menu, PadStyle::Xbox), kCross));
+        // written back: an explicit layout line (version 3); read back the same
+        const std::string e = to_ini(c);
+        CHECK(e.find("version = 3") != std::string::npos && e.find("layout = custom") != std::string::npos);
+        CHECK(controls_from_ini(e) == c);
+    }
+    {   // a version 1 file whose stick click moved (padr2's migration first): Custom
+        const Controls c = controls_from_ini("[player2.gamepad]\nl3 = left_stick\n");
+        CHECK(c.player[1].layout == PadLayout::Custom && c.player[0].layout == PadLayout::Auto);
+        CHECK(c.player[1].pad[std::size_t(Ds2::L2)].empty());
+    }
+    // the defaults write no layout line; a layout line wins over the inference
+    CHECK(to_ini(default_controls()).find("\nlayout") == std::string::npos);
+    CHECK(controls_from_ini("version = 3\n[player1.gamepad]\nlayout = auto\ncross = east\n").player[0].layout == PadLayout::Auto);
+    CHECK(controls_from_ini("version = 3\n[player1.gamepad]\nlayout = custom\n").player[0].layout == PadLayout::Custom);
+    std::vector<std::string> w;
+    const Controls bad = controls_from_ini("version = 3\n[player1.gamepad]\nlayout = nintendo\n", &w);
+    CHECK(bad.player[0].layout == PadLayout::Auto && w.size() == 1 && w[0].find("layout") != std::string::npos);
+}
+
+// An explicit choice sets the layout (the Custom bindings kept for later); editing a gamepad binding makes the shown
+// layout the player's own, changed, and Custom
+TEST(layout_choice_then_edit_is_custom) {
+    Controls c = controls_from_ini("version = 2\n[player1.gamepad]\ncross = east\ncircle = south\n");   // a 1.x remap
+    const PadBindings mine = c.player[0].pad;
+    set_page_family(c, 0, PadStyle::PlayStation);
+    set_layout(c, 0, PadLayout::Xbox);
+    CHECK(c.player[0].layout == PadLayout::Xbox && c.player[0].pad == mine);   // the remap kept
+    CHECK(pad_bindings(c.player[0], PadStyle::PlayStation) == layout_bindings(PadLayout::Xbox));
+    CHECK(bound_text(c, 0, Device::Gamepad, Ds2::R2, KeyCtx::Drive, PadStyle::Xbox) == "B");
+    // round trip of every choice
+    for (PadLayout l : {PadLayout::Auto, PadLayout::Xbox, PadLayout::PlayStation, PadLayout::Custom}) {
+        Controls k = c;
+        set_layout(k, 0, l);
+        CHECK(controls_from_ini(to_ini(k)) == k);
+    }
+    set_layout(c, 0, PadLayout::Custom);
+    CHECK(c.player[0].pad == mine);   // back to the remap
+    // Xbox, then an edit in the driving view: Custom, the Xbox layout with that change
+    set_layout(c, 0, PadLayout::Xbox);
+    rebind(c, 0, Device::Gamepad, Ds2::R2, pad(PadInput::RightStick), KeyCtx::Drive, Resolve::Keep);   // Crashbreaker on RS
+    CHECK(c.player[0].layout == PadLayout::Custom);
+    PadBindings want = layout_bindings(PadLayout::Xbox);
+    want[std::size_t(Ds2::R2)] = {PadBind{PadInput::RightStick, KeyCtx::Drive}};
+    CHECK(c.player[0].pad == want);
+    GamepadState g;
+    g.right_stick = true;
+    CHECK(held(gamepad_sample(g, c.player[0], {}, KeyCtx::Drive, PadStyle::PlayStation)) == bits({kR2}));
+    CHECK(held(gamepad_sample(g, c.player[0], {}, KeyCtx::Menu, PadStyle::PlayStation)) == 0);
+    {   // written with the contexts, read back the same
+        const std::string e = to_ini(c);
+        CHECK(e.find("r2 = right_stick@driving") != std::string::npos && e.find("r1 = south@driving, right_shoulder") != std::string::npos);
+        CHECK(controls_from_ini(e) == c);
+    }
+    // Auto on a PlayStation pad, then a conflict swap in the menus view: Cross <-> Triangle in menus only
+    Controls a = default_controls();
+    set_page_family(a, 0, PadStyle::PlayStation);
+    CHECK((uses(a, 0, Device::Gamepad, Ds2::Cross, pad(PadInput::North), KeyCtx::Menu) == std::vector<Use>{Use{0, Ds2::Triangle}}));
+    rebind(a, 0, Device::Gamepad, Ds2::Cross, pad(PadInput::North), KeyCtx::Menu, Resolve::Swap);
+    CHECK(a.player[0].layout == PadLayout::Custom);
+    CHECK(bound_text(a, 0, Device::Gamepad, Ds2::Cross, KeyCtx::Menu, PadStyle::PlayStation) == "TRIANGLE");
+    CHECK(bound_text(a, 0, Device::Gamepad, Ds2::Cross, KeyCtx::Drive, PadStyle::PlayStation) == "CROSS, R2");
+    CHECK(bound_text(a, 0, Device::Gamepad, Ds2::Triangle, KeyCtx::Menu, PadStyle::PlayStation) == "CROSS");
+    // nothing changed (a removal of nothing, a reset of what is already the default): the layout stays
+    Controls b = default_controls();
+    set_page_family(b, 0, PadStyle::Xbox);
+    remove_last(b, 0, Device::Gamepad, Ds2::L3, KeyCtx::Any);
+    reset_action(b, 0, Device::Gamepad, Ds2::Cross, KeyCtx::Drive);
+    CHECK(b == default_controls());
+    // the rebind flow in a gamepad view: the message names it; cancelled, nothing changes
+    RebindFlow f;
+    f.begin(0, Device::Gamepad, Ds2::R1, KeyCtx::Drive, false);
+    CHECK(f.view() == KeyCtx::Drive && f.message(PadStyle::Xbox).find("FOR PLAYER 1 R1 (WHILE DRIVING)") != std::string::npos);
+    CHECK(f.input(b, pad(PadInput::East)) == RebindFlow::State::Conflict);   // B is R2 while driving
+    CHECK((f.conflicts() == std::vector<Use>{Use{0, Ds2::R2}}));
+    f.cancel();
+    CHECK(b == default_controls());
+    // reset: the device back to Auto (and the 1.x Custom bindings)
+    reset(c, 0, Device::Gamepad);
+    CHECK(c.player[0] == default_controls().player[0]);
+}
+
+// Two players, two pads: each player's layout resolved by that player's pad
+TEST(layout_two_players_two_pads) {
+    const Controls c = default_controls();
+    GamepadState g;
+    g.south = true;
+    // player 1 on a DualSense (PlayStation layout), player 2 on an Xbox pad
+    const auto p1 = gamepad_sample(g, c.player[0], {}, KeyCtx::Drive, pad_family(kPs5));
+    const auto p2 = gamepad_sample(g, c.player[1], {}, KeyCtx::Drive, pad_family(kXOne));
+    CHECK(held(p1) == bits({kCross}) && held(p2) == bits({kR1}));
+    // in menus both confirm with the bottom button
+    CHECK(held(gamepad_sample(g, c.player[0], {}, KeyCtx::Menu, pad_family(kPs5))) == bits({kCross}));
+    CHECK(held(gamepad_sample(g, c.player[1], {}, KeyCtx::Menu, pad_family(kXOne))) == bits({kCross}));
+    // a Switch Pro (Nintendo: by position) is the Xbox layout: its bottom button (B) boosts and confirms, its right
+    // one (A) is the Crashbreaker and goes back
+    CHECK(held(gamepad_sample(g, c.player[1], {}, KeyCtx::Drive, pad_family(kSwitchPro))) == bits({kR1}));
+    g = {};
+    g.east = true;
+    CHECK(held(gamepad_sample(g, c.player[1], {}, KeyCtx::Menu, pad_family(kSwitchPro))) == bits({kTriangle}));
+    // player 2 explicitly PlayStation on the Xbox pad, player 1 Custom (the 1.x layout): each their own
+    Controls k = c;
+    set_layout(k, 1, PadLayout::PlayStation);
+    set_layout(k, 0, PadLayout::Custom);
+    g = {};
+    g.right_stick = true;
+    CHECK(held(gamepad_sample(g, k.player[1], {}, KeyCtx::Drive, pad_family(kXOne))) == bits({kR2}));   // R3: the Crashbreaker
+    CHECK(held(gamepad_sample(g, k.player[0], {}, KeyCtx::Drive, pad_family(kXOne))) == bits({kR2}));   // 1.x: RS the Crashbreaker
+    g = {};
+    g.east = true;   // B / Circle: the Crashbreaker on the Xbox layout (player 1 here: 1.x, Circle), the horn on the PlayStation one
+    CHECK(held(gamepad_sample(g, k.player[1], {}, KeyCtx::Drive, pad_family(kXOne))) == bits({kCircle}));
+    CHECK(held(gamepad_sample(g, c.player[1], {}, KeyCtx::Drive, pad_family(kXOne))) == bits({kR2}));
+    // an edit of player 2's pad leaves player 1's alone
+    set_page_family(k, 1, PadStyle::Xbox);
+    rebind(k, 1, Device::Gamepad, Ds2::Cross, pad(PadInput::LeftPaddle1), KeyCtx::Any, Resolve::Keep, true);
+    CHECK(k.player[1].layout == PadLayout::Custom && k.player[0].layout == PadLayout::Custom && k.player[0].pad == default_player(0).pad);
 }
 
 TEST_MAIN("test_input_bindings: control remapping (src/native/input_bindings.h)")

@@ -47,7 +47,9 @@ trigger_threshold, 0.01, 1).
   padr2, 2026-11-13.)
   A bound button sets its digital bit when held, and its pressure byte (if it has one) to 255 when held, 0 when not:
   L2 / R2 from the stick clicks too (bytes 16 / 17), as the bindings path gives every digital input on a button with
-  a pressure byte (`input_bindings.h` `gamepad_sample(g, default_player(p), t)` equals this function byte for byte).
+  a pressure byte (`input_bindings.h` `gamepad_sample(g, default_player(p).pad, t)` equals this function byte for byte: the 1.x
+  layout, which 1.2.1 keeps as the Custom layout's starting bindings; the default CONTROLLER LAYOUT is Auto, the
+  console layouts of docs/pc-settings.md §7.25).
 - Triggers as analog pedals: t = clamp(max(raw, 0) / 32767, 0, 1). Cross's pressure = round(255 · max(South ? 1 : 0,
   t_right)), Cross pressed when South is held or t_right ≥ θ; Square likewise with West and the left trigger. (A
   trigger below the threshold still reports its pressure: the game's accelerator / brake read the pressure.)

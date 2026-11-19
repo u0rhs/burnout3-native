@@ -81,6 +81,14 @@ TEST(config_ini_round_trip) {
     u.update.latest.notes = {"What's new", "Split screen"};
     u.update.error = "timed out";
     CHECK(config_from_ini(config_to_ini(u)) == u);
+    // issue #8: ADD TO STEAM's own pictures; none chosen: no lines
+    CHECK(config_to_ini(c).find("steam_") == std::string::npos);
+    Config st = c;
+    st.steam_cover = "/home/me/Pictures/my cover.jpg";
+    st.steam_hero = "C:\\Users\\me\\Pictures\\hero.png";
+    CHECK(config_from_ini(config_to_ini(st)) == st && config_from_ini(config_to_ini(st)).steam_logo.empty());
+    st.steam_logo = "/l.png";
+    CHECK(config_from_ini(config_to_ini(st)) == st);
     const fs::path dir = fresh("config");
     Config e;
     CHECK(!load_config(dir / "launcher.ini", e));
@@ -457,6 +465,8 @@ TEST(music_rows_are_the_games) {
     CHECK(pl.label == "PLAYLIST" && pl.kind == b3settings::RowKind::kChoice && !pl.disabled);
     CHECK((pl.values == std::vector<std::string>{"EA Trax only", "Custom only", "Mixed"}));
     CHECK(pl.value == 0);   // the default: the game's music untouched (the feature off)
+    const b3settings::Row cv = custom_music_volume_row(st);   // musicvol1: the game's row, the same ini key
+    CHECK(cv.label == "CUSTOM MUSIC VOLUME" && cv.kind == b3settings::RowKind::kSlider && cv.levels == 21 && cv.value == 10);
     st.music_folder = "/music/mine";
     rows = music_rows(st, "3 songs found.");
     CHECK(music_row(rows, "REMOVE MUSIC FOLDER") && music_row(rows, "PLAYLIST"));

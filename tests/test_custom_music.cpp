@@ -291,7 +291,76 @@ TEST(wav_folder_decode_resample_play) {
     r.play(false);
     for (int k = 0; k < 70 && !r.finished(); ++k) r.mix(block, 800);
     CHECK(r.frames_mixed() >= 23990 && r.frames_mixed() <= 24010);
+    // musicvol1: gain 4 (CUSTOM MUSIC VOLUME 200 % on a loud stream): the file's 0.5 would be 2.0 of full scale; the
+    // limiter holds the song's peaks at its ceiling, so nothing clips
+    b3music::Player h;
+    CHECK(h.start(tracks[0], 0, &why));
+    h.set_gain(4.0f);
+    h.play(false);
+    int saturated = 0;
+    for (int k = 0; k < 70 && !h.finished(); ++k) {
+        std::fill(std::begin(block), std::end(block), std::int16_t(0));
+        h.mix(block, 800);
+        for (std::int16_t v : block) saturated += v == 32767 || v == -32768;
+    }
+    CHECK(saturated == 0);
+    CHECK(double(h.peak()) <= b3music::Limiter::kCeiling * 32767.0 + 1.0);
+    CHECK(double(h.peak()) >= b3music::Limiter::kCeiling * 32767.0 * 0.98);
+    CHECK(h.limiter().limited() > 40000);
+    CHECK_NEAR(double(h.limiter().min_gain()), b3music::Limiter::kCeiling / 2.0, 0.01);
     fs::remove_all(dir, ec);
+}
+
+TEST(music_limiter) {
+    using b3music::Limiter;
+    constexpr std::size_t D = Limiter::kLookahead - 1;   // the delay
+    // below the ceiling: the input exactly, D frames later
+    {
+        Limiter lim;
+        std::vector<float> in(2 * 4000), out;
+        for (std::size_t k = 0; k < 4000; ++k) {
+            in[2 * k] = 0.8f * float(std::sin(0.05 * double(k)));
+            in[2 * k + 1] = -0.5f * float(std::sin(0.031 * double(k)));
+        }
+        out = in;
+        for (std::size_t at = 0; at < 4000; at += 700) lim.run(out.data() + 2 * at, std::min<std::size_t>(700, 4000 - at));   // any block size
+        bool exact = true;
+        for (std::size_t k = 0; k < D; ++k) exact = exact && out[2 * k] == 0.0f && out[2 * k + 1] == 0.0f;
+        for (std::size_t k = D; k < 4000; ++k) exact = exact && out[2 * k] == in[2 * (k - D)] && out[2 * k + 1] == in[2 * (k - D) + 1];
+        CHECK(exact);
+        CHECK(lim.limited() == 0);
+    }
+    // a burst at 4x full scale between quiet parts: the output never above the ceiling, the gain smooth (no step larger
+    // than a ramp over the look-ahead), back to 1 after the release
+    {
+        Limiter lim;
+        const std::size_t n = 48000;
+        std::vector<float> x(2 * n);
+        for (std::size_t k = 0; k < n; ++k) {
+            const float a = (k >= 10000 && k < 14000) ? 4.0f : 0.25f;
+            x[2 * k] = a * float(std::sin(0.07 * double(k)));
+            x[2 * k + 1] = a * float(std::cos(0.07 * double(k)));
+        }
+        std::vector<float> y = x;
+        lim.run(y.data(), n);
+        float top = 0.0f, worst_step = 0.0f, prev_g = 1.0f;
+        for (std::size_t k = D; k < n; ++k) {
+            top = std::max(top, std::max(std::fabs(y[2 * k]), std::fabs(y[2 * k + 1])));
+            const float in_l = x[2 * (k - D)], in_r = x[2 * (k - D) + 1];
+            const float m = std::max(std::fabs(in_l), std::fabs(in_r));
+            if (m > 0.1f) {   // the gain this frame (every frame: the quiet part's peak is at least 0.177)
+                const float g = std::max(std::fabs(y[2 * k]), std::fabs(y[2 * k + 1])) / m;
+                worst_step = std::max(worst_step, std::fabs(g - prev_g));
+                prev_g = g;
+            }
+        }
+        CHECK(top <= Limiter::kCeiling * 1.0001f);
+        CHECK(top >= Limiter::kCeiling * 0.99f);
+        CHECK(worst_step < 0.75f / float(Limiter::kLookahead) + 0.01f);
+        CHECK(lim.min_gain() < Limiter::kCeiling / 4.0f + 0.01f && lim.min_gain() > Limiter::kCeiling / 4.0f - 0.05f);
+        // the quiet part after the burst: back at the input (within 1 %) a second later
+        CHECK_NEAR(double(y[2 * (n - 1)]), double(x[2 * (n - 1 - D)]), 0.0025);
+    }
 }
 
 TEST(ea_trax_modes_store) {

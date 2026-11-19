@@ -2954,8 +2954,12 @@ namespace b3replay {
 // FOV move) becomes d x chase_distance (the eye moved back along the view; a closer view stops kClearance short of the
 // car's rear), the eye rises chase_height along the camera's up, and the camera turns about the axis between its old
 // and new view directions so that the point it looked at (d ahead) stays at the centre. Without a chased car: unchanged.
+// sigcam (1.2): only the game's chase cameras take it (Camera::chase, from its camera manager: capture.cpp chase_share);
+// its takedown cameras (a signature takedown's too), crash and other cameras are drawn as the game frames them, and a
+// blend between a chase camera and another takes the offset in step with the game's blend.
 void View::apply_fov(Camera& c, const std::vector<Vehicle>& vehicles) const {
-    const bool chase = chase_distance != 1.0f || chase_height != 0.0f;
+    const float share = std::clamp(c.chase, 0.0f, 1.0f);
+    const bool chase = (chase_distance != 1.0f || chase_height != 0.0f) && share > 0.0f;
     if ((fov_scale == 1.0f && !chase) || !c.valid) return;
     if (fov_scale != 1.0f) {
         c.half_w *= fov_scale;
@@ -2998,13 +3002,13 @@ void View::apply_fov(Camera& c, const std::vector<Vehicle>& vehicles) const {
     const float d = best - move;   // the chased car's distance now
     float aim[3];                  // the point the camera looks at, d ahead
     for (int k = 0; k < 3; ++k) aim[k] = c.m.r[3][k] + at[k] * d;
-    float back = d * (chase_distance - 1.0f);
+    float back = d * (chase_distance - 1.0f) * share;
     if (back < 0.0f) back = std::max(back, -std::max(0.0f, best_rear - move - kClearance));
     float up[3] = {c.m.r[1][0], c.m.r[1][1], c.m.r[1][2]};
     const float ul = std::sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
     if (!(ul > 1e-6f)) return;
     for (float& u : up) u /= ul;
-    for (int k = 0; k < 3; ++k) c.m.r[3][k] += -at[k] * back + up[k] * chase_height;
+    for (int k = 0; k < 3; ++k) c.m.r[3][k] += -at[k] * back + up[k] * chase_height * share;
     float to[3] = {aim[0] - c.m.r[3][0], aim[1] - c.m.r[3][1], aim[2] - c.m.r[3][2]};
     const float tl = std::sqrt(to[0] * to[0] + to[1] * to[1] + to[2] * to[2]);
     if (!(tl > 1e-6f)) return;

@@ -1,13 +1,13 @@
 // update.h -- update1: the launcher tells the player when a newer release of the port is out (no SDL; the request
 // itself is update_net.h, tests/test_launcher_update.cpp).
 //
-// Once a day at most (and on "Check now" in the launcher's Settings), when the player has not turned it off, the
-// launcher asks GitHub's API for the repository's latest release:
+// Each time the launcher starts (1.2.1; before: once a day), unless it checked under kInterval ago, and on "Check now"
+// in the launcher's Settings, when the player has not turned it off, the launcher asks GitHub's API for the repository's latest release:
 //   GET https://api.github.com/repos/u0rhs/burnout3-native/releases/latest
 //   User-Agent: b3port-launcher/<version>, Accept: application/vnd.github+json (nothing else is sent)
 // and compares its tag ("v0.2.0") with the running build's version (b3report/version.h: "0.1.0-test+1a2b3c4d"). The
-// answer is remembered in launcher.ini (the update_* keys), so a start within the day shows the same result without
-// asking again. The launcher never downloads or installs anything: the Play page's banner opens the release page in
+// answer is remembered in launcher.ini (the update_* keys), so a quick restart (within kInterval) shows the same result
+// without asking again. The launcher never downloads or installs anything: the Play page's banner opens the release page in
 // the system browser.
 #ifndef B3LAUNCHER_UPDATE_H
 #define B3LAUNCHER_UPDATE_H
@@ -24,7 +24,7 @@ namespace b3launcher::update {
 
 inline constexpr const char* kLatestUrl = "https://api.github.com/repos/u0rhs/burnout3-native/releases/latest";
 inline constexpr const char* kReleasesPage = "https://github.com/u0rhs/burnout3-native/releases";
-inline constexpr std::int64_t kInterval = 24 * 60 * 60;   // seconds between two automatic checks
+inline constexpr std::int64_t kInterval = 5 * 60;   // 1.2.1: each launcher start checks, unless the last check was under 5 minutes ago
 // "b3port-launcher/0.1.0-test+1a2b3c4d": the request's User-Agent (GitHub's API refuses a request without one)
 std::string user_agent(std::string_view version);
 

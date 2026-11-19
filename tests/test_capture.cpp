@@ -5,6 +5,9 @@
 
 #include "../src/b3replay/capture.h"
 
+#include <tuple>
+#include <utility>
+
 namespace {
 using b3replay::Image;
 
@@ -78,6 +81,46 @@ TEST(capture_other_view_car_not_hidden) {
     cap.decode(im, t);
     const auto* a = find(t, kCarA);
     CHECK(a != nullptr && !a->own_hidden);
+}
+
+// sigcam (1.2): Camera::chase, the share of the drawn-only chase camera offset (View::apply_fov) the game camera takes,
+// from the camera manager's active behaviours +0xB80: the chase slots 2 / 3 take all of it, the takedown camera (slot 1),
+// the own crash (6) and the rest none; a blend (slot 10, 0x400) from slot +0x9F0 to +0x9F4 over +0x9E8 seconds takes
+// it in step (GetTimeElapsed's case 2: +0x9EC - +0x9E4, its kind at +0xA04); a capture without the manager keeps 1.
+TEST(capture_chase_share_follows_the_game_camera) {
+    for (const auto& [flags, share] : {std::pair{0x4u, 1.0f}, {0x8004u, 1.0f}, {0x8u, 1.0f}, {0x2u, 0.0f}, {0x8002u, 0.0f},
+                                       {0x40u, 0.0f}, {0x10u, 0.0f}, {0x0u, 0.0f}}) {
+        Image im;
+        scene(im, flags);
+        b3replay::Capture cap;
+        b3replay::Tick t;
+        cap.decode(im, t);
+        CHECK(t.cam.chase == share);
+    }
+    // blends: chase -> takedown camera, takedown camera -> chase, crash -> crash, at a quarter of their 0.5 s
+    for (const auto& [from, to, share] : {std::tuple{2u, 1u, 0.75f}, {1u, 2u, 0.25f}, {7u, 6u, 0.0f}, {3u, 2u, 1.0f}}) {
+        Image im;
+        scene(im, 0x400);
+        std::vector<std::uint8_t> m(0x30, 0);
+        putf(m, 0x9E4 - 0x9E0, 10.0f);     // the blend's start
+        putf(m, 0x9E8 - 0x9E0, 0.5f);      // its length
+        putf(m, 0x9EC - 0x9E0, 10.125f);   // now
+        put32(m, 0x9F0 - 0x9E0, from);
+        put32(m, 0x9F4 - 0x9E0, to);
+        put32(m, 0xA04 - 0x9E0, 2);        // GetTimeElapsed's kind: the behaviour's own clock
+        im.write(kPcm + 0x9E0, m.data(), 0x30);
+        b3replay::Capture cap;
+        b3replay::Tick t;
+        cap.decode(im, t);
+        CHECK(std::fabs(t.cam.chase - share) < 1e-5f);
+    }
+    Image im;   // no camera manager captured (older recordings): the offset as before
+    std::vector<std::uint8_t> fx(0x10, 0);
+    im.write(0x1D9D200 + 0x2600 + 0x14630, fx.data(), 0x10);
+    b3replay::Capture cap;
+    b3replay::Tick t;
+    cap.decode(im, t);
+    CHECK(t.cam.chase == 1.0f);
 }
 
 // perf1 (docs/native-renderer.md §33): CB3GameData::Draw(0) 0x14E8C0's finish lines. A race logic's

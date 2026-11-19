@@ -126,7 +126,7 @@ extern "C" void func_003A4A80(UnkStruct_3A4A80 * self, int n, int n2, int * text
     }
     ps2f base = 168.0f;
     if (names2 == 0) {
-        base = base + 100.0f / 2.0f;
+        base = base + D_004C9E88.v.marValues[1] / 2.0f;   /* decomp2host T47: retail's y offset is the icon's half height (lwc1 D_004C9E8C, div.s 2.0, 0x3A4E20) */
     }
     for (i = 1; i <= n2; i++) {
         *b3host::pcast<b3host::gp<CGt2dObject>>((b3host::pcast<char>(self) + 0x88 + i * 12)) = ConstructObject__10CGt2dSceneFiP10CGt2dFrame(scene, self->field_8 + 1, root);
@@ -152,7 +152,7 @@ extern "C" void func_003A4A80(UnkStruct_3A4A80 * self, int n, int n2, int * text
                     v = 0;
                 }
             }
-            Prepare__16CGt2dObjectImageFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dP10CGtTextureRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2d(*b3host::pcast<b3host::gp<CGt2dObject>>((b3host::pcast<char>(self) + 0x88 + i * 12)), CGtV2d(cols[2] - 10.0f, 0.0f + base + (ps2f)(i - 1) * 32.0f), CGtV2d(0.0f, 0.0f), D_004C9E88.v, col, tex, CGtV2d(0.0f, 0.0f), CGtV2d(1.0f, 1.0f), v);
+            Prepare__16CGt2dObjectImageFRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2dQ29GtMathPs26CGtV4dP10CGtTextureRCQ29GtMathPs26CGtV2dRCQ29GtMathPs26CGtV2d(*b3host::pcast<b3host::gp<CGt2dObject>>((b3host::pcast<char>(self) + 0x88 + i * 12)), CGtV2d(cols[2] - 10.0f, 0.0f + base + (ps2f)(i - 1) * 32.0f), CGtV2d(0.0f, 0.5f) /* decomp2host T47: retail's anchor (0, 0.5), sw 0x3F000000 0x114(sp), 0x3A4F38 */, D_004C9E88.v, col, tex, CGtV2d(0.0f, 0.0f), CGtV2d(1.0f, 1.0f), v);
         }
     }
 }

@@ -41,7 +41,7 @@ GyroControls gyro_on(std::uint8_t mode, std::uint8_t axis = 0) {
     g.axis = axis;
     return g;
 }
-std::array<std::uint8_t, 32> report(GamepadState s) { return gamepad_sample(s, default_player(0)); }
+std::array<std::uint8_t, 32> report(GamepadState s) { return gamepad_sample(s, default_player(0).pad); }   // the 1.x layout
 }  // namespace
 
 // ---- the angle and the steering ----
@@ -212,7 +212,7 @@ TEST(gyro_stick_values) {
     GamepadState rs;
     rs.right_x = -32768;
     apply_gyro(rs, g, gyro_on(1), true, false, held);
-    CHECK(gamepad_sample(rs, swapped)[4] == stick_x_byte(std::clamp(-1.0f + gs, -1.0f, 1.0f)));
+    CHECK(gamepad_sample(rs, swapped.pad)[4] == stick_x_byte(std::clamp(-1.0f + gs, -1.0f, 1.0f)));
 }
 
 TEST(gyro_off_or_not_driving_leaves_the_report) {
@@ -322,13 +322,17 @@ TEST(trigger_effects_over_a_race) {
 
 TEST(trigger_roles_from_the_bindings) {
     PlayerControls p = default_player(0);
-    CHECK(trigger_role(p, false) == 1 && trigger_role(p, true) == 2);   // the left trigger brakes, the right accelerates
+    CHECK(trigger_role(p.pad, false) == 1 && trigger_role(p.pad, true) == 2);   // the left trigger brakes, the right accelerates
     p.pad[std::size_t(Ds2::Square)] = {PadInput::West, PadInput::RightTrigger};
     p.pad[std::size_t(Ds2::Cross)] = {PadInput::South, PadInput::LeftTrigger};
-    CHECK(trigger_role(p, false) == 2 && trigger_role(p, true) == 1);
+    CHECK(trigger_role(p.pad, false) == 2 && trigger_role(p.pad, true) == 1);
     p.pad[std::size_t(Ds2::Cross)] = {PadInput::South};
     p.pad[std::size_t(Ds2::Square)] = {PadInput::West};
-    CHECK(trigger_role(p, false) == 0 && trigger_role(p, true) == 0);
+    CHECK(trigger_role(p.pad, false) == 0 && trigger_role(p.pad, true) == 0);
+    // padlayout: both console layouts' triggers are the pedals (a DualSense on Auto: the PlayStation layout)
+    CHECK(trigger_role(layout_bindings(PadLayout::Xbox), false) == 1 && trigger_role(layout_bindings(PadLayout::Xbox), true) == 2);
+    CHECK(trigger_role(pad_bindings(default_player(0), PadStyle::PlayStation), false) == 1 &&
+          trigger_role(pad_bindings(default_player(0), PadStyle::PlayStation), true) == 2);
 }
 
 TEST_MAIN("pad1: gyro steering and DualSense adaptive triggers (src/native/pad_gyro.h, pad_triggers.h)")

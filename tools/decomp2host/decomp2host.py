@@ -1127,6 +1127,52 @@ def t46_local_arrays(text, report=None):
     return text, n
 
 
+# 1.2.1 T47: a statement a draft gets wrong against retail's code, written as retail has it. Function address ->
+# [(a regex the draft's text matches exactly once inside the marked function, its replacement, retail's evidence)]. A
+# pattern that no longer matches once (the decomp changed or fixed the draft) stops the generation, so the entry is
+# looked at again.
+T47_DRAFT_FIXES = {
+    # CB3TabbedDisplayComponent::SetRecordsContentPanelContents (DRIVER DETAILS > RECORDS, the CAR column). Retail
+    # places each car icon at y = 168 + D_004C9E88.y / 2 + 32 (i - 1), anchored at its left middle (0, 0.5), so the
+    # icon's middle lies half an icon below the row's top, beside the name and time. The draft has 168 + 100 / 2 and
+    # the anchor (0, 0): every icon 50 units (1.6 rows) below its row, the last ones below the panel.
+    0x003A4A80: [
+        (r"base = base \+ 100\.0f / 2\.0f;",
+         "base = base + D_004C9E88.v.marValues[1] / 2.0f;   /* decomp2host T47: retail's y offset is the icon's half "
+         "height (lwc1 D_004C9E8C, div.s 2.0, 0x3A4E20) */",
+         "half height"),
+        (r"(0\.0f \+ base \+ \((?:float|ps2f)\)\(i - 1\) \* 32\.0f\), )CGtV2d\(0\.0f, 0\.0f\)(, D_004C9E88\.v,)",
+         r"\1CGtV2d(0.0f, 0.5f) /* decomp2host T47: retail's anchor (0, 0.5), sw 0x3F000000 0x114(sp), 0x3A4F38 */\2",
+         "anchor"),
+    ],
+}
+
+
+def t47_draft_fixes(text, report=None):
+    """1.2.1 T47 (see T47_DRAFT_FIXES): in the marked function of each entry, each pattern (matched once) -> retail's
+    form. Returns (text, count)."""
+    n = 0
+    for addr, fixes in T47_DRAFT_FIXES.items():
+        mk = re.search(r"^//\s*0x%08X\b.*$" % addr, text, re.M | re.I)
+        if not mk:
+            continue
+        end = re.search(r"^\}", text[mk.end():], re.M)
+        if not end:
+            die("T47: no end of the function marked 0x%08X" % addr)
+        lo, hi = mk.end(), mk.end() + end.end()
+        body = text[lo:hi]
+        for pat, repl, what in fixes:
+            if len(re.findall(pat, body)) != 1:
+                die("T47: 0x%08X: the draft's %s (`%s`) is not there once (decomp changed it? update T47_DRAFT_FIXES)" %
+                    (addr, what, pat))
+            body = re.sub(pat, repl, body)
+            n += 1
+            if report is not None:
+                report.append("T47 %08X: %s as retail" % (addr, what))
+        text = text[:lo] + body + text[hi:]
+    return text, n
+
+
 def fix_markers(fns, names_by_addr, report=None):
     """A `// 0xADDR` marker sometimes sits above an inline helper that the decomp placed before the function itself
     (B3VehicleDeform_003E18E0.cpp: the marker, then func_003E18E0_inl1, then GetClosestBitToPoint). A marked definition
@@ -5480,6 +5526,10 @@ def call_stubs(path, decomp, report, compiled=None, defined_elsewhere=frozenset(
     text, n_t46 = t46_local_arrays(text, report)
     if n_t46:
         sys.stderr.write("decomp2host: T46 %s: %d local array(s) sized as retail's frame\n" % (os.path.basename(path), n_t46))
+    # 1.2.1 T47: a draft's statement written as retail has it (T47_DRAFT_FIXES)
+    text, n_t47 = t47_draft_fixes(text, report)
+    if n_t47:
+        sys.stderr.write("decomp2host: T47 %s: %d statement(s) as retail\n" % (os.path.basename(path), n_t47))
     if (macros or stubs) and os.environ.get("DECOMP2HOST_T31C") == "1":
         # boot2 E1 (c): a local aggregate reaching a guest call (the bounce window covers max(256, sizeof(pointee))
         # from the pointer): the whole object onto the guest stack (T31); one count line per unit on stderr
@@ -5529,9 +5579,9 @@ def call_stubs(path, decomp, report, compiled=None, defined_elsewhere=frozenset(
                 " ".join("%s=%d" % kv for kv in sorted(why.items()))))
             for h in left:
                 sys.stderr.write("decomp2host: E1c-left %s: %s (%s) in %s\n" % (os.path.basename(path), h[2], h[1], h[0]))
-    # 1.2.0: a T41 / T46 rewrite is kept in a unit with no stub or macro too (func_002B7DB0 calls nothing: its T46
-    # was dropped)
-    if macros or stubs or n_t41 or n_t46:
+    # 1.2.0: a T41 / T46 (1.2.1: T47) rewrite is kept in a unit with no stub or macro too (func_002B7DB0 calls nothing:
+    # its T46 was dropped)
+    if macros or stubs or n_t41 or n_t46 or n_t47:
         open(path, "w").write(text)
     if macros or stubs:
         report.append("calls: %d extern C, %d C++, %d virtual" % (n_c, n_cpp, n_v))

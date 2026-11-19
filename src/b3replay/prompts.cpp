@@ -316,9 +316,11 @@ void key_label(Canvas& c, const Box& b, std::uint16_t s, float max_cap) {
 }
 
 // The base of a round button (a face button, a stick): a dark disc in a white ring, as the game's ring
-void round_base(Canvas& c, float cx, float cy, float u) {
-    c.disc(cx, cy, 9.4f * u, kShade);
-    c.ring(cx, cy, 9.4f * u, std::max(1.0f, 1.7f * u), kWhite);
+void round_base(Canvas& c, float cx, float cy, float u, float r_max = 1e30f) {
+    // 1.2.1: at most r_max (a stick's ring drawn in a shoulder picture's lower cell: R2's Crashbreaker on R3)
+    const float r = std::min(9.4f * u, r_max);
+    c.disc(cx, cy, r, kShade);
+    c.ring(cx, cy, r, std::max(1.0f, 1.7f * u * r / (9.4f * u)), kWhite);
 }
 
 // A key cap filling the box (a little in from its edges)
@@ -354,7 +356,7 @@ void paint_base(Canvas& c, const Box& b, PromptDevice d, PadButton pb) {
         c.box_outline(b.cx(), b.cy(), hx, hy, hy, std::max(1.0f, 1.5f * u), kWhite);
         return;
     }
-    round_base(c, b.cx(), b.cy(), b.u);
+    round_base(c, b.cx(), b.cy(), b.u, 0.5f * std::min(b.w, b.h) - 0.6f * b.u);
 }
 
 void paint_symbol(Canvas& c, const Box& b, PromptDevice d, PadButton pb, const PromptKeys& keys) {
@@ -536,7 +538,8 @@ void PromptAtlas::build(PromptDevice d, const PromptKeys& keys, int window_h) {
             arms_[lr ? 1 : 0] = r;
         } else {
             const PadButton b = PadButton(want[i].kind / 2);
-            if (want[i].kind % 2 == 0) paint_base(c, box, d, b);
+            // 1.2.1: the base too is the bound position's (a shoulder picture bound to a stick click draws a ring, not a pill)
+            if (want[i].kind % 2 == 0) paint_base(c, box, d, d == PromptDevice::kKeyboard ? b : keys.shown(b));
             else paint_symbol(c, box, d, d == PromptDevice::kKeyboard ? b : keys.shown(b), keys);   // remap1: the bound position's symbol
             cells_[std::size_t(want[i].kind)] = r;
         }

@@ -165,7 +165,9 @@ B3R_EXPORT int b3r_pad_sample(int port, unsigned char* out, float dt) {
 }
 // Scripted input for tests: an SDL scancode down (1) / up (0), as the window's key event.
 B3R_EXPORT void b3r_pad_key(int scancode, int down) {
-    if (scancode > 0 && scancode < 512) b3replay::NativePad::instance().key(static_cast<std::uint16_t>(scancode), down != 0);
+    // padlayout: kTestPadCode.. the scripted test pad's inputs (B3NATIVE_TEST_PAD; ignored without it)
+    if ((scancode > 0 && scancode < 512) || (scancode >= b3replay::NativePad::kTestPadCode && scancode < b3replay::NativePad::kTestPadCode + 64))
+        b3replay::NativePad::instance().key(static_cast<std::uint16_t>(scancode), down != 0);
 }
 // rumble1 (src/b3replay/nativepad.h, src/native/pad_actuator.h): 1 while PC SETTINGS > RUMBLE is On (native_play then
 // has the game's actuator requests acknowledged), else 0 (also with no pad: no --native-pad)
@@ -253,6 +255,7 @@ B3R_EXPORT int b3r_scene_wait(int max_ms) {
 // the custom soundtrack (remaster-features §6; tools/native/custom_soundtrack.h): the playlist mode (0 EA Trax only,
 // 1 custom only, 2 mixed) and the music folder (UTF-8) copied to `folder` (at most n - 1 bytes)
 B3R_EXPORT int b3r_music(char* folder, int n) { return b3replay::PcPage::instance().music(folder, n); }
+B3R_EXPORT int b3r_music_volume() { return b3replay::PcPage::instance().music_volume(); }   // musicvol1
 // nowplaying1 (tools/native/now_playing_popup.h): PC SETTINGS > INTERFACE > MUSIC > OTHER MUSIC APPS (0 off, 1 show
 // another app's song in the EA TRAX popup), read by native_play each VBlank; and what native_play detects (UTF-8, one
 // line; empty: not reading), shown in that row's description

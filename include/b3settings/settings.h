@@ -104,6 +104,8 @@ struct Settings {
     // follows those songs' lengths; physics, AI and gameplay never)
     std::string music_folder;         // the user's music folder (MP3 / FLAC / Ogg Vorbis / WAV, subfolders too); empty: none
     int playlist_mode = 0;            // 0 EA Trax only (the game's), 1 custom only, 2 mixed (custom and EA Trax in turn)
+    int custom_music_volume = 100;    // musicvol1: CUSTOM MUSIC VOLUME, 0..200 % in steps of 10: the custom songs only, on
+                                      // top of RADIO VOLUME (100: as loud as the game's own songs; host audio only)
     int other_music_apps = 0;         // nowplaying1: 0 off (no system calls at all), 1 another app's song in the EA TRAX popup
                                       // (the system's now-playing interface; tools/native/now_playing_popup.h; drawn only)
     // Language (1.0.1, b3asset/language.h): the game's text from the player's own European disc, imported once by the

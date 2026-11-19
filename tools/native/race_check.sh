@@ -320,6 +320,30 @@ if [ "${SCENARIO:-race}" = boosttoggle ]; then
   RENDER_EXTRA="${RENDER_EXTRA:+$RENDER_EXTRA }--settings $OUT/pc_settings.ini"
   K="$K,21400:225:1,21410:225:0,22800:225:1,22810:225:0"
 fi
+# SCENARIO=padlayout (1.2.1 CONTROLLER LAYOUT, docs/pc-settings.md §7.25): the race scenario driven by a scripted pad
+# of PAD=xbox (default) or ps (B3NATIVE_TEST_PAD: player 1's pad, through the bindings as a window pad; no keys): its
+# Start on the title, its A / Cross (South) for every confirm, its D-pad down; the throttle held from 20400 (Xbox: A
+# tapped there, the confirm the keyboard's held Cross gives, then the right trigger, the analog pedal, which drives the
+# right stick and so confirms nothing; PS: Cross), then while driving (from ~21070) boost held 21200-21400 (Xbox: A; PS:
+# R1), B / Circle (East) tapped at 21450 (PS: R3 at 21500 too), Start at 21600 (the pause menu) and the back button at 21800 (Xbox: B; PS:
+# Triangle; the throttle let go at 21700 as the keyboard scenarios do), A / Cross at 22000 (RESUME if still paused; PS:
+# held on as the throttle; Xbox: the right trigger again). The verdict reads the pad recording (the reports the game
+# read): Cross from South in the menus; R1 (not Cross) from A while driving with the Xbox layout; R2 from B while
+# driving, Triangle from B in the pause menu (Xbox); Circle while driving, R2 from R3, Triangle in the pause menu (PS)
+if [ "${SCENARIO:-race}" = padlayout ]; then
+  PADT=${PAD:-xbox}
+  export B3NATIVE_TEST_PAD=$PADT
+  P=1024; S=$P; E=$((P+1)); N=$((P+3)); ST=$((P+6)); R3=$((P+8)); RB=$((P+10)); DD=$((P+12)); RT=$((P+33))
+  K="9000:$ST:1,9010:$ST:0"
+  for v in $(seq 15500 800 16300); do K="$K,$v:$S:1,$((v+10)):$S:0"; done
+  K="$K,17900:$DD:1,17910:$DD:0,18300:$S:1,18310:$S:0"
+  for v in $(seq 19100 800 19900); do K="$K,$v:$S:1,$((v+10)):$S:0"; done
+  if [ "$PADT" = ps ]; then
+    K="$K,20400:$S:1,21200:$RB:1,21400:$RB:0,21450:$E:1,21460:$E:0,21500:$R3:1,21510:$R3:0,21600:$ST:1,21610:$ST:0,21700:$S:0,21800:$N:1,21810:$N:0,22000:$S:1"
+  else
+    K="$K,20400:$S:1,20410:$S:0,20410:$RT:1,21200:$S:1,21400:$S:0,21450:$E:1,21460:$E:0,21600:$ST:1,21610:$ST:0,21700:$RT:0,21800:$E:1,21810:$E:0,22000:$S:1,22010:$S:0,22020:$RT:1"
+  fi
+fi
 # RUMBLE=1 (rumble1, src/native/pad_actuator.h; any scenario): PC SETTINGS > RUMBLE On ($OUT/pc_settings.ini `rumble = 1`,
 # the renderer's --settings) and B3NATIVE_RUMBLE_LOG=1 (each acknowledged request's motors in the log). The verdict also
 # needs rumble on in the log and native_play's end-of-run rumble line; the PASS line gives the requests and the motors'
@@ -611,6 +635,50 @@ PY
   [ "${HELD:-0}" -ge 1300 ] && [ "${HELD:-0}" -le 1500 ] || why="${why:+$why; }R1 held for ${HELD:-?} VBlanks, not ~1400"
   BOOST="; boost toggle: R1 held $HELD VBlanks from two 10-VBlank taps"
 fi
+PADL=""
+if [ "${SCENARIO:-race}" = padlayout ]; then   # the reports the game read at each of the pad's presses
+  grep -q "\[b3pad\] test pad: ${PAD:-xbox} " "$LOG" || why="${why:+$why; }no test pad"
+  PADV=$(python3 -I - "$OUT/pads.txt" "${PAD:-xbox}" <<'PY'
+import sys
+rows = []
+for line in open(sys.argv[1]).read().split('\n')[1:]:
+    f = line.split()
+    if len(f) >= 2 and f[0].isdigit():
+        rows.append((int(f[0]), bytes.fromhex(f[1])))
+def at(v):
+    r = None
+    for w, b in rows:
+        if w <= v: r = b
+    return r
+NAMES = ["SELECT", "L3", "R3", "START", "UP", "RIGHT", "DOWN", "LEFT", "L2", "R2", "L1", "R1", "TRIANGLE", "CIRCLE", "CROSS", "SQUARE"]
+def held(v):
+    b = at(v)
+    if b is None: return set(), 0x7F
+    w = ~(b[0] | b[1] << 8) & 0xFFFF
+    return {NAMES[i] for i in range(16) if w >> i & 1}, b[3]
+xbox = sys.argv[2] != 'ps'
+want = [(15505, {"CROSS"}, "menus: South confirms")]
+if xbox:
+    want += [(21300, {"R1"}, "driving: A boosts (not Cross; the throttle on the right stick)"),
+             (21455, {"R2"}, "driving: B is the Crashbreaker"),
+             (21805, {"TRIANGLE"}, "pause menu: B goes back")]
+else:
+    want += [(21300, {"R1", "CROSS"}, "driving: R1 boosts, Cross accelerates"),
+             (21455, {"CIRCLE", "CROSS"}, "driving: Circle the horn"),
+             (21505, {"R2", "CROSS"}, "driving: R3 is the Crashbreaker"),
+             (21805, {"TRIANGLE"}, "pause menu: Triangle goes back")]
+bad, ok = [], []
+for v, w, what in want:
+    h, ry = held(v)
+    if h != w: bad.append("%s at %d: %s, not %s" % (what, v, " ".join(sorted(h)) or "nothing", " ".join(sorted(w))))
+    else: ok.append("%s (%d: %s)" % (what, v, " ".join(sorted(h))))
+h, ry = held(21300)
+if xbox and not ry < 0x7F: bad.append("driving: no throttle from the right trigger at 21300 (right stick y %02X)" % ry)
+print(("FAIL " + "; ".join(bad)) if bad else ("PASS " + "; ".join(ok) + ("; RT throttle %02X" % ry if xbox else "")))
+PY
+)
+  case "$PADV" in PASS*) PADL="; controller layout ${PAD:-xbox}: ${PADV#PASS }" ;; *) why="${why:+$why; }pad layout: ${PADV#FAIL }" ;; esac
+fi
 MUSIC=""
 if [ "${SCENARIO:-race}" = music ]; then   # a custom song decoded, played by the music stream, its popup, samples mixed
   grep -q 'custom_music: VBlank [0-9]*: stream [0-9A-F]* plays' "$LOG" || why="${why:+$why; }no custom song played"
@@ -626,7 +694,7 @@ if [ "${SCENARIO:-race}" = nowplaying ]; then   # both songs' popups given to th
   NOWP="; other music apps: $(grep -c 'now_playing: VBlank [0-9]*: popup:' "$LOG") popups (VBlanks $(grep -o 'now_playing: VBlank [0-9]*: popup' "$LOG" | grep -o '[0-9]*' | paste -sd, -))"
 fi
 if [ -z "$why" ]; then
-  echo "race_check: PASS race $ROUTE reached and driven to VBlank $VBL; last windows ${RATE} VBlanks/s; $FB$MUSIC$NOWP$BOOST$RUMB${VU0:+; $VU0} (log $LOG)"
+  echo "race_check: PASS race $ROUTE reached and driven to VBlank $VBL; last windows ${RATE} VBlanks/s; $FB$MUSIC$NOWP$BOOST$PADL$RUMB${VU0:+; $VU0} (log $LOG)"
   exit 0
 fi
 echo "race_check: FAIL $why (log $LOG)"

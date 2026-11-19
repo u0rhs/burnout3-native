@@ -420,7 +420,15 @@ the run identical: the golden compare). With a custom song the game's own state 
 stream's status), and with no RWS stream reads the menus' frame pacing differs a little, so per-frame state such as
 the menus' random generator D_00518680 (a "Random" track) can differ from an EA Trax run at the same VBlank; physics,
 AI and gameplay code are not touched. Level check: the rip's "Give It Up" as a custom song and the game's own stream of
-it give the same output RMS (2959 vs 2921 over 900 VBlanks; B3NATIVE_MUSIC_RMS=<first>-<last>).
+it give the same output RMS (2959 vs 2921 over 900 VBlanks; B3NATIVE_MUSIC_RMS=<first>-<last>). Re-measured for 1.2.1
+(musicvol1: the same 30 s in the menus, the 100 % card): -18.98 vs -19.09 dBFS, and the rip through the player comes out
+at exactly the stream's gain (0.4495 there): RW Audio and the SPU2 add nothing to the game's own music stream's gain,
+so the player's level constant (custom_soundtrack.h kStreamLevel) is 1. CUSTOM MUSIC VOLUME (0-200 %, default 100)
+multiplies the custom songs only, and a look-ahead peak limiter (custom_music.h Limiter: 64 frames, ceiling -1 dBFS,
+~0.1 s release) keeps a loud song at a high gain from clipping (below the ceiling it is a 1.3 ms delay, nothing else).
+B3NATIVE_MUSIC_LOG=1 logs the music stream's gain (volume x category x custom volume) on each change. ReplayGain tags
+are not read: their reference (about -18 LUFS) sits some 10 dB under the disc's songs (about -8 LUFS), so using them
+would need a target and a make-up gain of its own.
 
 **Not in v1:** custom songs as rows of the in-game playlist editor (built in 1.1: §6.3); the DJ's lines between custom
 songs (the DJ talks as for the game's songs; no on/off option yet); album art; AAC.

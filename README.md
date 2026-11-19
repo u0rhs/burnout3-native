@@ -66,7 +66,7 @@ layer and a renderer of our own. Nothing pretends to be a PS2 and no PS2 code ru
 | **Loading** | The PS2's load times | Fast loading (on by default) |
 | **Online** | Gone with EA's servers | Coming in a future release |
 
-> **Version 1.2.0.** Found a problem? Please [report it](#reporting-a-bug).
+> **Version 1.2.1.** Found a problem? Please [report it](#reporting-a-bug).
 
 ## Screenshots
 
@@ -265,7 +265,7 @@ main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **D
 | ✅ | **Stats and achievements** | Your career read from your save, and 13 local achievements on the launcher's Stats page |
 | ✅ | **Car showroom** | All 67 cars on your disc in 3D on a turntable, with the game's own names, in your HD texture pack and mods' packs |
 | ✅ | **Skip the launcher** | Start the game directly next time; hold Shift or a controller's Back / Select to get the launcher back |
-| ✅ | **Update check** | Once a day the launcher asks GitHub if a newer release is out and links to it; nothing downloaded, can be turned off |
+| ✅ | **Updates** | Each time it starts, the launcher asks GitHub if a newer release is out; **Install update** downloads it, checks its signature and installs it; can be turned off |
 | ✅ | **Safe mode** | After two unclean exits the game starts with safe settings, and says so |
 | ✅ | **Bug reports** | F10 makes one zip: logs, settings, system info and a recording that replays the session; your user name kept out of it |
 | 📋 | **More than three profiles** | The game's profile list extended |

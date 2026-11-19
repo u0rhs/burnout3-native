@@ -835,6 +835,47 @@ TEST(race_overlay_panels_shift_by_side) {
     }
 }
 
+TEST(race_results_stat_labels_stay_on_their_plates) {
+    // 1.2.1 (the known issue "Takedowns label at 32:9 on the record screen"): a race's results stats page (crashnav's
+    // ELIMINATOR results, poll 17300, simplified): each stat a plate (func_003CD920) at 80..560 with its label at x 110
+    // and its value at the right end. The labels lie left of 280 but are the plates': they stay with them; the
+    // CONTINUE / RETRY page's menu column (left of 280, beside plates at 260..600) still goes left.
+    const float right = 640, ext = 400;
+    b3replay::HudFrame f;
+    auto obj = [&](std::uint32_t pc) { b3replay::HudObject o; o.pc = pc; f.objects.push_back(o); return int(f.objects.size()) - 1; };
+    auto add = [&](b3replay::HudDraw d, int object) { d.object = object; f.draws.push_back(d); return f.draws.size() - 1; };
+    const int prompt = obj(0x003D7B40U), heading = obj(0x0031B130U), plate = obj(0x003CD920U), italic = obj(0x0033CCD0U),
+              menu = obj(0x00371BE0U);
+    add(quads(0, {{0, 387, 608, 389, 0, 0}}), prompt);
+    add(quads(0, {{76, 22, 640, 67, 0, 0}}), heading);
+    std::vector<std::size_t> plates, labels, values;
+    for (float y : {204.4f, 260.4f, 316.4f}) {
+        plates.push_back(add(quads(11, {{80, y, 560, y + 28, 0, 1}}), plate));
+        labels.push_back(add(quads(17, {{110, y + 7, 228, y + 21, 0, 1}}), italic));
+        values.push_back(add(quads(17, {{470, y + 3, 539, y + 25, 0, 1}}), italic));
+    }
+    {
+        const auto s = b3replay::hud_overlay_shifts(f, right, ext);
+        for (std::size_t k = 0; k < plates.size(); ++k) {
+            CHECK(s[plates[k]] == 0);
+            CHECK(s[labels[k]] == 0);   // was -ext: the label at the window's left edge, its plate centred
+            CHECK(s[values[k]] == 0);
+        }
+    }
+    {   // the next page: CONTINUE / RETRY (84..228) beside plates at 260..600 (BURNOUT POINTS, TAKEDOWNS at 290)
+        b3replay::HudFrame g = f;
+        g.draws.resize(2);
+        auto add2 = [&](b3replay::HudDraw d, int object) { d.object = object; g.draws.push_back(d); return g.draws.size() - 1; };
+        const auto cont = add2(quads(17, {{85, 291, 228, 317, 0, 1}}), menu);
+        const auto retry = add2(quads(17, {{85, 323, 157, 344, 0, 1}}), menu);
+        const auto p = add2(quads(11, {{260, 283, 600, 311, 0, 1}}), plate);
+        const auto label = add2(quads(17, {{290, 290, 425, 304, 0, 1}}), italic);
+        const auto s = b3replay::hud_overlay_shifts(g, right, ext);
+        CHECK(s[cont] == -ext && s[retry] == -ext);
+        CHECK(s[p] == 0 && s[label] == 0);
+    }
+}
+
 // menu-font: the ticker laid out again over a wide strip (hud_ticker_layout): ext 0 is the game's layout
 // (CB3ScrollingText2dObject::_Render / _BuildBatchData), a wider strip shifts the text by ext and fills the added width
 TEST(ticker_layout_wide_strip) {

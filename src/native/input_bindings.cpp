@@ -100,27 +100,55 @@ void press(std::array<std::uint8_t, 32>& s, int b) {
 bool overlap(KeyCtx a, KeyCtx b) { return a == KeyCtx::Any || b == KeyCtx::Any || a == b; }
 KeyCtx other(KeyCtx v) { return v == KeyCtx::Menu ? KeyCtx::Drive : KeyCtx::Menu; }
 
-// a key and its contexts merged: Menu + Drive of one key -> Any; duplicates dropped; the first place kept
-void normalize(std::vector<KeyBind>& l) {
-    std::vector<KeyBind> o;
-    for (const KeyBind& b : l) {
-        auto it = std::find_if(o.begin(), o.end(), [&](const KeyBind& x) { return x.scancode == b.scancode; });
+// a binding's physical input (a key's scancode, a gamepad input), for the helpers both kinds share
+std::uint16_t phys(const KeyBind& b) { return b.scancode; }
+std::uint16_t phys(const PadBind& b) { return std::uint16_t(b.in); }
+
+// an input and its contexts merged: Menu + Drive of one input -> Any; duplicates dropped; the first place kept
+template <class B>
+void normalize(std::vector<B>& l) {
+    std::vector<B> o;
+    for (const B& b : l) {
+        auto it = std::find_if(o.begin(), o.end(), [&](const B& x) { return phys(x) == phys(b); });
         if (it == o.end()) { o.push_back(b); continue; }
         if (it->ctx != b.ctx) it->ctx = KeyCtx::Any;
     }
     l = std::move(o);
 }
 
-// `key` out of the view: a binding of the view goes, one of both contexts keeps the other context only
-void remove_from_view(std::vector<KeyBind>& l, std::uint16_t key, KeyCtx view) {
-    std::vector<KeyBind> o;
-    for (KeyBind b : l) {
-        if (b.scancode != key) { o.push_back(b); continue; }
+// `in` out of the view: a binding of the view goes, one of both contexts keeps the other context only
+template <class B>
+void remove_from_view(std::vector<B>& l, std::uint16_t in, KeyCtx view) {
+    std::vector<B> o;
+    for (B b : l) {
+        if (phys(b) != in) { o.push_back(b); continue; }
         if (view == KeyCtx::Any || b.ctx == view) continue;
         if (b.ctx == KeyCtx::Any) b.ctx = other(view);
         o.push_back(b);
     }
     l = std::move(o);
+}
+
+// one action's bindings back to `def`'s in the view (the other context's stay); both views back: `def`'s list itself
+// (its order is part of what the file compares against)
+template <class B>
+void reset_in_view(std::vector<B>& l, const std::vector<B>& def, KeyCtx view) {
+    if (view == KeyCtx::Any) {
+        l = def;
+        return;
+    }
+    for (const B& k : std::vector<B>(l)) remove_from_view(l, phys(k), view);
+    for (B k : def)
+        if (overlap(k.ctx, view)) {
+            if (k.ctx == KeyCtx::Any) k.ctx = view;
+            l.push_back(k);
+        }
+    normalize(l);
+    const auto less = [](const B& a, const B& b) { return phys(a) != phys(b) ? phys(a) < phys(b) : a.ctx < b.ctx; };
+    std::vector<B> a = l, b = def;
+    std::sort(a.begin(), a.end(), less);
+    std::sort(b.begin(), b.end(), less);
+    if (a == b) l = def;
 }
 
 PlayerControls make_default(int player) {
@@ -152,6 +180,77 @@ PlayerControls make_default(int player) {
     return p;
 }
 
+// padlayout (1.2.1): the console layouts (input_bindings.h PadLayout; docs/PLAYING.md "Controllers")
+PadBindings common_moves() {
+    using P = PadInput;
+    PadBindings b;
+    b[idx(Ds2::Start)] = {P::Start};
+    b[idx(Ds2::Up)] = {P::DpadUp};
+    b[idx(Ds2::Down)] = {P::DpadDown};
+    b[idx(Ds2::Left)] = {P::DpadLeft};
+    b[idx(Ds2::Right)] = {P::DpadRight};
+    b[idx(Ds2::SteerLeft)] = {P::LeftXNeg};
+    b[idx(Ds2::SteerRight)] = {P::LeftXPos};
+    b[idx(Ds2::StickUp)] = {P::LeftYNeg};
+    b[idx(Ds2::StickDown)] = {P::LeftYPos};
+    return b;
+}
+
+// The original Xbox game's: RT accelerate, LT brake, A boost, B Crashbreaker, X look back, Y camera, Back music while
+// driving; A confirm, B back in menus. The triggers stay the pedals in menus too: the race's intro and countdown are
+// the menus' context (native_play: the game reads the accelerator from the start), where the throttle revs.
+PadBindings make_xbox() {
+    using P = PadInput;
+    constexpr KeyCtx D = KeyCtx::Drive, M = KeyCtx::Menu;
+    PadBindings b = common_moves();
+    b[idx(Ds2::Cross)] = {P::RightTrigger, PadBind{P::South, M}};
+    b[idx(Ds2::Square)] = {P::LeftTrigger, PadBind{P::West, M}};
+    b[idx(Ds2::Triangle)] = {PadBind{P::North, D}, PadBind{P::East, M}};
+    b[idx(Ds2::Circle)] = {PadBind{P::LeftStick, D}, PadBind{P::North, M}};   // the horn on LS; Y in menus
+    b[idx(Ds2::L1)] = {PadBind{P::West, D}, P::LeftShoulder};                 // look back on X, and LB in both
+    b[idx(Ds2::R1)] = {PadBind{P::South, D}, P::RightShoulder};               // boost on A, and RB in both
+    b[idx(Ds2::R2)] = {PadBind{P::East, D}};                                  // the Crashbreaker on B
+    b[idx(Ds2::L2)] = {PadBind{P::Back, D}};                                  // the music track skip on View / Back
+    b[idx(Ds2::Select)] = {PadBind{P::Back, M}};
+    return b;
+}
+
+// The PS2 game's, with the triggers as the pedals (owner, 2026-11-19): Cross / R2 accelerate and Square / L2 brake
+// (R2 / L2 analog, as the Xbox layout's triggers), the Crashbreaker on R3 and the music track skip on L3 (the PS2's R2
+// / L2 moved to the stick clicks), the rest button for button; the right stick as the game's (up accelerates, down
+// brakes). Both contexts.
+PadBindings make_playstation() {
+    using P = PadInput;
+    PadBindings b = common_moves();
+    b[idx(Ds2::Cross)] = {P::South, P::RightTrigger};
+    b[idx(Ds2::Square)] = {P::West, P::LeftTrigger};
+    b[idx(Ds2::Circle)] = {P::East};
+    b[idx(Ds2::Triangle)] = {P::North};
+    b[idx(Ds2::L1)] = {P::LeftShoulder};
+    b[idx(Ds2::R1)] = {P::RightShoulder};
+    b[idx(Ds2::L2)] = {P::LeftStick};
+    b[idx(Ds2::R2)] = {P::RightStick};
+    b[idx(Ds2::Select)] = {P::Back};
+    b[idx(Ds2::RStickLeft)] = {P::RightXNeg};
+    b[idx(Ds2::RStickRight)] = {P::RightXPos};
+    b[idx(Ds2::RStickUp)] = {P::RightYNeg};
+    b[idx(Ds2::RStickDown)] = {P::RightYPos};
+    return b;
+}
+
+// padlayout: an edit of the bindings a player's page shows (the layout for the page's pad family): applied to a copy;
+// when it changed anything, the copy becomes the player's own bindings and the layout Custom
+template <class F>
+void edit_pad(Controls& c, int player, F f) {
+    PlayerControls& p = c.player[std::size_t(player & 1)];
+    const PadBindings& now = pad_bindings(p, c.family[std::size_t(player & 1)]);
+    PadBindings b = now;
+    f(b);
+    if (b == now) return;
+    p.pad = std::move(b);
+    p.layout = PadLayout::Custom;
+}
+
 std::string join_keys(const std::vector<KeyBind>& l) {
     if (l.empty()) return "none";
     std::string o;
@@ -163,12 +262,14 @@ std::string join_keys(const std::vector<KeyBind>& l) {
     }
     return o;
 }
-std::string join_pad(const std::vector<PadInput>& l) {
+std::string join_pad(const std::vector<PadBind>& l) {
     if (l.empty()) return "none";
     std::string o;
-    for (PadInput p : l) {
+    for (const PadBind& b : l) {
         if (!o.empty()) o += ", ";
-        o += pad_input_key(p);
+        o += pad_input_key(b.in);
+        if (b.ctx == KeyCtx::Menu) o += "@menus";
+        if (b.ctx == KeyCtx::Drive) o += "@driving";
     }
     return o;
 }
@@ -437,6 +538,9 @@ PortControls make_default_port() {
 }
 
 std::size_t pidx(PortAction a) { return std::size_t(a); }
+bool has_input(const std::vector<PadBind>& l, PadInput in, KeyCtx view = KeyCtx::Any) {
+    return std::any_of(l.begin(), l.end(), [&](const PadBind& b) { return b.in == in && overlap(b.ctx, view); });
+}
 // A port action is global when it works whatever the game is doing: it conflicts with the game's own keys and buttons
 bool port_global(PortAction a) { return !port_photo(a); }
 }  // namespace
@@ -516,7 +620,7 @@ std::vector<Use> uses_port(const Controls& c, PortAction a, Device d, const Phys
                 if (d == Device::Keyboard) {
                     for (const KeyBind& k : pc.keys[idx(g)]) hit = hit || k.scancode == in.key;
                 } else {
-                    hit = std::find(pc.pad[idx(g)].begin(), pc.pad[idx(g)].end(), in.pad) != pc.pad[idx(g)].end();
+                    hit = has_input(pad_bindings(pc, c.family[std::size_t(p)])[idx(g)], in.pad);
                 }
                 if (hit) o.push_back({p, g});
             }
@@ -553,10 +657,16 @@ void rebind_port(Controls& c, PortAction a, Device d, const PhysInput& in, Resol
                     normalize(o);
                 }
             }
-        } else {
-            auto& o = u.port ? c.port.pad[pidx(u.port_action)] : c.player[std::size_t(u.player)].pad[idx(u.action)];
+        } else if (u.port) {
+            auto& o = c.port.pad[pidx(u.port_action)];
             o.erase(std::remove(o.begin(), o.end(), in.pad), o.end());
             if (r == Resolve::Swap && !add && old_first && std::find(o.begin(), o.end(), old_first->pad) == o.end()) o.push_back(old_first->pad);
+        } else {   // padlayout: a game action's (the shown layout becomes the player's own)
+            edit_pad(c, u.player, [&](PadBindings& b) {
+                auto& o = b[idx(u.action)];
+                std::erase_if(o, [&](const PadBind& x) { return x.in == in.pad; });
+                if (r == Resolve::Swap && !add && old_first && !has_input(o, old_first->pad)) o.push_back(old_first->pad);
+            });
         }
     }
 }
@@ -578,30 +688,19 @@ void reset_port(Controls& c, PortAction a, Device d) {
 
 void reset_action(Controls& c, int player, Device d, Ds2 action, KeyCtx view) {
     player &= 1;
-    const PlayerControls& def = default_player(player);
-    if (d == Device::Gamepad) {
-        c.player[std::size_t(player)].pad[idx(action)] = def.pad[idx(action)];
+    if (d == Device::Gamepad) {   // padlayout: the binding of the layout the player has (Custom: Auto's for the pad)
+        const PadBindings& def = pad_default(c.player[std::size_t(player)], c.family[std::size_t(player)]);
+        edit_pad(c, player, [&](PadBindings& b) { reset_in_view(b[idx(action)], def[idx(action)], view); });
         return;
     }
-    auto& l = c.player[std::size_t(player)].keys[idx(action)];
-    if (view == KeyCtx::Any) {
-        l = def.keys[idx(action)];
-        return;
-    }
-    for (const KeyBind& k : std::vector<KeyBind>(l))   // the view's keys go, the other context's stay
-        remove_from_view(l, k.scancode, view);
-    for (const KeyBind& k : def.keys[idx(action)])
-        if (overlap(k.ctx, view)) l.push_back({k.scancode, k.ctx == KeyCtx::Any ? view : k.ctx});
-    normalize(l);
-    // both views back to the defaults: the default list itself (its order is part of what the file compares against)
-    const auto key_less = [](const KeyBind& a, const KeyBind& b) { return a.scancode != b.scancode ? a.scancode < b.scancode : a.ctx < b.ctx; };
-    std::vector<KeyBind> a = l, b = def.keys[idx(action)];
-    std::sort(a.begin(), a.end(), key_less);
-    std::sort(b.begin(), b.end(), key_less);
-    if (a == b) l = def.keys[idx(action)];
+    reset_in_view(c.player[std::size_t(player)].keys[idx(action)], default_player(player).keys[idx(action)], view);
 }
 
-void reset_all(Controls& c) { c = default_controls(); }
+void reset_all(Controls& c) {
+    const auto family = c.family;
+    c = default_controls();
+    c.family = family;
+}
 
 std::string use_label(const Use& u) {
     if (u.port) return port_label(u.port_action);
@@ -629,6 +728,81 @@ Controls default_controls() {
     return c;
 }
 
+// ---- padlayout: the controller layouts ----
+
+namespace {
+const char* const kLayoutKeys[] = {"auto", "xbox", "playstation", "custom"};
+}
+
+const char* pad_layout_key(PadLayout l) { return std::size_t(l) < 4 ? kLayoutKeys[std::size_t(l)] : "?"; }
+
+std::optional<PadLayout> parse_pad_layout(std::string_view s) {
+    const std::string l = lower(trim(s));
+    for (std::size_t k = 0; k < 4; ++k)
+        if (l == kLayoutKeys[k]) return PadLayout(k);
+    if (l == "ps" || l == "ps2") return PadLayout::PlayStation;
+    return std::nullopt;
+}
+
+PadStyle pad_family(int t) {
+    switch (t) {
+    case kSdlPadPS3: case kSdlPadPS4: case kSdlPadPS5: return PadStyle::PlayStation;
+    case kSdlPadXbox360: case kSdlPadXboxOne: return PadStyle::Xbox;
+    default: break;
+    }
+    if (t >= kSdlPadSwitchPro && t <= kSdlPadGameCube) return PadStyle::Nintendo;   // Switch Pro, Joy-Cons, GameCube
+    return PadStyle::Generic;
+}
+
+PadLayout resolved_layout(PadLayout l, PadStyle family) {
+    if (l != PadLayout::Auto) return l;
+    return family == PadStyle::PlayStation ? PadLayout::PlayStation : PadLayout::Xbox;
+}
+
+const PadBindings& layout_bindings(PadLayout l) {
+    static const PadBindings xbox = make_xbox(), ps = make_playstation();
+    switch (l) {
+    case PadLayout::PlayStation: return ps;
+    case PadLayout::Custom: return default_player(0).pad;
+    default: return xbox;
+    }
+}
+
+const PadBindings& pad_bindings(const PlayerControls& p, PadStyle family) {
+    const PadLayout l = resolved_layout(p.layout, family);
+    return l == PadLayout::Custom ? p.pad : layout_bindings(l);
+}
+
+const PadBindings& pad_default(const PlayerControls& p, PadStyle family) {
+    return layout_bindings(resolved_layout(p.layout == PadLayout::Custom ? PadLayout::Auto : p.layout, family));
+}
+
+void set_page_family(Controls& c, int player, PadStyle family) { c.family[std::size_t(player & 1)] = family; }
+PadStyle page_family(const Controls& c, int player) { return c.family[std::size_t(player & 1)]; }
+
+void set_layout(Controls& c, int player, PadLayout l) { c.player[std::size_t(player & 1)].layout = l; }
+
+std::string layout_text(const PlayerControls& p, PadStyle family, bool connected) {
+    switch (p.layout) {
+    case PadLayout::Xbox: return "Xbox";
+    case PadLayout::PlayStation: return "PlayStation";
+    case PadLayout::Custom: return "Custom";
+    case PadLayout::Auto: break;
+    }
+    return auto_text(family, connected);
+}
+
+std::string auto_text(PadStyle family, bool connected) {
+    if (!connected) return "Auto: no controller, Xbox layout";
+    switch (family) {
+    case PadStyle::PlayStation: return "Auto: PlayStation controller";
+    case PadStyle::Xbox: return "Auto: Xbox controller";
+    case PadStyle::Nintendo: return "Auto: Nintendo, Xbox layout";
+    case PadStyle::Generic: break;
+    }
+    return "Auto: controller, Xbox layout";
+}
+
 std::vector<KeyBinding> key_map(const PlayerControls& p) {
     std::vector<KeyBinding> m;
     for (int a = 0; a < kActions; ++a)
@@ -636,7 +810,17 @@ std::vector<KeyBinding> key_map(const PlayerControls& p) {
     return m;
 }
 
-std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const PlayerControls& p, const GamepadTuning& t) {
+std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const PlayerControls& p, const GamepadTuning& t, KeyCtx now,
+                                            PadStyle family) {
+    return gamepad_sample(g, pad_bindings(p, family), t, now);
+}
+
+std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const PadBindings& pb, const GamepadTuning& t, KeyCtx now) {
+    // padlayout: the bindings of this context (and of both)
+    std::array<std::vector<PadInput>, kActions> pads;
+    for (int a = 0; a < kActions; ++a)
+        for (const PadBind& b : pb[std::size_t(a)])
+            if (overlap(b.ctx, now)) pads[std::size_t(a)].push_back(b.in);
     std::array<std::uint8_t, 32> s = neutral_sample();
     const float z = std::clamp(t.stick_dead_zone, 0.0f, 0.95f);
     const float theta = std::clamp(t.trigger_threshold, 0.01f, 1.0f);
@@ -644,7 +828,7 @@ std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const PlayerC
     // right stick, unless both are past the threshold (a powerslide: both buttons, as 1.0.0)
     const auto analog_travel = [&](Ds2 c) {
         float v = 0;
-        for (PadInput in : p.pad[idx(c)]) if (pad_input_analog(in)) v = std::max(v, pad_input_amount(g, in, z));
+        for (PadInput in : pads[idx(c)]) if (pad_input_analog(in)) v = std::max(v, pad_input_amount(g, in, z));
         return v;
     };
     const float acc = analog_travel(Ds2::Cross), brk = analog_travel(Ds2::Square);
@@ -653,7 +837,7 @@ std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const PlayerC
         const bool pedal = pedals && (Ds2(b) == Ds2::Cross || Ds2(b) == Ds2::Square);
         bool held = false;
         float amount = 0;
-        for (PadInput in : p.pad[std::size_t(b)]) {
+        for (PadInput in : pads[std::size_t(b)]) {
             const float a = pad_input_amount(g, in, z);
             if (!pad_input_analog(in)) {
                 if (a > 0) { held = true; amount = 1.0f; }
@@ -667,7 +851,7 @@ std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const PlayerC
     }
     const auto half = [&](Ds2 a) {
         float v = 0;
-        for (PadInput in : p.pad[idx(a)]) v = std::max(v, pad_input_amount(g, in, z));
+        for (PadInput in : pads[idx(a)]) v = std::max(v, pad_input_amount(g, in, z));
         return v;
     };
     float steer = half(Ds2::SteerRight) - half(Ds2::SteerLeft);
@@ -706,9 +890,9 @@ bool apply_gyro(GamepadState& s, b3native::pad::GyroSteer& steer, const GyroCont
     return recentred;
 }
 
-std::uint8_t trigger_role(const PlayerControls& p, bool right) {
+std::uint8_t trigger_role(const PadBindings& b, bool right) {
     const PadInput t = right ? PadInput::RightTrigger : PadInput::LeftTrigger;
-    const auto has = [&](Ds2 a) { const auto& l = p.pad[idx(a)]; return std::find(l.begin(), l.end(), t) != l.end(); };
+    const auto has = [&](Ds2 a) { return has_input(b[idx(a)], t, KeyCtx::Drive); };
     return has(Ds2::Square) ? 1 : has(Ds2::Cross) ? 2 : 0;
 }
 
@@ -721,14 +905,17 @@ const char* const kGyroAxes[] = {"roll", "yaw"};
 
 std::string to_ini(const Controls& c) {
     std::string o = "# Burnout 3 controls (docs/pc-settings.md 7.9): one line per action that differs from its default.\n"
-                    "# Keys: names, @menus / @driving for one context only. Gamepad: south east west north, left_x- ...,\n"
-                    "# left_trigger right_trigger. none: unbound.\n";
+                    "# Keys: names, @menus / @driving for one context only. Gamepad: layout = auto / xbox / playstation /\n"
+                    "# custom; the custom layout's inputs: south east west north, left_x- ..., left_trigger right_trigger\n"
+                    "# (@menus / @driving too). none: unbound.\n";
     o += "version = " + std::to_string(kControlsVersion) + "\n";
     for (int p = 0; p < kPlayers; ++p) {
         const PlayerControls& d = default_player(p);
         const PlayerControls& now = c.player[std::size_t(p)];
         for (int dev = 0; dev < 2; ++dev) {
             std::string lines;
+            // padlayout: the layout line when it is not what a file without one reads as (Auto with the 1.x pad defaults)
+            if (dev == 1 && (now.layout != PadLayout::Auto || now.pad != d.pad)) lines += std::string("layout = ") + pad_layout_key(now.layout) + "\n";
             for (Ds2 a : action_order()) {
                 if (dev == 0 && now.keys[idx(a)] != d.keys[idx(a)]) lines += std::string(action_key(a)) + " = " + join_keys(now.keys[idx(a)]) + "\n";
                 if (dev == 1 && now.pad[idx(a)] != d.pad[idx(a)]) lines += std::string(action_key(a)) + " = " + join_pad(now.pad[idx(a)]) + "\n";
@@ -775,6 +962,7 @@ Controls controls_from_ini(std::string_view text, std::vector<std::string>* warn
     bool section_bad = false, saw_version = false;
     int version = 1;                                   // a file without a version line is a version 1 file
     std::array<std::array<bool, kActions>, kPlayers> pad_given{};   // the gamepad actions the file sets
+    std::array<bool, kPlayers> layout_given{};                        // padlayout: a layout line
     std::size_t at = 0;
     while (at <= text.size()) {
         std::size_t e = text.find('\n', at);
@@ -892,6 +1080,13 @@ Controls controls_from_ini(std::string_view text, std::vector<std::string>* warn
             }
             continue;
         }
+        if (device == 1 && key == "layout") {   // padlayout (version 3)
+            const std::optional<PadLayout> l = parse_pad_layout(value);
+            if (!l) { warn(n, "layout: '" + std::string(value) + "' (auto, xbox, playstation, custom)"); continue; }
+            c.player[std::size_t(player)].layout = *l;
+            layout_given[std::size_t(player)] = true;
+            continue;
+        }
         const std::optional<Ds2> act = parse_action(key);
         if (!act) { warn(n, "unknown action '" + key + "'"); continue; }
         // the inputs
@@ -905,19 +1100,26 @@ Controls controls_from_ini(std::string_view text, std::vector<std::string>* warn
         }
         const bool none = items.empty() || (items.size() == 1 && lower(items[0]) == "none");
         PlayerControls& pc = c.player[std::size_t(player)];
+        // an item's context suffix (@menus / @driving): false when it is not one
+        const auto split_ctx = [&](std::string_view it, std::string_view& nm, KeyCtx& ctx) {
+            nm = it;
+            ctx = KeyCtx::Any;
+            if (const std::size_t q = it.rfind('@'); q != std::string_view::npos && q > 0) {
+                const std::string cx = lower(trim(it.substr(q + 1)));
+                nm = trim(it.substr(0, q));
+                if (cx == "menus" || cx == "menu") ctx = KeyCtx::Menu;
+                else if (cx == "driving" || cx == "drive") ctx = KeyCtx::Drive;
+                else if (cx != "any" && cx != "both") { warn(n, "unknown context '@" + cx + "' (menus, driving)"); return false; }
+            }
+            return true;
+        };
         if (device == 0) {
             std::vector<KeyBind> l;
             if (!none)
                 for (std::string_view it : items) {
-                    std::string_view nm = it;
-                    KeyCtx ctx = KeyCtx::Any;
-                    if (const std::size_t q = it.rfind('@'); q != std::string_view::npos && q > 0) {
-                        const std::string cx = lower(trim(it.substr(q + 1)));
-                        nm = trim(it.substr(0, q));
-                        if (cx == "menus" || cx == "menu") ctx = KeyCtx::Menu;
-                        else if (cx == "driving" || cx == "drive") ctx = KeyCtx::Drive;
-                        else if (cx != "any" && cx != "both") { warn(n, "unknown context '@" + cx + "' (menus, driving)"); continue; }
-                    }
+                    std::string_view nm;
+                    KeyCtx ctx;
+                    if (!split_ctx(it, nm, ctx)) continue;
                     const std::optional<std::uint16_t> k = parse_key(nm);
                     if (!k) { warn(n, "unknown key '" + std::string(nm) + "'"); continue; }
                     l.push_back({*k, ctx});
@@ -926,14 +1128,18 @@ Controls controls_from_ini(std::string_view text, std::vector<std::string>* warn
             normalize(l);
             pc.keys[idx(*act)] = std::move(l);
         } else {
-            std::vector<PadInput> l;
+            std::vector<PadBind> l;
             if (!none)
                 for (std::string_view it : items) {
-                    const std::optional<PadInput> p = parse_pad_input(it);
-                    if (!p) { warn(n, "unknown gamepad input '" + std::string(it) + "'"); continue; }
-                    if (std::find(l.begin(), l.end(), *p) == l.end()) l.push_back(*p);
+                    std::string_view nm;
+                    KeyCtx ctx;
+                    if (!split_ctx(it, nm, ctx)) continue;
+                    const std::optional<PadInput> p = parse_pad_input(nm);
+                    if (!p) { warn(n, "unknown gamepad input '" + std::string(nm) + "'"); continue; }
+                    l.push_back({*p, ctx});
                 }
             if (!none && l.empty()) { warn(n, std::string(action_key(*act)) + ": no valid input, the default kept"); continue; }
+            normalize(l);
             pc.pad[idx(*act)] = std::move(l);
             pad_given[std::size_t(player)][idx(*act)] = true;
         }
@@ -947,11 +1153,16 @@ Controls controls_from_ini(std::string_view text, std::vector<std::string>* warn
                 if (pad_given[std::size_t(p)][idx(act)]) continue;
                 bool elsewhere = false;
                 for (int a = 0; a < kActions; ++a)
-                    if (Ds2(a) != act && std::find(pc.pad[std::size_t(a)].begin(), pc.pad[std::size_t(a)].end(), click) != pc.pad[std::size_t(a)].end())
-                        elsewhere = true;
-                if (elsewhere) std::erase(pc.pad[idx(act)], click);
+                    if (Ds2(a) != act && has_input(pc.pad[std::size_t(a)], click)) elsewhere = true;
+                if (elsewhere) std::erase_if(pc.pad[idx(act)], [&](const PadBind& b) { return b.in == click; });
             }
         }
+    // padlayout: no layout line (every file before 1.2.1): a gamepad remap stays the player's (Custom), exactly as it
+    // was; a file with the 1.x pad defaults gets Auto
+    for (int p = 0; p < kPlayers; ++p) {
+        PlayerControls& pc = c.player[std::size_t(p)];
+        if (!layout_given[std::size_t(p)]) pc.layout = pc.pad != default_player(p).pad ? PadLayout::Custom : PadLayout::Auto;
+    }
     if (!saw_version && warnings && c != default_controls()) warnings->push_back("controls.ini: no version line (read as version 1)");
     return c;
 }
@@ -986,8 +1197,9 @@ std::vector<PhysInput> bound(const Controls& c, int player, Device d, Ds2 action
     if (d == Device::Keyboard) {
         for (const KeyBind& k : p.keys[idx(action)])
             if (overlap(k.ctx, view)) o.push_back({Device::Keyboard, k.scancode, PadInput::None});
-    } else {
-        for (PadInput in : p.pad[idx(action)]) o.push_back({Device::Gamepad, 0, in});
+    } else {   // padlayout: the bindings shown (the layout for the page's pad family), in the view
+        for (const PadBind& b : pad_bindings(p, c.family[std::size_t(player & 1)])[idx(action)])
+            if (overlap(b.ctx, view)) o.push_back({Device::Gamepad, 0, b.in});
     }
     return o;
 }
@@ -1005,6 +1217,12 @@ std::string bound_text(const Controls& c, int player, Device d, Ds2 action, KeyC
     return o.empty() ? "-" : o;
 }
 
+bool moved(const Controls& c, int player, Device d, Ds2 action, KeyCtx view) {
+    Controls def = c;
+    reset_action(def, player, d, action, view);
+    return bound(def, player, d, action, view) != bound(c, player, d, action, view);
+}
+
 std::vector<Use> uses(const Controls& c, int player, Device d, Ds2 action, const PhysInput& in, KeyCtx view) {
     std::vector<Use> o;
     for (int p = 0; p < kPlayers; ++p) {
@@ -1016,7 +1234,7 @@ std::vector<Use> uses(const Controls& c, int player, Device d, Ds2 action, const
             if (d == Device::Keyboard) {
                 for (const KeyBind& k : pc.keys[idx(a)]) hit = hit || (k.scancode == in.key && overlap(k.ctx, view));
             } else {
-                hit = std::find(pc.pad[idx(a)].begin(), pc.pad[idx(a)].end(), in.pad) != pc.pad[idx(a)].end();
+                hit = has_input(pad_bindings(pc, c.family[std::size_t(p)])[idx(a)], in.pad, view);
             }
             if (hit) o.push_back({p, a});
         }
@@ -1064,16 +1282,32 @@ void rebind(Controls& c, int player, Device d, Ds2 action, const PhysInput& in, 
                 normalize(o);
             }
         }
-    } else {
-        std::vector<PadInput>& l = c.player[std::size_t(player)].pad[idx(action)];
-        if (!add) l.clear();
-        if (std::find(l.begin(), l.end(), in.pad) == l.end()) l.push_back(in.pad);
-        if (r == Resolve::Keep) return;
-        for (const Use& u : others) {
-            std::vector<PadInput>& o = u.port ? c.port.pad[std::size_t(u.port_action)] : c.player[std::size_t(u.player)].pad[idx(u.action)];
-            o.erase(std::remove(o.begin(), o.end(), in.pad), o.end());
-            if (r == Resolve::Swap && !add && old_first && std::find(o.begin(), o.end(), old_first->pad) == o.end()) o.push_back(old_first->pad);
-        }
+    } else {   // padlayout: as the keyboard's, in the view; the shown layout becomes the player's own (Custom)
+        const std::uint16_t pin = std::uint16_t(in.pad);
+        for (const Use& u : others)
+            if (u.port && r != Resolve::Keep) {
+                auto& o = c.port.pad[std::size_t(u.port_action)];
+                o.erase(std::remove(o.begin(), o.end(), in.pad), o.end());
+                if (r == Resolve::Swap && !add && old_first && std::find(o.begin(), o.end(), old_first->pad) == o.end()) o.push_back(old_first->pad);
+            }
+        edit_pad(c, player, [&](PadBindings& b) {
+            std::vector<PadBind>& l = b[idx(action)];
+            if (!add)
+                for (const PhysInput& x : before) remove_from_view(l, std::uint16_t(x.pad), view);
+            const bool there = std::any_of(l.begin(), l.end(), [&](const PadBind& k) { return k.in == in.pad && (k.ctx == KeyCtx::Any || k.ctx == view); });
+            if (!there) l.push_back({in.pad, view});
+            normalize(l);
+            if (r == Resolve::Keep) return;
+            for (const Use& u : others) {
+                if (u.port) continue;
+                std::vector<PadBind>& o = b[idx(u.action)];
+                remove_from_view(o, pin, view);
+                if (r == Resolve::Swap && !add && old_first) {
+                    o.push_back({old_first->pad, view});
+                    normalize(o);
+                }
+            }
+        });
     }
 }
 
@@ -1082,7 +1316,7 @@ void remove_last(Controls& c, int player, Device d, Ds2 action, KeyCtx view) {
     const std::vector<PhysInput> shown = bound(c, player, d, action, view);
     if (shown.empty()) return;
     if (d == Device::Keyboard) remove_from_view(c.player[std::size_t(player)].keys[idx(action)], shown.back().key, view);
-    else c.player[std::size_t(player)].pad[idx(action)].pop_back();
+    else edit_pad(c, player, [&](PadBindings& b) { remove_from_view(b[idx(action)], std::uint16_t(shown.back().pad), view); });
 }
 
 void reset(Controls& c, int player, Device d) {
@@ -1090,6 +1324,7 @@ void reset(Controls& c, int player, Device d) {
     if (d == Device::Keyboard) c.player[std::size_t(player)].keys = default_player(player).keys;
     else {
         c.player[std::size_t(player)].pad = default_player(player).pad;
+        c.player[std::size_t(player)].layout = default_player(player).layout;   // padlayout: Auto
         c.player[std::size_t(player)].gyro = default_player(player).gyro;   // pad1
     }
 }
@@ -1101,7 +1336,7 @@ void RebindFlow::begin(int player, Device d, Ds2 action, KeyCtx view, bool add) 
     player_ = player & 1;
     device_ = d;
     action_ = action;
-    view_ = d == Device::Gamepad ? KeyCtx::Any : view;
+    view_ = view;   // padlayout: a gamepad's view too
     add_ = add;
     port_ = false;
     waited_ = 0;
@@ -1165,7 +1400,7 @@ RebindFlow::State RebindFlow::choose(Controls& c) {
 
 std::string RebindFlow::message(PadStyle style) const {
     const std::string act = port_ ? port_label(port_action_) : action_label(action_);
-    const std::string where = device_ == Device::Gamepad || port_ ? "" : view_ == KeyCtx::Drive ? " (WHILE DRIVING)" : view_ == KeyCtx::Menu ? " (IN MENUS)" : "";
+    const std::string where = port_ ? "" : view_ == KeyCtx::Drive ? " (WHILE DRIVING)" : view_ == KeyCtx::Menu ? " (IN MENUS)" : "";
     const std::string who = port_ ? std::string() : "PLAYER " + std::to_string(player_ + 1) + " ";
     if (state_ == State::Waiting) {
         const int left = std::max(1, int(std::ceil(remaining())));
@@ -1198,11 +1433,16 @@ std::string RebindFlow::message(PadStyle style) const {
     return "";
 }
 
-std::array<Ds2, 16> pad_glyphs(const PlayerControls& p) {
+std::array<Ds2, 16> pad_glyphs(const PadBindings& pb, KeyCtx now) {
     std::array<Ds2, 16> g{};
     for (int b = 0; b < 16; ++b) {
         g[std::size_t(b)] = Ds2(b);
-        for (PadInput in : p.pad[std::size_t(b)]) {
+        // padlayout: this context's bindings first, then both contexts' (Any: all, in their order)
+        std::vector<PadInput> order;
+        for (int pass = 0; pass < 2; ++pass)
+            for (const PadBind& x : pb[std::size_t(b)])
+                if (now == KeyCtx::Any ? pass == 0 : pass == 0 ? x.ctx == now : x.ctx == KeyCtx::Any) order.push_back(x.in);
+        for (PadInput in : order) {
             std::optional<Ds2> at;
             switch (in) {
             case PadInput::South: at = Ds2::Cross; break;

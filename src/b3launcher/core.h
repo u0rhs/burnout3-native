@@ -38,6 +38,9 @@ struct Config {
     // default, saves_folder(pref). native_play reads it too (save_store.h chosen_saves_root). Written only when set.
     std::string saves_dir;
     update::Cache update;   // update1: the update_* keys (update.h)
+    // issue #8: ADD TO STEAM's pictures of the player's choice (PNG / JPEG files, UTF-8 paths; steam.h); empty: the
+    // port's own (steam_art.h). Written only when set.
+    std::string steam_cover, steam_hero, steam_logo;
     bool operator==(const Config&) const = default;
 };
 std::string config_to_ini(const Config& c);
@@ -130,6 +133,7 @@ MusicCheck check_music_folder(const fs::path& dir, std::size_t list = 6);
 std::vector<b3settings::Row> music_rows(const b3settings::Settings& s, const std::string& status = {});
 // The PLAYLIST row of music_rows (the same values, words and description as in the game).
 b3settings::Row playlist_row(const b3settings::Settings& s);
+b3settings::Row custom_music_volume_row(const b3settings::Settings& s);   // musicvol1: CUSTOM MUSIC VOLUME
 // nowplaying1: the OTHER MUSIC APPS row of music_rows, `now` what is detected (the row's "Now:" text)
 b3settings::Row other_music_apps_row(const b3settings::Settings& s, const std::string& now = {});
 // The Music page's "Detected" line for OTHER MUSIC APPS: on (the setting), `available` (this system has a reader),

@@ -59,6 +59,28 @@ double ms_since(std::uint64_t t0) { return double(SDL_GetTicksNS() - t0) * 1e-6;
 
 // UTF-8 to the game's 16-bit codes (Unicode, as its European text has them: the font's accented letters). A byte
 // that does not start a well-formed sequence stands for itself (Latin-1), as before 1.1.
+// 1.2.1: a Latin-1 letter the game's font has no glyph for (the US disc's HeadFont has no È: "PARAM□TRES") drawn as its
+// base letter(s) instead of the game's fallback box; letters the font has are kept. Our own text only (PC SETTINGS).
+std::u16string fit_to_font(const HostFont& f, std::u16string s) {
+    static const char* const kBase[64] = {   // U+00C0 .. U+00FF, case kept; "" = no fallback
+        "A", "A", "A", "A", "A", "A", "AE", "C", "E", "E", "E", "E", "I", "I", "I", "I", "D", "N", "O", "O", "O", "O", "O", "",
+        "O", "U", "U", "U", "U", "Y", "TH", "ss", "a", "a", "a", "a", "a", "a", "ae", "c", "e", "e", "e", "e", "i", "i", "i", "i",
+        "d", "n", "o", "o", "o", "o", "o", "", "o", "u", "u", "u", "u", "y", "th", "y"};
+    const auto has = [&f](char16_t c) {
+        for (const HostFontGlyph& g : f.glyphs)
+            if (g.code == c) return true;
+        return false;
+    };
+    std::u16string out;
+    out.reserve(s.size());
+    for (const char16_t c : s) {
+        if (c >= 0xC0 && c <= 0xFF && *kBase[c - 0xC0] && !has(c))
+            for (const char* b = kBase[c - 0xC0]; *b; ++b) out += char16_t(*b);
+        else out += c;
+    }
+    return out;
+}
+
 std::u16string to_u16(std::string_view s) {
     std::u16string o;
     o.reserve(s.size());
@@ -117,6 +139,7 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
         std::lock_guard<std::mutex> lock(music_m_);
         if (music_folder_pub_ != settings_.music_folder) music_folder_pub_ = settings_.music_folder;
         playlist_mode_pub_ = settings_.playlist_mode;
+        music_volume_pub_ = settings_.custom_music_volume;
     }
     if (open_requested_.exchange(false) && !active_.load()) {
         menu_.open(menu_.tab());
@@ -245,6 +268,7 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
     const std::uint64_t t_tabs = timing.on ? SDL_GetTicksNS() : 0;
     env.extra_tabs = TuneConsole::instance().tabs(settings_.developer_mods != 0);   // tune4 (tuneconsole.h)
     if (timing.on && !env.extra_tabs.empty()) timing.add(0, ms_since(t_tabs));
+    controls_family();                    // padlayout: the layout each player's pad gets (Auto)
     controls_flow(pad, seconds, mouse);   // remap1: a rebind's input, before the rows are built
     controls_env(env);
     b3settings::Content content = b3settings::build_content(settings_, env);
@@ -356,8 +380,9 @@ void PcPage::controls_start(const std::string& path) {
     const bool found = !path.empty() && in::load_controls(path, controls_, &warnings);
     if (!found) controls_ = in::default_controls();
     for (const std::string& w : warnings) std::printf("[b3controls] %s\n", w.c_str());
-    std::printf("[b3controls] %s: %s\n", path.empty() ? "no controls file" : path.c_str(),
-                !found ? "the default controls" : controls_ == in::default_controls() ? "the default controls" : "custom controls");
+    std::printf("[b3controls] %s: %s (controller layout: player 1 %s, player 2 %s)\n", path.empty() ? "no controls file" : path.c_str(),
+                !found ? "the default controls" : controls_ == in::default_controls() ? "the default controls" : "custom controls",
+                in::pad_layout_key(controls_.player[0].layout), in::pad_layout_key(controls_.player[1].layout));
     std::fflush(stdout);
     NativePad::instance().set_controls(controls_);
 }
@@ -387,7 +412,12 @@ void PcPage::controls_env(b3settings::Env& env) const {
     k.view = ctl_view_;
     k.status = ctl_status_;
     const in::Device dev = ctl_device_ == 0 ? in::Device::Keyboard : in::Device::Gamepad;
-    const in::KeyCtx view = dev == in::Device::Gamepad ? in::KeyCtx::Any : ctl_view_ == 0 ? in::KeyCtx::Drive : in::KeyCtx::Menu;
+    const in::KeyCtx view = ctl_view_ == 0 ? in::KeyCtx::Drive : in::KeyCtx::Menu;   // padlayout: the controller's too
+    if (ctl_player_ < 2) {   // padlayout: CONTROLLER LAYOUT, Auto worded for the player's pad
+        const int type = NativePad::instance().pad_type(int(ctl_player_));
+        k.layout = std::size_t(controls_.player[ctl_player_].layout);
+        k.layout_auto = in::auto_text(in::page_family(controls_, int(ctl_player_)), type >= 0);
+    }
     if (ctl_player_ >= 2) {   // rebind2: the shortcuts (port actions)
         for (in::PortAction a : port_list(dev)) {
             b3settings::Env::Controls::Action row;
@@ -427,6 +457,14 @@ void PcPage::controls_env(b3settings::Env& env) const {
     }
 }
 
+void PcPage::controls_family() {
+    namespace in = b3native::input;
+    for (int p = 0; p < in::kPlayers; ++p) {
+        const int type = NativePad::instance().pad_type(p);
+        in::set_page_family(controls_, p, type < 0 ? in::PadStyle::Generic : in::pad_family(type));
+    }
+}
+
 void PcPage::controls_changed(const std::string& what) {
     namespace in = b3native::input;
     NativePad::instance().set_controls(controls_);
@@ -441,15 +479,25 @@ void PcPage::controls_changed(const std::string& what) {
 bool PcPage::controls_edit(const b3settings::Edit& e) {
     namespace in = b3native::input;
     const in::Device dev = ctl_device_ == 0 ? in::Device::Keyboard : in::Device::Gamepad;
-    const in::KeyCtx view = dev == in::Device::Gamepad ? in::KeyCtx::Any : ctl_view_ == 0 ? in::KeyCtx::Drive : in::KeyCtx::Menu;
+    const in::KeyCtx view = ctl_view_ == 0 ? in::KeyCtx::Drive : in::KeyCtx::Menu;   // padlayout: the controller's too
     const bool port = ctl_player_ >= 2;   // rebind2: the shortcuts
     const std::string who = port ? std::string("SHORTCUTS ") + (dev == in::Device::Keyboard ? "KEYBOARD " : "CONTROLLER ")
-                                 : "PLAYER " + std::to_string(ctl_player_ + 1) +
-                                       (dev == in::Device::Keyboard ? (view == in::KeyCtx::Drive ? " KEYBOARD (DRIVING) " : " KEYBOARD (MENUS) ") : " CONTROLLER ");
+                                 : "PLAYER " + std::to_string(ctl_player_ + 1) + (dev == in::Device::Keyboard ? " KEYBOARD" : " CONTROLLER") +
+                                       (view == in::KeyCtx::Drive ? " (DRIVING) " : " (MENUS) ");
     if (e.id != b3settings::kActionCtlResetAll) reset_all_armed_ = false;
     if (e.id == b3settings::kRowCtlPlayer) { ctl_player_ = std::min<std::size_t>(e.value, 2); return true; }
     if (e.id == b3settings::kRowCtlDevice) { ctl_device_ = std::min<std::size_t>(e.value, 1); return true; }
     if (e.id == b3settings::kRowCtlView) { ctl_view_ = std::min<std::size_t>(e.value, 1); return true; }
+    if (e.id == b3settings::kRowCtlLayout && !port) {   // padlayout: the player's CONTROLLER LAYOUT (Custom keeps its bindings)
+        const in::PadLayout l = in::PadLayout(std::min<std::size_t>(e.value, 3));
+        if (l != controls_.player[ctl_player_].layout) {
+            in::set_layout(controls_, int(ctl_player_), l);
+            const int type = NativePad::instance().pad_type(int(ctl_player_));
+            controls_changed("PLAYER " + std::to_string(ctl_player_ + 1) + " CONTROLLER LAYOUT " +
+                             in::layout_text(controls_.player[ctl_player_], in::page_family(controls_, int(ctl_player_)), type >= 0));
+        }
+        return true;
+    }
     if (e.id >= b3settings::kRowCtlGyroMode && e.id <= b3settings::kRowCtlGyroRecentre) {   // pad1: gyro steering
         in::GyroControls& g = controls_.player[std::min<std::size_t>(ctl_player_, 1)].gyro;
         const in::GyroControls before = g;
@@ -766,6 +814,11 @@ void PcPage::music_folder_done(const char* path, const char* error) {
     std::fflush(stdout);
 }
 
+int PcPage::music_volume() {
+    std::lock_guard<std::mutex> lock(music_m_);
+    return music_volume_pub_;
+}
+
 int PcPage::music(char* folder, int n) {
     std::lock_guard<std::mutex> lock(music_m_);
     if (folder && n > 0) {
@@ -871,7 +924,7 @@ std::shared_ptr<const HostUi> PcPage::ui(const std::shared_ptr<const HostFonts>&
     const auto measure = [&](std::string_view text, float h, std::uint8_t flags) {
         const HostFont* f = font_for(flags, *fonts, textures);
         if (!f) return fallback_measure(text, h, flags);
-        return f->width(to_u16(text), size_for(*f, h)) * widen(flags);
+        return f->width(fit_to_font(*f, to_u16(text)), size_for(*f, h)) * widen(flags);
     };
     // One line of glyphs from `x` (the first glyph's left edge), clipped to [clip0, clip1) in x; with `slant`, every
     // point moves right by slant x its height above `bottom`.
@@ -907,7 +960,7 @@ std::shared_ptr<const HostUi> PcPage::ui(const std::shared_ptr<const HostFonts>&
         const HostFont* f = font_for(flags, *fonts, textures);
         const HudTexture* t = f ? texture_of(f->raster) : nullptr;
         if (!f || !t || str.empty() || bh <= 0) return;
-        const std::u16string s = to_u16(str);
+        const std::u16string s = fit_to_font(*f, to_u16(str));
         const float size = size_for(*f, bh), stretch = widen(flags);
         const float w = f->width(s, size) * stretch;
         float x = bx;

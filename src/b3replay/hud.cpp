@@ -843,16 +843,34 @@ std::vector<float> hud_overlay_shifts(const HudFrame& f, float right, float ext,
     // the newly selected row zooms in about its centre (pause: 68..219, 14..273, then 85..204), so mid-zoom a long label
     // runs past 280 with its left edge away from the column's; a draw whose centre lies within the column's x extent
     // belongs to it too
+    // 1.2.1 (the known issue "Takedowns label at 32:9 on the record screen"): a race's results pages draw each stat as a
+    // plate (func_003CD920, hud_element01, 80..560 on the stats page) with its label on it (CGt2dObjectItalicText at x
+    // 110: BEST LAP, TAKEDOWNS, ...) and its value and RECORD tag at its right end. The labels lie left of 280, so the
+    // column rule took them to the window's left edge while their plates stayed centred: detached at 16:9, far apart at
+    // 32:9. A draw lying on such a plate is the plate's, not the menu column's: it stays with it.
+    constexpr std::uint32_t kStatPlateRender = 0x003CD920U;   // [C capture: crashnav's ELIMINATOR results, objects 7..9]
+    std::vector<char> on_plate(n, 0);
+    for (std::size_t j = 0; j < n; ++j) {
+        if (pc(f.draws[j]) != kStatPlateRender || f.draws[j].tri.empty()) continue;
+        float p[4];
+        box(f.draws[j], p);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (group[i] != kBody || i == j) continue;
+            float b[4];
+            box(f.draws[i], b);
+            on_plate[i] = on_plate[i] || (b[0] >= p[0] - 2.0f && b[2] <= p[2] + 2.0f && b[1] >= p[1] - 2.0f && b[3] <= p[3] + 2.0f);
+        }
+    }
     std::vector<float> lefts;
     float col_lo = 1e30f, col_hi = -1e30f;
     for (std::size_t i = 0; i < n; ++i) {
-        if (group[i] != kBody) continue;
+        if (group[i] != kBody || on_plate[i]) continue;
         float b[4];
         box(f.draws[i], b);
         if (b[2] <= 280.0f) { lefts.push_back(b[0]); col_lo = std::min(col_lo, b[0]); col_hi = std::max(col_hi, b[2]); }
     }
     for (std::size_t i = 0; i < n; ++i) {
-        if (group[i] != kBody) continue;
+        if (group[i] != kBody || on_plate[i]) continue;
         float b[4];
         box(f.draws[i], b);
         const float mid = 0.5f * (b[0] + b[2]);

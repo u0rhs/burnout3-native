@@ -15,7 +15,7 @@
 // file button opens the launcher's own folder list (Browser) instead of the system's dialog, and a text field gets
 // the launcher's on-screen keyboard (core.h osk_layout; SDL's system keyboard too where there is one).
 //
-// update1: once a day (Settings > Launcher > CHECK FOR UPDATES, on by default) it asks GitHub in the background whether
+// update1: at each start (1.2.1; once a day before) (Settings > Launcher > CHECK FOR UPDATES, on by default) it asks GitHub in the background whether
 // a newer release is out (update.h, update_net.h) and says so on the Play page and the Credits page; it never
 // downloads anything. B3LAUNCHER_UPDATE_FILE=<file>: the answer read from that file instead (a test hook); a
 // --screenshot run never makes a request.
@@ -38,6 +38,8 @@
 #include "update_net.h"
 #include "oneclick.h"        // 1.1 one-click updates: the signed release's package
 #include "installer.h"       // ... put in place of this one (the previous version kept)
+#include "steam.h"           // issue #8: ADD TO STEAM (Settings > Launcher)
+#include "steam_art.h"
 
 #include "b3port/app_icon.h"   // the built-in window icon
 #include "b3asset/discfs.h"   // patches3: the game folder's files a mod's patches apply to
@@ -163,7 +165,9 @@ struct Widget {
     int up = -1, down = -1;
 };
 
-enum class DialogKind { kHdFolder, kGameFolder, kExport, kImportFile, kImportFolder, kGameImage, kMusicFolder, kModArchive, kLanguageImage, kSavesFolder };   // 1.1: kSavesFolder   // 1.0.1: kLanguageImage   // iso1: kGameImage; modkit1b: kModArchive
+// 1.1: kSavesFolder   // 1.0.1: kLanguageImage   // iso1: kGameImage; modkit1b: kModArchive
+enum class DialogKind { kHdFolder, kGameFolder, kExport, kImportFile, kImportFolder, kGameImage, kMusicFolder, kModArchive, kLanguageImage, kSavesFolder,
+                        kSteamCover, kSteamHero, kSteamLogo };   // issue #8: ADD TO STEAM's own pictures
 
 struct Modal {
     std::string title, text;
@@ -383,6 +387,16 @@ struct App {
         std::string tag, note;            // the version installed; the last attempt's result in words
     } inst;
     fs::path self_exe;                    // this launcher's own file, found at start (a swap moves the running one)
+    // issue #8: ADD TO STEAM (steam.h). A press waits for the next frame, so that "Adding..." shows while it works
+    struct SteamUi {
+        bool pending = false;
+        std::string note;                     // the last attempt in words (or a picture chosen)
+        int level = 0;                        // 0 a hint, 1 done, 2 done with a warning, 3 not done
+        int widget = -1;                      // the Add to Steam button as last drawn (the screenshot check)
+        bool checks = false;                  // --screenshot: Steam's own folders are never written, only `places`
+        std::optional<steam::Places> places;  // the checks: a made-up home instead of this computer's
+        std::optional<bool> running;          // the checks: Steam running or not, instead of the process list
+    } steam_ui;
 
     // the game's front-end look (gameart.h), from the game data folder; off: the plain look
     struct Look {
@@ -1009,6 +1023,9 @@ void open_dialog(App& a, DialogKind kind, const std::string& start) {
     } else if (kind == DialogKind::kModArchive) {   // modkit1b
         static const SDL_DialogFileFilter f[] = {{"Mods (*.b3mod, *.zip)", "b3mod;zip"}, {"All files", "*"}};
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
+    } else if (kind == DialogKind::kSteamCover || kind == DialogKind::kSteamHero || kind == DialogKind::kSteamLogo) {   // issue #8
+        static const SDL_DialogFileFilter f[] = {{"Images (*.png, *.jpg)", "png;jpg;jpeg"}, {"All files", "*"}};
+        SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
     } else if (kind == DialogKind::kGameImage || kind == DialogKind::kLanguageImage) {   // iso1: the disc image, read in place (b3asset/discfs.h)
         static const SDL_DialogFileFilter f[] = {{"Disc images (*.iso, *.bin, *.chd)", "iso;bin;chd"}, {"All files", "*"}};   // chd1: .chd
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
@@ -1097,6 +1114,9 @@ const char* browse_title(DialogKind k) {
     case DialogKind::kImportFolder: return "Import a folder card";
     case DialogKind::kExport: return "Export the save to a folder";
     case DialogKind::kSavesFolder: return "Choose the save folder";   // 1.1
+    case DialogKind::kSteamCover: return "Choose a cover picture for Steam (PNG or JPEG)";   // issue #8
+    case DialogKind::kSteamHero: return "Choose a background picture for Steam (PNG or JPEG)";
+    case DialogKind::kSteamLogo: return "Choose a logo picture for Steam (PNG or JPEG)";
     }
     return "Choose";
 }
@@ -1148,6 +1168,9 @@ void browse_status(Browser& b) {
         b.status = "Open the folder card's folder, then Start.";
         break;
     case DialogKind::kModArchive:
+    case DialogKind::kSteamCover:   // issue #8
+    case DialogKind::kSteamHero:
+    case DialogKind::kSteamLogo:
         b.status = files ? "A on a file chooses it." : "No such files in this folder.";
         break;
     case DialogKind::kImportFile:   // 1.1: PCSX2's card named
@@ -1206,6 +1229,9 @@ void open_browser(App& a, DialogKind kind, const std::string& start, const std::
     case DialogKind::kImportFolder: break;
     case DialogKind::kExport: b.export_name = start.empty() ? "Burnout3-save.sav" : start; break;
     case DialogKind::kSavesFolder: break;   // 1.1
+    case DialogKind::kSteamCover:   // issue #8
+    case DialogKind::kSteamHero:
+    case DialogKind::kSteamLogo: b.exts = {"png", "jpg", "jpeg"}; b.pick_files = true; b.pick_folder = false; break;
     }
     const bool importing = kind == DialogKind::kImportFile || kind == DialogKind::kImportFolder;
     // where it starts: the current choice (a file's folder, with the file highlighted), else home
@@ -1324,6 +1350,7 @@ void browse_nav(App& a, Nav n) {
 }
 
 void choose_saves_folder(App& a, const fs::path& to);   // 1.1 (the SAVES page)
+void steam_choose(App& a, DialogKind kind, const fs::path& p);   // issue #8 (Settings > Launcher)
 
 void handle_path(App& a, DialogKind kind, const std::string& path) {
     const fs::path p = path_from_utf8(path);
@@ -1361,6 +1388,11 @@ void handle_path(App& a, DialogKind kind, const std::string& path) {
     case DialogKind::kSavesFolder:   // 1.1
         choose_saves_folder(a, p);
         return;   // (refreshed there; a question may be open)
+    case DialogKind::kSteamCover:   // issue #8
+    case DialogKind::kSteamHero:
+    case DialogKind::kSteamLogo:
+        steam_choose(a, kind, p);
+        return;
     case DialogKind::kLanguageImage: {   // 1.0.1: copy the disc's languages into <pref>/languages (b3asset/language.h)
         std::string why;
         const auto done = b3asset::language::import_from_disc(p, a.pref, &why);
@@ -2123,13 +2155,13 @@ float settings_launcher(App& a, Ui& ui, float x, float y, float w) {
     r.label = "CHECK FOR UPDATES";
     r.values = {"Off", "On"};
     r.value = a.cfg.update.enabled ? 1 : 0;
-    r.description = "Once a day, asks GitHub whether a newer release of the port is out (shown on the Play page). Nothing else is "
+    r.description = "Each time the launcher starts, asks GitHub whether a newer release of the port is out (shown on the Play page). Nothing else is "
                     "sent; GitHub sees your IP address. Nothing is downloaded until you choose Install update. Off: no request at all.";
     setting_row(a, ui, r, x, y, w, 46, [&a](std::size_t v) { set_update_check(a, v != 0); });
     y += 46 + 10;
     const bool on = a.cfg.update.enabled, busy = update_checking(a);
     button(ui, SDL_FRect{x, y, 200, 44}, busy ? "Checking..." : "Check now", Style::kNormal, on && !busy,
-           on ? "Asks GitHub for the latest release now (the check otherwise runs at most once a day)."
+           on ? "Asks GitHub for the latest release now (the launcher also checks each time it starts)."
               : "Turn CHECK FOR UPDATES on first: while it is off the launcher makes no request.",
            [&a]() { start_update_check(a); });
     const update::State st = update_state(a);
@@ -2155,6 +2187,174 @@ float settings_launcher(App& a, Ui& ui, float x, float y, float w) {
             text(a, a.text->elide(a.inst.note, kSmall, w - 500), x + 492, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::faint);
         y += 44;
     }
+    return y;
+}
+
+// ---- issue #8: ADD TO STEAM (steam.h) ----
+
+constexpr std::uintmax_t kSteamImageMax = 32u << 20;   // a picture of the player's own: up to 32 MB
+
+// The B3 icon's files, most likely first: beside the launcher (Windows / a release), else the repo's assets/ (a build
+// from the repo), the .app's Contents/Resources (macpkg1)
+std::vector<fs::path> icon_files(const App& a) {
+    return {a.exe_dir / "b3-icon.png", a.exe_dir / "assets" / "b3-icon.png", a.exe_dir / ".." / "assets" / "b3-icon.png",
+            a.exe_dir / ".." / "Resources" / "b3-icon.png", a.cwd / "assets" / "b3-icon.png"};
+}
+
+// A picture of the player's own chosen (Cover image... / Background image... / Logo image...): a PNG or JPEG file,
+// remembered in launcher.ini and copied into Steam at the next Add to Steam
+void steam_choose(App& a, DialogKind kind, const fs::path& p) {
+    std::error_code ec;
+    const std::uintmax_t size = fs::file_size(p, ec);
+    char head[16] = {};
+    std::ifstream f(p, std::ios::binary);
+    f.read(head, sizeof head);
+    const steam::Bytes h(head, head + std::max<std::streamsize>(0, f.gcount()));
+    if (ec || size > kSteamImageMax || steam::image_kind(h).empty()) {
+        a.steam_ui.note = "Not used: choose a PNG or JPEG image (up to 32 MB).";
+        a.steam_ui.level = 3;
+        return;
+    }
+    std::string& slot = kind == DialogKind::kSteamCover ? a.cfg.steam_cover : kind == DialogKind::kSteamHero ? a.cfg.steam_hero : a.cfg.steam_logo;
+    slot = utf8_of(p);
+    save_config(config_file(a.pref), a.cfg);
+    a.steam_ui.note = "Chosen: it goes into Steam at the next Add to Steam.";
+    a.steam_ui.level = 0;
+}
+
+// The pictures for Steam: the player's own where chosen, else the port's (steam_art.h); the wide capsule is always
+// the port's, the icon the B3 icon (its 512 px file when it is there, else the one built into the launcher)
+bool steam_art_files(App& a, std::vector<steam::ArtFile>& out, std::string& why) {
+    auto add = [&](steam::Art art, const std::string& chosen, const std::function<steam::Bytes()>& make) {
+        if (!chosen.empty()) {
+            steam::Bytes b;
+            std::string kind;
+            if (!steam::read_file(path_from_utf8(chosen), b, kSteamImageMax) || (kind = steam::image_kind(b)).empty()) {
+                why = "Cannot read your image " + chosen + ": choose it again, or Use the port's art.";
+                return false;
+            }
+            out.push_back({art, kind, std::move(b)});
+            return true;
+        }
+        out.push_back({art, "png", make()});
+        return !out.back().bytes.empty() || (why = "Could not make the pictures.", false);
+    };
+    const auto icon = [&a]() {
+        std::error_code ec;
+        steam::Bytes b;
+        for (const fs::path& f : icon_files(a))
+            if (fs::exists(f, ec) && steam::read_file(f, b, kSteamImageMax) && steam::image_kind(b) == "png") return b;
+        steam_art::Image im;
+        im.w = im.h = b3port::kAppIconSize;
+        im.rgba.assign(b3port::kAppIconRgba, b3port::kAppIconRgba + sizeof b3port::kAppIconRgba);
+        return steam_art::encode_png(im, true);
+    };
+    return add(steam::Art::kCover, a.cfg.steam_cover, [] { return steam_art::encode_png(steam_art::cover(), false); }) &&
+           add(steam::Art::kWide, "", [] { return steam_art::encode_png(steam_art::wide(), false); }) &&
+           add(steam::Art::kHero, a.cfg.steam_hero, [] { return steam_art::encode_png(steam_art::hero(), false); }) &&
+           add(steam::Art::kLogo, a.cfg.steam_logo, [] {
+               std::size_t n = 0;
+               const std::uint8_t* p = steam_art::logo_png(&n);
+               return steam::Bytes(p, p + n);
+           }) &&
+           add(steam::Art::kIcon, "", icon);
+}
+
+// Add to Steam pressed (run on the frame after, so that "Adding..." shows): the launcher into every Steam account's
+// library (steam::add), never while Steam runs
+void steam_run(App& a) {
+    App::SteamUi& u = a.steam_ui;
+    u.pending = false;
+    auto done = [&u](const std::string& note, int level) {
+        u.note = note;
+        u.level = level;
+        std::printf("b3launcher: Add to Steam: %s\n", note.c_str());
+    };
+    if (u.checks && !u.places) return done("A check run writes only to a made-up Steam folder.", 3);
+    if (a.self_exe.empty()) return done("Cannot find the launcher's own program file, so it cannot be added.", 3);
+    if (u.running ? *u.running : steam::steam_running()) {
+        std::string m = "Steam is running. Close Steam, then press Add to Steam again: Steam rewrites its list of games when it closes.";
+        if (on_steam_deck()) m += " On a Steam Deck, do this in Desktop Mode: exit Steam from its icon in the taskbar first.";
+        return done(m, 3);
+    }
+    steam::Request r;
+    r.roots = steam::find_roots(u.places ? *u.places : steam::this_places(), steam::this_os());
+    r.shortcut.exe = utf8_of(a.self_exe);
+    r.shortcut.start_dir = utf8_of(a.self_exe.parent_path());
+    std::string why;
+    if (!r.roots.empty() && !steam_art_files(a, r.art, why)) return done(why, 3);
+    const steam::Result res = steam::add(r);
+    std::string note = steam::summary(res);
+    bool flatpak = false, warn = false;
+    for (const steam::AccountResult& acc : res.accounts) {
+        flatpak = flatpak || (acc.ok && utf8_of(acc.config).find("com.valvesoftware.Steam") != std::string::npos);
+        warn = warn || !acc.why.empty() || !acc.art_why.empty();
+    }
+    if (flatpak)
+        note += " Flatpak's Steam needs to see this folder: flatpak override --user --filesystem=" + utf8_of(a.self_exe.parent_path()) +
+                " com.valvesoftware.Steam";
+    done(note, res.ok_count() == 0 ? 3 : warn ? 2 : 1);
+}
+
+// Settings > Launcher's Steam part: Add to Steam with its result, the player's own pictures, and why it helps
+float settings_steam(App& a, Ui& ui, float x, float y, float w) {
+    App::SteamUi& u = a.steam_ui;
+    y += 26;
+    y += section(a, "Steam", x + 4, y);
+    const float bw = 200;
+    u.widget = button(ui, SDL_FRect{x, y, bw, 44}, u.pending ? "Adding..." : "Add to Steam", Style::kNormal, !u.pending,
+                      "Adds Burnout 3: Takedown to the Steam library of every account on this computer, with its own cover, background "
+                      "and logo. Close Steam first: it rewrites its list of games when it closes.",
+                      [&a]() {
+                          a.steam_ui.pending = true;
+                          a.steam_ui.note.clear();
+                      });
+    const SDL_FColor nc = u.level == 1 ? col::ok : u.level == 2 ? col::warn : u.level == 3 ? col::bad : col::faint;
+    const std::string line = u.pending ? "Adding to Steam..." : u.note.empty() ? "Big Picture and the Steam Deck then show it with its own pictures." : u.note;
+    const float lh = a.text->line_height(kSmall);
+    const float ph = float(a.text->wrap(line, kSmall, w - bw - 20).size()) * lh;   // beside the button, centred on it
+    y += std::max(44.0f, paragraph(a, line, x + bw + 20, y + std::max(0.0f, (44 - ph) * 0.5f), w - bw - 20, kSmall, nc));
+    y += 10;
+    // the player's own pictures (PNG / JPEG): each button with what it uses under it, then back to the port's own
+    struct Pick { const char* label; DialogKind kind; std::string* chosen; const char* desc; };
+    const Pick picks[] = {
+        {"Cover image...", DialogKind::kSteamCover, &a.cfg.steam_cover,
+         "Choose your own picture for the library's cover (PNG or JPEG; 600 x 900 fits best). It goes into Steam at the next Add to Steam."},
+        {"Background image...", DialogKind::kSteamHero, &a.cfg.steam_hero,
+         "Choose your own picture for the game page's background (PNG or JPEG; 1920 x 620 or 3840 x 1240 fits best). It goes into Steam at the next Add to Steam."},
+        {"Logo image...", DialogKind::kSteamLogo, &a.cfg.steam_logo,
+         "Choose your own logo shown over the background (a PNG with a transparent background fits best). It goes into Steam at the next Add to Steam."},
+    };
+    const float gap = 12, pw = std::min(200.0f, (w - 3 * gap) / 4);
+    float px = x;
+    for (const Pick& p : picks) {
+        const DialogKind kind = p.kind;
+        std::string* chosen = p.chosen;
+        button(ui, SDL_FRect{px, y, pw, 44}, p.label, Style::kQuiet, !u.pending, p.desc, [&a, kind, chosen]() { open_dialog(a, kind, *chosen); });
+        const std::string what = chosen->empty() ? a.text->translated("The port's own") : utf8_of(path_from_utf8(*chosen).filename());
+        text_center(a, a.text->elide(what, kSmall, pw), px + pw * 0.5f, y + 48, kSmall, chosen->empty() ? col::faint : col::dim);
+        px += pw + gap;
+    }
+    const bool any = !a.cfg.steam_cover.empty() || !a.cfg.steam_hero.empty() || !a.cfg.steam_logo.empty();
+    button(ui, SDL_FRect{px, y, pw, 44}, "Use the port's art", Style::kQuiet, any && !u.pending,
+           "Forgets the pictures you chose: the next Add to Steam uses the port's own cover, background and logo.", [&a]() {
+               a.cfg.steam_cover.clear();
+               a.cfg.steam_hero.clear();
+               a.cfg.steam_logo.clear();
+               save_config(config_file(a.pref), a.cfg);
+               a.steam_ui.note = "The next Add to Steam uses the port's own pictures.";
+               a.steam_ui.level = 0;
+           });
+    y += 44 + 4 + lh + 12;
+    // 1.2.1: art the player picks themselves (the port ships only its own pictures): SteamGridDB's search, in the browser
+    button(ui, SDL_FRect{x, y, 280, 44}, "Find art online...", Style::kQuiet, true,
+           "Opens SteamGridDB's pictures for Burnout 3: Takedown in your browser; download a cover, background or logo you like, "
+           "then choose it with the buttons above.",
+           []() { SDL_OpenURL("https://www.steamgriddb.com/search/grids?term=Burnout%203%20Takedown"); });
+    y += 44 + 12;
+    y += paragraph(a, "Started from Steam, the game has Steam Input and the overlay, and Steam's desktop controller layout no longer "
+                      "clicks on the desktop while you play.",
+                   x, y, w, kSmall, col::faint) + 4;
     return y;
 }
 
@@ -2216,6 +2416,7 @@ void page_settings(App& a, Ui& ui, float x, float y, float w) {
          x + 280, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::faint);
     y += 44;
     y = settings_launcher(a, ui, x, y, w);   // update1
+    y = settings_steam(a, ui, x, y, w);      // issue #8
     a.content_h = y;
 }
 
@@ -2284,7 +2485,7 @@ void page_hd(App& a, Ui& ui, float x, float y, float w) {
             r.label = "HD TEXTURES";
             r.values = {"Off", "On"};
             r.value = a.settings.hd_textures ? 1 : 0;
-            r.description = "The HD texture pack given at start (reloads the track).";
+            r.description = "The HD texture pack given at start (applies when the game next starts).";
         }
         const float h = 46;
         setting_row(a, ui, r, x, y, w, h);
@@ -2424,9 +2625,9 @@ void page_credits(App& a, Ui& ui, float x, float y, float w) {
 
 // ---- the MUSIC page ----
 // The custom soundtrack (remaster-features §6): the folder, its songs (the game's own scan and tags: custom_music.h),
-// and the in-game PLAYLIST row. The same two settings as SETTINGS > INTERFACE > MUSIC in the game (Settings::music_folder
-// and playlist_mode in pc_settings.ini), so a change here shows there and the other way round. PLAYLIST EA Trax only
-// (the default) is the feature off: the game's music untouched.
+// and the in-game PLAYLIST and CUSTOM MUSIC VOLUME rows. The same settings as SETTINGS > INTERFACE > MUSIC in the game
+// (Settings::music_folder, playlist_mode and custom_music_volume in pc_settings.ini), so a change here shows there and
+// the other way round. PLAYLIST EA Trax only (the default) is the feature off: the game's music untouched.
 
 void page_music(App& a, Ui& ui, float x, float y, float w) {
     const bool set = !a.settings.music_folder.empty();
@@ -2508,6 +2709,8 @@ void page_music(App& a, Ui& ui, float x, float y, float w) {
 
     // the in-game PLAYLIST row: its values, words and description (b3settings::build_content), edited as the game does
     setting_row(a, ui, playlist_row(a.settings), x, y, w, 46);
+    y += 46 + 22;
+    setting_row(a, ui, custom_music_volume_row(a.settings), x, y, w, 46);   // musicvol1
     y += 46 + 22;
 
     // nowplaying1: OTHER MUSIC APPS (src/native/now_playing.h) -- what the system's media controls say plays now
@@ -3653,13 +3856,37 @@ b3native::input::PadStyle pad_style_of(App& a) {
 std::size_t ctl_pl(const App& a) { return std::min<std::size_t>(a.ctl_player, 1); }   // the player of the editor (rebind2: 2 is the shortcuts)
 bool ctl_shortcuts(const App& a) { return a.ctl_player >= 2; }
 b3native::input::Device ctl_device(const App& a) { return a.ctl_device == 0 ? b3native::input::Device::Keyboard : b3native::input::Device::Gamepad; }
-b3native::input::KeyCtx ctl_view(const App& a) {
-    if (a.ctl_device != 0) return b3native::input::KeyCtx::Any;
+b3native::input::KeyCtx ctl_view(const App& a) {   // padlayout: the controller's view too
     return a.ctl_view == 0 ? b3native::input::KeyCtx::Drive : b3native::input::KeyCtx::Menu;
 }
+// padlayout: the family of the controller the page shows (the selected one; Generic without one): the layout Auto gives
+b3native::input::PadStyle editor_family(const App& a) {
+    if (a.pads.empty()) return b3native::input::PadStyle::Generic;
+    return b3native::input::pad_family(int(SDL_GetGamepadType(a.pads[std::min(a.pad_sel, a.pads.size() - 1)])));
+}
+void editor_families(App& a) {
+    for (int p = 0; p < b3native::input::kPlayers; ++p) b3native::input::set_page_family(a.controls, p, editor_family(a));
+}
 std::string lower_words(std::string s) {
-    for (std::size_t k = 1; k < s.size(); ++k)
-        if (std::isalpha(static_cast<unsigned char>(s[k])) && std::isalpha(static_cast<unsigned char>(s[k - 1]))) s[k] = char(std::tolower(static_cast<unsigned char>(s[k])));
+    // 1.2.1: UTF-8 aware (a translated label: "CAPTURE D'ÉCRAN" -> "Capture D'Écran"): a letter after a letter lowered,
+    // ASCII and Latin-1 (U+00C0..U+00DE, not the sign U+00D7)
+    bool prev = false;
+    for (std::size_t k = 0; k < s.size();) {
+        const unsigned char c = static_cast<unsigned char>(s[k]);
+        if (c == 0xC3 && k + 1 < s.size()) {
+            const unsigned char d = static_cast<unsigned char>(s[k + 1]);
+            const unsigned cp = 0xC0u + (d & 0x3Fu);
+            const bool letter = cp != 0xD7 && cp != 0xF7;
+            if (letter && prev && cp <= 0xDE) s[k + 1] = char(d + 0x20);
+            prev = letter;
+            k += 2;
+        } else {
+            const bool letter = std::isalpha(c) != 0;
+            if (letter && prev) s[k] = char(std::tolower(c));
+            prev = letter;
+            k += (c < 0x80) ? 1 : (c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : 2);
+        }
+    }
     return s;
 }
 
@@ -3682,7 +3909,8 @@ void flow_modal(App& a) {
     const std::string act = lower_words(f.is_port() ? in::port_label(f.port_action()) : in::action_label(f.action()));
     const std::string who = f.is_port() ? std::string("Shortcuts, ") + (f.device() == in::Device::Gamepad ? "controller" : "keyboard")
                                         : "Player " + std::to_string(f.player() + 1) +
-                                              (f.device() == in::Device::Gamepad ? ", controller" : f.view() == in::KeyCtx::Drive ? ", keyboard while driving" : ", keyboard in menus");
+                                              (f.device() == in::Device::Gamepad ? (f.view() == in::KeyCtx::Menu ? ", controller in menus" : ", controller while driving")
+                                                                                 : f.view() == in::KeyCtx::Drive ? ", keyboard while driving" : ", keyboard in menus");
     if (f.state() == S::Waiting) {
         Modal m;
         m.title = f.device() == in::Device::Keyboard ? "Press a key for " + act : "Press a controller input for " + act;
@@ -3870,6 +4098,28 @@ void gyro_choice(App& a, Ui& ui, const SDL_FRect& r, const std::string& label, c
     text_center(a, values[std::min(v, n - 1)], vx + vw * 0.5f, ty, kBody, col::text, f);
 }
 
+// padlayout: a full-width choice like gyro_choice with a wide value (Auto's "Auto: PlayStation controller")
+void layout_choice(App& a, Ui& ui, const SDL_FRect& r, const std::string& label, const std::vector<std::string>& values, std::size_t v,
+                   const std::string& desc, std::function<void(std::size_t)> set) {
+    Widget wd;
+    wd.r = r;
+    wd.desc = desc;
+    const std::size_t n = values.size();
+    const float vw = std::min(420.0f, r.w * 0.6f), vx = r.x + r.w - vw - 8;
+    wd.change = [v, n, set](int dir) { set((v + n + std::size_t(dir + int(n))) % n); };
+    wd.activate = [v, n, set]() { set((v + 1) % n); };
+    wd.click = [v, n, set, vx, vw](float mx, float) { set((v + n + (mx >= vx && mx < vx + vw * 0.5f ? n - 1 : 1)) % n); };
+    const int i = ui.add(std::move(wd));
+    const bool f = ui.focused(i), hv = ui.hovered(i);
+    D::round_rect(r, 8, f ? col::panel3 : hv ? col::panel2 : col::panel);
+    if (f) D::rect(SDL_FRect{r.x, r.y + 8, 3, r.h - 16}, col::accent);
+    const float ty = r.y + (r.h - a.text->line_height(kBody)) * 0.5f;
+    text(a, label, r.x + 14, ty, kBody, col::dim, f);
+    D::chevron(vx + 10, r.y + r.h * 0.5f, 11, -1, 2.0f, col::dim);
+    D::chevron(vx + vw - 10, r.y + r.h * 0.5f, 11, +1, 2.0f, col::dim);
+    text_center(a, a.text->elide(values[std::min(v, n - 1)], kBody, vw - 48, f), vx + vw * 0.5f, ty, kBody, col::text, f);
+}
+
 // pad1 (each frame): the selected pad's gyro on while the Controllers page shows it with the editor's player's gyro on
 // (off otherwise), and the trigger test's end; release: everything back (the launcher closing)
 void pads_motion(App& a, bool release = false) {
@@ -3910,7 +4160,9 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
                        "(in the game: SETTINGS > INTERFACE > CONTROLS).", x + 4, yy, w - 8, kSmall, col::dim) + 8;
     const bool shortcuts = ctl_shortcuts(a);
     const bool kb = a.ctl_device == 0 && !shortcuts;
-    const int cols = kb ? 3 : 2;
+    const bool padv = a.ctl_device != 0 && !shortcuts;   // padlayout: the controller's layout and views
+    editor_families(a);
+    const int cols = kb || padv ? 3 : 2;
     const float cw = (w - float(cols - 1) * 12) / float(cols);
     // launcherux1: the editor reads as one list for Up / Down (Ui::chain), from Player to Reset to defaults: left /
     // right change the choices side by side and the actions, so up / down step through the row of choices, then the
@@ -3925,7 +4177,27 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
     if (kb)
         ctl_choice(a, ui, SDL_FRect{x + 2 * (cw + 12), yy, cw, 44}, "Keys for", {"Driving", "Menus"}, a.ctl_view,
                    "A key can do one thing while you drive and another in the menus (W accelerates, and moves up in a menu).");
+    if (padv)
+        ctl_choice(a, ui, SDL_FRect{x + 2 * (cw + 12), yy, cw, 44}, "Buttons for", {"Driving", "Menus"}, a.ctl_view,
+                   "A button can do one thing while you drive and another in the menus (on the Xbox layout A boosts, and confirms in a menu).");
     yy += 44 + 12;
+    if (padv) {   // padlayout (1.2.1): CONTROLLER LAYOUT, Auto worded for the controller shown
+        const in::PlayerControls& pc = a.controls.player[ctl_pl(a)];
+        layout_choice(a, ui, SDL_FRect{x, yy, w, 44}, "Layout",
+                      {in::auto_text(editor_family(a), !a.pads.empty()), "Xbox", "PlayStation", "Custom"}, std::size_t(pc.layout),
+                      "Which buttons do what on this player's controller. Auto: the layout of the controller's console, picked again when "
+                      "the controller changes: a PlayStation controller gets the PS2 game's, any other controller the original Xbox game's. "
+                      "Xbox, PlayStation: that layout on any controller. Custom: your own bindings in the rows below. Changing a binding "
+                      "below makes it Custom.",
+                      [&a](std::size_t v) {
+                          const in::PadLayout l = in::PadLayout(std::min<std::size_t>(v, 3));
+                          if (l == a.controls.player[ctl_pl(a)].layout) return;
+                          in::set_layout(a.controls, int(ctl_pl(a)), l);
+                          controls_save(a, "Player " + std::to_string(ctl_pl(a) + 1) + " controller layout " +
+                                               in::layout_text(a.controls.player[ctl_pl(a)], editor_family(a), !a.pads.empty()));
+                      });
+        yy += 44 + 12;
+    }
     const in::Device dev = ctl_device(a);
     const in::KeyCtx view = ctl_view(a);
     const in::PadStyle style = pad_style_of(a);
@@ -3944,7 +4216,7 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
             const in::PortAction act = in::PortAction(pa);
             if (dev == in::Device::Gamepad && !in::port_has_pad(act)) continue;
             Row r;
-            r.label = lower_words(in::port_label(act));
+            r.label = lower_words(a.text->translated(in::port_label(act)));   // 1.2.1: in the player's language
             r.desc = std::string(in::port_use(act)) + " " + hint + (dev == in::Device::Gamepad ? " A controller shortcut is every input of it held together." : "");
             r.value = in::bound_port_text(a.controls, act, dev, style);
             r.moved = dev == in::Device::Keyboard ? a.controls.port.keys[std::size_t(act)] != in::default_port().keys[std::size_t(act)]
@@ -3968,12 +4240,11 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
     } else {
         for (const in::Ds2 act : in::action_order()) {
             Row r;
-            r.label = lower_words(in::action_label(act));
+            r.label = lower_words(a.text->translated(in::action_label(act)));
             const std::string drive = in::action_use(act, true), menus = in::action_use(act, false);
             r.desc = std::string(drive.empty() ? "" : "Driving: " + drive + ". ") + (menus.empty() ? "" : "Menus: " + menus + ". ") + hint;
             r.value = in::bound_text(a.controls, int(ctl_pl(a)), dev, act, view, style);
-            r.moved = dev == in::Device::Keyboard ? a.controls.player[ctl_pl(a)].keys[std::size_t(act)] != in::default_player(int(ctl_pl(a))).keys[std::size_t(act)]
-                                                  : a.controls.player[ctl_pl(a)].pad[std::size_t(act)] != in::default_player(int(ctl_pl(a))).pad[std::size_t(act)];
+            r.moved = in::moved(a.controls, int(ctl_pl(a)), dev, act, view);   // padlayout: per view, against the layout's
             r.activate = [&a, act]() { flow_begin(a, act, false); };
             r.add = [&a, act]() { flow_begin(a, act, true); };
             r.remove = [&a, act]() {
@@ -4008,7 +4279,8 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
             Modal m;
             m.title = label;
             m.text = (ctl_shortcuts(a) ? std::string("Shortcuts") : "Player " + std::to_string(ctl_pl(a) + 1)) +
-                     (ctl_device(a) == b3native::input::Device::Gamepad ? ", controller" : ctl_shortcuts(a) ? ", keyboard" : ctl_view(a) == b3native::input::KeyCtx::Drive ? ", keyboard while driving" : ", keyboard in menus") +
+                     (ctl_device(a) == b3native::input::Device::Gamepad ? (ctl_shortcuts(a) ? ", controller" : ctl_view(a) == b3native::input::KeyCtx::Drive ? ", controller while driving" : ", controller in menus")
+                      : ctl_shortcuts(a) ? ", keyboard" : ctl_view(a) == b3native::input::KeyCtx::Drive ? ", keyboard while driving" : ", keyboard in menus") +
                      ": " + value + ". Change it to a new input, add one more, remove the last one, or put it back to the default.";
             m.buttons = {{"Change", act}, {"Add one more", add}, {"Remove the last", rem}, {"Back to default", rst}, {"Cancel", nullptr}};
             m.focus = 4;
@@ -4183,8 +4455,9 @@ void page_pads(App& a, Ui& ui, float x, float y, float w) {
         ry += 120 + 14;
     }
     std::array<std::uint8_t, 32> pad = b3native::input::neutral_sample();
-    for (SDL_Gamepad* g : a.pads) {   // remap1: through player 1's bindings (the defaults: as before)
-        const auto one = b3native::input::gamepad_sample(pad_state(g), a.controls.player[0]);
+    for (SDL_Gamepad* g : a.pads) {   // remap1: through player 1's bindings; padlayout: the layout for each pad, in menus
+        const auto one = b3native::input::gamepad_sample(pad_state(g), a.controls.player[0], {}, b3native::input::KeyCtx::Menu,
+                                                         b3native::input::pad_family(int(SDL_GetGamepadType(g))));
         pad = b3native::input::merge_samples(pad.data(), one.data());
     }
     const auto seen = a.keys.compose(a.pads.empty() ? nullptr : pad.data());
@@ -4196,7 +4469,8 @@ void page_pads(App& a, Ui& ui, float x, float y, float w) {
         const in::GyroControls& gy = a.controls.player[ctl_pl(a)].gyro;
         in::GamepadState st = pad_state(sel);
         in::apply_gyro(st, a.gyro, gy, true, false, a.gyro_recentre_held);
-        const float steer = (float(in::gamepad_sample(st, a.controls.player[ctl_pl(a)])[4]) - 128.0f) / (st.gyro_steer >= 0 ? 127.0f : 128.0f);
+        const float steer = (float(in::gamepad_sample(st, a.controls.player[ctl_pl(a)], {}, in::KeyCtx::Drive,
+                                                      in::pad_family(int(SDL_GetGamepadType(sel))))[4]) - 128.0f) / (st.gyro_steer >= 0 ? 127.0f : 128.0f);
         ry += section(a, "Gyro steering (player " + std::to_string(ctl_pl(a) + 1) + ", while driving)", rx, ry);
         char buf[160];
         std::snprintf(buf, sizeof buf, "%s %+.1f deg   gyro %+.2f   the game's steering %+.2f%s", gy.axis ? "Turn" : "Tilt",
@@ -7182,7 +7456,7 @@ int update_checks(App& a, const fs::path& dir) {
         render(a);
         bool toggled = false;
         for (Widget& w : a.widgets)
-            if (w.desc.rfind("Once a day", 0) == 0 && w.activate) {
+            if (w.desc.rfind("Each time the launcher starts", 0) == 0 && w.activate) {
                 const auto fn = w.activate;
                 fn();
                 toggled = true;
@@ -7206,6 +7480,159 @@ int update_checks(App& a, const fs::path& dir) {
     return fails;
 }
 
+// ---- issue #8: ADD TO STEAM with a made-up Steam folder (--screenshot; this computer's Steam is never read or written) ----
+
+struct SteamCheck {
+    fs::path base, root;   // the check's folder; the made-up Steam in it
+    steam::Bytes other;    // account 1001's list before: one other game
+};
+
+// A made-up home with Steam where this system looks for it: account 1001 with a list holding another game, account
+// 1002 without a config folder yet. The launcher's Steam actions then use it (steam_ui.places), Steam "closed".
+SteamCheck steam_check_setup(App& a, const fs::path& dir) {
+    SteamCheck c;
+    std::error_code ec;
+    c.base = dir / "steam_check";
+    fs::remove_all(c.base, ec);
+    steam::Places p;
+    p.home = c.base / "home";
+    p.registry = {c.base / "home" / "Steam"};   // Windows: the registry's SteamPath, made up
+    c.root = steam::candidate_roots(p, steam::this_os()).front();
+    fs::create_directories(c.root / "userdata" / "1001" / "config", ec);
+    fs::create_directories(c.root / "userdata" / "1002", ec);
+    steam::NewShortcut other;
+    other.name = "Some Other Game";
+    other.exe = utf8_of(c.base / "other" / "other-game");
+    other.start_dir = utf8_of(c.base / "other");
+    c.other = steam::with_entry(steam::parse_shortcuts({}), other);
+    steam::write_atomic(c.root / "userdata" / "1001" / "config" / "shortcuts.vdf", c.other, nullptr);
+    a.steam_ui.places = p;
+    a.steam_ui.running = false;
+    return c;
+}
+
+// What one account has: our entry (last), its pictures' sizes. Returns "" when right, else what is wrong.
+std::string steam_check_account(App& a, const SteamCheck& c, const std::string& id, std::uint32_t& appid, const fs::path& save_to = {}) {
+    const fs::path cfg = steam::find_roots(*a.steam_ui.places, steam::this_os()).front() / "userdata" / id / "config";
+    steam::Bytes b;
+    steam::read_file(cfg / "shortcuts.vdf", b, 1u << 20);
+    const steam::ShortcutsFile f = steam::parse_shortcuts(b);
+    if (!f.ok || f.entries.empty()) return "account " + id + ": no list";
+    const steam::Shortcut& e = f.entries.back();
+    if (e.name != steam::kAppName || !steam::same_exe(e.exe, utf8_of(a.self_exe), steam::fold_paths()) ||
+        !steam::same_exe(e.start_dir, utf8_of(a.self_exe.parent_path()), steam::fold_paths()))
+        return "account " + id + ": the entry is not the launcher's";
+    if (id == "1001" && (f.entries.size() != 2 || !std::equal(c.other.begin() + std::ptrdiff_t(f.entries[0].begin), c.other.begin() + std::ptrdiff_t(f.entries[0].end),
+                                                             b.begin() + std::ptrdiff_t(f.entries[0].begin))))
+        return "account 1001: the other game's entry changed";
+    appid = steam::entry_appid(e);
+    struct Want { steam::Art art; int w, h; const char* name; };
+    for (const Want& w : {Want{steam::Art::kCover, steam_art::kCoverW, steam_art::kCoverH, "cover"}, Want{steam::Art::kWide, steam_art::kWideW, steam_art::kWideH, "wide"},
+                          Want{steam::Art::kHero, steam_art::kHeroW, steam_art::kHeroH, "hero"}, Want{steam::Art::kLogo, 920, 459, "logo"},
+                          Want{steam::Art::kIcon, 0, 0, "icon"}}) {
+        steam::Bytes img;
+        const fs::path f2 = cfg / "grid" / steam::grid_name(appid, w.art);
+        if (!steam::read_file(f2, img, 64u << 20)) return "account " + id + ": no " + utf8_of(f2.filename());
+        const auto d = steam_art::decode_png(img.data(), img.size());
+        if (!d || (w.w && (d->w != w.w || d->h != w.h)) || (!w.w && (d->w < 128 || d->w != d->h))) return "account " + id + ": " + w.name + " is not the right picture";
+        if (!save_to.empty()) {   // the pictures for a look
+            std::error_code ec;
+            fs::create_directories(save_to, ec);
+            steam::write_atomic(save_to / (std::string(w.name) + ".png"), img, nullptr);
+        }
+    }
+    if (e.icon != utf8_of(cfg / "grid" / steam::grid_name(appid, steam::Art::kIcon))) return "account " + id + ": the entry's icon is not its grid icon";
+    return {};
+}
+
+// The first Add to Steam: both accounts get the entry and the pictures, 1001's other game and backup kept
+bool steam_check_add(App& a, const fs::path& dir, SteamCheck& c) {
+    c = steam_check_setup(a, dir);
+    steam_run(a);
+    std::uint32_t id1 = 0, id2 = 0;
+    std::string bad = steam_check_account(a, c, "1001", id1, dir / "steam_art");
+    if (bad.empty()) bad = steam_check_account(a, c, "1002", id2);
+    steam::Bytes backup;
+    if (bad.empty() && !(steam::read_file(steam::backup_path(c.root / "userdata" / "1001" / "config" / "shortcuts.vdf"), backup, 1u << 20) && backup == c.other))
+        bad = "account 1001: no backup of the list as it was";
+    if (bad.empty() && a.steam_ui.level != 1) bad = "the note: " + a.steam_ui.note;
+    if (bad.empty() && id1 != steam::shortcut_appid(steam::vdf_quoted(utf8_of(a.self_exe)), steam::kAppName)) bad = "the appid is not crc32(exe + name) | 0x80000000";
+    std::printf("b3launcher: steam add check %s (%s; appid %u; the pictures in %s)\n", bad.empty() ? "PASS" : "FAIL",
+                bad.empty() ? a.steam_ui.note.c_str() : bad.c_str(), unsigned(id1), utf8_of(dir / "steam_art").c_str());
+    return !bad.empty();
+}
+
+// Again, then with the player's own pictures (a PNG cover, a JPEG background, a text file refused), then back to the
+// port's: still one entry each, the list unchanged, the grid's files replaced
+bool steam_check_again(App& a, const SteamCheck& c) {
+    const fs::path vdf = c.root / "userdata" / "1001" / "config" / "shortcuts.vdf";
+    steam::Bytes before, after;
+    steam::read_file(vdf, before, 1u << 20);
+    std::string bad;
+    steam_run(a);
+    steam::read_file(vdf, after, 1u << 20);
+    if (after != before) bad = "a second Add to Steam changed the list";
+    if (bad.empty() && a.steam_ui.note.rfind("Already in Steam (2 accounts)", 0) != 0) bad = "the note: " + a.steam_ui.note;
+    // the player's own pictures (a small PNG made here, the first bytes of a JPEG, a text file)
+    steam_art::Image mine;
+    mine.w = 60;
+    mine.h = 90;
+    for (int k = 0; k < mine.w * mine.h; ++k) mine.rgba.insert(mine.rgba.end(), {255, 120, 20, 255});
+    const steam::Bytes cover = steam_art::encode_png(mine, false);
+    const steam::Bytes jpeg = {0xFF, 0xD8, 0xFF, 0xE0, 0, 16, 'J', 'F', 'I', 'F', 0, 1, 2, 3, 0xFF, 0xD9};
+    std::error_code ec;
+    fs::create_directories(c.base / "mine", ec);
+    steam::write_atomic(c.base / "mine" / "my cover.png", cover, nullptr);
+    steam::write_atomic(c.base / "mine" / "hero.jpg", jpeg, nullptr);
+    steam::write_atomic(c.base / "mine" / "notes.txt", {'h', 'i'}, nullptr);
+    steam_choose(a, DialogKind::kSteamLogo, c.base / "mine" / "notes.txt");
+    if (bad.empty() && (!a.cfg.steam_logo.empty() || a.steam_ui.level != 3)) bad = "a text file was taken as a picture";
+    steam_choose(a, DialogKind::kSteamCover, c.base / "mine" / "my cover.png");
+    steam_choose(a, DialogKind::kSteamHero, c.base / "mine" / "hero.jpg");
+    Config saved;
+    load_config(config_file(a.pref), saved);
+    if (bad.empty() && (saved.steam_cover != utf8_of(c.base / "mine" / "my cover.png") || saved.steam_hero != utf8_of(c.base / "mine" / "hero.jpg")))
+        bad = "the chosen pictures are not in launcher.ini";
+    steam_run(a);
+    steam::read_file(vdf, after, 1u << 20);
+    std::uint32_t id = 0;
+    for (const steam::Shortcut& e : steam::parse_shortcuts(after).entries) if (e.name == steam::kAppName) id = steam::entry_appid(e);
+    const fs::path grid = c.root / "userdata" / "1001" / "config" / "grid";
+    steam::Bytes got;
+    if (bad.empty() && after != before) bad = "Add to Steam with the player's pictures changed the list";
+    if (bad.empty() && !(steam::read_file(grid / steam::grid_name(id, steam::Art::kCover), got, 1u << 20) && got == cover)) bad = "the player's cover is not in grid/";
+    if (bad.empty() && !(steam::read_file(grid / steam::grid_name(id, steam::Art::kHero, "jpg"), got, 1u << 20) && got == jpeg)) bad = "the player's background is not in grid/";
+    if (bad.empty() && fs::exists(grid / steam::grid_name(id, steam::Art::kHero), ec)) bad = "the port's background is still beside the player's";
+    std::printf("b3launcher: steam again check %s (%s)\n", bad.empty() ? "PASS" : "FAIL", bad.empty() ? a.steam_ui.note.c_str() : bad.c_str());
+    return !bad.empty();
+}
+
+// Steam running: nothing written; no Steam: said so. Then the launcher's own state back (no made-up Steam, the
+// pictures' choice as before)
+bool steam_check_refusals(App& a, const SteamCheck& c, bool running) {
+    const fs::path vdf = c.root / "userdata" / "1001" / "config" / "shortcuts.vdf";
+    steam::Bytes before, after;
+    steam::read_file(vdf, before, 1u << 20);
+    std::string bad;
+    if (running) {
+        a.steam_ui.running = true;
+        steam_run(a);
+        if (a.steam_ui.note.rfind("Steam is running.", 0) != 0 || a.steam_ui.level != 3) bad = "the note: " + a.steam_ui.note;
+    } else {
+        a.steam_ui.running = false;
+        steam::Places none;
+        none.home = c.base / "nobody";
+        a.steam_ui.places = none;
+        steam_run(a);
+        if (a.steam_ui.note.rfind("Steam was not found", 0) != 0 || a.steam_ui.level != 3) bad = "the note: " + a.steam_ui.note;
+    }
+    steam::read_file(vdf, after, 1u << 20);
+    if (bad.empty() && after != before) bad = "the list was written";
+    std::printf("b3launcher: steam %s check %s (%s)\n", running ? "running" : "not found", bad.empty() ? "PASS" : "FAIL",
+                bad.empty() ? a.steam_ui.note.c_str() : bad.c_str());
+    return !bad.empty();
+}
+
 int screenshots(App& a, const fs::path& dir) {
     std::error_code ec;
     fs::create_directories(dir, ec);
@@ -7222,12 +7649,42 @@ int screenshots(App& a, const fs::path& dir) {
     SDL_JoystickID vj = 0;
     int bad_checks = 0;
     ShowroomHdCheck hd_check;
+    SteamCheck steam_check;   // issue #8
+    a.steam_ui.checks = true;
+    auto steam_shot = [&]() {   // Settings with Add to Steam focused (the page scrolled to it)
+        a.modal.reset();
+        go_page(a, kSettings);
+        a.settings_tab = 0;
+        a.in_content = true;
+        render(a);
+        a.focus = std::max(0, a.steam_ui.widget);
+        a.reveal_focus = false;   // the page's end in view: the whole Steam part
+        a.scroll[kSettings] = 1e6f;
+    };
     const std::vector<Shot> shots = {
         {"play", [&]() { go_page(a, kPlay); a.in_content = true; a.focus = 0; }},
         {"settings_display", [&]() { go_page(a, kSettings); a.settings_tab = 0; a.in_content = true; a.focus = 3; }},
         {"settings_graphics", [&]() { a.settings_tab = 1; a.focus = 2; }},
         {"settings_effects", [&]() { a.settings_tab = 2; a.focus = 2; a.scroll[kSettings] = 0; }},
         {"settings_reset_confirm", [&]() { confirm_reset(a); }},
+        // issue #8: Add to Steam into a made-up Steam folder: added, again (with the player's own pictures), Steam
+        // running, no Steam
+        {"settings_steam", [&]() { steam_shot(); }},
+        {"settings_steam_added", [&]() { if (steam_check_add(a, dir, steam_check)) ++bad_checks; steam_shot(); }},
+        {"settings_steam_own", [&]() { if (steam_check_again(a, steam_check)) ++bad_checks; steam_shot(); }},
+        {"settings_steam_running", [&]() { if (steam_check_refusals(a, steam_check, true)) ++bad_checks; steam_shot(); }},
+        {"settings_steam_none", [&]() { if (steam_check_refusals(a, steam_check, false)) ++bad_checks; steam_shot(); }},
+        {"settings_steam_reset", [&]() {   // back as before: the port's art, no made-up Steam
+             a.cfg.steam_cover.clear();
+             a.cfg.steam_hero.clear();
+             a.cfg.steam_logo.clear();
+             save_config(config_file(a.pref), a.cfg);
+             a.steam_ui.places.reset();
+             a.steam_ui.running.reset();
+             a.steam_ui.note.clear();
+             a.steam_ui.level = 0;
+             steam_shot();
+         }},
         {"hd", [&]() { a.modal.reset(); go_page(a, kHd); a.in_content = true; a.focus = 0; }},
         {"music", [&]() { go_page(a, kMusic); a.in_content = true; a.focus = 0; }},
         {"music_playlist", [&]() { go_page(a, kMusic); a.in_content = true; a.focus = 4; }},
@@ -7298,6 +7755,7 @@ int screenshots(App& a, const fs::path& dir) {
              a.modal.reset();
              go_page(a, kPads);
              a.ctl_player = 0; a.ctl_device = 0; a.ctl_view = 0;
+             a.reveal_focus = true;   // as after a key: the focused row in view (a shot before turned it off)
              a.controls = b3native::input::default_controls();
              b3native::input::rebind(a.controls, 0, b3native::input::Device::Keyboard, b3native::input::Ds2::Cross,
                                      {b3native::input::Device::Keyboard, 14, b3native::input::PadInput::None}, b3native::input::KeyCtx::Drive,
@@ -7311,13 +7769,30 @@ int screenshots(App& a, const fs::path& dir) {
              render(a);
              a.focus = a.ctl_first_widget + 11;
          }},
+        {"controls_layout", [&]() {   // padlayout: CONTROLLER LAYOUT focused (Auto: the virtual DualSense, the PlayStation layout)
+             a.ctl_view = 0;
+             render(a);
+             a.focus = a.ctl_first_widget - 1;
+         }},
+        {"controls_layout_xbox", [&]() {   // padlayout: the Xbox layout chosen, the driving view (A boost, B Crashbreaker)
+             b3native::input::set_layout(a.controls, 0, b3native::input::PadLayout::Xbox);
+             render(a);
+             a.focus = a.ctl_first_widget + 5;   // R1: A, RB
+         }},
+        {"controls_layout_xbox_menus", [&]() {   // padlayout: the same in the menus view (A confirm, B back)
+             a.ctl_view = 1;
+             render(a);
+             a.focus = a.ctl_first_widget;   // CROSS: RT, A
+         }},
         {"controls_gyro", [&]() {   // pad1: the controller's gyro steering rows (Mix)
+             a.ctl_view = 0;
+             b3native::input::set_layout(a.controls, 0, b3native::input::PadLayout::Auto);
              a.controls.player[0].gyro.mode = 1;
              render(a);
              a.focus = a.ctl_first_widget + 27;   // the gyro rows (the 4th: dead zone), after the 24 action rows
          }},
         {"controls_conflict", [&]() {   // a rebind of Cross to East: Circle has it
-             a.flow.begin(0, b3native::input::Device::Gamepad, b3native::input::Ds2::Cross, b3native::input::KeyCtx::Any, false);
+             a.flow.begin(0, b3native::input::Device::Gamepad, b3native::input::Ds2::Cross, b3native::input::KeyCtx::Drive, false);
              a.flow.input(a.controls, {b3native::input::Device::Gamepad, 0, b3native::input::PadInput::East});
              flow_modal(a);
          }},
@@ -7717,9 +8192,7 @@ int main(int argc, char** argv) {
     SDL_SetWindowMinimumSize(a.win, 900, 560);
     // the B3 icon: beside the launcher (Windows / a release), else the repo's assets/ (a build from the repo)
     SDL_Surface* icon_surface = nullptr;
-    for (const fs::path& f : {a.exe_dir / "b3-icon.png", a.exe_dir / "assets" / "b3-icon.png", a.exe_dir / ".." / "assets" / "b3-icon.png",
-                              a.exe_dir / ".." / "Resources" / "b3-icon.png",   // macpkg1: the .app's Contents/Resources
-                              a.cwd / "assets" / "b3-icon.png"})
+    for (const fs::path& f : icon_files(a))   // (macpkg1: the .app's Contents/Resources among them)
         if (!icon_surface && fs::exists(f, ec)) icon_surface = SDL_LoadPNG(utf8_of(f).c_str());
     // (no file: the icon built into the program; the header's texture below uses the file's 512 px version when there is one)
     if (icon_surface) {
@@ -7787,6 +8260,7 @@ int main(int argc, char** argv) {
             pads_motion(a);   // pad1
             render(a);
             SDL_RenderPresent(a.ren);
+            if (a.steam_ui.pending) steam_run(a);   // issue #8: after the frame that shows "Adding..."
         }
     }
     pads_motion(a, true);   // pad1: the triggers free, the sensors off
