@@ -70,14 +70,16 @@ ones (in `renderware.rodata`/`.data`). GS-direct packet builders: **60 functions
 
 ### 2.3 Frame order (one player)
 
-From the calls in `CB3World::Render` (`src/b3/_unclassified/B3WorldPS2_00276300.cpp`), in source order [C calls; L order
-= execution order]: `OpenViewport` -> environment `BeginRender` -> `BuildCustomCameraData` -> `ClearOffscreenBuffer`
--> backdrop texture, sky, sun blob, clouds -> env-map sun corona -> `SendRegistersToGS` -> sky/sun to the environment
-map -> texture cache swap -> **`RenderBeforeVehicles`** (streamed track) -> traffic, race position, wrong-way walls ->
-sun occlusion test -> **bloom** -> sun corona -> radial blur -> `CloseViewport` -> **`RenderRaceCars`** -> coronas ->
-**`RenderAfterVehicles`** -> **full-screen specular** -> `RenderAfterSpecular` -> **shadows** -> pre-fog effects ->
-**fog** -> game data -> post-fog effects -> **directional blur**. The HUD (`CB3HUDManager::Render`) and menus draw after
-this through `Gt2dRenderer` [L].
+From the calls in `CB3World::Render` (`src/b3/_unclassified/B3WorldPS2_00276300.cpp`, matched), in source order [C
+calls; L order = execution order]: `OpenViewport` -> environment `BeginRender` -> `BuildCustomCameraData` ->
+`ClearOffscreenBuffer` -> backdrop texture, sky, sun blob, clouds -> env-map sun corona data -> sky and sun to the
+environment map -> `SendRegistersToGS` -> texture cache swap -> **`RenderBeforeVehicles`** (streamed track) ->
+traffic -> **`RenderRaceCars`** -> coronas (`EndCoronaSubmit`) -> **`RenderAfterVehicles`** -> **full-screen
+specular** -> `RenderAfterSpecular` -> **shadows** -> pre-fog effects -> **fog** -> game data -> post-fog effects ->
+race position, wrong-way walls -> sun occlusion test -> **bloom** -> sun corona -> the **directional blur** or the
+radial blur -> `CloseViewport`. (An earlier version of this summary had the bloom and `CloseViewport` before the race
+cars; §11.1 and the matched source have this order.) The HUD (`CB3HUDManager::Render`) and menus draw after this
+through `Gt2dRenderer` [L].
 
 ## 3. Interception level: options
 
@@ -330,7 +332,7 @@ the census (`batch layout <pos>/<@1>/<@2>[/n]`).
   MSAA resolved into the swapchain, **uncapped presentation** (IMMEDIATE, else MAILBOX, else VSYNC), and an offscreen
   target with read-back.
 - **Shaders**: GLSL 450 -> SPIR-V (glslangValidator 16.2) -> MSL (spirv-cross), embedded in
-  `src/b3gfx/shaders_gen.h` by `tools/render/build_shaders.sh` (committed; builds need no shader tools). SDL_GPU
+  `src/b3gfx/shaders_gen.h` by `tools/render/build_shaders.sh` (committed; builds need no shader tools; it records each source's SHA-256 and `make test` checks them: `embed_shaders.py --check`). SDL_GPU
   backends: Vulkan (Windows, Linux) with SPIR-V, Metal (macOS) with MSL. D3D12 needs DXIL, which is not generated (no
   DXC here); Windows uses SDL_GPU's Vulkan backend. Adding DXIL later = SDL_shadercross or DXC in `build_shaders.sh`.
   Simplest robust route chosen over SDL_shadercross: no runtime shader compiler, two small tools at build time only.
@@ -2059,7 +2061,7 @@ raster: 3,670 by base keys, 4,106 by mip-path keys (mostly level 1 and 2 drawn o
 ### 18.3 Loader
 
 - `b3asset::HdPack` indexes the folder by name (strict hex parse; 89 ms for 7,859 names over /mnt/c); nothing is read
-  until a hit. `HdTextures` holds the pack and a cache of decoded DDS files.
+  until a hit. `HdTextures` holds the pack, the files read and (§18.6) the BC chains built from them.
 - **One hook** in `decode_raster_clut` (`set_hd_textures`; off by default): after the normal decode, the raster's key
   is looked up with the same GsMemory state and CLUT add (car paints, HUD palettes), and on a hit `levels` is replaced
   by the pack image **cropped to the raster's extent** (a replacement covers TEX0's 2^TW x 2^TH, the decode covers
@@ -2113,10 +2115,55 @@ raster: 3,670 by base keys, 4,106 by mip-path keys (mostly level 1 and 2 drawn o
 
 ### 18.5 Not done
 
-- Compressed upload (BC3 straight to the GPU with CPU mips: 4x less upload and memory) and lazy pop-in; the HUD toggle.
+- Lazy pop-in (a texture drawn before its replacement is ready); the HUD toggle. (Compressed upload: §18.6.)
 - The sky / cloud replacements (they need the runtime alpha-ramp CLUT path in our sky model); runtime-built T8H
   textures; region-named replacements (none in this pack); other packs.
 - macOS: not built here; the code is portable (no SIMD; `unsigned __int128`, std::thread, std::filesystem).
+
+### 18.6 Kept compressed on the GPU (hdgpu, 2026-11-19)
+
+Bigger packs (4x-8x) did not fit as RGBA8: every replacement was decoded on the CPU, cached, uploaded as RGBA8 and its
+chain built by the GPU. Now a BC1 / BC2 / BC3 replacement stays BC from the file to the sampler (code:
+`include/b3asset/bc.h` + `src/b3asset/bc.cpp`, `HdTextures` in hdpack.cpp, `TextureLevel::bc` and
+`Device::supports_bc` in b3gfx):
+
+- **When**: the device samples BC1, BC2 and BC3 (`SDL_GPUTextureSupportsFormat`; desktop D3D12 / Vulkan / Metal do;
+  `set_hd_compressed` after the device is made), the decode is a track's or a car's (`HdCompressScope` in read_track's
+  texture table and read_car's atlas: their textures are only uploaded), and the crop (§18.3) is whole 4x4 blocks.
+  Everything else keeps the RGBA8 path as before: RGBA32 files, crops that are not whole blocks, the HUD, effects,
+  sky and sun (they read texels on the CPU), and `$B3_HD_RGBA=1` (all of it RGBA8, for A/B).
+- **Level 0** is the file's blocks with the PS2 alpha mapped as decode_dds maps it: BC1 as is (opaque black for TCC 0
+  where a block holds a transparent texel); BC2's 4-bit alpha a -> (a >= 8 ? 15 : 2a), exact; BC3's alpha endpoints
+  doubled when both are <= 0x80 (indices kept: within one level of the CPU decode), else that block's alpha encoded
+  again; TCC 0: opaque alpha blocks. A BC1 with transparent texels (TCC 1) becomes BC3 (its mips need partial alpha;
+  3-colour blocks get their colour fitted again, BC3's colour half having no 3-colour mode).
+- **Mips**: the file's stored levels while the crop is the whole file; the rest built down to 1 x 1 as
+  SDL_GenerateMipmapsForGPUTexture does (bilinear at the texel centres: an exact 2x2 average for even sizes, `mip_down`)
+  from the decoded level above, then encoded (principal-axis colour fit plus a least-squares pass; BC3 alpha in the
+  8- or 6-value mode, whichever is closer).
+- **The alpha rule** (§18.3) needs RGBA8. It can change nothing when the original has no alpha below 1/4 and a
+  maximum of 0x80 or more (for any rule that only cuts where the original's bilinear alpha is below 64 and clamps to
+  the maximum): those rasters take the file's blocks. The others run the rule on RGBA8 as before; if it changed
+  texels, the chain keeps the file's colour halves (the rule leaves colour alone) with their alpha encoded again as
+  BC3, the mips' alpha built from the rule's level 0; if it changed nothing, the file's blocks. The rule's loop runs in
+  row strips on up to 8 threads (its body unchanged).
+- **Where**: `hd_prefetch` builds the chains on its threads (the file chains, and the rule's chains for the rasters
+  whose rule may change something), so the track decode only looks them up; the route's LOD model shares them. Once
+  `build_scene` has uploaded a track's or car's textures, their BC levels drop the CPU copy (sizes kept); `hd_trim`
+  drops the files and chains after the route. The HD TEXTURES key (F4) needs no CPU copy (both pictures are on the
+  GPU).
+- **Threads**: `HdTextures` takes a lock around the hook, prefetch's merge and trim, and prefetch suppresses the hook
+  on its own thread only (`hd_textures()` is per thread there), so the live view's route worker (loadlag1) now also
+  loads an HD route: the window keeps drawing while it decodes.
+- One stderr line after each live route load: replacements kept compressed / as RGBA8, BC MB, rule re-encodes, hook
+  time; another the replacements resident on the GPU and their MB (`Device::hd_originals`).
+- **Measured** (race_check's race, US/C2_V2, offscreen lavapipe, route load before the race; medians of 3, other jobs on
+  the machine): a 4x BC3 pack (7,859 files): load 6.3 s -> 2.2 s, peak RSS 2.96 -> 2.43 GB, the route's replacements
+  on the GPU 387 -> 111 MB (306 of 348 hits kept BC, the rest HUD / effects); a 4x BC1 / BC3 pack: 5.5 s -> 2.6 s,
+  2.99 -> 2.37 GB, 407 -> 123 MB. Without a pack: 0.53 / 0.57 s, the same RSS, shots identical. Pictures: no pack and
+  `$B3_HD_RGBA=1` identical to the RGBA8 loader (pngdiff 0 of 2,073,600 at 1920 x 1080, polls 10700 / 11500); BC
+  against RGBA8 mean 0.25-0.6 levels per channel, the mips' encoding (max 109-236 on single alpha-tested edge pixels).
+  With the async worker (offscreen bench) the window's thread spends 0.65 s on the route instead of 2.0 s (upload).
 
 ## 19. Contact effects: scrapes and sparks (fx2, 2026-11-04)
 
@@ -3289,7 +3336,7 @@ most twice a second (the plate's place in the window is in the item's matrix, so
 is drawn on the CPU and no texture is updated after the first (the first bitmap design cost about 0.7 ms a frame on a Mac at
 3200 x 1800). Per frame: a cached layout, the eased place and one draw item, about 0.0002 ms.
 
-- **Views** (PC SETTINGS > INTERFACE > FPS COUNTER: Off / Minimal / Standard / Detailed, ini `fps_view` 0-3; `--fps-counter`
+- **Views** (PC SETTINGS > GAME > INTERFACE > FPS COUNTER: Off / Minimal / Standard / Detailed, ini `fps_view` 0-3; `--fps-counter`
   shows at least Standard). Minimal: a small plate with the frame rate (three digits wide so it does not shift), the word FPS
   and a small three-cell signal gauge. Standard: the same with the 1 % low under it, no graph (both at most about 8 % of
   the window's width, redrawn twice a second). Detailed: the big plate, also the frame-time graph, the average frame rate,
@@ -3595,6 +3642,33 @@ docs/pc-settings.md §7.11; the maths in `src/b3replay/splitlayout.{h,cpp}` (tes
 - **Not done [G]**: the game's own side-by-side HUD variant (narrower takedown banner, its 260-unit HUD rects). The
   HUD is the top / bottom one, scaled to fit, because only a game-side flag (+0xF before the HUD's Prepare) would
   give the other, and it would change the game's viewports.
+
+### 29.8 Smooth at high frame rates, and the particle worker's crash (split2p, 2026-11-19)
+
+- **Cadence [C, a paced 2-player race, 6,976 race ticks]**: every frame is 2 ticks (CB3Game +0x2DA84 = 2 for the whole
+  event; `CB3TwoPlayerSplitScreenStage::Prepare`, frame-rate.md §1). Each view's camera changes on every second tick (49.2
+  % and 48.5 % of ticks), and both players' cars on every tick (99.4 %, 97.1 %). Natively the frame's two polls latch back
+  to back: 48.4 % of the latch-stamp gaps are under half a VBlank, and the next pair comes a frame (33 ms) later.
+- **Why it was choppy**: the low-latency display clock (clock.h `step_sched`, lead 0) shows the newest tick L fully at
+  stamp(L) + margin + 1/60 s. With both ticks of a frame stamped at once, the display reached the newest tick half way
+  through each frame, held it, then jumped when the next pair came: 30 steps a second at any frame rate. This hit the
+  cameras and cars of both views alike. Each view's own interpolation (`interp_camera` on cam / cam2 between their change
+  ticks, cars per tick) was right. Single-player crashes (also 2-tick frames) had the same steps.
+- **Fix** (`DisplayClockT::vstamp`): a tick latched less than half a VBlank after the one before is shown one VBlank
+  after it (at most 3 ticks back to its frame's first). 1-tick frames are unchanged. It is drawn only.
+- **Numbers**: the clock replayed on that run's recorded arrivals and stamps at 190 fps, with positions drawn as
+  `frame_at` draws them. Held frames 21.4 % -> 1.8 % (both cameras, both cars); frames whose speed is off the local
+  median by over 25 %: 61 % -> 16 %; backward steps 550 -> 118. A single-player race on the same (loaded) machine: 0.4 %
+  held, 20 % off. The remaining spread is that machine's pacing jitter in both modes. `tests/test_clock.cpp`
+  `schedule_clock_two_tick_frames_one_latch` holds the native model: no held frames, no backward steps.
+- **The crash (Windows, ~25 s into a 2-player race)**: `View::swap_view2` `std::swap`s the two views' `Effects` each split
+  frame. The particle build (`Effects::draw_particles`, a `std::async` worker) was handed `&particle_vu_`, a pointer into
+  the object. After a swap that address held the other view's VU. While the swap ran, its program pointer was moved
+  out (null), so `ParticleVu::run`'s `prog_->mp` -> `Vu1::run` faulted (the report's frames, symbolised against an
+  unstripped build of the same commit: Vu1::run+0x7c <- ParticleVu::run <- build_particles <- the async state). The VU is
+  now a `shared_ptr` the worker holds, so it moves with its view's future.
+- The latency log (`--latency-log`) now has each tick's ticks per frame, cameras (view 2's too) and the two players'
+  cars on its T rows, and the drawn ones on its F rows.
 
 ## 30. Menus at ultrawide: the panel layout, the backdrop's side fill, the boost bar in the takedown camera (fe3, 2026-11-05)
 

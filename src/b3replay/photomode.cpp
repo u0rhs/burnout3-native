@@ -2,6 +2,7 @@
 #include "photomode.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 
@@ -40,6 +41,56 @@ bool dof_key(PhotoDof& d, std::uint16_t sc, const b3native::input::PortControls&
     if (has(PortAction::PhotoBlurCycle)) { d.blur(0); used = true; }
     if (has(PortAction::PhotoTarget)) { d.next_target(); used = true; }
     return used;
+}
+
+// photoblur: a motion blur key going down (the window's state or the game-time replay's); true when it was one
+bool motion_key(PhotoMotion& mo, std::uint16_t sc, const b3native::input::PortControls& b) {
+    using b3native::input::PortAction;
+    const std::uint64_t m = b3native::input::port_actions_of_key(b, sc);
+    const auto has = [&](PortAction a) { return (m >> int(a) & 1) != 0; };
+    bool used = false;
+    if (has(PortAction::PhotoMotion)) { mo.next_mode(); used = true; }
+    if (has(PortAction::PhotoShutterFaster)) { mo.step_shutter(-1); used = true; }
+    if (has(PortAction::PhotoShutterSlower)) { mo.step_shutter(+1); used = true; }
+    return used;
+}
+
+// photoblur: world -> the space of row-vector matrix m (rows x, y, z, position; the rows may carry scale): row k of the
+// result maps a world point P to local k = dot(row k xyz, P) + row k w. False: singular.
+bool to_local(const Mat34& m, float out[3][4]) {
+    const auto& r = m.r;
+    const float det = r[0][0] * (r[1][1] * r[2][2] - r[1][2] * r[2][1]) - r[0][1] * (r[1][0] * r[2][2] - r[1][2] * r[2][0]) +
+                      r[0][2] * (r[1][0] * r[2][1] - r[1][1] * r[2][0]);
+    if (std::fabs(det) < 1e-12f) return false;
+    const float k = 1.0f / det;
+    // the inverse of the 3 x 3 (row-vector: local = (P - pos) x inv), as columns: out[c][i] = inv[i][c]
+    const float inv[3][3] = {
+        {(r[1][1] * r[2][2] - r[1][2] * r[2][1]) * k, (r[0][2] * r[2][1] - r[0][1] * r[2][2]) * k, (r[0][1] * r[1][2] - r[0][2] * r[1][1]) * k},
+        {(r[1][2] * r[2][0] - r[1][0] * r[2][2]) * k, (r[0][0] * r[2][2] - r[0][2] * r[2][0]) * k, (r[0][2] * r[1][0] - r[0][0] * r[1][2]) * k},
+        {(r[1][0] * r[2][1] - r[1][1] * r[2][0]) * k, (r[0][1] * r[2][0] - r[0][0] * r[2][1]) * k, (r[0][0] * r[1][1] - r[0][1] * r[1][0]) * k}};
+    for (int c = 0; c < 3; ++c) {
+        float w = 0;
+        for (int i = 0; i < 3; ++i) {
+            out[c][i] = inv[i][c];
+            w -= r[3][i] * inv[i][c];
+        }
+        out[c][3] = w;
+    }
+    return true;
+}
+
+// photoblur: the rotation turning unit vector a onto unit vector b (row-major 3 x 3; the shortest arc)
+void turn(const float a[3], const float b[3], float r[9]) {
+    const float v[3] = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+    const float c = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const float k = c > -0.999f ? 1.0f / (1.0f + c) : 0.0f;
+    const float vx[9] = {0, -v[2], v[1], v[2], 0, -v[0], -v[1], v[0], 0};
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            float sq = 0;
+            for (int n = 0; n < 3; ++n) sq += vx[3 * i + n] * vx[3 * n + j];
+            r[3 * i + j] = (i == j ? 1.0f : 0.0f) + vx[3 * i + j] + sq * k;
+        }
 }
 
 // One held option's speed factor for this step: x1 for the first kHoldFrom seconds held in one direction, then up to
@@ -175,6 +226,101 @@ std::string PhotoDof::status(int subject) const {
     return s;
 }
 
+// ---- photoblur ----
+
+int PhotoMotion::denominator() const {
+    static constexpr int kDen[kShutters] = {500, 250, 125, 60, 30, 15};
+    return kDen[std::clamp(shutter, 0, kShutters - 1)];
+}
+
+void PhotoMotion::step_shutter(int dir) { shutter = std::clamp(shutter + (dir > 0 ? 1 : dir < 0 ? -1 : 0), 0, kShutters - 1); }
+
+const char* PhotoMotion::mode_name(int m) {
+    switch (m) {
+    case kTracking: return "TRACKING";
+    case kPanning: return "PANNING";
+    case kStatic: return "STATIC";
+    default: return "OFF";
+    }
+}
+
+std::string PhotoMotion::status() const {
+    if (!on()) return "MOTION OFF";
+    return std::string("MOTION ") + mode_name(mode) + " 1/" + std::to_string(denominator());
+}
+
+b3gfx::FrameParams::Motion PhotoMotion::params(const Camera& cam, const std::vector<Vehicle>& cars, std::uint32_t subject) const {
+    using M = b3gfx::FrameParams::Motion;
+    M out;
+    if (!on()) return out;
+    out.on = true;
+    const float half = 0.5f * seconds();
+    const float* eye = cam.m.r[3];
+    for (int k = 0; k < 3; ++k) out.eye[k] = eye[k];
+    // a car's box (the shadow code's, vehicle data +0xE80 / +0xE90, in `main`'s space) a little larger (mirrors and
+    // spoilers stand out of it), down to 5 cm above the road (the shadow's distance to the ground; the road under the car
+    // is not the car); without the box's capture, one from the bounding radius
+    struct Cand { const Vehicle* v; float dist; };
+    std::vector<Cand> cand;
+    const Vehicle* subj = nullptr;
+    for (const Vehicle& v : cars) {
+        if (v.own_hidden || (v.kind != VehicleKind::kRaceCar && v.cull != Vehicle::kDrawn)) continue;
+        float d2 = 0;
+        for (int k = 0; k < 3; ++k) d2 += (v.main.r[3][k] - eye[k]) * (v.main.r[3][k] - eye[k]);
+        if (v.id == subject && v.kind == VehicleKind::kRaceCar) { subj = &v; continue; }
+        if (d2 < 300.0f * 300.0f) cand.push_back({&v, d2});
+    }
+    std::sort(cand.begin(), cand.end(), [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+    if (subj) cand.insert(cand.begin(), {subj, 0.0f});
+    int subj_box = -1;
+    for (const Cand& c : cand) {
+        if (out.boxes >= M::kBoxes) break;
+        const Vehicle& v = *c.v;
+        M::Box& b = out.box[out.boxes];
+        const Vehicle::Shadow& s = v.shadow;
+        const bool has_box = s.sup[0] > s.inf[0] && s.sup[1] > s.inf[1] && s.sup[2] > s.inf[2];
+        for (int k = 0; k < 3; ++k) {
+            const float r = v.radius > 0 ? v.radius : 2.5f;
+            b.lo[k] = has_box ? s.inf[k] : k == 1 ? -0.3f * r : (k == 0 ? -0.42f : -0.9f) * r;
+            b.hi[k] = has_box ? s.sup[k] : k == 1 ? 0.45f * r : (k == 0 ? 0.42f : 0.9f) * r;
+        }
+        b.lo[0] -= 0.15f; b.hi[0] += 0.15f;
+        b.lo[2] -= 0.15f; b.hi[2] += 0.15f;
+        b.hi[1] += 0.15f;
+        b.lo[1] = s.dist > 0.05f && s.dist < 1.5f ? 0.05f - s.dist : b.lo[1] + 0.05f;
+        if (!to_local(v.main, b.to_local)) continue;
+        for (int k = 0; k < 3; ++k) b.move[k] = v.motion_known ? v.motion[k] * half : 0.0f;
+        if (&v == subj) subj_box = out.boxes;
+        ++out.boxes;
+    }
+    if (mode == kTracking && subj && subj->motion_known) {
+        for (int k = 0; k < 3; ++k) out.cam[k] = subj->motion[k] * half;
+    } else if (mode == kPanning && subj_box >= 0 && subj->motion_known) {
+        // the camera turns to keep the subject's middle where it is: at +-T/2 it looks at the middle moved by +-v T/2;
+        // what the turned camera sees at a world point, the frozen one sees turned back (d(t) onto d(0))
+        const M::Box& b = out.box[subj_box];
+        float mid[3], c[3];
+        for (int k = 0; k < 3; ++k) mid[k] = 0.5f * (b.lo[k] + b.hi[k]);
+        for (int k = 0; k < 3; ++k) c[k] = mid[0] * subj->main.r[0][k] + mid[1] * subj->main.r[1][k] + mid[2] * subj->main.r[2][k] + subj->main.r[3][k];
+        float d0[3], dm[3], dp[3];
+        const auto unit = [](float* v) {
+            const float l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            if (l > 1e-6f) for (int k = 0; k < 3; ++k) v[k] /= l;
+            return l;
+        };
+        for (int k = 0; k < 3; ++k) {
+            d0[k] = c[k] - eye[k];
+            dm[k] = c[k] - subj->motion[k] * half - eye[k];
+            dp[k] = c[k] + subj->motion[k] * half - eye[k];
+        }
+        if (unit(d0) > 0.3f && unit(dm) > 0.3f && unit(dp) > 0.3f) {
+            turn(dm, d0, out.rot_m);
+            turn(dp, d0, out.rot_p);
+        }
+    }
+    return out;
+}
+
 void PhotoCam::forward(float f[3]) const {
     f[0] = std::sin(yaw) * std::cos(pitch);
     f[1] = std::sin(pitch);
@@ -308,6 +454,9 @@ PhotoKeys photo_keys_from(const b3native::input::PortControls& b) {
     K.blur_less = key(PortAction::PhotoBlurLess, 0);
     K.blur_more = key(PortAction::PhotoBlurMore, 0);
     K.target = key(PortAction::PhotoTarget, 0);
+    K.motion = key(PortAction::PhotoMotion, 0);   // photoblur
+    K.shutter_faster = key(PortAction::PhotoShutterFaster, 0);
+    K.shutter_slower = key(PortAction::PhotoShutterSlower, 0);
     K.reset = key(PortAction::PhotoReset, 0);
     K.hide_ui = key(PortAction::PhotoHelp, 0);
     K.exit_key = key(PortAction::PhotoMode, 0);
@@ -349,6 +498,19 @@ PhotoKeys photo_keys_from(const b3native::input::PortControls& b) {
     padkey(PortAction::PhotoReset, K.pad_reset);
     padkey(PortAction::PhotoHelp, K.pad_hide);
     padkey(PortAction::PhotoExit, K.pad_exit);
+    padkey(PortAction::PhotoMotion, K.pad_motion);   // photoblur
+    {
+        const auto& m = b.pad[std::size_t(PortAction::PhotoMotion)];
+        const auto chord = [&](PortAction a, PadInput dir) {
+            const auto& l = b.pad[std::size_t(a)];
+            return m.size() == 1 && l.size() == 2 && ((l[0] == m[0] && l[1] == dir) || (l[1] == m[0] && l[0] == dir));
+        };
+        K.pad_shutter_dpad = chord(PortAction::PhotoShutterFaster, PadInput::DpadLeft) && chord(PortAction::PhotoShutterSlower, PadInput::DpadRight);
+        if (!K.pad_shutter_dpad) {
+            padkey(PortAction::PhotoShutterFaster, K.pad_shutter_faster);
+            padkey(PortAction::PhotoShutterSlower, K.pad_shutter_slower);
+        }
+    }
     return K;
 }
 
@@ -382,6 +544,10 @@ bool PhotoMode::key(std::uint16_t sc, bool down, bool repeat, unsigned mods) {
         else if (has(PortAction::PhotoHelp)) cycle_ui_locked();
         else if (dof_key(dof_, sc, bind_)) {
             std::printf("[b3photo] depth of field: %s\n", dof_.status(0).c_str());
+            std::fflush(stdout);
+        }
+        else if (motion_key(motion_, sc, bind_)) {   // photoblur
+            std::printf("[b3photo] motion blur: %s\n", motion_.status().c_str());
             std::fflush(stdout);
         }
         else if (has(PortAction::PhotoReset)) {
@@ -430,7 +596,8 @@ bool PhotoMode::handle(const SDL_Event& e) {
     }
 }
 
-void PhotoMode::pad(const PhotoPad& p) {
+void PhotoMode::pad(const PhotoPad& p, double now_s) {
+    if (now_s < 0) now_s = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     std::lock_guard<std::mutex> l(mu_);
     const bool both = p.toggle;   // rebind2: the photo mode chord (L3 + R3 by default)
     const bool combo = both && !pad_both_;
@@ -460,12 +627,31 @@ void PhotoMode::pad(const PhotoPad& p) {
     if (p.toggle) l3_solo_ = false;
     if (!p.target && pad_prev_.target && l3_solo_) dof_.next_target();
     if (!p.target) l3_solo_ = false;
+    // photoblur: R3 alone (released before the chord or a shutter step came) the next mode; R3 + D-pad left / right the
+    // shutter (the D-pad's focus does not move meanwhile)
+    const bool shutter = p.shutter_faster || p.shutter_slower;
+    if (p.shutter_faster && !pad_prev_.shutter_faster) motion_.step_shutter(-1);
+    if (p.shutter_slower && !pad_prev_.shutter_slower) motion_.step_shutter(+1);
+    if (p.motion && !pad_prev_.motion) {
+        r3_solo_ = !p.toggle && !shutter;
+        r3_since_ = now_s;
+    }
+    if (p.toggle || shutter || std::max(std::fabs(p.rx), std::fabs(p.ry)) > kClickStick) r3_solo_ = false;
+    if (!p.motion && pad_prev_.motion && r3_solo_ && now_s - r3_since_ > kClickS) r3_solo_ = false;   // held: not a click
+    if (!p.motion && pad_prev_.motion && r3_solo_) motion_.next_mode();
+    if (!p.motion) r3_solo_ = false;
+    if ((p.shutter_faster && !pad_prev_.shutter_faster) || (p.shutter_slower && !pad_prev_.shutter_slower) ||
+        (!p.motion && pad_prev_.motion && r3_solo_)) {
+        std::printf("[b3photo] motion blur: %s\n", motion_.status().c_str());
+        std::fflush(stdout);
+    }
     if (p.west && !pad_prev_.west) {
         reset_ = true;
         record_locked(Event::kReset);
     }
     pad_prev_ = p;
     pad_ = p;
+    if (shutter || p.motion) pad_.left = pad_.right = false;   // photoblur: R3 held: the D-pad steps the shutter
 }
 
 bool PhotoMode::active() const {
@@ -555,6 +741,8 @@ void PhotoMode::advance_to(std::uint32_t poll, const std::function<bool(std::uin
                 if (r.active && e.scancode < r.held.size()) {
                     if (e.down && !r.held[e.scancode] && dof_key(r.dof, e.scancode, bind_))   // photo2: its keys at their poll
                         std::printf("[b3photo] game time: depth of field at poll %u: %s\n", e.poll, r.dof.status(0).c_str());
+                    if (e.down && !r.held[e.scancode] && motion_key(r.motion, e.scancode, bind_))   // photoblur
+                        std::printf("[b3photo] game time: motion blur at poll %u: %s\n", e.poll, r.motion.status().c_str());
                     r.held[e.scancode] = e.down;
                 }
                 break;
@@ -612,16 +800,45 @@ PhotoDof PhotoMode::dof_state() const {
     return dof_;
 }
 
-std::vector<std::string> PhotoMode::help_lines(bool pad_prompts, int fov_deg, const PhotoDof& dof, int subject) {
-    std::vector<std::string> lines{"PHOTO MODE   FOV " + std::to_string(fov_deg) + "   " + dof.status(subject)};
+void PhotoMode::motion(const Camera& cam, const std::vector<Vehicle>& cars, b3gfx::FrameParams::Motion& out) const {
+    PhotoMotion m;
+    {
+        std::lock_guard<std::mutex> l(mu_);
+        if (!active_) return;
+        m = motion_;
+    }
+    out = m.params(cam, cars, kPlayerRaceCar);
+}
+
+bool PhotoMode::motion_at(std::uint32_t poll, const Camera& cam, const std::vector<Vehicle>& cars, b3gfx::FrameParams::Motion& out) const {
+    PhotoMotion m;
+    {
+        std::lock_guard<std::mutex> l(mu_);
+        if (!game_time_ || replay_.poll != poll || !replay_.active || !replay_.started) return false;
+        m = replay_.motion;
+    }
+    out = m.params(cam, cars, kPlayerRaceCar);
+    return true;
+}
+
+PhotoMotion PhotoMode::motion_state() const {
+    std::lock_guard<std::mutex> l(mu_);
+    return motion_;
+}
+
+std::vector<std::string> PhotoMode::help_lines(bool pad_prompts, int fov_deg, const PhotoDof& dof, int subject, const PhotoMotion& motion) {
+    std::vector<std::string> lines{"PHOTO MODE   FOV " + std::to_string(fov_deg) + "   " + dof.status(subject) +
+                                   (motion.on() ? "   " + motion.status() : std::string())};
     if (pad_prompts) {
         lines.push_back("MOVE L STICK   UP/DOWN RT/LT   LOOK R STICK   FAST HOLD A/CROSS");
         lines.push_back("FOV D-PAD   ROLL LB/RB   RESET X/SQUARE   HIDE HELP Y/TRIANGLE   EXIT B/CIRCLE");
         lines.push_back("DEPTH OF FIELD BACK   BLUR START   FOCUS D-PAD LEFT/RIGHT   FOCUS ON CAR/CENTRE L3");
+        lines.push_back("MOTION BLUR R3   SHUTTER R3 + D-PAD LEFT/RIGHT");
     } else {
         lines.push_back("MOVE WASD   UP/DOWN E/Q   LOOK MOUSE OR ARROWS   FAST SHIFT   SLOW ALT");
         lines.push_back("FOV WHEEL OR -/+   ROLL Z/C   RESET R   HIDE HELP H   SCREENSHOT F12   EXIT P OR ESC");
         lines.push_back("DEPTH OF FIELD F   BLUR V/B   FOCUS NEAR/FAR N/M   FOCUS ON CAR/CENTRE G");
+        lines.push_back("MOTION BLUR J   SHUTTER FASTER/SLOWER K/L");
     }
     return lines;
 }
@@ -657,6 +874,10 @@ void PhotoMode::draw_help(b3gfx::Device& dev, int w, int h, float dt, PromptDevi
         data.dof_levels = PhotoDof::kLevels;
         data.focus_car = subject_ == 1 || (subject_ == 0 && dof_.target == 0);
         data.focus_stops = dof_.stops;
+        data.motion_mode = motion_.mode;   // photoblur
+        data.shutter = motion_.shutter;
+        data.shutters = PhotoMotion::kShutters;
+        data.shutter_den = motion_.denominator();
     }
     hud_.draw_list(dev, w, h, dt, ui, data, device, keys, hud_size, out);
 }

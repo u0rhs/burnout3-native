@@ -1,6 +1,8 @@
 // update_net.cpp -- see update_net.h
 #include "update_net.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <mutex>
@@ -52,8 +54,16 @@ struct Handle {
 
 }  // namespace
 
-Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms, std::size_t max_bytes, bool download) {
+Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms, std::size_t max_bytes, bool download,
+                   const std::atomic<bool>* cancel) {
     Response r;
+    const auto cancelled = [&]() {
+        if (!cancel || !cancel->load()) return false;
+        r.ok = false;
+        r.error = "cancelled";
+        r.body.clear();
+        return true;
+    };
     const std::wstring wurl = wide(url);
     URL_COMPONENTS uc{};
     uc.dwStructSize = sizeof uc;
@@ -77,7 +87,9 @@ Response https_get(const std::string& url, const std::string& user_agent, int ti
         r.error = win_error(GetLastError());
         return r;
     }
-    WinHttpSetTimeouts(s.h, timeout_ms, timeout_ms, timeout_ms, timeout_ms);
+    // the connection within 15 s; each read within a minute at most (a download's total is bounded by the bytes)
+    const int connect_ms = std::min(timeout_ms, 15000), read_ms = std::min(timeout_ms, 60000);
+    WinHttpSetTimeouts(s.h, connect_ms, connect_ms, connect_ms, read_ms);
 #ifndef WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3
 #define WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3 0x00002000
 #endif
@@ -111,6 +123,7 @@ Response https_get(const std::string& url, const std::string& user_agent, int ti
         return r;
     }
     while (true) {
+        if (cancelled()) return r;
         DWORD avail = 0;
         if (!WinHttpQueryDataAvailable(q.h, &avail)) {
             r.error = win_error(GetLastError());
@@ -122,6 +135,7 @@ Response https_get(const std::string& url, const std::string& user_agent, int ti
             r.body.clear();
             return r;
         }
+        avail = std::min<DWORD>(avail, 1u << 20);   // a cancel is seen at least each MB
         const std::size_t at = r.body.size();
         r.body.resize(at + avail);
         DWORD got = 0;
@@ -133,6 +147,7 @@ Response https_get(const std::string& url, const std::string& user_agent, int ti
         r.body.resize(at + got);
         if (got == 0) break;
     }
+    if (cancelled()) return r;
     r.ok = true;
     r.status = int(status);
     return r;
@@ -148,9 +163,10 @@ struct curl_slist;
 constexpr int kOptWriteData = 10001, kOptUrl = 10002, kOptErrorBuffer = 10010, kOptUserAgent = 10018, kOptHttpHeader = 10023,
               kOptWriteFunction = 20011, kOptFollowLocation = 52, kOptSslVerifyPeer = 64, kOptMaxRedirs = 68,
               kOptSslVerifyHost = 81, kOptNoSignal = 99, kOptTimeoutMs = 155, kOptConnectTimeoutMs = 156, kOptProtocols = 181,
-              kOptRedirProtocols = 182;
+              kOptRedirProtocols = 182, kOptNoProgress = 43, kOptXferInfoData = 10057, kOptXferInfoFunction = 20219;
 constexpr int kInfoResponseCode = 0x200000 + 2;
 constexpr long kProtoHttps = 1L << 1;
+constexpr int kAborted = 42;
 constexpr int kOk = 0, kResolve = 6, kConnect = 7, kWriteError = 23, kTimedOut = 28, kSslConnect = 35, kPeerFailed = 60, kCaCert = 77;
 constexpr long kGlobalDefault = 3;
 
@@ -210,12 +226,20 @@ const Curl& curl() {
 struct Sink {
     std::string* body;
     std::size_t max;
+    const std::atomic<bool>* cancel = nullptr;
     bool too_large = false;
 };
+
+// libcurl's progress callback (also while connecting, about once a second): nonzero stops the transfer
+int on_progress(void* user, std::int64_t, std::int64_t, std::int64_t, std::int64_t) {
+    const Sink& s = *static_cast<const Sink*>(user);
+    return s.cancel && s.cancel->load() ? 1 : 0;
+}
 
 std::size_t on_data(char* p, std::size_t size, std::size_t n, void* user) {
     Sink& s = *static_cast<Sink*>(user);
     const std::size_t len = size * n;
+    if (s.cancel && s.cancel->load()) return 0;
     if (s.body->size() + len > s.max) {
         s.too_large = true;
         return 0;   // stops the transfer (CURLE_WRITE_ERROR)
@@ -226,7 +250,8 @@ std::size_t on_data(char* p, std::size_t size, std::size_t n, void* user) {
 
 }  // namespace
 
-Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms, std::size_t max_bytes, bool download) {
+Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms, std::size_t max_bytes, bool download,
+                   const std::atomic<bool>* cancel) {
     Response r;
     if (url.compare(0, 8, "https://") != 0) {
         r.error = "not an https address";
@@ -243,7 +268,7 @@ Response https_get(const std::string& url, const std::string& user_agent, int ti
         return r;
     }
     char err[256] = {};   // CURL_ERROR_SIZE
-    Sink sink{&r.body, max_bytes};
+    Sink sink{&r.body, max_bytes, cancel};
     curl_slist* headers = c.slist_append(nullptr, download ? "Accept: application/octet-stream" : "Accept: application/vnd.github+json");
     if (headers && !download) headers = c.slist_append(headers, "X-GitHub-Api-Version: 2022-11-28");
     using WriteFn = std::size_t (*)(char*, std::size_t, std::size_t, void*);
@@ -256,7 +281,14 @@ Response https_get(const std::string& url, const std::string& user_agent, int ti
     c.easy_setopt(h, kOptErrorBuffer, err);
     c.easy_setopt(h, kOptNoSignal, 1L);   // a thread of its own: no SIGALRM for the name lookup's timeout
     c.easy_setopt(h, kOptTimeoutMs, long(timeout_ms));
-    c.easy_setopt(h, kOptConnectTimeoutMs, long(timeout_ms));
+    c.easy_setopt(h, kOptConnectTimeoutMs, long(std::min(timeout_ms, 15000)));
+    using ProgressFn = int (*)(void*, std::int64_t, std::int64_t, std::int64_t, std::int64_t);   // curl_off_t is 64-bit
+    if (cancel) {
+        const ProgressFn pf = on_progress;
+        c.easy_setopt(h, kOptXferInfoFunction, pf);
+        c.easy_setopt(h, kOptXferInfoData, static_cast<void*>(&sink));
+        c.easy_setopt(h, kOptNoProgress, 0L);
+    }
     c.easy_setopt(h, kOptFollowLocation, 1L);
     c.easy_setopt(h, kOptMaxRedirs, 5L);
     c.easy_setopt(h, kOptProtocols, kProtoHttps);        // https only, for the request and every redirect
@@ -270,7 +302,8 @@ Response https_get(const std::string& url, const std::string& user_agent, int ti
     if (headers) c.slist_free_all(headers);
     if (rc != kOk) {
         r.body.clear();
-        if (rc == kWriteError && sink.too_large) r.error = "the answer is too large";
+        if ((rc == kAborted || rc == kWriteError) && cancel && cancel->load()) r.error = "cancelled";
+        else if (rc == kWriteError && sink.too_large) r.error = "the answer is too large";
         else if (rc == kTimedOut) r.error = "timed out";
         else if (rc == kResolve) r.error = "no connection (the name did not resolve)";
         else if (rc == kConnect) r.error = "no connection";

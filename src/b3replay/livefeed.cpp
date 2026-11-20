@@ -1,9 +1,12 @@
 // LiveFeed (src/b3replay/live.h): the live session's records decoded into ticks, from the shared-memory ring (live1,
 // §13) or the in-process feed (inproc1, §23). No SDL here (tests/test_inproc.cpp links it alone).
 #include "live.h"
+#include "garagecam.h"   // garagecam1
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 
 namespace b3replay {
 
@@ -13,6 +16,57 @@ constexpr std::size_t kKeepTicks = 1200;       // 20 s of decoded ticks (display
 constexpr std::size_t kGapTicks = 60;          // the offline reader's segment gap (capture.cpp)
 
 }  // namespace
+
+void VehicleMotion::apply(Tick& t) {
+    const auto key = [](const Vehicle& v) { return std::uint64_t(v.id) << 32 | v.data; };
+    const auto moved = [](const Mem& m, const Vehicle& v) {
+        for (int k = 0; k < 3; ++k) if (std::fabs(v.main.r[3][k] - m.pos[k]) > 1e-5f) return true;
+        return false;
+    };
+    bool world = false;   // something moves in this tick: the game is running
+    for (const Vehicle& v : t.vehicles) {
+        const auto it = mem_.find(key(v));
+        if (it != mem_.end() && moved(it->second, v)) { world = true; break; }
+    }
+    for (Vehicle& v : t.vehicles) {
+        auto [it, fresh] = mem_.try_emplace(key(v));
+        Mem& m = it->second;
+        const float* p = v.main.r[3];
+        if (fresh) {
+            std::memcpy(m.pos, p, sizeof m.pos);
+            m.poll = t.poll;
+            m.now = t.now;
+        } else if (moved(m, v)) {
+            const std::uint32_t gap = t.poll - m.poll;
+            // the time between: the game's own timer (gWorld+0x20: a 50 Hz disc's ticks are 1/50 s), else the polls at 60
+            const float dn = t.now - m.now;
+            const float dt = dn > 0.001f && dn < 0.1f ? dn : float(gap) / 60.0f;
+            float vel[3], s2 = 0;
+            for (int k = 0; k < 3; ++k) {
+                vel[k] = gap > 0 ? (p[k] - m.pos[k]) / dt : 0.0f;
+                s2 += vel[k] * vel[k];
+            }
+            m.known = gap >= 1 && gap <= 4 && s2 < 150.0f * 150.0f;
+            if (m.known) std::memcpy(m.vel, vel, sizeof m.vel);
+            else std::memset(m.vel, 0, sizeof m.vel);
+            std::memcpy(m.pos, p, sizeof m.pos);
+            m.poll = t.poll;
+            m.now = t.now;
+            m.still = 0;
+        } else if (world && ++m.still >= 3) {   // the others move, this one does not: stopped
+            std::memset(m.vel, 0, sizeof m.vel);
+            m.known = true;
+            m.poll = t.poll;
+            m.now = t.now;
+        }
+        m.seen = t.poll;
+        std::memcpy(v.motion, m.vel, sizeof v.motion);
+        v.motion_known = m.known;
+    }
+    if (!t.vehicles.empty())
+        for (auto it = mem_.begin(); it != mem_.end();)
+            it = t.poll - it->second.seen > 600u ? mem_.erase(it) : std::next(it);
+}
 
 long LiveFeed::index_of_poll(std::uint32_t poll) const {
     for (std::size_t k = ticks_.size(); k-- > 0;)
@@ -163,10 +217,12 @@ void LiveFeed::push(Tick&& t, std::uint64_t ns, std::uint64_t sched) {
         // tick shows what the previous one did (the page's own draws are dropped), as a gap inside a race does above
         const auto poll = t.poll, vb = t.vblank;
         const auto skip = t.skip_hint;
+        const HostRaceTime race_time = t.race_time;
         t = ticks_.back();
         t.poll = poll;
         t.vblank = vb;
         t.skip_hint = skip;
+        t.race_time = race_time;   // todrace
         t.host_hold = true;
     }
     if (!warned_unbound_ && t.hud && t.hud->stats.unbound_texture) {   // font1: text would draw as solid blocks
@@ -174,6 +230,8 @@ void LiveFeed::push(Tick&& t, std::uint64_t ns, std::uint64_t sched) {
         std::fprintf(stderr, "[b3live] %s: poll %u: %u textured 2D triangles without a raster (the game's SetTexture calls not all"
                      " captured: a SetTexture path the capture does not hook?)\n", name_.c_str(), t.poll, t.hud->stats.unbound_texture);
     }
+    GarageCam::instance().on_tick(t);   // garagecam1: the car pages' view (no input: 0 0)
+    motion_.apply(t);   // photoblur: the vehicles' velocities (Vehicle::motion)
     ticks_.push_back(std::move(t));
     ns_.push_back(ns);
     sched_.push_back(sched);

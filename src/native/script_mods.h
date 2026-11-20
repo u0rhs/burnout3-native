@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace b3native {
 
@@ -36,17 +37,27 @@ struct ScriptConfig {
     std::filesystem::path dir;     // the mod's folder
     std::string main_file;         // [script] main, inside the mod ("scripts/main.lua")
     bool gameplay = true;          // [script] gameplay: false refuses every write to the game
+    // [script] unsafe: b3.mem.write* and b3.call (to `calls` only); the script then runs from the bytes of its files
+    // read and hashed once at load (b3mod::trust_files), and when trust_digest is given they must match it (what the
+    // user allowed)
+    bool unsafe = false;
+    std::vector<std::uint32_t> calls;
+    std::string trust_digest;
     std::uint64_t budget = b3mod::ScriptSpec::kDefaultBudget;            // Lua instructions per VBlank
     std::uint64_t memory = std::uint64_t(b3mod::ScriptSpec::kDefaultMemoryMb) << 20;   // bytes
+    unsigned time_limit_ms = 1000; // modsec: the script's own time per VBlank, wall clock (C library calls included)
     bool developer = false;        // Developer mods: hot reload
     unsigned reload_every = 30;    // VBlanks between two looks at the script folder (hot reload)
 };
 // The main chunk and its on_load handlers run with this many times the per-VBlank budget.
 constexpr std::uint64_t kScriptLoadBudgetFactor = 50;
+// The main chunk and its on_load handlers run with this many times the per-VBlank time limit.
+constexpr unsigned kScriptLoadTimeFactor = 10;
 
 std::shared_ptr<CodeMods::Builtin> make_script_mod(const ScriptConfig& c);
 // The loader's candidate for an active mod with [script] (developer: the user's Developer mods)
-CodeMods::Candidate script_candidate(const b3mod::ActiveMod& m, bool developer);
+// trust_digest: the set the user allowed (an unsafe script in a window run; "" : not checked)
+CodeMods::Candidate script_candidate(const b3mod::ActiveMod& m, bool developer, const std::string& trust_digest = {});
 
 // The guest addresses behind the script API's read-only views and game events (lua-reference.md cites each).
 namespace script_addr {

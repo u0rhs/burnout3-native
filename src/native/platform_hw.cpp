@@ -91,7 +91,7 @@ void install_hw_model(b3host::NativeBackend& nb) {
     g_hw.scratchpad = [&nb] { return nb.scratchpad().data(); };
     g_hw.read_ram = [](std::uint32_t a, void* out, unsigned len) {
         try {
-            std::memcpy(out, b3host::host_pointer(a, len), len);
+            std::memcpy(out, b3host::host_pointer_checked(a, len), len);
             return true;
         } catch (const std::exception&) {
             return false;
@@ -101,7 +101,7 @@ void install_hw_model(b3host::NativeBackend& nb) {
     g_hw.on_vif0_kick = [](std::uint32_t chcr, std::uint32_t tadr) {
         vif0_upload(chcr, tadr, [](std::uint32_t a) {   // (read by the dev build's check only)
             std::uint32_t w = 0;
-            std::memcpy(&w, b3host::host_pointer(a, 4), 4);
+            std::memcpy(&w, b3host::host_pointer_checked(a, 4), 4);
             return w;
         });
     };
@@ -110,7 +110,7 @@ void install_hw_model(b3host::NativeBackend& nb) {
     b3asm::cpcond0_hook() = [] { return hw_model().cpcond0(); };   // vu0: the decomp's bc0f DMA waits (eeasm idiom)
     g_hw.write_ram = [](std::uint32_t a, const void* in, unsigned len) {   // movie1: the IPU's fromIPU DMA
         try {
-            std::memcpy(b3host::host_pointer(a, len), in, len);
+            std::memcpy(b3host::host_pointer_checked(a, len), in, len);
             return true;
         } catch (const std::exception&) {
             return false;

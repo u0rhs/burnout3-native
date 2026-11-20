@@ -155,6 +155,7 @@ static inline b3host::ps2_ulong func_003F66F0_inl1(UnkStruct_003F66F0 * self, Un
         }
         return 0x8000000001ULL;
     }
+    b3host::draft_fall_off("0x003F66F0 status: field_10 neither 0 nor 1"); /* decomp2host T47: retail leaves the caller's v0 here (b .L003F6754, 0x3F6718) */ return 0;
 }
 
 extern "C" b3host::ps2_ulong func_003F66F0(UnkStruct_003F66F0 * self, UnkStruct_003F66F0_a1 * p0)

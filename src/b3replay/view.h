@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <future>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -22,6 +23,7 @@
 #include <vector>
 
 #include "a11y.h"
+#include "b3asset/carpaint.h"
 #include "b3asset/crash.h"
 #include "b3gfx/b3gfx.h"
 #include "capture.h"
@@ -67,6 +69,7 @@ struct Frame {
     Camera tick_cam;             // fx2: the tick's game camera as captured (not interpolated)
     std::size_t tick = 0;
     float alpha = 0;
+    std::uint8_t race_time = 0;  // todrace (Tick::race_time.race): 0 the TIME OF DAY row's, 1 day, 2 night (drawn only)
     Camera cam;
     std::vector<Vehicle> vehicles;
     int slot_unit[17], slot_kind[17];
@@ -92,6 +95,7 @@ struct Frame {
     // HUD / 2D (hud1, §17): the tick's Gt2d frame, held (not interpolated) until the next tick's
     std::shared_ptr<const HudFrame> hud;
     std::uint32_t fe_car = 0;            // menu1 (§22): the front end's car is drawn (Tick::fe_car)
+    int fe_player = -1;                  // padpaint: whose car it is (Tick::fe_player)
     // fe2 (§24): the tick's static-track fingerprint (Tick::route_size / route_units): the front end's showroom
     std::uint32_t route_size = 0;
     int route_units = 0;
@@ -227,7 +231,126 @@ inline int bloom_level_env(int fallback) {
     return !e ? fallback : !std::strcmp(e, "soft") ? 1 : !std::strcmp(e, "standard") ? 2 : fallback;
 }
 
+// carpaint (docs/remaster-features.md §17, b3asset/carpaint.h): a local player's own paint, drawn only. `custom`: the
+// paint drawn in `rgb` (0xRRGGBB) instead of the game's paint; `second`: the livery's second colour in `rgb2` (else a
+// shade of `rgb`); `decals` false: logos, numbers and second colours drawn over in the paint. The game's paint index
+// is never touched. Off (the default) draws the cars exactly as before.
+// padpaint: `finish` 0 gloss (the game's), 1 metallic, 2 pearl (car.frag, paint mode bits 2 / 3).
+struct CarPaint {
+    bool custom = false;
+    std::uint32_t rgb = 0xC31E1E, rgb2 = 0x202020;
+    bool second = false;
+    bool decals = true;
+    int finish = 0;
+    bool on() const { return custom || !decals || finish != 0; }
+    bool operator==(const CarPaint&) const = default;
+};
+// The environment's paint for player `p` (0 / 1), over `base`: $B3_PAINT = RRGGBB (player 1; $B3_PAINT_P2 player 2) a
+// custom colour, `game` the game's; $B3_PAINT_SECOND = RRGGBB the second colour; $B3_DECALS = 0 decals off, 1 on;
+// $B3_PAINT_FINISH = gloss / metallic / pearl (both players).
+CarPaint car_paint_env(int p, CarPaint base = {});
+// Night mode (remaster-features §17; drawn only, off by default): GRAPHICS > TIME OF DAY: Night (pcsettings apply_view),
+// or $B3_NIGHT=1 (wins over the setting; 0 forces day). The race's frame is graded after the fog (desaturated, a cool
+// tint, a curve; b3gfx's night.frag), the sky replaced by a night sky (a gradient, the original sky dimmed, moonlit
+// clouds, stars, the moon with its halo at the ENVIRO sun's bearing), each car throws a headlight beam, the race cars'
+// and traffic's head and tail lights (their coronas) are lit and stay bright, so the bloom makes them glow. The moon
+// (MOON, $B3_MOON=0/1) lights the scene: the cars' key light and gloss, the track's faces and relief turned to it.
+// Tuning (each "r,g,b" or numbers): $B3_NIGHT_WORLD (the world's multiplier), $B3_NIGHT_SKY (the original sky's),
+// $B3_NIGHT_LAMP (the headlights' colour), $B3_NIGHT_BEAM = "tan of the half angle, range m, pool gain, throw gain",
+// $B3_NIGHT_GRADE = "saturation, gamma", $B3_NIGHT_MOON = "r,g,b" (the moonlight), $B3_NIGHT_STARS. Nothing runs while off.
+struct NightLook {
+    bool on = false;
+    bool moon = true;                                // MOON: the disc, its halo and its light
+    float world[3] = {0.31f, 0.36f, 0.55f};          // the world's multiplier (after the desaturation)
+    float sat = 0.42f, gamma = 1.18f, pivot = 0.5f;  // the grade: the saturation kept, the curve pow(c / pivot, gamma) x pivot
+    float sky[3] = {0.035f, 0.045f, 0.09f};          // the original sky's share in the night sky
+    float zenith[3] = {0.004f, 0.007f, 0.022f};      // the night sky's gradient (frame units)
+    float horizon[3] = {0.026f, 0.036f, 0.066f};
+    float stars = 0.5f;
+    float moon_disc[3] = {0.72f, 0.73f, 0.76f};       // the disc (frame units: bright enough for the bloom)
+    float moon_size = 0.021f;                        // its angular radius (rad)
+    float halo = 0.24f;
+    float cloud = 0.6f;                              // the clouds lit by the moon
+    float moonlight[3] = {0.55f, 0.66f, 0.88f};      // the moon's light: silver-blue (frame units)
+    float car[3] = {0.95f, 0.45f, 0.8f};             // cars: SH scale, env scale, moon key gain
+    float facing = 0.55f;                            // track: moonlit faces
+    float relief = 1.6f;                             // the track's relief by the moon when SURFACE DETAIL is off
+    float lamp[3] = {1.0f, 0.93f, 0.80f};
+    float shape[4] = {0.26f, 80.0f, 2.0f, 1.6f};     // light.frag: tan of the half angle, range, pool gain, throw gain
+    // nightlights (§17.2): the projected beam (beam.frag): the spill's inner / outer half angle (deg), falloff d0 (m),
+    // the spill's gain, fade start / end (m), dip (deg), lamp height above the ground (m), the hot core's inner / outer
+    // half angle (deg) and gain; $B3_NIGHT_SPOT sets them in this order
+    float spot[11] = {12.0f, 34.0f, 16.0f, 2.2f, 45.0f, 75.0f, 2.0f, 0.6f, 3.0f, 9.0f, 5.0f};   // 1.3.0: spill to 34 deg (owner: more spread)
+    // how many cars get a projected beam: 8 (HIGH, ULTRA), 4 (MEDIUM), 0 = the ground quads (LOW, PS2 ORIGINAL);
+    // pcsettings from the preset, $B3_NIGHT_LIGHTS wins
+    int lights = 8;
+    // tunnels: enclosed = (1 - smoothstep(lo, hi, sky_open)) x smoothstep(0.6, 0.9, the rays' cover), smoothed over `tau`
+    // s; the grade loses fade x enclosed of its strength within near m, full again at far m ($B3_NIGHT_TUNNEL = "lo, hi,
+    // tau, fade, near, far"; fade 0: off). Set from logged routes (§17.2): tunnels 0.04-0.20, a cliff wall 0.28-0.45
+    // (cover low), open road 0.6-1
+    float tunnel[6] = {0.15f, 0.35f, 0.5f, 0.8f, 60.0f, 140.0f};
+    // the tunnels' light fixtures (DrawItem::night_emissive): gain over the pre-grade colour, texel luminance ramp
+    // ($B3_NIGHT_FIXTURE; $B3_NIGHT_FIXTURES = "name,name,..." replaces the route's name list, to find the names)
+    float fixture[3] = {1.0f, 0.6f, 0.8f};
+    // street lights (§17.2): how many lamps light the road (24 HIGH / ULTRA, 8 MEDIUM, 0 LOW / PS2: from `lights`);
+    // $B3_NIGHT_STREET = the count, $B3_NIGHT_STREET_SHAPE = "inner deg, outer deg, d0 m, gain, fade start m, fade end m"
+    int street = -1;                                  // -1: from `lights`
+    float street_shape[6] = {45.0f, 72.0f, 7.0f, 2.2f, 14.0f, 24.0f};
+};
+inline bool night_env_set() { const char* e = std::getenv("B3_NIGHT"); return e && *e; }
+inline NightLook night_env() {
+    NightLook n;
+    const char* e = std::getenv("B3_NIGHT");
+    n.on = e && *e && std::strcmp(e, "0") != 0;
+    if (const char* m = std::getenv("B3_MOON"); m && *m) n.moon = std::strcmp(m, "0") != 0;
+    const auto read = [](const char* name, float* v, int count) {
+        const char* s = std::getenv(name);
+        for (int k = 0; s && *s && k < count; ++k) {
+            char* end = nullptr;
+            const float x = std::strtof(s, &end);
+            if (end == s) break;
+            v[k] = x;
+            s = *end == ',' ? end + 1 : end;
+        }
+    };
+    read("B3_NIGHT_WORLD", n.world, 3);
+    read("B3_NIGHT_SKY", n.sky, 3);
+    read("B3_NIGHT_LAMP", n.lamp, 3);
+    read("B3_NIGHT_BEAM", n.shape, 4);
+    float g[2] = {n.sat, n.gamma};
+    read("B3_NIGHT_GRADE", g, 2);
+    n.sat = g[0];
+    n.gamma = g[1] >= 0.1f ? g[1] : 0.1f;   // at least 0.1, NaN too (the curve and the fog colour's inverse divide by it)
+    read("B3_NIGHT_MOON", n.moonlight, 3);
+    read("B3_NIGHT_STARS", &n.stars, 1);
+    read("B3_NIGHT_SPOT", n.spot, 11);
+    read("B3_NIGHT_TUNNEL", n.tunnel, 6);
+    read("B3_NIGHT_FIXTURE", n.fixture, 3);
+    if (const char* l = std::getenv("B3_NIGHT_STREET"); l && *l) n.street = std::clamp(std::atoi(l), 0, 24);
+    read("B3_NIGHT_STREET_SHAPE", n.street_shape, 6);
+    if (const char* l = std::getenv("B3_NIGHT_LIGHTS"); l && *l) n.lights = std::clamp(std::atoi(l), 0, 8);
+    return n;
+}
+// The moon's direction for a route whose ENVIRO sun is `to_sun`: the sun's bearing (the baked shadows then fall away
+// from the moon), its height kept between 10 and 20 degrees so the moon shows in the chase camera's view.
+void moon_direction(const float to_sun[3], float out[3]);
+
 struct View {
+    NightLook night = night_env();              // night mode (remaster-features §17), set in post_frame / draw_list
+    // todrace: whether frame `f` is drawn at night: the race's own choice on a track page (Frame::race_time,
+    // tools/native/race_time.h: 1 day, 2 night), else night.on (TIME OF DAY, $B3_NIGHT). Drawn only.
+    bool night_on(const Frame& f) const { return f.race_time ? f.race_time == 2 : night.on; }
+    std::uint8_t load_race_time = 0;   // todrace: the race's choice when its route loads (the tunnel cover grid is built then)
+    // surface (remaster-features §18): GRAPHICS > SURFACE DETAIL / AMBIENT OCCLUSION (pcsettings); $B3_SURFACE* win
+    bool surface_detail = false, ambient_occlusion = false;
+    // SUN SHADOWS (remaster-features §20): GRAPHICS > SUN SHADOWS (pcsettings: the map's side and kernel from ANTI-ALIASING);
+    // $B3_SUN_SHADOWS=0 / 1 wins over the row, $B3_SUN_SHADOW_SIZE / _FILTER / _STRENGTH (tuning) over the rest
+    bool sun_shadows = false;
+    int sun_shadow_size = 2048, sun_shadow_filter = 0;
+    float road_light = 0.75f;   // the route's open-road vertex light (load_prepared: road_light_level), FrameParams::SunShadow::lit
+    // The frame's shadow box (FrameParams::SunShadow without the strength) towards `to_light`, around the view's car
+    // (Frame::env_car, else the race car the camera follows); false: none (off, the light under 5 degrees, no car)
+    bool sun_shadow_box(const Frame& f, const float to_light[3], b3gfx::FrameParams::SunShadow& out) const;
     int bloom_level = bloom_level_env(2);       // bloom2: 1 soft, 2 standard (apply_view)
     std::string game;
     int car_lod = -1;                           // -1: the game's choice (game_lod), else forced
@@ -264,6 +387,26 @@ struct View {
     std::map<int, int> item_prop;               // hi item -> placement
     // Cars (render5, docs/native-renderer.md §12.6): the game's car model, per (file, paint, LOD block)
     std::map<std::tuple<int, int, int>, std::unique_ptr<b3view::CarModel>> car_models;
+    // carpaint: the local players' paint ([0] player 1 and the front end's car, [1] player 2), and per car file its paint
+    // map and the map's texture (made once, when a player's car first needs it; ok false: the car has one paint)
+    CarPaint car_paint[2] = {car_paint_env(0), car_paint_env(1)};
+    // padpaint: the map is made on a worker (async_paint: the live window; the car is drawn in the game's paint until it
+    // is ready, no frame waits ~30 ms for it) or at once (the offline tools); kept across routes, only its texture made again
+    struct PaintMap {
+        bool ok = false, pending = false;
+        b3asset::CarPaintMap map;
+        b3gfx::TextureId tex = b3gfx::kNone;
+        std::future<std::pair<bool, std::string>> job;   // pending: fills `map`; (made, why not)
+        double ms = 0;
+    };
+    std::map<int, PaintMap> paint_maps;
+    bool async_paint = false;
+    bool paint_frontend = false;                // frontend_frame: the front end's car is being drawn
+    // padpaint: that car (Tick::fe_car) and whose paint it takes: the car select page's player (Tick::fe_player; any other
+    // page player 1's); every other race car on a front-end page keeps the game's paint
+    std::uint32_t paint_fe_car = 0;
+    int paint_fe_player = 0, paint_fe_logged = -2;
+    const PaintMap* paint_map(b3gfx::Device& dev, int file);
     b3view::CarGlobals car_globals;             // texture slots 1-4 (GLOBAL.TXD), env sky and sun (ENVIRO.DAT)
     // Crash-mode game data (crash2, docs/native-renderer.md §12.9): the route's GAMEDATA.BGD stages as draws
     b3view::CrashScene crash_scene;
@@ -330,7 +473,7 @@ struct View {
     // title's "Press START button to continue": its START drawn as the device's Start button (prompts.h title_start_swap)
     std::shared_ptr<const HostFonts> hud_fonts, hud_built_fonts;
     std::map<std::uint64_t, b3gfx::TextureId> hud_textures;   // by HudTexture key (uploaded on first use)
-    // Accessibility (a11y.h; PC SETTINGS > INTERFACE > ACCESSIBILITY): HUD COLOUR FILTER (0 off, 1 deuteranopia, 2
+    // Accessibility (a11y.h; PC SETTINGS > GAME > ACCESSIBILITY): HUD COLOUR FILTER (0 off, 1 deuteranopia, 2
     // protanopia, 3 tritanopia) remaps the 2D's colours (hud_list, host_ui_list: vertex colours and remapped copies of
     // the textures; not the movies, not the globe); SCREEN FLASHES Reduced caps full-screen bright fills. Off / Full:
     // nothing of it runs (the frames byte-identical).
@@ -371,6 +514,8 @@ struct View {
     void host_ui_list(b3gfx::Device& dev, const std::shared_ptr<const HostUi>& ui, float aspect, std::vector<b3gfx::DrawItem>& out,
                       int out_h, int out_w);
     std::map<std::string, b3gfx::TextureId> host_ui_tex;   // by path ("" white); kNone: unreadable
+    b3gfx::TextureId host_img_tex = b3gfx::kNone;   // settingsui: the host's picture ("img:" path; one slot, refilled on a change)
+    std::string host_img_name;                      // the "img:" path it holds
     b3gfx::BufferId host_vb = b3gfx::kNone, host_ib = b3gfx::kNone;
     std::shared_ptr<const HostUi> host_built;
     float host_aspect = 0;
@@ -434,7 +579,7 @@ struct View {
                        std::vector<b3gfx::DrawItem>& out, bool hide_own = false);
     std::vector<float> vehicle_fades;   // traffic-popin: the frame's traffic_fade per vehicle (the shadows')
     float frame_now = 0;   // traffic-popin: the displayed frame's world clock (Frame::fx.now; draw_list sets it) for traffic_fade
-    // ghost1 (ghost.h; PC SETTINGS > INTERFACE > GHOST): the Time Attack ghost, drawn after the cars while `ghost` is set
+    // ghost1 (ghost.h; PC SETTINGS > GAME > MODES > GHOST): the Time Attack ghost, drawn after the cars while `ghost` is set
     // and the frame is a Time Attack lap (Frame::time_attack, lap_index >= 0): the lap's pose at Frame::lap_time, its car
     // file `ghost_file` (index into cars), screen-door faded (ghost::kFade; less within a few metres of the camera), lit
     // with the player's car's light, no shadow, coronas or effects. `ghost_mode`: the setting (0 off, 1 best lap; the
@@ -469,6 +614,39 @@ struct View {
     // set first) and the boost radial blur into fp.blur. `display_aspect`: the output's width / height as displayed (4/3
     // for the PS2-shaped 640 x 448 image).
     void post_frame(const Frame& f, float display_aspect, b3gfx::FrameParams& fp) const;
+    // nightlights (§17.2, from post_frame at night): the frame's headlight spots (FrameParams::Night::lamp: the
+    // players' cars first, then the nearest within 150 m whose beam reaches the view, at most night.lights) and the
+    // tunnel signal (Night::enclosed: the view's car's sky_open through a threshold, smoothed; night_tunnel)
+    void night_lamps(const Frame& f, b3gfx::FrameParams& fp) const;
+    void night_tunnel_frame(const Frame& f, b3gfx::FrameParams& fp) const;
+    // nightlights (§17.2, D.2): the tunnels' light fixtures. At load, the hi / lo items whose texture name is on the
+    // route's region list (night_fixture_names) get DrawItem::night_emissive (read only at night). $B3_NIGHT_TEXLOG=1
+    // (a local tool to find the names): each texture first drawn while the view is enclosed (> 0.5) is logged with its
+    // texels' luminance, saturation and the share of bright unsaturated texels (night_texinfo, built at load)
+    void night_fixtures_load();
+    void night_texlog(const std::vector<b3gfx::DrawItem>& out, std::size_t first) const;
+    struct NightTex { std::string name; float lum = 0, sat = 0, bright = 0; };
+    std::map<b3gfx::TextureId, NightTex> night_texinfo;
+    mutable std::set<std::string> night_texlogged;
+    // nightlights (§17.2): the tunnel test's second signal (night_cover): the route's opaque unit triangles (hi) in a grid
+    // of 8 m cells over x / z, built at the route's load when night is on (else on the first night frame); rays from the
+    // view's car upwards and 35 degrees off the vertical in eight directions, the share of them that hit within 40 m.
+    // A flat table: the occupied cells' keys sorted, each with its run of triangle indices (no per-cell allocation)
+    // street lights (§17.2): the route's lamps (head position, tint), found at load from the region's lamp textures
+    struct NightStreet { float pos[3], colour[3]; };
+    std::vector<NightStreet> night_streets;
+    void night_street_load();
+    void night_street_frame(const Frame& f, b3gfx::FrameParams& fp) const;
+    struct NightCover {
+        bool built = false;
+        std::vector<float> tri;                                      // 9 floats per triangle
+        std::vector<std::uint64_t> keys;                             // occupied cells, sorted
+        std::vector<std::uint32_t> first;                            // keys.size() + 1 offsets into `ids`
+        std::vector<std::uint32_t> ids;                              // triangle indices per cell
+    };
+    mutable NightCover night_cover_grid;
+    void night_cover_build() const;
+    float night_cover(const float pos[3]) const;
     void blur_frame(const Frame& f, b3gfx::FrameParams& fp) const;   // the zoom blur part of post_frame
     void bloom_frame(const Frame& f, b3gfx::FrameParams& fp) const;  // the bloom part of post_frame
     // The HUD frame's draws as 2D-stage items (b3gfx DrawItem::overlay) for an output of `aspect` = width / height:
@@ -484,6 +662,7 @@ struct View {
     // hud4: with `proj` (and hud_reproject), each world-anchored marker (HudFrame::markers) is moved from the place the
     // game projected it to with its captured viewport to its point's place in this frame's 3D: the anchor vehicle's
     // interpolated position + the captured offset, through proj->view_proj, and scaled by the game's size rule.
+    bool hud_split_pass_ = false;   // promptround: hud_list runs for the split-screen own layout (prompts keep their quads)
     void hud_list(b3gfx::Device& dev, const std::shared_ptr<const HudFrame>& hud, const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>& textures,
                   float aspect, std::vector<b3gfx::DrawItem>& out, int out_h, int out_w, const HudProjection* proj = nullptr,
                   bool frontend = false);
@@ -499,7 +678,7 @@ struct View {
                      std::vector<b3gfx::Device::ViewPass>& views, b3gfx::FrameParams& ofp, std::vector<b3gfx::DrawItem>& overlay);
     // (view_aspect: each view's width / height as rendered, 0 = the game camera's own (offline 640 x 448 shots);
     // hud_aspect: the output's width / height as displayed, as hud_list takes it)
-    // splitlayout1 (splitlayout.h, PC SETTINGS > CAMERA > SPLIT SCREEN): 0 the game's top / bottom (the path above,
+    // splitlayout1 (splitlayout.h, PC SETTINGS > DISPLAY > LAYOUT > SPLIT SCREEN): 0 the game's top / bottom (the path above,
     // unchanged), 1 side by side: the views in the left / right halves, each projected at its own shape from the game's
     // side-by-side view window (Hor+), drawn with the renderer's own culling, and each player's 2D placed in its view
     // (split_hud); view_aspect is then not used.
@@ -508,7 +687,10 @@ struct View {
     // their views: each draw by its anchor (split_hud_affine), markers projected through their view's camera
     void split_hud(const HudFrame& hud, const Frame& f, const std::vector<b3gfx::Device::ViewPass>& views, const float half_w[2],
                    int out_w, int out_h, std::vector<b3gfx::DrawItem>& items) const;
-    struct View2State { Effects effects; Coronas coronas; double bloom_last = -1; EffectStats fx_stats; CoronaArrays corona_arrays; CoronaStats corona_stats; };
+    // nightlights: the tunnel signal's smoothing (per view: split screen swaps it with player 2's)
+    struct NightTunnel { float enclosed = 0; float now = 0; bool valid = false; };
+    mutable NightTunnel night_tunnel;
+    struct View2State { Effects effects; Coronas coronas; double bloom_last = -1; EffectStats fx_stats; CoronaArrays corona_arrays; CoronaStats corona_stats; NightTunnel night_tunnel; };
     View2State view2_state;
     void swap_view2() {
         std::swap(effects, view2_state.effects);
@@ -517,6 +699,7 @@ struct View {
         std::swap(fx_stats, view2_state.fx_stats);
         std::swap(corona_arrays, view2_state.corona_arrays);
         std::swap(corona_stats, view2_state.corona_stats);
+        std::swap(night_tunnel, view2_state.night_tunnel);
     }
     // wide1: `frontend` (front-end frames, frontend_frame) lays the 2D out as the game's 4:3 picture centred, with no
     // object anchors: only draws spanning the whole width (bands, panels, the grid) reach the output's edges (a

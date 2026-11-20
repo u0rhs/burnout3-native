@@ -1,7 +1,9 @@
 // Control remapping (src/native/input_bindings.h).
 #include "input_bindings.h"
+#include "b3port/fileio.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -215,7 +217,25 @@ PadBindings make_xbox() {
     return b;
 }
 
-// The PS2 game's, with the triggers as the pedals (owner, 2026-11-19): Cross / R2 accelerate and Square / L2 brake
+// Nintendo (2026-11-19): the Xbox layout mirrored by label -- the face buttons' positions swapped across each diagonal
+// (South <-> East, West <-> North), so the button labelled A confirms and boosts, B goes back and is the Crashbreaker,
+// X (North) looks back / Square in menus and Y (West) the camera / Circle in menus, as the Xbox pad's A / B / X / Y
+PadBindings make_nintendo() {
+    PadBindings b = make_xbox();
+    for (std::vector<PadBind>& l : b)
+        for (PadBind& x : l) {
+            switch (x.in) {
+            case PadInput::South: x.in = PadInput::East; break;
+            case PadInput::East: x.in = PadInput::South; break;
+            case PadInput::West: x.in = PadInput::North; break;
+            case PadInput::North: x.in = PadInput::West; break;
+            default: break;
+            }
+        }
+    return b;
+}
+
+// The PS2 game's, with the triggers as the pedals (padlayout, 2026-11-19): Cross / R2 accelerate and Square / L2 brake
 // (R2 / L2 analog, as the Xbox layout's triggers), the Crashbreaker on R3 and the music track skip on L3 (the PS2's R2
 // / L2 moved to the stick clicks), the rest button for button; the right stick as the game's (up accelerates, down
 // brakes). Both contexts.
@@ -348,6 +368,38 @@ std::optional<PadInput> parse_pad_input(std::string_view s) {
     for (std::size_t k = 1; k < std::size_t(PadInput::Count); ++k)
         if (l == kPad[k].key) return PadInput(k);
     return std::nullopt;
+}
+
+std::vector<PadInput> parse_pad_chord(std::string_view text, std::vector<std::string>* unknown) {
+    const std::string l = lower(std::string(text));
+    const auto space = [&](std::size_t i) { return i < l.size() && (l[i] == ' ' || l[i] == '\t'); };
+    const auto sep = [&](std::size_t i) { return i < l.size() && (l[i] == '+' || l[i] == ','); };
+    std::vector<PadInput> out;
+    std::size_t at = 0;
+    while (at < l.size()) {
+        while (space(at) || sep(at)) ++at;
+        if (at >= l.size()) break;
+        std::size_t best = 0, best_len = 0;
+        for (std::size_t k = 1; k < std::size_t(PadInput::Count); ++k) {
+            const std::size_t n = std::strlen(kPad[k].key);
+            if (n <= best_len || l.compare(at, n, kPad[k].key) != 0) continue;
+            std::size_t e = at + n;
+            while (space(e)) ++e;
+            if (e == l.size() || sep(e)) { best = k; best_len = n; }   // a whole input, then a separator or the end
+        }
+        if (best_len) {
+            if (std::find(out.begin(), out.end(), PadInput(best)) == out.end()) out.push_back(PadInput(best));
+            at += best_len;
+            while (space(at)) ++at;
+            if (sep(at)) ++at;
+        } else {   // not an input: up to the next separator
+            std::size_t e = at;
+            while (e < l.size() && !sep(e)) ++e;
+            if (unknown) unknown->push_back(std::string(trim(std::string_view(text).substr(at, e - at))));
+            at = e;
+        }
+    }
+    return out;
 }
 
 std::string pad_input_label(PadInput p, PadStyle style) {
@@ -483,11 +535,15 @@ const PortInfo kPort[kPortActions] = {
     {"photo_blur_more", "PHOTO: MORE BLUR", "Photo mode: a stronger depth-of-field blur.", true, true, false},
     {"photo_blur_cycle", "PHOTO: BLUR LEVELS", "Photo mode: the next blur level, round to the first.", true, true, false},
     {"photo_target", "PHOTO: FOCUS ON CAR / CENTRE", "Photo mode: focus on the car or the middle of the screen.", true, true, false},
+    {"photo_motion", "PHOTO: MOTION BLUR", "Photo mode: the motion blur's next mode: off, tracking, panning, static.", true, true, false},
+    {"photo_shutter_faster", "PHOTO: FASTER SHUTTER", "Photo mode: a shorter exposure, less motion blur.", true, true, false},
+    {"photo_shutter_slower", "PHOTO: SLOWER SHUTTER", "Photo mode: a longer exposure, more motion blur.", true, true, false},
     {"photo_reset", "PHOTO: GAME CAMERA", "Photo mode: back to the game's camera view.", true, true, false},
     {"photo_help", "PHOTO: HELP", "Photo mode: hide or show the help box.", true, true, false},
     {"photo_exit", "PHOTO: LEAVE", "Photo mode: leave it (Escape and the photo mode key leave too).", true, true, false},
     {"car_look", "CAR LOOK PANEL", "Open or close the live car reflection tuner (needs DEVELOPER MODS on).", false, false, false},
     {"hd_textures", "HD TEXTURES ON / OFF", "Switch between the HD texture pack and the original textures at once, to compare (this run only).", false, true, false},
+    {"race_time", "TIME OF DAY PER RACE", "The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", false, true, false},
 };
 
 PortControls make_default_port() {
@@ -504,6 +560,7 @@ PortControls make_default_port() {
     set(PortAction::TuneOverlay, {66}, {});                        // F9
     set(PortAction::CarLook, {65}, {});                            // F8
     set(PortAction::HdTextures, {61}, {});                         // F4 (hdkey; a gamepad binding can be added)
+    set(PortAction::RaceTime, {23}, {P::LeftShoulder});            // T; LB / L1 (todrace: the track page reads neither)
     set(PortAction::PhotoMode, {19}, {P::LeftStick, P::RightStick});   // P; L3 + R3
     set(PortAction::SectionPrev, {75}, {});                        // Page Up
     set(PortAction::SectionNext, {78}, {});                        // Page Down
@@ -531,6 +588,9 @@ PortControls make_default_port() {
     set(PortAction::PhotoBlurMore, {5}, {});                       // B
     set(PortAction::PhotoBlurCycle, {}, {P::Start});               // Start
     set(PortAction::PhotoTarget, {10}, {P::LeftStick});            // G; L3 alone
+    set(PortAction::PhotoMotion, {13}, {P::RightStick});           // J; R3 alone (photoblur)
+    set(PortAction::PhotoShutterFaster, {14}, {P::RightStick, P::DpadLeft});    // K; R3 + D-pad left
+    set(PortAction::PhotoShutterSlower, {15}, {P::RightStick, P::DpadRight});   // L; R3 + D-pad right
     set(PortAction::PhotoReset, {21}, {P::West});                  // R; X / Square
     set(PortAction::PhotoHelp, {11}, {P::North});                  // H; Y / Triangle
     set(PortAction::PhotoExit, {}, {P::East});                     // B / Circle
@@ -542,13 +602,14 @@ bool has_input(const std::vector<PadBind>& l, PadInput in, KeyCtx view = KeyCtx:
     return std::any_of(l.begin(), l.end(), [&](const PadBind& b) { return b.in == in && overlap(b.ctx, view); });
 }
 // A port action is global when it works whatever the game is doing: it conflicts with the game's own keys and buttons
-bool port_global(PortAction a) { return !port_photo(a); }
+bool port_global(PortAction a) { return !port_photo(a) && !port_page(a); }
 }  // namespace
 
 const char* port_key(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) ? kPort[std::size_t(a)].key : "?"; }
 const char* port_label(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) ? kPort[std::size_t(a)].label : "?"; }
 const char* port_use(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) ? kPort[std::size_t(a)].use : ""; }
 bool port_photo(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) && kPort[std::size_t(a)].photo; }
+bool port_page(PortAction a) { return a == PortAction::RaceTime; }
 bool port_has_pad(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) && kPort[std::size_t(a)].pad; }
 bool port_analog(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) && kPort[std::size_t(a)].analog; }
 
@@ -581,6 +642,67 @@ float port_pad_amount(const GamepadState& g, const PortControls& p, PortAction a
     return v;
 }
 
+bool take_port_chord(GamepadState& g, const PortControls& p, PortAction a, float dead_zone) {
+    if (port_pad_amount(g, p, a, dead_zone) < 0.5f) return false;
+    for (PadInput in : p.pad[std::size_t(a)]) {
+        switch (in) {
+        case PadInput::South: g.south = false; break;
+        case PadInput::East: g.east = false; break;
+        case PadInput::West: g.west = false; break;
+        case PadInput::North: g.north = false; break;
+        case PadInput::Back: g.back = false; break;
+        case PadInput::Guide: g.guide = false; break;
+        case PadInput::Start: g.start = false; break;
+        case PadInput::LeftStick: g.left_stick = false; break;
+        case PadInput::RightStick: g.right_stick = false; break;
+        case PadInput::LeftShoulder: g.left_shoulder = false; break;
+        case PadInput::RightShoulder: g.right_shoulder = false; break;
+        case PadInput::DpadUp: g.dpad_up = false; break;
+        case PadInput::DpadDown: g.dpad_down = false; break;
+        case PadInput::DpadLeft: g.dpad_left = false; break;
+        case PadInput::DpadRight: g.dpad_right = false; break;
+        case PadInput::Misc1: g.misc1 = false; break;
+        case PadInput::RightPaddle1: g.paddles[0] = false; break;
+        case PadInput::LeftPaddle1: g.paddles[1] = false; break;
+        case PadInput::RightPaddle2: g.paddles[2] = false; break;
+        case PadInput::LeftPaddle2: g.paddles[3] = false; break;
+        case PadInput::Touchpad: g.touchpad = false; break;
+        case PadInput::LeftXNeg: case PadInput::LeftXPos: g.left_x = 0; break;
+        case PadInput::LeftYNeg: case PadInput::LeftYPos: g.left_y = 0; break;
+        case PadInput::RightXNeg: case PadInput::RightXPos: g.right_x = 0; break;
+        case PadInput::RightYNeg: case PadInput::RightYPos: g.right_y = 0; break;
+        case PadInput::LeftTrigger: g.left_trigger = 0; break;
+        case PadInput::RightTrigger: g.right_trigger = 0; break;
+        default: break;
+        }
+    }
+    return true;
+}
+
+bool page_reads_input(const Controls& c, const PhysInput& in) {
+    static constexpr Ds2 kRead[] = {Ds2::Cross, Ds2::Triangle, Ds2::Up, Ds2::Down, Ds2::Left, Ds2::Right,
+                                    Ds2::SteerLeft, Ds2::SteerRight, Ds2::StickUp, Ds2::StickDown};
+    for (int p = 0; p < kPlayers; ++p) {
+        const PlayerControls& pc = c.player[std::size_t(p)];
+        for (Ds2 g : kRead) {
+            if (in.device == Device::Keyboard) {
+                for (const KeyBind& k : pc.keys[idx(g)])
+                    if (k.scancode == in.key && overlap(k.ctx, KeyCtx::Menu)) return true;
+            } else {
+                for (PadStyle f : {PadStyle::Generic, PadStyle::PlayStation, PadStyle::Xbox, PadStyle::Nintendo})
+                    if (has_input(pad_bindings(pc, f)[idx(g)], in.pad, KeyCtx::Menu)) return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool port_page_safe(const Controls& c, PortAction a, Device d) {
+    for (const PhysInput& in : bound_port(c, a, d))
+        if (page_reads_input(c, in)) return false;
+    return true;
+}
+
 std::vector<PhysInput> bound_port(const Controls& c, PortAction a, Device d) {
     std::vector<PhysInput> o;
     if (d == Device::Keyboard) {
@@ -597,13 +719,15 @@ std::string bound_port_text(const Controls& c, PortAction a, Device d, PadStyle 
         if (!o.empty()) o += d == Device::Gamepad ? " + " : ", ";
         o += input_label(in, style);
     }
-    return o.empty() ? "-" : o;
+    return o.empty() ? std::string(kUnbound) : o;   // settingsui: a word, not "-"
 }
 
 std::vector<Use> uses_port(const Controls& c, PortAction a, Device d, const PhysInput& in) {
     std::vector<Use> o;
     for (int b = 0; b < kPortActions; ++b) {
         if (PortAction(b) == a) continue;
+        // todrace: a page's action and photo mode's are never active together
+        if ((port_page(a) && port_photo(PortAction(b))) || (port_photo(a) && port_page(PortAction(b)))) continue;
         if (d == Device::Keyboard) {
             const auto& l = c.port.keys[std::size_t(b)];
             if (std::find(l.begin(), l.end(), in.key) != l.end()) o.push_back({0, Ds2::Cross, true, PortAction(b)});
@@ -731,16 +855,17 @@ Controls default_controls() {
 // ---- padlayout: the controller layouts ----
 
 namespace {
-const char* const kLayoutKeys[] = {"auto", "xbox", "playstation", "custom"};
+const char* const kLayoutKeys[kPadLayouts] = {"auto", "xbox", "playstation", "nintendo", "custom"};
 }
 
-const char* pad_layout_key(PadLayout l) { return std::size_t(l) < 4 ? kLayoutKeys[std::size_t(l)] : "?"; }
+const char* pad_layout_key(PadLayout l) { return std::size_t(l) < kPadLayouts ? kLayoutKeys[std::size_t(l)] : "?"; }
 
 std::optional<PadLayout> parse_pad_layout(std::string_view s) {
     const std::string l = lower(trim(s));
-    for (std::size_t k = 0; k < 4; ++k)
+    for (std::size_t k = 0; k < kPadLayouts; ++k)
         if (l == kLayoutKeys[k]) return PadLayout(k);
     if (l == "ps" || l == "ps2") return PadLayout::PlayStation;
+    if (l == "switch") return PadLayout::Nintendo;
     return std::nullopt;
 }
 
@@ -760,9 +885,10 @@ PadLayout resolved_layout(PadLayout l, PadStyle family) {
 }
 
 const PadBindings& layout_bindings(PadLayout l) {
-    static const PadBindings xbox = make_xbox(), ps = make_playstation();
+    static const PadBindings xbox = make_xbox(), ps = make_playstation(), nintendo = make_nintendo();
     switch (l) {
     case PadLayout::PlayStation: return ps;
+    case PadLayout::Nintendo: return nintendo;
     case PadLayout::Custom: return default_player(0).pad;
     default: return xbox;
     }
@@ -786,6 +912,7 @@ std::string layout_text(const PlayerControls& p, PadStyle family, bool connected
     switch (p.layout) {
     case PadLayout::Xbox: return "Xbox";
     case PadLayout::PlayStation: return "PlayStation";
+    case PadLayout::Nintendo: return "Nintendo";
     case PadLayout::Custom: return "Custom";
     case PadLayout::Auto: break;
     }
@@ -906,7 +1033,7 @@ const char* const kGyroAxes[] = {"roll", "yaw"};
 std::string to_ini(const Controls& c) {
     std::string o = "# Burnout 3 controls (docs/pc-settings.md 7.9): one line per action that differs from its default.\n"
                     "# Keys: names, @menus / @driving for one context only. Gamepad: layout = auto / xbox / playstation /\n"
-                    "# custom; the custom layout's inputs: south east west north, left_x- ..., left_trigger right_trigger\n"
+                    "# nintendo / custom; the custom layout's inputs: south east west north, left_x- ..., left_trigger right_trigger\n"
                     "# (@menus / @driving too). none: unbound.\n";
     o += "version = " + std::to_string(kControlsVersion) + "\n";
     for (int p = 0; p < kPlayers; ++p) {
@@ -1020,21 +1147,19 @@ Controls controls_from_ini(std::string_view text, std::vector<std::string>* warn
             }
             std::vector<std::uint16_t> ks;
             std::vector<PadInput> ps;
-            const char sep = port_dev == 0 ? ',' : '+';
-            for (std::size_t a = 0; a <= value.size();) {
-                std::size_t b = value.find(sep, a);
+            if (port_dev == 1) {   // robust2: read input by input (an axis input ends in '+' itself)
+                std::vector<std::string> unknown;
+                ps = parse_pad_chord(value, &unknown);
+                for (const std::string& u : unknown) warn(n, "unknown gamepad input '" + u + "'");
+            }
+            for (std::size_t a = 0; port_dev == 0 && a <= value.size();) {   // [port.keyboard]: keys joined with ','
+                std::size_t b = value.find(',', a);
                 if (b == std::string_view::npos) b = value.size();
                 const std::string_view it = trim(value.substr(a, b - a));
                 if (!it.empty()) {
-                    if (port_dev == 0) {
-                        const std::optional<std::uint16_t> k = parse_key(it);
-                        if (!k) warn(n, "unknown key '" + std::string(it) + "'");
-                        else if (std::find(ks.begin(), ks.end(), *k) == ks.end()) ks.push_back(*k);
-                    } else {
-                        const std::optional<PadInput> p = parse_pad_input(it);
-                        if (!p) warn(n, "unknown gamepad input '" + std::string(it) + "'");
-                        else if (std::find(ps.begin(), ps.end(), *p) == ps.end()) ps.push_back(*p);
-                    }
+                    const std::optional<std::uint16_t> k = parse_key(it);
+                    if (!k) warn(n, "unknown key '" + std::string(it) + "'");
+                    else if (std::find(ks.begin(), ks.end(), *k) == ks.end()) ks.push_back(*k);
                 }
                 a = b + 1;
             }
@@ -1168,7 +1293,7 @@ Controls controls_from_ini(std::string_view text, std::vector<std::string>* warn
 }
 
 bool load_controls(const std::string& path, Controls& c, std::vector<std::string>* warnings) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(b3io::u8path(path), std::ios::binary);   // fsrobust: UTF-8 path (Windows: opened wide)
     if (!f) { c = default_controls(); return false; }
     std::stringstream ss;
     ss << f.rdbuf();
@@ -1176,17 +1301,8 @@ bool load_controls(const std::string& path, Controls& c, std::vector<std::string
     return true;
 }
 
-bool save_controls(const std::string& path, const Controls& c, std::string* why) {
-    const std::string tmp = path + ".tmp";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f) { if (why) *why = "cannot write " + tmp; return false; }
-        f << to_ini(c);
-        if (!f) { if (why) *why = "write failed " + tmp; return false; }
-    }
-    std::remove(path.c_str());   // Windows: rename does not replace
-    if (std::rename(tmp.c_str(), path.c_str()) != 0) { if (why) *why = "cannot rename to " + path; return false; }
-    return true;
+bool save_controls(const std::string& path, const Controls& c, std::string* why, bool durable) {
+    return b3io::replace_file(b3io::u8path(path), to_ini(c), why, durable);   // fsrobust: path.tmp, flushed, then one replace
 }
 
 // ---- editing ----
@@ -1214,7 +1330,7 @@ std::string bound_text(const Controls& c, int player, Device d, Ds2 action, KeyC
         if (!o.empty()) o += ", ";
         o += input_label(in, style);
     }
-    return o.empty() ? "-" : o;
+    return o.empty() ? std::string(kUnbound) : o;   // settingsui: a word, not "-"
 }
 
 bool moved(const Controls& c, int player, Device d, Ds2 action, KeyCtx view) {
@@ -1311,12 +1427,17 @@ void rebind(Controls& c, int player, Device d, Ds2 action, const PhysInput& in, 
     }
 }
 
-void remove_last(Controls& c, int player, Device d, Ds2 action, KeyCtx view) {
+Removed remove_last(Controls& c, int player, Device d, Ds2 action, KeyCtx view) {
     player &= 1;
     const std::vector<PhysInput> shown = bound(c, player, d, action, view);
-    if (shown.empty()) return;
-    if (d == Device::Keyboard) remove_from_view(c.player[std::size_t(player)].keys[idx(action)], shown.back().key, view);
-    else edit_pad(c, player, [&](PadBindings& b) { remove_from_view(b[idx(action)], std::uint16_t(shown.back().pad), view); });
+    if (shown.empty()) return Removed::kNothing;
+    Controls after = c;
+    if (d == Device::Keyboard) remove_from_view(after.player[std::size_t(player)].keys[idx(action)], shown.back().key, view);
+    else edit_pad(after, player, [&](PadBindings& b) { remove_from_view(b[idx(action)], std::uint16_t(shown.back().pad), view); });
+    if ((action == Ds2::Cross || action == Ds2::Triangle) && bound(after, player, d, action, KeyCtx::Menu).empty())
+        return Removed::kKeptForMenus;   // settingsui: the menus' last confirm / back on this device stays
+    c = std::move(after);
+    return Removed::kDone;
 }
 
 void reset(Controls& c, int player, Device d) {
@@ -1342,6 +1463,7 @@ void RebindFlow::begin(int player, Device d, Ds2 action, KeyCtx view, bool add) 
     waited_ = 0;
     choice_ = 0;
     pressed_ = {};
+    refused_.reset();
     conflicts_.clear();
 }
 
@@ -1363,6 +1485,11 @@ RebindFlow::State RebindFlow::input(Controls& c, const PhysInput& in) {
     if (state_ != State::Waiting || in.device != device_) return state_;
     if (in.device == Device::Keyboard && key_reserved(in.key)) return state_;
     if (in.device == Device::Gamepad && (in.pad == PadInput::None || in.pad >= PadInput::Count)) return state_;
+    if (port_ && port_page(port_action_) && page_reads_input(c, in)) {   // todrace: the page would lose it: wait for another
+        refused_ = in;
+        waited_ = 0;
+        return state_;
+    }
     pressed_ = in;
     conflicts_ = port_ ? uses_port(c, port_action_, device_, in) : uses(c, player_, device_, action_, in, view_);
     swap_.reset();
@@ -1404,7 +1531,9 @@ std::string RebindFlow::message(PadStyle style) const {
     const std::string who = port_ ? std::string() : "PLAYER " + std::to_string(player_ + 1) + " ";
     if (state_ == State::Waiting) {
         const int left = std::max(1, int(std::ceil(remaining())));
-        return std::string(device_ == Device::Keyboard ? (add_ ? "PRESS ANOTHER KEY FOR " : "PRESS A KEY FOR ")
+        const std::string refused = refused_ ? input_label(*refused_, style) + " IS ONE THE TRACK PAGES USE THEMSELVES (CONFIRM, BACK, "
+                                               "THE D-PAD): CHOOSE ANOTHER.  " : std::string();
+        return refused + std::string(device_ == Device::Keyboard ? (add_ ? "PRESS ANOTHER KEY FOR " : "PRESS A KEY FOR ")
                                                        : (add_ ? "PRESS ANOTHER CONTROLLER INPUT FOR " : "PRESS A BUTTON, STICK OR TRIGGER FOR ")) +
                who + act + where + ".  ESCAPE CANCELS (" + std::to_string(left) + ")";
     }

@@ -16,7 +16,7 @@
 // code), and hands them to the same selection component. For its race form (+0x60 clear: action codes, not row
 // indices, pick the action) the selection Prepare wrapper inserts SETTINGS before the last row with action code 6,
 // which the game's switch ignores; the Update wrapper opens the page on Confirm there.
-// photorow1 (2026-11-15): a PHOTO MODE row after SETTINGS (PC SETTINGS > INTERFACE > PHOTO MODE IN PAUSE MENU; B3_PHOTO_ROW=0|1
+// photorow1 (2026-11-15): a PHOTO MODE row after SETTINGS (PC SETTINGS > GAME > INTERFACE > PHOTO MODE IN PAUSE MENU; B3_PHOTO_ROW=0|1
 // overrides it: golden runs hide it). The page's slots are full with SETTINGS (seven; the action codes follow at +0x44 and the
 // race flag at +0x60), so the selection gets a private array of up to eight rows (the page's, SETTINGS, PHOTO MODE, the last
 // row) and the count one higher. The Update wrapper takes Confirm on the PHOTO MODE row (photo mode: b3r_photo_enter, as P),

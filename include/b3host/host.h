@@ -78,6 +78,10 @@ inline void (*g_idle_hook)() = nullptr;
 // mac5 diagnostics: a line on stderr from port library code (src/libs/*), whose printf is the guest's; B3HOST_DIAG=1
 // enables it (off: nothing printed)
 void diag(const char* tag, std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t e);
+// genret: a generated function reached a path its decomp draft leaves without a value (a non-void function falling off
+// its end, where retail's MWCC code returns whatever v0 held; decomp2host T47 returns a defined value there instead).
+// One line on stderr per site (`site` is a string literal: its address is the key), so a run says whether it happens.
+void draft_fall_off(const char* site);
 // mac4: appended to every fatal() message (set by native_backend.cpp: the native call chain, the last foreign pointer;
 // by a fallback host: the retail pc), so an error caught far up the stack (native_play's "main: ERROR") still says
 // where it happened
@@ -234,6 +238,13 @@ inline void* host_pointer(gaddr address, std::uint32_t len = 1) {
     if (d.region == Region::MainRam) return detail::g_windows.ram + d.offset;
     if (d.region == Region::Scratchpad) return detail::g_windows.scratchpad + d.offset;
     return nullptr;
+}
+// hostfix: the same, for host code that copies `len` bytes at once (memcpy into or out of guest memory): bytes that
+// are not all in one window are a HostError (fatal_guest_pointer), never a null pointer handed to memcpy
+inline void* host_pointer_checked(gaddr address, std::uint32_t len) {
+    void* p = host_pointer(address, len);
+    if (!p) fatal_guest_pointer(address, len);
+    return p;
 }
 // lane-noise (2026-11-11): whether `bytes` at host pointer `p` lie in guest RAM or the scratchpad (inline: the GtMathPs2
 // shadow header's constructors ask it, see zero_if_host)

@@ -89,7 +89,8 @@ bool is_dir_nofollow(const fs::path& p) {
 // a name the updater keeps for itself at the top of the install folder
 bool reserved_top(const std::string& rel) {
     const std::string first = lower_ascii(rel.substr(0, rel.find('/')));
-    return first == kPrevious || first.rfind(".update", 0) == 0;
+    // portable mode (1.3.0): the player's data folder (appdata/, and a move's appdata.partial / appdata.moved-<date>)
+    return first == kPrevious || first.rfind(".update", 0) == 0 || first == kPortableData || first.rfind(std::string(kPortableData) + ".", 0) == 0;
 }
 
 // rename, never over an existing file (a POSIX rename and libstdc++'s MoveFileEx would replace it)
@@ -159,7 +160,11 @@ std::string version_in(const fs::path& dir) {
     const std::string head = "Burnout 3 native port ";
     if (t.rfind(head, 0) == 0) t = t.substr(head.size());
     while (!t.empty() && t.back() == ' ') t.pop_back();
-    if (t.size() > 100) t.resize(100);
+    if (t.size() > 100) {   // settingsui: cut at a character's start (UTF-8)
+        std::size_t n = 100;
+        while (n > 0 && (static_cast<unsigned char>(t[n]) & 0xC0) == 0x80) --n;
+        t.resize(n);
+    }
     for (const char c : t)
         if (static_cast<unsigned char>(c) < 0x20) return {};
     return t;
@@ -869,6 +874,30 @@ Result install(const fs::path& package, const fs::path& install_dir, const Limit
     }
     steps.push_back({'R', std::string(kStaging) + "/" + kNewManifest, join(pv_rel, kManifest)});
     return run_plan(root, steps, files.size(), "the update");
+}
+
+std::string installed_version(const fs::path& install_dir) {
+    std::string v = version_in(install_dir);
+    if (v.empty() && install_dir.filename() == "MacOS") v = version_in(install_dir.parent_path() / "Resources");
+    return v;
+}
+
+std::string install_blocker(const fs::path& install_dir, bool appimage, bool flatpak) {
+    if (appimage) return "this is an AppImage, which cannot change itself: download the new AppImage from the release page";
+    if (flatpak) return "this is a Flatpak: update it with your software manager (or flatpak update)";
+    std::error_code ec;
+    if (install_dir.empty() || !fs::is_directory(install_dir, ec))
+        return "the install folder was not found";
+    const fs::path probe = install_dir / ".update-write-test";
+    fs::remove(probe, ec);
+    bool ok = false;
+    {
+        std::ofstream f(probe, std::ios::binary | std::ios::trunc);
+        ok = f && (f << "x") && (f.flush(), bool(f));
+    }
+    fs::remove(probe, ec);
+    if (!ok) return "the install folder (" + path_utf8(install_dir) + ") cannot be written by you: move the game to a folder of your own, or download the update from the release page";
+    return {};
 }
 
 bool can_roll_back(const fs::path& install_dir) {

@@ -1,5 +1,6 @@
 // gameview_native.cpp -- the game view on the native backend (pic1; header gameview_native.h, docs/native-renderer.md §32).
 #include "gameview_native.h"
+#include "b3port/fileio.h"   // fsrobust
 #include "render_load.h"
 
 #include "b3gameview/gameview.h"
@@ -133,6 +134,19 @@ void publish_skip_hint() {
     b3scene_grab_host(kHostSkipBase, reinterpret_cast<const std::uint8_t*>(r), 16);
 }
 
+// todrace (race_time.h): the race's DAY / NIGHT choice and the track page's label for the renderer (src/b3replay/hud.h
+// kHostRaceTimeBase, 'HTD1': {u32 'HTD1', u32 serial, u32 race 0..2, u32 label: choice | opacity << 8}), set per VBlank
+// by native_play, published at the poll when it changed. Host bytes only; none before the first set_race_time.
+constexpr std::uint32_t kHostRaceTimeBase = 0x41112200u;
+std::uint32_t g_race_time = 0, g_race_label = 0, g_race_serial = 0;
+bool g_race_set = false, g_race_dirty = false;
+void publish_race_time() {
+    if (!g_race_dirty) return;
+    g_race_dirty = false;
+    const std::uint32_t r[4] = {0x31445448u, ++g_race_serial, g_race_time, g_race_label};   // 'HTD1'
+    b3scene_grab_host(kHostRaceTimeBase, reinterpret_cast<const std::uint8_t*>(r), 16);
+}
+
 // mac5: the menus on screen for the renderer's mouse (include/b3live/menu_input.h 'HMN1' at kHostMenuBase), set by
 // native_play (tools/native/menu_mouse.h) when they change, published at the next poll. Host bytes only.
 std::vector<std::uint8_t> g_menu_record;
@@ -170,6 +184,7 @@ void publish_hold() {
 void publish_host() {   // the poll's host records (b3gv::Host::extra_publish)
     publish_fonts();
     publish_skip_hint();
+    publish_race_time();
     publish_hold();
     publish_menu();
     publish_mod_overlay();
@@ -211,8 +226,8 @@ bool b3gv_native::install(const Options& o, const std::string& exe_dir) {
         const char* given = std::getenv("B3PORT_RENDER_ARGS");
         std::string args = given ? std::string(given) : o.args;
         if (!given) {
-            const char* gd = std::getenv("B3_GAME_DIR");
-            const std::string game = !o.game.empty() ? o.game : gd && *gd ? std::string(gd) : std::string("data/game");
+            const auto gd = b3io::getenv("B3_GAME_DIR");   // fsrobust: UTF-8
+            const std::string game = !o.game.empty() ? o.game : gd ? *gd : std::string("data/game");
             if (args.find("--game ") == std::string::npos) args = "--game \"" + game + "\" " + args;
             if (o.mode == "window" && args.find("--activate") == std::string::npos) args += " --activate";
         }
@@ -275,6 +290,14 @@ bool b3gv_native::active() { return g_on; }
 void b3gv_native::set_hold_probe(bool (*probe)()) { g_hold_probe = probe; }
 void b3gv_native::set_skip_hint(std::uint8_t opacity) { g_skip_level = opacity; }
 void b3gv_native::set_unstamped(bool on) { g_unstamped = on; }
+void b3gv_native::set_race_time(std::uint8_t race, std::uint8_t label_choice, std::uint8_t label_opacity) {   // todrace
+    const std::uint32_t label = std::uint32_t(label_choice) | std::uint32_t(label_opacity) << 8;
+    if (g_race_set && race == g_race_time && label == g_race_label) return;
+    g_race_set = true;
+    g_race_time = race;
+    g_race_label = label;
+    g_race_dirty = true;
+}
 void b3gv_native::set_menu_record(const std::vector<std::uint8_t>& bytes) { g_menu_record = bytes; g_menu_dirty = true; }
 void b3gv_native::set_frame_hook(void (*fn)()) { g_frame_hook = fn; }
 void b3gv_native::set_mod_overlay(const std::vector<std::uint8_t>& bytes) { g_mod_overlay = bytes; g_mod_overlay_dirty = true; }

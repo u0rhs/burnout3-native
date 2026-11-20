@@ -96,6 +96,7 @@ Cost tags for phase 2:
 | Anti-aliasing | Off / MSAA 2x / 4x / 8x / SSAA (render scale 200 % + MSAA 4x) | MSAA 4x | Off / Off / 2x / 8x | E (MSAA), M (live change) |
 | Texture filtering | Point / Bilinear (PS2) / Trilinear / Aniso 2x / 4x / 8x / 16x | Aniso 16x | Bilinear / Trilinear / Aniso 4x / 16x | M (sampler from settings) |
 | HD textures | Off / On + pack folder; the HD TEXTURES key (F4) shows or hides the pack for the run | as main (`$B3_HD_PACK`) | Off / Off / = / = | E |
+| Xbox textures (xboximport) | XBOX TEXTURES Off / On (ini `xbox_textures`, row id 383, only with an import): the launcher's Import Xbox textures pack (`<user data>/xbox-textures`, remaster-features §19), below the mods' packs and the HD pack folder, with HD TEXTURES and F4; `$B3_XBOX_TEXTURES=<folder>` names one (offscreen checks) | off (a finished import turns it on) | = / = / = / = | E |
 | Car detail | Game (PS2 LOD) / Highest (LOD 3 always) | Game | Game / Game / Game / Highest | E (`car_lod`) |
 | Track detail | Game (high or LOD per slot) / Highest (high meshes in every slot) | Game | = / = / = / Highest | M |
 | Scenery detail (instances) | PS2 (the type records' switch and maximum distances) / Full (main: near model, no limit) | Full | PS2 / PS2 / Full / Full | M-B (needs the far model +0x28 decoded; renderer-side distance test, the guest records only read) |
@@ -124,7 +125,7 @@ Cost tags for phase 2:
 | Debris (CB3DebrisArray) | Off / Low / Medium / High | High | | **B**: not drawn yet (item 6); the same levels when it is |
 | Damage visuals | Full (the game's deformation) / Off (pristine bodywork, visual only) | Full | = | E (`deform`) |
 | Glass damage | Full / Off (intact glass drawn) | Full | = | M (the glass slot choice) |
-| Screen flashes (was: crash flash and screen effects) | Full / Reduced (full-screen bright fills of the 2D layer and the TV static capped at 25 % of white) | Full | = | **done** (2026-11-10, §7.1: INTERFACE > ACCESSIBILITY, ini `screen_flashes`). The explosion flash (RenderFullScreenFlash, §7.1) is drawn and Reduced caps it too (its alpha scaled so it lifts the picture by at most 25 % of white) |
+| Screen flashes (was: crash flash and screen effects) | Full / Reduced (full-screen bright fills of the 2D layer and the TV static capped at 25 % of white) | Full | = | **done** (2026-11-10, §7.1: GAME > ACCESSIBILITY, ini `screen_flashes`). The explosion flash (RenderFullScreenFlash, §7.1) is drawn and Reduced caps it too (its alpha scaled so it lifts the picture by at most 25 % of white) |
 
 **Refused rows.** Physical debris amount, crash damage model, traffic density and particle physics would change the
 game state, so they are not offered. Every row above changes only what is drawn from state the game has already
@@ -177,7 +178,7 @@ computed.
 
 | Row | Values | Default | Changes how the game responds? |
 |---|---|---|---|
-| Bindings editor (player, device, actions, restore) | **built** (remap1, §7.9: INTERFACE > CONTROLS, the launcher's Controllers page, controls.ini) | the default layout | No: the same logical buttons |
+| Bindings editor (player, device, actions, restore) | **built** (remap1, §7.9: CONTROLS > BINDINGS, the launcher's Controllers page, controls.ini) | the default layout | No: the same logical buttons |
 | Stick dead zone | 0-50 % | 24 % (what the game sees today) | **Yes**: a smaller zone steers at smaller stick angles. Labelled |
 | Trigger threshold (digital accelerate / brake) | 1-100 % | 25 % | **Yes**. Labelled |
 | Vibration | Off / On (the game's own motor bytes to SDL rumble) | Off (built as RUMBLE, rumble1: §7.4) | No (the game sees its requests answered; gameplay does not read them) |
@@ -194,7 +195,7 @@ All of these act before the pad record, so a replay of a session is exact whatev
 Also from remaster-features §1 and §5 (host or input only):
 - Audio output device.
 - Boost toggle instead of hold: an input assist that changes what the game sees per poll. **Built opt-in** (2026-11-10,
-  §7.1: INTERFACE > ACCESSIBILITY > BOOST Hold / Toggle, default Hold = the retail input byte for byte), labelled as
+  §7.1: CONTROLS > DRIVING > BOOST Hold / Toggle, default Hold = the retail input byte for byte), labelled as
   changing the input.
 - HUD colour-blind palette: **built** as HUD COLOUR FILTER (§7.1), a daltonize remap of the whole 2D layer.
 - Text size: = HUD scale. **Built** as HUD SIZE (§7.1, textsize1): the race HUD's components scaled about their anchors;
@@ -231,25 +232,40 @@ Room left in the design:
 
 ## 6. The rows
 
-The tabs and rows as built (settings1, 2026-11-05, then mac5 and the feature lanes); the files: §4.
+The tabs and rows as built (settings1, 2026-11-05, then mac5 and the feature lanes; regrouped into nine tabs by
+settingsui, 2026-11-20: every row id and ini key as before, only the tab, the section and a few labels moved; the order
+is `build_content` in `src/b3settings/page.cpp`). The dated entries of §7 say where each row was put when it was built;
+this table is where it is now. The files: §4.
 
-| Tab | Rows | Live |
+| Tab, section | Rows | Live |
 |---|---|---|
-| DISPLAY | QUALITY PRESET (PS2 original / Low / Medium / High / Ultra / Custom), FULLSCREEN, VSYNC, FRAME RATE LIMIT, (mac5) PAUSE WHEN UNFOCUSED, (fastload1, §7.8) FAST LOADING (ini `fast_loading`, default on), FRAME INTERPOLATION, RACE HUD LAYOUT, MENU LAYOUT (fe3: edges / 4:3 / panels), MENU MOVIE SIDES (fe3: black / blur); LATENCY: LATENCY MODE (lat1: auto / low / smooth / newest), PREDICTION (auto / 0-100 % of a tick: `--lead`), FRAMES IN FLIGHT (auto / 1-3) | VSync and the latency rows at the next start (auto = the run's own choice: low in a window, smooth headless); the rest live |
-| GRAPHICS | ANTI-ALIASING (MSAA off / 2x / 4x / 8x), TEXTURE FILTERING (point, PS2 bilinear, trilinear, anisotropic 2x-16x), DITHER (off / on, perf1: native-renderer §33.8), HD TEXTURES (only with a pack), CAR DETAIL (game / highest), CAR REFLECTIONS (reflect1: Off / Original / Enhanced, default Enhanced; the PS2 original and Low presets use Original), CAR SHADOWS, SKID MARKS, ROAD SHINE (also the track in the cars' reflections, car-shading.md §9: off, as in the Low preset, the cars mirror the sky alone and the env pass draws nothing), SUN AND LENS FLARE, CAR AND TRAFFIC LIGHTS | MSAA, filter and HD at the next start; the rest live |
-| EFFECTS | MOTION BLUR, BOOST BLUR (0-100 %, default 50 = main's 0.5), BLOOM, POST QUALITY (PS2 / PC), (effects2, §7.18) SPARKS and CRASH DEBRIS (Off / Low / Medium / High, ini `sparks` / `popcorn` 0-3, default 3), SCRAPES, DAMAGE, GLASS DAMAGE; section POWER: (§7.18) BATTERY SAVER (Off / On, ini `battery_saver`, default off, row id 245) | live |
-| CAMERA | FIELD OF VIEW (60-120, 90 = the game's), FOV CORRECTION, (splitlayout1, §7.11) SPLIT SCREEN (Top / bottom / Side by side, ini `split_layout` 0-1, default 0, row id 180) | live |
-| INTERFACE | FPS COUNTER (fpsoverlay2: Off / Minimal / Standard / Detailed, ini key `fps_view` 0-3, default 0, row id 255; an older `fps_counter = true` reads as 2) and FPS COUNTER POSITION (ini key `fps_corner` 0-3, default 0 = top left, row id 256); BUTTON PROMPTS (mac5: Auto / PlayStation / PS4 / PS5 / Xbox / Nintendo / Generic / Keyboard, ini key `button_prompts` 0-6 (6 = PS4 / PS5, listed second), default 0 = Auto); VIDEO SKIP HINT (mac5: on / off, ini key `skip_hint`, default on); (§7.17, photorow1) PHOTO MODE IN PAUSE MENU (Off / On, ini key `photo_row` true / false, default on, row id 240); (§7.16, units1) SPEED UNITS (MPH / KM/H, ini key `speed_units` 0-1, default 0 = MPH, row id 220); (§7.19, 1.1) LANGUAGE (English / the imported languages, ini key `language`, default English, row id 270) and IMPORT LANGUAGES (launcher only, row id 271); DATE FORMAT (mac5: Month/Day/Year / Day/Month/Year, ini key `date_format` 0-1, default 0); (§7.15, launchskip1) OPEN THE LAUNCHER AT START (Off / On, ini key `launcher_at_start` true / false, default on, row id 210; read by the launcher only); AUDIO AND CONTROLS (a pointer to Driver Details > SETTINGS). Also on the launcher's Settings page | live (OPEN THE LAUNCHER AT START: the launcher's next start; SPEED UNITS: the speedometer from the next race) |
-| INTERFACE, section ACCESSIBILITY | (§7.1) SCREEN FLASHES (Full / Reduced, ini `screen_flashes` 0-1, default 0); HUD COLOUR FILTER (Off / Deuteranopia / Protanopia / Tritanopia, ini `hud_colour_filter` 0-3, default 0); HUD SIZE (100% / 115% / 130% / 150%, ini `hud_size` 0-3, default 0: the race HUD only); BOOST (Hold / Toggle, ini `boost_mode` 0-1, default 0; **input-changing**, opt-in). Also on the launcher's Settings page (same rows) | live |
-| INTERFACE, section CONTROLLER | (§7.4, rumble1) RUMBLE (Off / On, ini `rumble` 0-1, default 0), RUMBLE STRENGTH (10-100 %, ini `rumble_strength`, default 100), TRIGGER RUMBLE (Off / On, ini `rumble_triggers`, default off); (§7.12, pad1) ADAPTIVE TRIGGERS (Off / On, ini `adaptive_triggers` 0-1, default 0, row id 190; DualSense only, presentation only), TRIGGER STRENGTH (10-100 %, ini `adaptive_triggers_strength`, default 100, row id 191); (§7.13, carsel1) CAR SERIES ON L1 / R1 (Off / On, ini `series_shoulders` 0-1, default 0, row id 200; **input-changing**, opt-in); (§7.20, 1.1) ANALOG TRIGGERS (Off / On, ini `analog_pedals`, default on, row id 272). Also on the launcher's Settings page | live (native_play reads RUMBLE and CAR SERIES each VBlank) |
-| INTERFACE, section CONTROLS | (§7.9, remap1) PLAYER, DEVICE, KEYS FOR, the 24 actions, RESET TO DEFAULTS; (§7.25, padlayout) with DEVICE Controller: CONTROLLER LAYOUT (Auto / Xbox / PlayStation / Custom, row id 351) and BUTTONS FOR (Driving / Menus); (§7.12, pad1) with DEVICE Controller: GYRO STEERING (Off / Mix / Replace; **input-changing**, opt-in), GYRO AXIS, GYRO SENSITIVITY, GYRO DEAD ZONE, GYRO RECENTRE (row ids 305-309; saved per player in controls.ini `[playerN.gyro]`, default off). native_play's page only; the launcher's Controllers page has the same | live |
-| INTERFACE, section TIME ATTACK | (§7.2) GHOST (Off / Best lap, ini `ghost` 0-1, default 0): Time Attack ghosts, drawn only. Also on the launcher's Settings page | live (a lap from its next start) |
-| INTERFACE, section SPEEDRUN | (§7.3) SPEEDRUN TIMER (Off / Event / Event + splits, ini `speedrun_timer` 0-2, default 0): drawn only; INSTANT RESTART (Off / On, ini `instant_restart` 0-1, default 0; **input-injecting**, opt-in). Also on the launcher's Settings page | live |
-| INTERFACE, section REPLAYS | (§7.5) RECORD REPLAYS (Off / On, ini `record_replays` 0-1, default 0): each session kept as a replay file. Also on the launcher's Settings and Replays pages | next start |
-| INTERFACE, section MUSIC | (native_play; remaster-features §6.1) MUSIC FOLDER (the system's folder dialog, $B3_MUSIC_DIALOG for scripts; ini key `music_folder`), REMOVE MUSIC FOLDER, PLAYLIST (EA Trax only / Custom only / Mixed, ini key `playlist_mode` 0-2, default 0 = the game's music untouched); (musicvol1, 1.2.1) CUSTOM MUSIC VOLUME (0-200 % in steps of 10, ini `custom_music_volume`, default 100, row id 92: the custom songs only, times the game's own music gain (RADIO VOLUME, ducking, fades); 100 = the level the game plays its own songs at; a look-ahead limiter keeps the songs' peaks at -1 dBFS; sound only, kept in a replay when not 100; B3NATIVE_MUSIC_VOLUME overrides it); (§7.14, nowplaying1) OTHER MUSIC APPS (Off / Show now playing, ini `other_music_apps` 0-1, default 0, row id 91; Windows and Linux, disabled on macOS; drawn only). Also on the launcher's Music page | from the next song (OTHER MUSIC APPS, CUSTOM MUSIC VOLUME: live) |
-| INTERFACE, section DEVELOPER | (§7.10, tune4) DEVELOPER MODS (Off / On, ini `developer_mods` 0-1, default 0): the tuning console. Also on the launcher's Settings page | next start |
+| DISPLAY, WINDOW | FULLSCREEN, VSYNC, FRAME RATE LIMIT, (§7.18) BATTERY SAVER (Off / On, ini `battery_saver`, default off, row id 245) | VSync at the next start; the rest live |
+| DISPLAY, LAYOUT | RACE HUD LAYOUT, MENU LAYOUT (fe3: edges / 4:3 / panels), MENU MOVIE SIDES (fe3: black / blur), (splitlayout1, §7.11) SPLIT SCREEN (Top / bottom / Side by side, ini `split_layout` 0-1, default 0, row id 180) | live |
+| DISPLAY, CAMERA | FIELD OF VIEW (60-120, 90 = the game's), FOV CORRECTION, (§7.21, 1.1) CAMERA DISTANCE, CAMERA HEIGHT | live |
+| DISPLAY, SMOOTHNESS | FRAME INTERPOLATION; LATENCY MODE (lat1: auto / low / smooth / newest), PREDICTION (auto / 0-100 % of a tick: `--lead`), FRAMES IN FLIGHT (auto / 1-3) | the latency rows at the next start (auto = the run's own choice: low in a window, smooth headless); the rest live |
+| GRAPHICS | QUALITY PRESET (PS2 original / Low / Medium / High / Ultra / Custom: sets the rows of GRAPHICS and EFFECTS), first | live |
+| GRAPHICS, IMAGE | ANTI-ALIASING (MSAA off / 2x / 4x / 8x), TEXTURE FILTERING (point, PS2 bilinear, trilinear, anisotropic 2x-16x), (§7.18) RENDER SCALE, (§7.22) UPSCALING, DITHER (off / on, perf1: native-renderer §33.8) | MSAA and the filter at the next start; the rest live |
+| GRAPHICS, TEXTURES | HD TEXTURES (only with a pack or an Xbox import), XBOX TEXTURES (xboximport: only with an import), HD TEXTURE PACK (the game: the folder, REMOVE HD PACK; the launcher: its HD Textures page) | next start |
+| GRAPHICS, WORLD | DRAW DISTANCE (PS2 / Whole track), CAR SHADOWS, SKID MARKS, ROAD SHINE (also the track in the cars' reflections, car-shading.md §9: off, as in the Low preset, the cars mirror the sky alone and the env pass draws nothing), SUN AND LENS FLARE, CAR AND TRAFFIC LIGHTS | live |
+| GRAPHICS, LIGHTING | (§7.28, night) TIME OF DAY (Day / Night, ini `time_of_day` 0-1, default 0, row id 370), MOON (Off / On, ini `moon`, default on, row id 371; disabled by day), SURFACE DETAIL (ini `surface_detail`, default off, row id 372), AMBIENT OCCLUSION (ini `ambient_occlusion`, default off, row id 373), (§7.29) SUN SHADOWS (ini `sun_shadows`, default off, row id 390); all drawn only | live |
+| EFFECTS, POST | MOTION BLUR, BOOST BLUR (0-100 %, default 50 = main's 0.5), BLOOM (Off / Soft / Standard), POST QUALITY (PS2 / PC) | live |
+| EFFECTS, CRASHES | (effects2, §7.18) SPARKS and CRASH DEBRIS (Off / Low / Medium / High, ini `sparks` / `popcorn` 0-3, default 3), SCRAPES, DAMAGE, GLASS DAMAGE | live |
+| CAR, CAR PAINT / PLAYER 2 CAR PAINT | (carpaint) CAR PAINT (Game / Custom), COLOUR (ready colours), PAINT RED / GREEN / BLUE, FINISH (Gloss / Metallic / Pearl), DECALS; the same for player 2 (P2 CAR PAINT, P2 COLOUR, P2 PAINT RED / GREEN / BLUE, P2 DECALS); drawn only | live |
+| CAR, CAR LOOK | CAR DETAIL (game / highest), CAR REFLECTIONS (reflect1: Off / Original / Enhanced, default Enhanced; the PS2 original and Low presets use Original) | live |
+| CAR, GARAGE | (§7.26, garagecam1) GARAGE CAMERA (Off / On, ini `garage_camera`, default on, row id 290; drawn only); (§7.13, carsel1) CAR SERIES ON L1 / R1 (Off / On, ini `series_shoulders` 0-1, default 0, row id 200; **input-changing**, opt-in) | live |
+| CONTROLS, FEEDBACK | (§7.4, rumble1) RUMBLE (Off / On, ini `rumble` 0-1, default 0), RUMBLE STRENGTH (10-100 %, ini `rumble_strength`, default 100), TRIGGER RUMBLE (Off / On, ini `rumble_triggers`, default off); (§7.12, pad1) ADAPTIVE TRIGGERS (Off / On, ini `adaptive_triggers` 0-1, default 0, row id 190; DualSense only, presentation only), TRIGGER STRENGTH (10-100 %, ini `adaptive_triggers_strength`, default 100, row id 191) | live |
+| CONTROLS, DRIVING | (§7.20, 1.1) ANALOG TRIGGERS (Off / On, ini `analog_pedals`, default on, row id 272); (§7.1) BOOST (Hold / Toggle, ini `boost_mode` 0-1, default 0; **input-changing**, opt-in); (§7.3) INSTANT RESTART (Off / On, ini `instant_restart` 0-1, default 0; **input-injecting**, opt-in) | live |
+| CONTROLS, BINDINGS / GYRO | (§7.9, remap1) PLAYER (Player 1 / Player 2 / Shortcuts), DEVICE, KEYS FOR, the actions, RESET TO DEFAULTS, RESET ALL CONTROLS; (§7.25, padlayout) with DEVICE Controller: CONTROLLER LAYOUT (Auto / Xbox / PlayStation / Nintendo / Custom, row id 351) and BUTTONS FOR (Driving / Menus); (§7.12, pad1) section GYRO with DEVICE Controller: GYRO STEERING (Off / Mix / Replace; **input-changing**, opt-in), GYRO AXIS, GYRO SENSITIVITY, GYRO DEAD ZONE, GYRO RECENTRE (row ids 305-309; saved per player in controls.ini `[playerN.gyro]`, default off). native_play's page; the launcher's has one row that opens its Controllers page | live |
+| AUDIO | VOLUMES AND DJ (a pointer to Driver Details > SETTINGS > AUDIO); section MUSIC (native_play; remaster-features §6.1): MUSIC FOLDER (the system's folder dialog, $B3_MUSIC_DIALOG for scripts; ini key `music_folder`), REMOVE MUSIC FOLDER, PLAYLIST (EA Trax only / Custom only / Mixed, ini key `playlist_mode` 0-2, default 0 = the game's music untouched); (musicvol1, 1.2.1) CUSTOM MUSIC VOLUME (0-200 % in steps of 10, ini `custom_music_volume`, default 100, row id 92); (§7.14, nowplaying1) OTHER MUSIC APPS (Off / Show now playing, ini `other_music_apps` 0-1, default 0, row id 91; disabled on macOS; drawn only). The launcher's has one row that opens its Music page | from the next song (OTHER MUSIC APPS, CUSTOM MUSIC VOLUME: live) |
+| GAME, INTERFACE | BUTTON PROMPTS (mac5: Auto / PlayStation / PS4 / PS5 / Xbox / Nintendo / Generic / Keyboard, ini key `button_prompts` 0-6 (6 = PS4 / PS5, listed second), default 0 = Auto); VIDEO SKIP HINT (mac5: on / off, ini key `skip_hint`, default on); (§7.17, photorow1) PHOTO MODE IN PAUSE MENU (Off / On, ini key `photo_row`, default on, row id 240); FPS COUNTER (fpsoverlay2: Off / Minimal / Standard / Detailed, ini key `fps_view` 0-3, default 0, row id 255) and FPS COUNTER POSITION (ini key `fps_corner` 0-3, default 0 = top left, row id 256) | live |
+| GAME, LANGUAGE AND UNITS | (§7.19, 1.1) LANGUAGE (English / the imported languages, ini key `language`, default English, row id 270), IMPORT LANGUAGES (launcher only, row id 271), (1.3.0) VOICES and the DJ VOICE / TRAINING VIDEOS import rows; (§7.16, units1) SPEED UNITS (MPH / KM/H, ini key `speed_units` 0-1, default 0, row id 220); DATE FORMAT (mac5: Month/Day/Year / Day/Month/Year, ini key `date_format` 0-1, default 0) | LANGUAGE at the next start; SPEED UNITS: the speedometer from the next race; the rest live |
+| GAME, MODES | (§7.2) GHOST (Off / Best lap, ini `ghost` 0-1, default 0; drawn only); (§7.3) SPEEDRUN TIMER (Off / Event / Event + splits, ini `speedrun_timer` 0-2, default 0; drawn only); (§7.5) RECORD REPLAYS (Off / On, ini `record_replays` 0-1, default 0) | GHOST: a lap from its next start; RECORD REPLAYS: next start; the rest live |
+| GAME, ACCESSIBILITY | (§7.1) SCREEN FLASHES (Full / Reduced, ini `screen_flashes` 0-1, default 0); HUD COLOUR FILTER (Off / Deuteranopia / Protanopia / Tritanopia, ini `hud_colour_filter` 0-3, default 0); HUD SIZE (100% / 115% / 130% / 150%, ini `hud_size` 0-3, default 0: the race HUD only); BOOST HOLD OR TOGGLE (a pointer to CONTROLS > DRIVING > BOOST) | live |
+| GAME, STARTING AND LOADING | (§7.8, fastload1) FAST LOADING (ini `fast_loading`, default on); (mac5) PAUSE WHEN UNFOCUSED; the game's page only: (§7.15, launchskip1) OPEN THE LAUNCHER AT START (ini key `launcher_at_start`, default on, row id 210; read by the launcher only) and (1.3.0) PORTABLE MODE (asks the launcher to move the data at its next start); (autosave1, remaster-features §8) SAVE SCREENS (Hide / Show, ini `hide_save_screens`, default Hide, row id 230: the AUTOSAVE page after a race is not shown; presentation only) | live (OPEN THE LAUNCHER AT START, PORTABLE MODE: the launcher's next start) |
+| SAVES | (native_play with a card; save1, remaster-features §8.1) SAVE FILE IN USE; SAVE FILE AT START (1-5, writes active-slot.txt); SAVE FOLDER (opens it); EXPORT SAVE; IMPORT SAVE (.sav / .psu / .max / PCSX2 card; system file dialog, $B3NATIVE_SAVE_DIALOG for scripts); LAST RESULT | next start (file, import); at once (export) |
+| MODS | the code mods' rows (a section per mod); section DEVELOPER: (§7.10, tune4) DEVELOPER MODS (Off / On, ini `developer_mods` 0-1, default 0): the tuning console | next start |
 | DEVELOPER | (§7.10, tune4; only while DEVELOPER MODS is on and the console is in the run, the last tab) SAVE AS PRESET; LIVE OVERLAY (status, F9); RESET ALL (asks: a second Cross); then the tabs of the game's tuning variables (CHANGED: what differs from its default now) one row per element with its value: Left / Right step it, Cross back to its default. **Gameplay-changing**: each edit is recorded | each edit at the next VBlank |
-| SAVES | (native_play with a card; save1, remaster-features §8.1) SAVE FILE IN USE; SAVE FILE AT START (1-5, writes active-slot.txt); (autosave1, remaster-features §8) SAVE SCREENS (Hide / Show, ini `hide_save_screens`, default Hide, row id 230: the AUTOSAVE page after a race is not shown; presentation only); SAVE FOLDER (opens it); EXPORT SAVE; IMPORT SAVE (.sav / .psu / .max / PCSX2 card; system file dialog, $B3NATIVE_SAVE_DIALOG for scripts); LAST RESULT | next start (file, import); at once (export, SAVE SCREENS) |
+| LAUNCHER (the launcher's Settings page only, last) | the update check (and Undo the last update), OPEN THE LAUNCHER AT START, PORTABLE MODE (moves the data now), Add to Steam, Reset all settings | the launcher's next start (OPEN THE LAUNCHER AT START) |
 
 Rows of §3 not built yet, with what each waits for:
 - Render scale, monitor choice, exclusive fullscreen, HUD safe area, colour rows, track detail "highest",
@@ -600,18 +616,36 @@ page (`src/b3launcher/main.cpp` page_replays), `tools/native/menu_mouse.h` (type
   stored as a .sav), the game-side environment (`replay_file.h` kGameEnv: the console clock B3NATIVE_RTC, the card's
   insertion VBlank, ...), the idle skip / movie skip options, the disc program's size and FNV-1a 64, the port version.
   At the end the file is written atomically to `<prefs>/replays/<YYYYMMDD-HHMMSS>.b3replay` (a few hundred KB for a
-  session of several minutes) and the newest 20 automatic names are kept.
+  session of several minutes) and the newest 20 automatic names are kept. media1 (`tools/native/replay_stream.h`): while
+  it records, every checkpoint (600 VBlanks) writes the recording so far as a whole replay file of the same format to
+  that name (the game thread hands over only the entries since the last checkpoint; a writer thread keeps its own copy,
+  encodes it, writes `.tmp` and renames it: on a synthetic 2-hour recording, 432,000 pad ops, 3.1 MB, the game thread's
+  cost per checkpoint went from ~25 ms (the whole encode) to ~0.015 ms median, test_replay_file; HEAD's last VBlank = the
+  checkpoint's, INFO `end` = "not ended here ..."), so a kill, a power loss or a hard crash leaves a replay that plays
+  to the last checkpoint and ends there (checked: a race recording killed with `kill -9` at VBlank ~9600 played back
+  with 16 of 16 checkpoints matched). The rotation also runs after the first checkpoint's write, and removes an
+  automatic name's `.tmp` left by a killed write once it is a minute old.
 - **Playback** (`native_play --replay <file>`, the launcher's Replays page > Play): the file is checked first (the same
   disc program and port release, a format this port reads, the CRC, the custom music folder's file list and sizes when
   the recording used one), then its environment and options replace the run's, its card goes into a throwaway folder
-  in the system's temp folder (written to as the game saves, deleted at the end: the player's saves are never
-  touched), and each VBlank gets the recorded ops. The PC SETTINGS page is not opened (the recording holds the neutral
+  in the system's temp folder (`b3port-replay-card-<pid>-<stamp>`, written to as the game saves, deleted at the end:
+  the player's saves are never touched; media1, `tools/native/replay_card.h`: also on every early return, on Ctrl+C /
+  SIGTERM / SIGHUP (Windows: the console's close), and a folder a kill or crash left is removed at the next start once
+  its process is gone), and each VBlank gets the recorded ops. The PC SETTINGS page is not opened (the recording holds the neutral
   pad the game saw meanwhile); the window's controls are ignored except Start (Esc), which pauses the replay (virtual
   time stops). It ends after the recording's last VBlank. Every checkpoint is compared; the end of the log says
   `replay: N of N checkpoints matched; it played as recorded`, else the VBlank where it parted (and a window shows a
   message box at the end).
 - Not recorded, by design: anything drawn only (every other row on this page; photo mode, ghosts), pacing, the window's
   focus (the game holds on virtual time).
+- Records (media1, `src/b3replay/records.h`): a replay playing (native_play passes `--replay-playback` to the
+  renderer) writes no ghost (§7.2) and no speedrun best time (§7.3): its laps are the recording's, perhaps a friend's.
+  The player's own ghost is still shown; the log says `a replay is playing: not saved`.
+  A run whose mod set changes gameplay (`b3mod::changes_gameplay_any`: a tuning preset, a code mod marked
+  `gameplay = yes`, a script mod not marked `gameplay = no`) reads and writes its ghosts and best times in
+  `<ghosts or speedrun folder>/modded-<hash>/`, the hash `b3mod::gameplay_set_hash` over those mods alone (id, version,
+  content hash, in load order: a texture mod added or moved keeps the folder; the log: `[b3render] mods: <ids> change
+  gameplay: ...`).
 - Proof: `tools/native/replay_check.sh` -- race and crash recorded, then played from the file: equal time trace, DMA, SIF, RW Audio, RAM and shots (compare.sh PASS), every checkpoint matched; multiplayer (port 2) and profilename (typed text) equal logs too; a replay with one press moved 2 s parts at the next checkpoint.
 ### 7.6 Photo mode: depth of field (photo2, 2026-11-12; remaster-features §5 "Photo mode")
 
@@ -954,7 +988,7 @@ by raster name in any case, the whole 64 x 32 picture in one quad).
   first neutral line's VBlank, when the window's pad came up: 455 / 460). The same keys without it: the race is not
   reached (FAIL, as it must). That run's replay file played with other bindings (Cross unbound, the gamepad's Cross /
   Circle swapped): 39 of 39 checkpoints matched, the same shots and reports: replays do not depend on the bindings.
-- In the game's page (SCENARIO=pausesettings + keys): INTERFACE > CONTROLS > CROSS, Enter, K: `[b3controls] PLAYER 1
+- In the game's page (SCENARIO=pausesettings + keys): CONTROLS > BINDINGS > CROSS, Enter, K: `[b3controls] PLAYER 1
   CROSS: K`, the popup and the row in shots; after resuming, K held drives the race (Cross at full pressure in the pad
   recording, 81 mph in the shot). Scripted page keys need taps away from offscreen shots (the renderer reads the page's
   input between them).
@@ -1174,7 +1208,7 @@ with `CARSERIES_INI='button_prompts = 2'` and `--size 1280x720`, Xbox LB / RB in
 played back (`REPLAY_PAD=`, the row on: nothing translated again) gives the same series changes and the same 8 shots,
 hash for hash. test_input_keys (28 tests), test_prompts (14), test_settings (39): pass. Golden with the row off
 (`JOBS=1 RATE_RUNS=0 tools/golden/baseline.sh`, `compare.sh` against rec_det): 140 items PASS (carselect: 11 shots
-equal), `rate` not recorded. Windows build (RENDER=1) rc 0. To check in a window: SETTINGS > INTERFACE > CONTROLLER >
+equal), `rate` not recorded. Windows build (RENDER=1) rc 0. To check in a window: SETTINGS > CAR > GARAGE >
 CAR SERIES ON L1 / R1 On; SINGLE EVENT > RACE > the car select: LB / RB (L1 / R1, Q / R) move the series as Left /
 Right do, with their glyphs beside the arrows, following the device used last; held, they repeat; Off: nothing drawn,
 the shoulders do nothing there.
@@ -1305,7 +1339,7 @@ the levels below High are never in it).
 | SPARKS | Off / Low / Medium / High (`sparks` 0-3) | High (3) | 44 (as before) | EFFECTS |
 | CRASH DEBRIS | Off / Low / Medium / High (`popcorn` 0-3) | High (3) | 46 (as before) | EFFECTS |
 | BATTERY SAVER | Off / On (`battery_saver`) | Off | 245 | EFFECTS, section POWER |
-| RENDER SCALE | 100% / 85% / 75% / 67% / 50% (`render_scale` 50-100) | 100% | 246 | GRAPHICS, after TEXTURE FILTERING |
+| RENDER SCALE | 200% / 150% / 125% / 100% / 85% / 75% / 67% / 50% (`render_scale` 50-200; perf4: above 100 supersampled) | 100% | 246 | GRAPHICS, after TEXTURE FILTERING |
 
 The presets (QUALITY PRESET): PS2 ORIGINAL, HIGH and ULTRA are High and 100%; MEDIUM is Medium and 100%; LOW is Low and 75%.
 A settings file from before the levels (`sparks = true` / `false`) reads as High / Off. The rows are on the settings page
@@ -1327,6 +1361,46 @@ sun, the bloom and blur passes, the depth of field) is drawn into targets at the
 with a bilinear filter; the 2D stage (the HUD, the menus, our pages) is drawn over it at the window's size, so text stays sharp.
 2D items that test depth against the scene (the rival markers) are drawn with the 3D, at its scale. The 2-player split screen
 scales each view the same way. At 100% none of this runs and the frame is as before. It applies at once.
+
+**Supersampling** (perf4, GitHub issue #11; RENDER SCALE 125 / 150 / 200 %). The same path with targets larger than the
+window: the 3D picture (resolved from its MSAA samples first, so the two combine) is brought down by post.frag mode 4 with
+`a.z` 3, an area (box) filter: each window pixel is the average of the scaled picture's texels under it, weighted by how
+much of each it covers (at 200% exactly its 2 x 2). Lines keep their width in window pixels. The HUD is drawn afterwards at
+the window's size. The targets are held within 16384 pixels a side and a memory budget: a quarter of the card's device-local
+memory (asked of Vulkan; within 512 MB .. 4 GB), 1 GB when it is not known, `B3_SUPERSAMPLE_MB` to set it. The estimate
+counts everything made at the scaled size (colour and depth per MSAA sample, the resolve, the zoom blur's buffers, the depth
+of field / surface pre-pass and half-size buffers, night mode's copy). A larger scale is capped (logged once; e.g. 200% of
+5120 x 1440 with MSAA 8, ~3.7 GB, fits a 16 GB card's 4 GB and runs at 148% on an 8 GB card). An F12 shot's second set gets what the budget has left beside
+the window's; when the window's scale does not fit there, the shot is taken at 100%. If a set's targets cannot be made, that
+set (the window's, or the shot's: one does not turn the other off) is drawn at 100%. 150% and 200% want a card with plenty
+of memory (the row's help says so).
+
+**FRAMES IN FLIGHT Auto** (perf4, `include/b3gfx/frames_auto.h`). With LATENCY MODE Auto (the default; a chosen Low or Newest
+keeps one frame: the player asked for the least delay) and FRAMES IN FLIGHT on Auto, the window starts with one frame in flight (the lowest latency) and goes to two when, for about a second, the frame
+rate stays below its target (the frame rate limit, else the display's refresh, read again when the window moves to another
+display) while a quarter or more of the frame waits for
+the GPU (the swapchain wait, the acquire and the submit); it tries one again once two hold the target (after 5 s, doubling
+when one fails again at once), and goes back to one if two did not raise the frame rate. Each change is logged
+(`[b3live] frames in flight 1 -> 2 (auto: ...)`). FRAMES IN FLIGHT 1 / 2 / 3 or `--frames-in-flight N` is used as set;
+`B3_FIF_AUTO=0` keeps one. Drawn only.
+
+**Pipeline warm-up** (perf4). Every fixed pipeline is made when the device starts, not at the first draw that needs it (a
+driver compiles a pipeline then: on lavapipe 19 were made on demand in a race check, 8 of them in the race's first
+seconds, about 10 ms each). The 2D stage's
+keyed pipelines and the effect and corona textures a run used are saved to `warm_cache.txt` beside pc_settings.ini (at most
+256 of each; a texture name that no longer loads is dropped; written by the safe replace) and made at the next start (the
+textures with each route). `B3_PIPELINE_WARM=0`: all on demand, as before.
+
+**Sun occlusion cull** (perf4). The sun's occlusion pass leaves out the draws whose box (`DrawItem::bounds`, through the
+item's matrix; cars' padded by 0.5 m) lies wholly outside the sun's box: they could not cover any of it, so the result is
+the same.
+`B3_SUN_CULL=0`: every draw, as before.
+
+**Route upload batch** (perf4). In the window, a route's textures and buffers go up in one staging buffer and one command
+buffer instead of one each (`B3_UPLOAD_BATCH=0`: one each), on SDL 3.4.2's Vulkan backend only (checked at run time: Metal,
+D3D12 and other SDL versions keep one each); a batch whose submit fails is uploaded again one by one and batching stays off.
+Offscreen keeps one each: SDL 3.4.2's Vulkan defragmentation
+runs at every submit there and corrupted textures made and uploaded in one batch (see `upload_batch` in b3gfx_sdl.cpp).
 
 **Battery saver** (`b3settings::on_battery`, `src/b3replay/live.cpp`). With the row on and SDL reporting that the PC runs on
 battery (SDL_GetPowerInfo, read every two seconds), the host applies a copy of the settings with the frame rate capped to 60
@@ -1352,6 +1426,9 @@ language.
 |---|---|---|---|
 | LANGUAGE | English and every imported language (`language`: a two-letter code, FR GE IT SP DU SW EN; empty = English) | English | 270 |
 | IMPORT LANGUAGES | an action: choose a European disc image or folder (launcher only) | | 271 |
+| VOICES (1.3.0) | Language / English (`voices` 0-1): the DJ (when imported) and the race training's narrator in the chosen LANGUAGE, or always the US voices | Language | 384 |
+| DJ VOICE: <language> (1.3.0) | an action per language the chosen disc has or that is imported: Import (size) / Cancel (percent) / Remove (size) (launcher only) | | 385-388 (FR GE IT SP) |
+| TRAINING VIDEOS: <language> (1.3.0) | the same for the race training's localized pictures (launcher only) | | 420-423 (FR GE IT SP) |
 
 - **The game's text.** A European disc carries one pair of string tables per language (`DATA/GLOBAL<code>.BIN`,
   `DATA/HEAD<code>.BIN`, the same format and ids as the US disc's `GLOBALUS.BIN` / `HEADUS.BIN`). IMPORT LANGUAGES copies
@@ -1365,16 +1442,47 @@ language.
   The launcher's own pages are translated where they are drawn (src/b3launcher/font.cpp `Text::set_language`: every
   text the launcher draws or measures goes through the same tables; its live status lines, made of parts, stay English).
   The ONLINE dialog's "Online play is coming soon." comes in the language too (tools/native/online_message.h).
+- **The DJ's voice (1.3.0).** The European discs carry the Crash FM DJ's lines per language: `TRACKS/<L>_DJ*.RWS` (12
+  general banks) and `TRACKS/<region>/<track>_V1/<L>_DJRACE.RWS` (18, one per track), with F (French, 286 MB), G
+  (German, 353 MB), I (Italian, 331 MB) on SLES-52585 and S (Spanish, 350 MB) on SLES-52584, in place of the US disc's
+  `E_`. They have the same container as the English banks (description size, line count, layer, block sizes, codec,
+  bank name); only the lines' lengths differ. UK English, Dutch and Swedish play the English DJ on their discs too. The
+  US program names the bank from the language word 0x004E2918, which stays 1 (it also sets number formats and the
+  profile's language byte), so the redirect is in the disc layer: with LANGUAGE French / German / Italian / Spanish,
+  VOICES Language and that language's DJ imported, `resolve()` gives each `E_DJ*.RWS` as the language's file
+  (src/native/platform_disc.cpp `set_dj_voice`, `b3asset::language::dj_redirect`). A bank that is missing, or whose
+  header does not match the English bank's, stays English (said once per bank in the log); a mod's file for the path
+  still wins. A replay records the voices' language (options `voice`, `dj_voice`) and plays with them.
+- **The race training's narration (1.3.0).** OVID/MOVIE.RWS holds the training narration in every language (e_ f_ g_ i_
+  j_ s_train segments; the same file on every disc), and the two training states pick the movie by the language word.
+  The word stays 1: with VOICES Language and LANGUAGE French / German / Italian / Spanish, tools/native/training_voice.h
+  wraps the movie start func_00424750 and turns the English training movie (TrC 0xB, MOVIE.RWS segment 5; TrD 0x13,
+  segment 4) into the language's (TrC / TrD: FR 0xC / 0x14, GE 0xD / 0x15, IT 0xE / 0x16, SP 0x10 / 0x18); the help text and duration are the same for every
+  language and each language's narration segments are the same size as the English ones. No import is needed for the
+  voice. The pictures with their on-screen text (OVID/TRC_ / TRD_<FRA|GER|ITA|SPA>.M2V, about 130 MB a language) are only
+  on the European discs: TRAINING VIDEOS imports them into `<preferences>/languages/VIDEO/<code>/OVID/`; without them
+  `resolve()` gives the US disc's English picture of the same length (src/native/platform_disc.cpp
+  `set_languages_root`). English (the default) wraps nothing.
+- **The DJ's and the training videos' import.** Choosing a disc in IMPORT LANGUAGES imports its text as before and
+  lists the DJ voices and training videos it has; each one is an opt-in row with its size (the training videos: an MPEG-2
+  sequence header checked, into `VIDEO/<code>/`). Import checks every bank's header (against the US disc's bank when the game
+  data is set), the free space (the size plus 64 MB), then copies the 30 files on a worker thread into
+  `<preferences>/languages/DJ/<code>.part/` and renames that folder to `<code>/` once all are written and read back.
+  Cancel (the same row), a failure or closing the launcher keeps nothing; an older import is replaced only by a
+  finished one. Remove deletes the folder (after a question). The game reads only `<code>/`.
 - English is the default and unchanged: with no language set the page, the game and the golden record are as before.
 
 Checks: `test_settings` (`language_row_and_edit`, `translations_cover_the_page`: every word of a full page has its
-translation in each language, `translate_page`), `test_discfs` (`language_packs_on_a_disc_folder`).
+translation in each language, `translate_page`, `dj_voice_rows`), `test_discfs` (`language_packs_on_a_disc_folder`;
+1.3.0 `dj_redirect_table`, `dj_header_checks`, `dj_redirect_and_fallback`, `dj_import_temp_rename_cancel`,
+`training_videos_redirect_and_import`, synthetic files only), `b3launcher --screenshot` (`settings_dj_*`: offered, importing, imported, cancelled, the removal question,
+removed). `B3_DJ_LOG=1` traces each DJ line (and MOVIE.RWS segment) the game starts and how much of it was read.
 
 ### 7.20 Analog triggers (1.1, 2026-11-18)
 
 | Row | Values (ini) | Default | Id |
 |---|---|---|---|
-| ANALOG TRIGGERS (INTERFACE > CONTROLLER, after CAR SERIES ON L1 / R1) | Off / On (`analog_pedals` true / false) | On | 272 |
+| ANALOG TRIGGERS (CONTROLS > DRIVING, first) | Off / On (`analog_pedals` true / false) | On | 272 |
 
 On: a trigger bound to accelerate or brake drives the game's own analog throttle and brake, the right stick's up / down
 (`CB3ControllerMapping::GetAccelerator` 0x12FA40 / `GetBrake` 0x12F970 read it besides Cross / Square). The trigger's
@@ -1425,7 +1533,8 @@ frame now and then (55-58 fps reported on 60 Hz screens).
 ### 7.25 Controller layouts (padlayout, 1.2.1, 2026-11-19)
 
 **CONTROLLER LAYOUT** (CONTROLS with DEVICE Controller, row id 351; the launcher's Controllers page: "Layout"), per
-player: **Auto** (default) / **Xbox** / **PlayStation** / **Custom**. Code: `src/native/input_bindings.{h,cpp}`
+player: **Auto** (default) / **Xbox** / **PlayStation** / **Nintendo** / **Custom** (ini `layout = auto / xbox /
+playstation / nintendo / custom`; a game before Nintendo reads `nintendo` as Auto, with a warning). Code: `src/native/input_bindings.{h,cpp}`
 (`PadLayout`, `pad_family`, `layout_bindings`, `pad_bindings`, the contexts of `PadBind`), `src/b3replay/nativepad.cpp`
 (each pad's layout by its type; the prompts' glyphs in the game's context), `src/b3replay/pcpage.cpp`,
 `src/b3launcher/main.cpp` (`controls_editor`). docs/PLAYING.md §5 has the players' table.
@@ -1442,14 +1551,19 @@ player: **Auto** (default) / **Xbox** / **PlayStation** / **Custom**. Code: `src
   (music track skip), the left stick click Circle (horn); in menus A Cross (confirm), B Triangle (back), X Square, Y
   Circle, View / Back Select; LB / RB are L1 / R1 in both (a second look back and boost while driving, the car series
   on L1 / R1 in menus); Start, the D-pad and the left stick as the game's; the right stick and its click unbound.
-- **The PlayStation layout** (owner, 2026-11-19): the PS2's with the triggers as the pedals: South / RT Cross and West
+- **The PlayStation layout** (padlayout, 2026-11-19): the PS2's with the triggers as the pedals: South / RT Cross and West
   / LT Square (the triggers the ANALOG TRIGGERS pedals, as the Xbox layout's), the right stick click R2 (the
   Crashbreaker) and the left one L2 (the music track skip), East Circle, North Triangle, the shoulders L1 / R1, Share /
   Create Select, Start, the D-pad and the left stick, and the right stick as the game's own right stick (up
   accelerates, down brakes: the game's controls 20 / 21), in both contexts. It is the 1.x layout with the right stick
   added; its prompts show L3 / R3 for L2 / R2 as 1.x's did, and ADAPTIVE TRIGGERS act on its triggers.
-- **Nintendo pads** take the Xbox layout by position (SDL3's South / East / West / North are positions): the bottom
-  button (B on a Switch controller) is boost / confirm, the right one (A) Crashbreaker / back.
+- **Nintendo pads** take the Xbox layout by position on Auto (SDL3's South / East / West / North are positions): the
+  bottom button (B on a Switch controller) is boost / confirm, the right one (A) Crashbreaker / back.
+- **The Nintendo layout** (padpaint, 2026-11-19; chosen only, Auto never picks it): the Xbox layout mirrored by label,
+  its face buttons' positions swapped across each diagonal (South <-> East, West <-> North): A (East) confirm / boost, B
+  (South) back / Crashbreaker, X (North) Square / look back, Y (West) Circle / camera; the rest the Xbox layout's. The
+  prompts follow (`pad_glyphs`: Cross shows at the right face button, the Nintendo device's "A"). Checked by
+  `SCENARIO=padlayout PAD=switch` (a scripted Switch Pro pad with `layout = nintendo` in its controls.ini).
 - **Contexts.** A gamepad binding has a context like a key's (`south@driving`, `east@menus`; none: both). The context
   is the keys' (native_play: driving while the game read the player's accelerator in the last 4 VBlanks, which a crash
   does too through GetCrashingDrivingControls; the pause menu, results, photo mode and the PC page are the menus').
@@ -1475,9 +1589,42 @@ player: **Auto** (default) / **Xbox** / **PlayStation** / **Custom**. Code: `src
   Single Event path driven by a scripted pad of that type (`B3NATIVE_TEST_PAD`, NativePad's test pad: script codes
   1024 + an SDL button), the verdict from the pad recording.
 
+### 7.26 Garage camera (garagecam1, 2026-11-19; remaster-features §16)
+
+On the front end's car pages (SELECT CAR in every mode, DRIVER DETAILS > YOUR GARAGE: every page CB3World::RenderFrontEnd
+draws a car on, `Tick::fe_car`) player 1's right stick, or a left-button drag on the car, turns the view around the car:
+left / right round it, down to look from higher up and up to come back down (as the launcher's Showroom turntable). While it is used the game's own
+spin is held; a second after the stick is at rest (inside its dead zone, 18 %) the spin is eased back in over 0.6 s from
+the angle the view has then, with no snap back. No zoom: the distance to the point the game's camera looks at is kept.
+The height is clamped from the room's geometry (US/C5_V1's backdrops, measured 2026-11-19): the eye never goes below
+the game's own (traffic cones up to 1.06 m stand in the band the eye travels; the game's eye passes at 1.145 m, its
+circle clear all the way round) and at most 2.4 m above the car (2.71 m; the lowest beam over the reachable disk is at
+3.29 m, the ceiling panels at 2.93 m and up further out), about 0.21 rad of tilt. A first cut allowed 0.40 rad: the eye
+reached 4 m, above the beams, which then crossed the picture. Leaving the car pages ends it; the next visit starts from
+the game's view.
+
+Drawn only, on by default. The game's camera, its input and its state are never written: the renderer turns the camera
+it draws with (`src/b3replay/garagecam.{h,cpp}`, applied in `LiveSession::frontend_frame`). The game's menus never read
+the right stick [C: CB3MenuInput::Update 0x21A5F0 reads the left stick (controls 0x18 / 0x19) and the buttons of
+gaeMenubuttons 0x4B9BC0, controls 0-13], so it is free on these pages with every CONTROLLER LAYOUT (on the PlayStation
+layout the game still gets it as before: its throttle while driving). Game time, as photo mode's: the stick is stamped
+with the game's poll (`b3r_submit`) and the offsets are stepped per tick as the feed keeps it, so a shot of poll N shows
+the view at N. With no stick input the frames are the game's, byte for byte. The mouse: on a car page with the row On a
+left click (not on a prompt) is the page's Cross on the release unless the pointer moved more than 1.2 % of the window
+while held (a drag: no press). Off: none of it, and the click presses Cross on the press as before.
+
+| Row | Values (ini key) | Default | Row id |
+|---|---|---|---|
+| GARAGE CAMERA | Off / On (`garage_camera`) | On | 290 |
+
+INTERFACE tab, section CONTROLLER, after CAR SERIES ON L1 / R1. Tests: `test_garagecam` (hold / resume without a jump, the
+clamps, the orbit keeping its distance and aim, stamped input to the ticks' offsets), `test_menu_input`
+(`car_page_click_and_drag`); `race_check.sh SCENARIO=garagecam` (a scripted pad's right stick, then a mouse drag, on
+SELECT CAR). Scripted pads: `B3NATIVE_TEST_PAD` codes 1024 + 35 / 36 / 37 are the right stick left / right / down (+ 34 up).
+
 ### 7.24 The HD TEXTURES key (hdkey, 1.2, 2026-11-18; issue #7)
 
-A port action (CONTROLS > SHORTCUTS: HD TEXTURES ON / OFF, ini key `hd_textures`, default F4, no gamepad chord by
+A port action (CONTROLS > BINDINGS, PLAYER: Shortcuts: HD TEXTURES ON / OFF, ini key `hd_textures`, default F4, no gamepad chord by
 default but one can be bound) that shows the HD texture pack or the original textures at once, for comparing. It
 needs no reload: the renderer keeps both pictures of every replaced texture on the GPU and each draw samples the one
 shown.
@@ -1503,6 +1650,64 @@ shown.
 - **Scripts and shots**: a script's key (native_play `--keys`, e.g. race_check's `EXTRA_KEYS=<vblank>:61:1,...`) is
   stamped with the game poll it applies to (`NativePad::take_hd_presses`); an offscreen shot of poll N shows the
   textures and the notice as the window would at N.
+
+### 7.28 Night, moon, surface detail, ambient occlusion (night, 2026-11-19; remaster-features §17 / §18)
+
+GRAPHICS tab, section LIGHTING, last on the tab (after PLAYER 2 CAR PAINT, so no row above moves). All drawn only and off by
+default: the game, its physics, AI, replays and saves never see them; the front end is never darkened (night applies to
+the race's frames: live, photo mode, split screen, replays).
+
+| Row | Values (ini key) | Default | Row id |
+|---|---|---|---|
+| TIME OF DAY | Day / Night (`time_of_day` 0-1) | Day | 370 |
+| MOON | Off / On (`moon`) | On (used at night only; the row is disabled by day; at night it runs the SURFACE DETAIL relief path with the moon as light, a small extra cost, even with SURFACE DETAIL off) | 371 |
+| SURFACE DETAIL | Off / On (`surface_detail`) | Off | 372 |
+| AMBIENT OCCLUSION | Off / On (`ambient_occlusion`) | Off | 373 |
+
+The quality presets leave all four as they are. The environment wins over the rows (tests, the golden record):
+`B3_NIGHT=1` / `0`, `B3_MOON=1` / `0`, `B3_SURFACE` and its `B3_SURFACE_*` values (remaster-features §17 / §18 list the
+tuning variables). Applied in `b3replay::apply_view` (`View::night`, `View::surface_detail`, `View::ambient_occlusion`),
+read each frame by `View::post_frame`. Tests: `test_settings` (`night_rows`).
+
+### 7.29 Sun shadows (sunshadow, 1.3.0, 2026-11-20; remaster-features §20)
+
+GRAPHICS > LIGHTING, the last row (after AMBIENT OCCLUSION). Drawn only, off by default (with it off no target, pass or
+shader variant exists: the golden is unchanged).
+
+| Row | Values (ini key) | Default | Row id |
+|---|---|---|---|
+| SUN SHADOWS | Off / On (`sun_shadows`) | Off | 390 |
+
+The existing CAR SHADOWS row is the game's blob shadow and stays; where a car casts a sun shadow its blob fades to 30 %.
+The map follows ANTI-ALIASING: 1024 texels below 4x (the Medium preset), 2048 at 4x (High), 2048 with the softer 5 x 5
+kernel at 8x (Ultra). The PS2 ORIGINAL and LOW presets turn the row off; MEDIUM, HIGH and ULTRA leave it as it is (so the
+defaults are still the High preset). The environment wins over the row (tests, tuning): `B3_SUN_SHADOWS=1` / `0`,
+`B3_SUN_SHADOW_SIZE` (256-4096), `B3_SUN_SHADOW_FILTER` (0: 3 x 3, 1: 5 x 5), `B3_SUN_SHADOW_STRENGTH` (the open road's
+darkening at full shadow, default 0.62), `B3_SUN_SHADOW_LIT` (the open road's vertex light, measured per route by default:
+darker receivers are in a baked shadow and darken only down to it), `B3_SUN_SHADOW_DEBUG=1` / `2` (false colour: the shadow, the box and
+the receiving faces / the vertex light), `B3_SUN_SHADOW_TRACE=1` (the view car's sky share per frame). Applied in `b3replay::apply_view` (`View::sun_shadows`, `sun_shadow_size`, `sun_shadow_filter`), read each frame
+by `View::post_frame` (`FrameParams::sun_shadow`) and `View::draw_list` (the blob fade). Tests: `test_settings`
+(`sun_shadow_row`).
+
+### 7.30 Day or night per race (todrace, 1.3.0, 2026-11-20; remaster-features §17.3)
+
+No settings row: a port action, CONTROLS > BINDINGS, PLAYER: Shortcuts: TIME OF DAY PER RACE (ini key `race_time`, default T and the
+gamepad's left shoulder, L1 / LB / L), taken only on the track pages: Single Event's SELECT OPTIONS (0x01E96F78) and
+JUNCTION SELECTION (0x01E97F38, Crash; Multiplayer's crash modes show it too) and Multiplayer's REGION / TRACK page
+(0x01E97640); `tools/native/race_time.h` documents what they read: Confirm, Back, Up / Down, Left / Right, nothing else.
+There each press steps the race's choice Default / Day / Night, and the window takes the key and the chord out of the
+game's input, and keeps a chord taken until it is released (a shoulder held into SELECT CAR is no L1 there:
+`PageChord`). Not a global shortcut: it conflicts only with the other shortcuts, never with a game binding (L1 is the
+game's too, elsewhere) or photo mode's controls. It refuses the inputs the pages read (`page_reads_input`: whatever either
+player has on Cross, Triangle, the D-pad and the left stick in the menus, in any controller layout): the rebind says so
+and waits for another; one bound by a hand-edited controls.ini is left to the game (`port_page_safe`). CONTROLS row id
+413 (`kActionCtlRaceTime`, in photoblur's 410-419 block). The golden record pins the label off
+(`B3_RACE_TIME_LABEL=0`, tools/golden/baseline.sh). The choice is not saved: it applies from the next race start (taken at each
+loading screen, so a restart keeps it) and goes back to Default on the main menu. The renderer gets the race's value and
+the page's label in a host record ('HTD1', `hud.h` kHostRaceTimeBase) and draws night from `Frame::race_time`
+(`View::night_on`) over TIME OF DAY; a replay records the choice (setting `race_time`, from the first change away from
+Default). Tests: `test_race_time` (the lifetime rules), `test_input_bindings` (`race_time_action`); `race_check.sh
+SCENARIO=racetime`.
 
 ## Appendix: candidate gameplay mods (for later; not built, not designed)
 

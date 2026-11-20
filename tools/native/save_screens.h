@@ -38,6 +38,13 @@ constexpr std::uint32_t kAutosavePage = 0x01E97DACu;   // [C] the card flow's pa
 // The AUTOSAVE page is up: the page manager's current page word.
 inline bool autosave_page_up(std::uint32_t current_page) { return (current_page & 0x01FFFFFFu) == kAutosavePage; }
 
+// saveflow (2026-11-20): the card pages' message component (card_silence.h kMessage, D_01E8F360) shows a box: its +0xA
+// byte [C every card page's setter hides the box before the next one when it is set]. card_silence.h never prepares the
+// progress and save-report boxes, so on the AUTOSAVE page a box up is a question the player must see and answer (with
+// AUTOSAVE Off: "Would you like to save your profile?"): the page is not hidden then.
+constexpr std::uint32_t kMessageShown = 0x01E8F36Au;
+inline bool message_box_up(std::uint8_t shown_byte) { return shown_byte != 0; }
+
 // B3NATIVE_SAVE_SCREENS=show | hide (0 / 1); -1: not set (the setting decides)
 inline int save_screens_env() {
     const char* e = std::getenv("B3NATIVE_SAVE_SCREENS");

@@ -67,7 +67,7 @@ void run_gif(Bytes f, std::size_t at, std::size_t qwc, GsMemory& gs) {
         if (!nreg) nreg = 16;
         if (flg == 0) {  // PACKED
             for (std::size_t i = 0; i < nloop; ++i)
-                for (int r = 0; r < nreg && q < qwc; ++r, ++q) {
+                for (int r = 0; r < nreg && q < qwc && f.has(at + q * 16, 16); ++r, ++q) {   // (modsec: in the file)
                     if (((regs >> (4 * r)) & 0xF) != 0xE) continue;  // only A+D matters for transfers
                     const std::uint64_t data = f.u64(at + q * 16);
                     switch (f.p[at + q * 16 + 8]) {
@@ -112,7 +112,20 @@ bool decode_raster(Bytes f, std::size_t o, GsMemory& gs, DecodedRaster& out, int
     return decode_raster_clut(f, o, gs, out, palette_cbp_add(f, o, palette), why);
 }
 
+namespace {
+bool decode_raster_any(Bytes f, std::size_t o, GsMemory& gs, DecodedRaster& out, std::uint32_t cbp_add, std::string* why, bool hd_hook);
+}  // namespace
+
 bool decode_raster_clut(Bytes f, std::size_t o, GsMemory& gs, DecodedRaster& out, std::uint32_t cbp_add, std::string* why) {
+    return decode_raster_any(f, o, gs, out, cbp_add, why, true);
+}
+
+bool decode_raster_ps2(Bytes f, std::size_t o, GsMemory& gs, DecodedRaster& out, int palette, std::string* why) {
+    return decode_raster_any(f, o, gs, out, palette_cbp_add(f, o, palette), why, false);
+}
+
+namespace {
+bool decode_raster_any(Bytes f, std::size_t o, GsMemory& gs, DecodedRaster& out, std::uint32_t cbp_add, std::string* why, bool hd_hook) {
     out = DecodedRaster{};
     if (!read_raster_header(f, o, out.hdr, why)) return false;
     const RasterHeader& h = out.hdr;
@@ -188,9 +201,10 @@ bool decode_raster_clut(Bytes f, std::size_t o, GsMemory& gs, DecodedRaster& out
             }
         out.levels.push_back(std::move(img));
     }
-    if (HdTextures* hd = hd_textures()) hd->apply(gs, out, cbp_add);
+    if (HdTextures* hd = hd_hook ? hd_textures() : nullptr) hd->apply(gs, out, cbp_add);
     return true;
 }
+}  // namespace
 
 bool read_txd(Bytes f, std::vector<TxdEntry>& out, std::string* why) {
     out.clear();

@@ -24,7 +24,7 @@ Evidence tags: see [index.md](index.md#evidence-tags). All integers are little-e
 | Reader for modders | `tools/modding/audio_info.py`: prints every stream's segments and sub-streams and every bank's waves; `--census <disc>` checks every file (all 144 `.RWS` and 174 banks read, every PS-ADPCM frame header valid on the US disc); `--wav` decodes one segment or wave to a WAV file for listening |
 | Round trip | **importable**: `b3modtool audio list / export / import` (each segment or wave to WAV and back, PS-ADPCM encoded; [b3modtool.md](../b3modtool.md) "audio"). `b3modtool roundtrip <disc> audio` on the US disc: 108 of 108 streams (1,016 segment x sub-stream items) and 174 of 174 banks (1,575 waves) identical after export -> WAV -> import, and each file with its first item made longer reads back with every other item unchanged [D] |
 | Replacing a file | the mod overlay works for these files: RW Audio opens them by name through the port's disc layer (`src/native/platform_rwa.cpp` `disc::open` -> `platform_disc.cpp`, which asks the overlay first) [P] |
-| Alternative for music | the port's own custom soundtrack (PC SETTINGS > INTERFACE > MUSIC: a folder of your MP3 / FLAC / Ogg / WAV files plays in place of, or mixed with, the EA Trax songs; `src/native/custom_music.cpp`, docs/remaster-features.md §6.1) needs no file changes at all |
+| Alternative for music | the port's own custom soundtrack (PC SETTINGS > AUDIO > MUSIC: a folder of your MP3 / FLAC / Ogg / WAV files plays in place of, or mixed with, the EA Trax songs; `src/native/custom_music.cpp`, docs/remaster-features.md §6.1) needs no file changes at all |
 
 ## 1. The files and who opens them
 

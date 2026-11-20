@@ -35,10 +35,20 @@ You can give the port the game in either of two forms:
 Section 2 shows how to make either one from your disc.
 
 **Other languages.** The game runs from the US disc, in English. If you also own a European copy (PAL), the launcher's
-**Settings > INTERFACE > IMPORT LANGUAGES** copies its languages once (French, German, Italian, Spanish, Dutch, Swedish
+**Settings > GAME > LANGUAGE AND UNITS > IMPORT LANGUAGES** copies its languages once (French, German, Italian, Spanish, Dutch, Swedish
 or UK English, whichever your disc has; two small files each), and **LANGUAGE** then switches the game's menus,
 messages and hints to one of them, from the next start. The launcher and the port's own SETTINGS page follow the same choice (a few live status lines stay in English). English
 stays the default; the European disc is not needed afterwards.
+
+**The DJ in your language.** The European discs also have the Crash FM DJ in French, German and Italian (the
+Fr, De, It disc) and Spanish (the En, Es, Nl, Sv disc). After you choose the disc in IMPORT LANGUAGES, a **DJ VOICE**
+row per language offers to copy the DJ's lines too (opt-in; 290 to 360 MB each, the size is shown, and the launcher checks
+the free space first). The copy can be cancelled; nothing is kept then. **Remove** on the same row deletes it again.
+With LANGUAGE set to that language the DJ speaks it from the next start. The race training's narrator speaks French,
+German, Italian or Spanish too, with nothing to import (the US disc has those voices); its pictures with their
+on-screen text are a second optional import, **TRAINING VIDEOS** (about 130 MB), and without them the training shows
+the English pictures. **VOICES: English** keeps the US voices with translated menus. UK English, Dutch and Swedish
+have the English voices, as on their own discs.
 
 ### Your PC
 
@@ -118,7 +128,7 @@ uses its own folder list (section 4).
 1. In Desktop Mode, unpack the archive, for example into `/home/deck/Games`.
 2. In Steam: **Games > Add a Non-Steam Game to My Library > BROWSE...**, show "All Files", choose `b3launcher` in the
    folder, then **ADD SELECTED PROGRAMS**. If you ran `./add-to-menu.sh` first, the Burnout 3 entry is in the list
-   to tick instead. Or, with Steam closed, press **Add to Steam** on the launcher's **Settings** page: it adds the
+   to tick instead. Or, with Steam closed, press **Add to Steam** on the launcher's **Settings** page (its LAUNCHER tab): it adds the
    entry with its cover, background and logo ([Adding the game to Steam](#adding-the-game-to-steam)).
 3. In Gaming Mode it is in your library under Non-Steam. The launcher works with the Deck's controls alone, and the
    touch screen works too. Choose your game data, then START GAME.
@@ -217,17 +227,17 @@ mouse:
 
 | Page | What it is for |
 |---|---|
-| **Play** | **START GAME**, or **START IN SAFE MODE** (section 9). It shows whether your game data, save file and settings are in order, how the last run ended, and which mods are on. It also has **Make a bug report**, **Start the game directly next time** (below), and says when a newer version of the port is out. |
-| **Settings** | The same settings as the game's own SETTINGS page, saved to the same file. At the end, the launcher's own **CHECK FOR UPDATES** (see below). |
-| **HD Textures** | Choose an HD texture pack. Packs made for PCSX2 work as they are: choose the pack's `SLUS-21050` folder, or the folder above it. It is used from the next start. In the game, F4 switches the pack off and on at once, to compare. |
-| **Music** | Your own music on the game's radio (section 7). |
-| **Mods** | Install mods, turn them on or off, and set their order (section 8). |
+| **Play** | **START GAME**, or **START IN SAFE MODE** (section 9). It shows whether your game data, save file and settings are in order, how the last run ended, and which mods are on. It also has **Start the game directly next time** (below), **Bug report...** (section 9) and **Quit**, and says when a newer version of the port is out. |
 | **Game Data** | Your disc image or folder, with a check of every file the game needs. |
 | **Saves** | Your save files: which one the game uses, export, and importing PS2 saves (section 6). |
+| **Settings** | The same settings as the game's own SETTINGS page, in the same tabs, saved to the same file; the controls, the music folder and the HD pack have a row that opens their own launcher page. The last tab, **LAUNCHER**, holds the launcher's own: **OPEN THE LAUNCHER AT START**, **CHECK FOR UPDATES** (see below), **Add to Steam** and **Reset all settings**. |
+| **Controllers** | Two tabs: **TEST**, your connected controllers live, with a button test and a rumble test; **BINDINGS**, the keys and buttons for each player, which you can change (section 5). |
+| **HD Textures** | Choose an HD texture pack. Packs made for PCSX2 work as they are: choose the pack's `SLUS-21050` folder, or the folder above it. It is used from the next start. In the game, F4 switches the pack off and on at once, to compare. **Import Xbox textures...** builds a pack on your PC from your own Xbox disc image of the game (`.iso` or `.xiso`), for players who want to use their Xbox disc. It is a small improvement: some building fronts, signs and car paint are somewhat sharper, in the PS2 colours; an HD texture pack looks far better. It takes about a minute and about 90 MB, and nothing is downloaded. Your own HD pack and the mods' textures come first; XBOX TEXTURES (Settings > GRAPHICS > TEXTURES) turns the import off, F4 switches it with the rest, and **Remove** deletes it. |
+| **Music** | Your own music on the game's radio (section 7). |
+| **Mods** | Install mods, turn them on or off, and set their order (section 8). |
 | **Stats** | Each profile's stats as the game saved them, and 13 achievements worked out from them. |
-| **Showroom** | Every player car on your disc in 3D on a turntable, with the game's names. Drag, use the mouse wheel or the right stick to turn it, and left / right for the next car. The cars use the same HD textures as the game: your HD pack when HD TEXTURES is on, and the textures of the mods you have turned on. |
+| **Showroom** | Every player car on your disc in 3D on a turntable, with the game's names. Drag or use the right stick to turn it, the mouse wheel to come nearer or go back, and left / right for the next car. The cars use the same HD textures as the game: your HD pack when HD TEXTURES is on, and the textures of the mods you have turned on. |
 | **Replays** | Sessions you recorded (turn on **RECORD REPLAYS** first: section 7). Play one back, exactly as it was played, or delete it. |
-| **Controllers** | Your connected controllers, live, with a button test and a rumble test, and the keys and buttons for each player, which you can change (section 5). |
 | **Credits** | Who made the port, and the people and projects it builds on. It also shows your version and whether it is up to date. |
 
 ### Update check
@@ -243,7 +253,8 @@ version's name and two buttons:
   as the first time. If the download or its signature does not check out, nothing is installed.
 - **Release page** opens the release in your browser, to download it yourself.
 
-Your settings and saves stay where they are, in your user data folder. **Undo the last update** on the Settings page
+Your settings and saves stay where they are, in your user data folder (in portable mode the `appdata` folder beside
+the launcher, which an update never touches). **Undo the last update** on the Settings page's LAUNCHER tab
 goes back to the version you had before. The Credits page shows the result: "Up to date", or "Couldn't check for
 updates" when there was no answer (no internet, for example). Nothing else changes when the check fails.
 
@@ -251,19 +262,20 @@ updates" when there was no answer (no internet, for example). Nothing else chang
 (`https://api.github.com/repos/u0rhs/burnout3-native/releases/latest`). As with any web page you open, GitHub sees your
 IP address. Nothing else is sent: no name, no email, no information about your PC, your game or your saves; the
 request names only the launcher and its version. Install update downloads only the release's own files from
-GitHub. To turn it off, set **CHECK FOR UPDATES** to Off at the end of the
-launcher's **Settings** page: the launcher then makes no network request at all. **Check now** beside it checks at
+GitHub. To turn it off, set **CHECK FOR UPDATES** to Off on the
+**LAUNCHER** tab of the launcher's **Settings** page: the launcher then makes no network request at all. **Check now** beside it checks at
 once.
 
 ### Adding the game to Steam
 
-**Add to Steam**, at the end of the launcher's **Settings** page, puts Burnout 3: Takedown into your Steam library as
+**Add to Steam**, on the **LAUNCHER** tab of the launcher's **Settings** page, puts Burnout 3: Takedown into your Steam library as
 a non-Steam game, with its own cover, background, logo and icon, so that it looks right in the library, in Big
 Picture mode and on a Steam Deck. The entry starts the launcher (`Burnout3Launcher.exe`, `b3launcher`, or the app on a
 Mac) in its own folder.
 
-1. **Close Steam first** (Steam > Exit; on a Steam Deck, in Desktop Mode, from Steam's icon in the taskbar). Steam
-   keeps its list of games in memory and writes it back when it closes, which would drop the new entry, so the
+1. **Close Steam first.** On Windows, right-click the Steam icon by the clock and choose **Exit**; on a Mac, **Steam >
+   Quit Steam**. On a Steam Deck (in Desktop Mode), right-click the Steam icon in the taskbar (bottom right) and choose
+   **Exit Steam**. Steam keeps its list of games in memory and writes it back when it closes, which would drop the new entry, so the
    launcher adds nothing while Steam runs, and says so.
 2. Press **Add to Steam**. Every Steam account that has signed in on this computer gets the entry. Your other
    non-Steam games stay exactly as they were; the list as it was before is kept beside it as `shortcuts.vdf.b3backup`
@@ -287,6 +299,22 @@ and the Steam Deck, `~/.local/share/Steam` (also reached as `~/.steam/steam`) an
 `~/.var/app/com.valvesoftware.Steam`; on a Mac, `~/Library/Application Support/Steam`. Flatpak's Steam also needs to
 be allowed to see the port's folder: the launcher then shows the `flatpak override` command for it.
 
+**Steam's Flatpak.** The Flatpak of Steam starts the game inside its own sandbox, where the user data folder is
+`~/.var/app/com.valvesoftware.Steam/data/b3port/native` instead of `~/.local/share/b3port/native`: started from that
+Steam, the launcher and the game would have settings, saves and mods of their own (the launcher says so the first
+time). To use the same data inside and outside Steam, let Steam's Flatpak see your data folder once, in a terminal:
+
+```
+flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam
+```
+
+From then on, started from Steam, the launcher and the game use `~/.local/share/b3port/native` as they do outside
+Steam. Settings the sandbox's folder got on the first run (before the command) stay there, unused; the launcher says
+so once. Two exceptions keep the sandbox's own folder: a read-only grant (`:ro`; saves could not be written), and a
+sandbox folder that already holds a save (saves are never left behind: when both folders hold data the launcher says
+so once). To move over, copy what you want to keep from `~/.var/app/com.valvesoftware.Steam/data/b3port/native` into
+`~/.local/share/b3port/native`, then delete the former.
+
 ### Starting the game without the launcher
 
 Always start the game with the launcher. If you do not need its pages every time, turn on **Start the game directly
@@ -297,7 +325,7 @@ To get the launcher back:
 
 - **Once:** hold **Shift**, or **Back / Select** on a controller, while you start the launcher (or while "Starting
   Burnout 3..." shows).
-- **For good:** in the game, turn **SETTINGS > INTERFACE > OPEN THE LAUNCHER AT START** back on (or the switch on the
+- **For good:** in the game, turn **SETTINGS > GAME > STARTING AND LOADING > OPEN THE LAUNCHER AT START** back on (or the switch on the
   Play page, once the launcher shows). It takes effect the next time you start.
 
 The launcher also shows by itself when something needs you: no game data (or it is missing), the game program is not
@@ -308,7 +336,7 @@ beside it, or the last run did not end cleanly. The Play page then says why it o
 
 You can use the keyboard, the mouse in the menus, and any gamepad your system knows (Xbox, PlayStation, Switch Pro,
 the Steam Deck's, and others). The game's button prompts change to match whatever you used last: PlayStation,
-PS4 / PS5, Xbox, Nintendo, a generic pad, or keyboard keys. To fix one style, go to SETTINGS > INTERFACE > BUTTON
+PS4 / PS5, Xbox, Nintendo, a generic pad, or keyboard keys. To fix one style, go to SETTINGS > GAME > INTERFACE > BUTTON
 PROMPTS.
 
 ### Keyboard (defaults)
@@ -345,46 +373,60 @@ every other controller (Xbox, Switch, the Steam Deck, generic pads) the original
 LAYOUT: Auto**, and it picks again when you change controllers; two players with different controllers each get
 their own. The CONTROLS settings show which one is in use ("Auto: Xbox controller").
 
-| | PlayStation layout | Xbox layout |
-|---|---|---|
-| Accelerate | Cross or R2 (analog), or the right stick up | right trigger (analog) |
-| Brake / reverse | Square or L2 (analog), or the right stick down | left trigger (analog) |
-| Steer (and Aftertouch in a crash) | left stick or D-pad | left stick or D-pad |
-| Boost (hold it as you crash for Impact Time) | R1 | A (RB too) |
-| Crashbreaker | press the right stick (R3) | B |
-| Look back | L1 | X (LB too) |
-| Change camera | Triangle | Y |
-| Skip the music track | press the left stick (L3) | View / Back |
-| Horn | Circle | press the left stick |
-| Pause | Start / Options | Start / Menu |
-| Menus: move | left stick or D-pad | left stick or D-pad |
-| Menus: confirm | Cross | A |
-| Menus: back | Triangle | B |
-| Menus: car colour, change names | Square | X |
+| | PlayStation layout | Xbox layout | Nintendo layout (chosen only) |
+|---|---|---|---|
+| Accelerate | Cross or R2 (analog), or the right stick up | right trigger (analog) | ZR (analog where the pad has it) |
+| Brake / reverse | Square or L2 (analog), or the right stick down | left trigger (analog) | ZL |
+| Steer (and Aftertouch in a crash) | left stick or D-pad | left stick or D-pad | left stick or D-pad |
+| Boost (hold it as you crash for Impact Time) | R1 | A (RB too) | A (R too) |
+| Crashbreaker | press the right stick (R3) | B | B |
+| Look back | L1 | X (LB too) | X (L too) |
+| Change camera | Triangle | Y | Y |
+| Skip the music track | press the left stick (L3) | View / Back | - |
+| Horn | Circle | press the left stick | press the left stick |
+| Pause | Start / Options | Start / Menu | + |
+| Menus: move | left stick or D-pad | left stick or D-pad | left stick or D-pad |
+| Menus: confirm | Cross | A | A |
+| Menus: back | Triangle | B | B |
+| Menus: car colour, change names | Square | X | X |
 
 On the Xbox layout A and B do one thing while you drive and another in the menus, as in the original Xbox game. In a
 crash A (Impact Time, Aftertouch) and B (the Crashbreaker) both work. The triggers are the pedals in the menus too, so
 you can rev on the grid, and they work gradually, like real pedals: light pressure, light throttle (SETTINGS >
-INTERFACE > ANALOG TRIGGERS, on by default; off makes a trigger act as a button). Both triggers together still
+CONTROLS > DRIVING > ANALOG TRIGGERS, on by default; off makes a trigger act as a button). Both triggers together still
 powerslide. The PlayStation layout is the PS2's with the triggers as the pedals too (R2 accelerates and L2 brakes, as
 well as Cross and Square), so the PS2's R2 (Crashbreaker) and L2 (music track skip) are on the stick clicks, R3 and
 L3; the game's button prompts show R3 and L3 for them. The right stick is the game's own analog throttle and brake.
 
-A Nintendo controller gets the Xbox layout **by position**: its bottom button (B on a Switch controller) boosts and
-confirms, and its right button (A) is the Crashbreaker and goes back. To swap them, edit the bindings (Custom).
+On **Auto** a Nintendo controller gets the Xbox layout **by position**: its bottom button (B on a Switch controller)
+boosts and confirms, and its right button (A) is the Crashbreaker and goes back. Choose **CONTROLLER LAYOUT: Nintendo**
+for the Xbox layout **by label** instead (the table's last column): A (the right button) confirms and boosts, B (the
+bottom one) goes back and is the Crashbreaker, and X / Y swap the same way. The button prompts follow the layout.
 
-**CONTROLLER LAYOUT** (SETTINGS > INTERFACE > CONTROLS with DEVICE: Controller, or the launcher's Controllers page),
+**CONTROLLER LAYOUT** (SETTINGS > CONTROLS > BINDINGS with DEVICE: Controller, or the launcher's Controllers page),
 per player:
 
 - **Auto** (the default): the layout of the controller's console, as above.
 - **Xbox** or **PlayStation**: that layout on any controller.
+- **Nintendo**: the Xbox layout by label (above), on any controller. Auto never picks it.
 - **Custom**: your own bindings. Changing any controller binding switches to Custom (starting from the layout you
-  were on); choosing Auto, Xbox or PlayStation again keeps your Custom bindings for later.
+  were on); choosing Auto, Xbox, PlayStation or Nintendo again keeps your Custom bindings for later.
 
 Controls you changed in an earlier version stay exactly as they were (Custom). If you never changed a controller
 binding, you get Auto. Before 1.2.1 every controller had one layout: the PlayStation layout above without the right
 stick; Custom without changes is still that layout. The keyboard is not
 affected by any of this.
+
+### Looking around the car in the garage
+
+On the pages that show your car on its turntable (SELECT CAR, and YOUR GARAGE in Driver Details), the **right stick**
+turns the view around the car: left / right to go round it, down to look from a little higher (up brings it back; as
+in the launcher's Showroom). With the mouse, **drag** on the car with the left button; a click without a drag still chooses
+the car. While you turn the view the car stops spinning, and a second after you let go it starts spinning again from
+where you left it (a stick held still part-way, or one that rests a little off centre, lets the spin come back after a
+second too; push it further or move it to turn the view again). The distance stays the game's (there is no zoom) and the height is limited, so the camera never
+goes into the car, the cones or the ceiling. This works with every controller layout: the game's menus never use the right stick (on the PlayStation layout
+it is still the throttle while you drive). To turn it off: SETTINGS > CAR > GARAGE > GARAGE CAMERA.
 
 ### Other keys in the game
 
@@ -400,12 +442,12 @@ These are the defaults. Each one can be moved to any key, and most to a controll
 | F9 | the tuning overlay in a race, only when **DEVELOPER MODS** is on (section 7) |
 | P (gamepad: L3 + R3) | photo mode, while the game is paused (the PHOTO MODE row in the pause menu does the same; section 7) |
 | F5 (gamepad: Select + Start) | restart the event, only when **INSTANT RESTART** is on (section 7) |
-| Page Up / Page Down (gamepad: L2 / R2) | the previous / next section of a long tab in the settings |
+| Page Up / Page Down (gamepad: the right stick up / down) | the previous / next section of a long tab in the settings (the prompt bar at the page's foot shows the buttons for the device in use) |
 | Enter, Space or Escape (gamepad: Cross / A or Start) | skip the video that is playing |
 
 ### Changing the controls
 
-Go to **SETTINGS > INTERFACE > CONTROLS** in the game, or the launcher's **Controllers** page. Both edit the same
+Go to **SETTINGS > CONTROLS > BINDINGS** in the game, or the launcher's **Controllers** page. Both edit the same
 `controls.ini` file in your user data folder (section 6). Every control can be moved to any key or button you like.
 
 - Choose the **PLAYER** (1 or 2, or **Shortcuts**) and the **DEVICE** (keyboard or controller). For a controller,
@@ -437,14 +479,14 @@ modes). The first gamepad connected is player 1 (together with the keyboard and 
 player 2. With one gamepad or none, nothing changes. Unplugging player 2's pad is the same as pulling a pad out of the PS2's second port, and the game says so in
 its own way. Plug it back in to carry on. Player 2 can also play on the keyboard: give player 2 some keys in the
 controls settings (they have none at first).
-**SPLIT SCREEN** (SETTINGS > CAMERA) puts the two players' views top / bottom (the game's own, the default) or side by side.
+**SPLIT SCREEN** (SETTINGS > DISPLAY > LAYOUT) puts the two players' views top / bottom (the game's own, the default) or side by side.
 
 ## 6. Saves
 
 The port does not need a memory card. Each **save file** works like its own memory card, and holds the game's
 **three profiles**. There are up to five save files: `profile-1.sav` to `profile-5.sav`. The game saves by itself, as
 on the PS2, and without the memory card messages. After a race it does not show the **AUTOSAVE** page either (the
-game goes straight on to the next page): in the game, SETTINGS > SAVES > **SAVE SCREENS** is **Hide** by default;
+game goes straight on to the next page): in the game, SETTINGS > GAME > STARTING AND LOADING > **SAVE SCREENS** is **Hide** by default;
 **Show** brings the page back as on the PS2. Your save is the same either way.
 
 ### Where your files are
@@ -457,6 +499,9 @@ Everything the port writes goes into your **user data folder**:
 | Linux | `~/.local/share/b3port/native/` (or `$XDG_DATA_HOME/b3port/native/` if you set `XDG_DATA_HOME`). It is a hidden folder: Ctrl+H shows hidden folders in most file managers. |
 | Mac | `~/Library/Application Support/b3port/native/` |
 
+In **portable mode** (Windows and Linux, below) it is instead the `appdata\native\` folder beside the launcher. The
+launcher's Play page shows which folder is in use ("Data folder").
+
 Inside it:
 
 | File or folder | What it holds |
@@ -466,10 +511,63 @@ Inside it:
 | `controls.ini` | your key and button bindings |
 | `car_look.ini` | only if you tuned the car reflection look with DEVELOPER MODS on (docs/car-look.md) |
 | `launcher.ini` | the launcher's choices (your game data, the save folder if you chose one, the update check and its last answer) |
+| `run_state.ini` | whether the last runs ended cleanly (after two in a row that did not, the game starts in safe mode) |
 | `logs/` | a log and a controls recording for each of your last 10 runs |
 | `screenshots/` | the pictures F12 takes |
 | `replays/` | recorded sessions, when RECORD REPLAYS is on |
+| `ghosts/` | your best Time Attack laps, when GHOST is on (`modded-<set>/`: made with gameplay-changing mods, section 8) |
+| `speedrun/` | your best times, when SPEEDRUN TIMER is on (`modded-<set>/` likewise) |
 | `mods/` | installed mods |
+| `mods.ini` | which mods are on, and their order |
+| `updates/` | an update's download while the launcher checks and installs it |
+
+`portable-move.ini` appears after a portable mode move (it names the old copy kept), `xbox-textures/` after an Xbox
+texture import, `languages/` after IMPORT LANGUAGES, and `warm_cache.txt` once an HD pack has been used.
+
+### Portable mode (a USB stick)
+
+**PORTABLE MODE** on the **LAUNCHER** tab of the launcher's **Settings** page keeps everything in the list above in a
+folder called `appdata` beside the launcher instead, so the whole game (program, data and saves) can be carried on a
+USB stick or kept in one folder. Windows and Linux only: a Mac app is never written into, and an AppImage or a Flatpak
+cannot be, so the row is not shown there. When the install folder cannot be written by you (Program Files, `/opt`),
+the row is shown greyed out with the reason: move the game to a folder of your own first.
+
+Turning it on or off moves your data, once you say yes:
+
+- everything is **copied** first (to `appdata.partial`, or `native.partial`), every file is **checked** against the
+  original, and only then put in place. If anything fails, or you press Cancel, nothing changes and your data stays
+  where it was. A move cut short (a crash, the power) leaves only the `.partial` folder, removed at the next start;
+- the folder your data came from is **kept**, renamed with the date (`native.moved-<date>` or `appdata.moved-<date>`).
+  Once the game has started from the new folder and ended normally, the launcher offers to remove it (or remove it
+  yourself later with **Remove the old copy...** on the same tab);
+- turning it off when this computer's user folder already holds data from an earlier time: you choose which to keep;
+  the other is set aside under a dated name (`native.aside-<date>` or `appdata.moved-<date>`). The two are never mixed;
+- a save folder you chose elsewhere (on the Saves page, a cloud folder say) is not moved: it stays where it is.
+- the game must not run during a move: the launcher holds the save folder's lock meanwhile (a game started from Steam
+  is told the launcher is moving your data), and if anything writes to your data while it is copied the move stops and
+  nothing changes. Close the game and try again;
+- on Windows a path longer than 259 characters cannot be written: if a file would end up with one (a deep mod folder
+  in a deep install folder), the launcher names it and moves nothing; move the game to a shorter folder first.
+
+Folders you chose inside the game's folder (the game data, an HD pack, a music folder, a save folder) are remembered
+relative to it, so the stick still works when Windows gives it another drive letter (E: on one computer, F: on the
+next), or when you move the whole game folder. Folders elsewhere are remembered as they are.
+
+The list of code mods you have allowed is in the data folder too, so it travels with the stick: on another computer
+they are still allowed. Only use a stick (or a copy of someone's game folder) you trust.
+
+The game's own SETTINGS > GAME > STARTING AND LOADING has the same **PORTABLE MODE** row: there it asks the launcher
+to move your data the next time the launcher starts (the launcher asks you first). Close the game before a move.
+
+The folder is the switch: a folder called `appdata` beside the launcher makes the install portable, and deleting or
+renaming it (with your data in it) makes it use this computer's user folder again. Two copies of the game each with
+their own `appdata` folder are fully separate; a copy without one uses this computer's user folder. An update installed
+with **Install update** keeps the `appdata` folder as it is.
+
+On a write-protected stick, or one pulled out while playing, the game still runs but cannot keep your settings or
+saves: the save failure is shown in the game (SAVE FAILED), and a copy of the save that could not be written goes to
+`unsaved/` in this computer's user folder, so your progress is not lost. **Add to Steam** and the run logs name the
+game's folder: after moving the game folder somewhere else, press **Add to Steam** again.
 
 ### Choosing a save file
 
@@ -508,7 +606,35 @@ PCSX2 folder card). The launcher asks before it replaces the file in use, and ke
 ### Backups
 
 Every time the game saves, the file it replaces is kept first in `saves/backups/` as
-`profile-N-<date-time>.sav`. The newest 10 copies of each file are kept. To go back to one, import it as above.
+`profile-N-<date-time>.sav`. The newest 8 copies of each file are kept, plus the first copy of each of the last 3 days; a save that fails to write never adds a copy. To go back to one, import it as above.
+
+### When a save goes wrong
+
+The game tells you about its saves in a small one-line bubble in the top right corner, for a few seconds: **SAVED** (green)
+each time it has written your save file, and a red or amber bubble when something is wrong. It never shows the game's
+own save screens for this.
+
+- **SAVE FAILED - YOUR LAST SAVE IS KEPT - RETRYING**: the save folder did not take the save (a full disk, a folder
+  gone offline). The game tries again every 10 seconds and says **SAVED AGAIN** once it works; your last good save
+  stays as it was meanwhile.
+- **NOT SAVED - CAN'T READ profile-N.sav**: the file is damaged, or holds a save the game itself would call corrupt.
+  The game plays without saving in that session (it never writes over the file) and keeps a copy of it as
+  `profile-N-unreadable-<date-time>.sav`. On the launcher's **Saves** page the file says **Can't be played**, and
+  **Set aside file N and start fresh...** renames it to `profile-N-set-aside-<date-time>.sav` (kept, not deleted) so
+  that the game starts the file empty. A damaged save is also refused when you import it.
+- **NOT SAVED - profile-N.sav CHANGED OUTSIDE THE GAME**: the file changed on the disk while the game was running (an
+  import with `save_tool`, another computer through a synced save folder). The game never writes over it: its saves
+  for the rest of that session go beside it as `profile-N-unsaved-<date-time>.sav`. The same happens after IMPORT SAVE
+  in the game, until the next start. The launcher's **Saves** page then shows that progress under the file: **Use it**
+  makes it the file's save (the current one is kept as `profile-N.sav.bak` and in `backups/`), **Leave it** hides the
+  line (the file stays).
+- **SAVE WARNING - ANOTHER GAME ON THIS COMPUTER USES THIS SAVE FOLDER**: two games are running from the same save
+  folder; play one at a time. The game marks the folder it plays from with a small `game.lock` file, removed when it
+  closes; one left behind by a crash, or one from another computer sharing the folder, is ignored. The launcher's Set
+  aside waits until the game is closed.
+
+The port never deletes the `-unreadable-`, `-set-aside-` and `-unsaved-` files, and never reads them as profiles:
+delete them yourself when you no longer need them.
 
 ## 7. Settings worth knowing
 
@@ -522,7 +648,7 @@ AI or gameplay, except the few settings marked **opt-in** below. Those are off u
 
 ### Picture and speed
 
-- **QUALITY PRESET** (DISPLAY): PS2 ORIGINAL, LOW, MEDIUM, HIGH (the default) or ULTRA. This sets every quality and
+- **QUALITY PRESET** (GRAPHICS, the first row): PS2 ORIGINAL, LOW, MEDIUM, HIGH (the default) or ULTRA. This sets every quality and
   effects row at once.
 - **BLOOM** (EFFECTS): Off, Soft (the default) or Standard. Standard is the game's own glow around bright lights, which
   is strong on bright tracks (a white sky or a lit sign can wash out). Soft keeps the same glow at about 60% of its
@@ -532,9 +658,12 @@ AI or gameplay, except the few settings marked **opt-in** below. Those are off u
   thousands of sparks is the heaviest picture the game draws, so these are the rows to lower on a weak PC, a handheld
   or a laptop. It is drawn only: the crash itself is the same. The same particles stay on screen from one frame to the
   next, so nothing flickers. The QUALITY PRESET sets them: LOW is Low, MEDIUM is Medium, the others High.
-- **RENDER SCALE** (GRAPHICS): 100% (the default), 85%, 75%, 67% or 50%. The 3D picture is drawn at that share of the
-  window and scaled up, which a weak graphics chip draws faster; the HUD and menus stay sharp. LOW uses 75%.
-- **BATTERY SAVER** (EFFECTS, off by default): while the PC runs on battery, the frame rate is held to 60 and the
+- **RENDER SCALE** (GRAPHICS): 200%, 150%, 125%, 100% (the default), 85%, 75%, 67% or 50%. Below 100% the 3D picture is
+  drawn at that share of the window and scaled up, which a weak graphics chip draws faster; the HUD and menus stay sharp.
+  LOW uses 75%. Above 100% it is drawn larger and scaled down (supersampling): smoother edges, less shimmer on thin wires
+  and fences, at a large cost for the graphics card (200% draws four times the pixels); 150% and 200% want a card with
+  plenty of memory. In a very large window it is held to what the graphics card can take.
+- **BATTERY SAVER** (DISPLAY > WINDOW, off by default): while the PC runs on battery, the frame rate is held to 60 and the
   sparks and crash debris are drawn at Medium at most. Plugged in again, your settings are back. Nothing is changed in
   the game or your saved settings.
 - **For a weak PC, a Steam Deck or a laptop on battery:** choose the LOW preset (no anti-aliasing, no full-screen blur
@@ -544,18 +673,29 @@ AI or gameplay, except the few settings marked **opt-in** below. Those are off u
   at its own speed. **FRAME INTERPOLATION** draws smooth frames in between the game's own; turn it off to see the
   PS2's 60 / 30 steps. **VSYNC** is off by default.
 - **FULLSCREEN** (DISPLAY): borderless fullscreen. F11 also switches it.
-- **FAST LOADING** (DISPLAY, on by default): loading screens go as fast as your PC can. The game is the same; only
+- **FAST LOADING** (GAME > STARTING AND LOADING, on by default): loading screens go as fast as your PC can. The game is the same; only
   the wait is shorter.
-- **ANTI-ALIASING** up to MSAA 8x, **TEXTURE FILTERING** up to anisotropic 16x, **CAR DETAIL**, shadows, lights and
-  the other effects (GRAPHICS and EFFECTS).
-- **CAR REFLECTIONS** (GRAPHICS): Enhanced (the default) gives the paint and the glass of the cars in a race (yours, the
+- **ANTI-ALIASING** up to MSAA 8x and **TEXTURE FILTERING** up to anisotropic 16x (GRAPHICS > IMAGE), **CAR DETAIL**
+  (CAR > CAR LOOK), shadows, lights and the other effects (GRAPHICS and EFFECTS).
+- **CAR REFLECTIONS** (CAR > CAR LOOK): Enhanced (the default) gives the paint and the glass of the cars in a race (yours, the
   other racers, and a little on traffic) a glossy reflection of the track's sky, the horizon and the sun, strongest at
   the edges of the body. In both Enhanced and Original the cars mirror the track around them as on the PS2: in a tunnel
   you see the tunnel and its lights, not the sky. Original is the game's own faint reflection, and Off draws none. The QUALITY PRESET PS2
   ORIGINAL and LOW use Original. It is drawn only: the game itself is unchanged.
+- **CAR PAINT** (the CAR tab): Custom draws your car in your own colour (a ready **COLOUR**, or PAINT RED / GREEN / BLUE,
+  with a swatch of the colour beside them), DECALS Off takes its logos, numbers and stripes away, and **FINISH** gives both
+  players' paint a Metallic look (a stronger reflection in the paint's colour, with flakes that sparkle in the sun) or a
+  Pearl one (the colour shifts as the car turns). **PLAYER 2 CAR PAINT** has the same rows for player 2's car in the
+  split screen. All of it is drawn only: the game, replays and saves keep the paint picked in the car select. The
+  launcher's Showroom shows your custom paint and finish.
+
+- **Night mode** (TIME OF DAY) is still being finished and is not in this version: it comes in a later update. The
+  TIME OF DAY PER RACE shortcut in CONTROLS > BINDINGS belongs to it and does nothing yet.
+- **SURFACE DETAIL** (GRAPHICS, section LIGHTING, off by default): relief and a sheen on the road, kerbs and walls from
+  their textures, lit by the sun. (AMBIENT OCCLUSION is held back in this version while it is being fixed.)
 - **DRAW DISTANCE** (GRAPHICS): Whole track (the default) draws the whole course with no pop-in in the distance, and
   PS2 keeps the original's view.
-- **FPS COUNTER** (INTERFACE): a frame-rate readout in a corner (**FPS COUNTER POSITION** picks which; top left by
+- **FPS COUNTER** (GAME > INTERFACE): a frame-rate readout in a corner (**FPS COUNTER POSITION** picks which; top left by
   default). Minimal is a small plate with just the number. Standard adds the 1 % low under it (the rate of your slowest 1 %
   of frames over the last 8 seconds). Both stay small, at most about 8 % of the window's width, so they cover little of
   a menu's title. Detailed is the big plate (about 12 % of the window's width at most on a large window): it adds a graph of frame times over the last 8 seconds with a dashed line at
@@ -563,9 +703,9 @@ AI or gameplay, except the few settings marked **opt-in** below. Those are off u
   quality preset, and your graphics card. The number is green at the target, amber below it and red far below it, and
   its three small cells say the same without colour. **F3** switches between the views (and off) while you play. It is
   never in a screenshot, and in photo mode it sits at the top left.
-- **PHOTO MODE IN PAUSE MENU** (INTERFACE): On (the default) adds a PHOTO MODE row to a race's pause menu, after
+- **PHOTO MODE IN PAUSE MENU** (GAME > INTERFACE): On (the default) adds a PHOTO MODE row to a race's pause menu, after
   SETTINGS. Off leaves the pause menu as the game made it; P and L3 + R3 still open photo mode.
-- **SPEED UNITS** (INTERFACE): MPH (the default, as the US game) or KM/H. The speedometer, the distance messages,
+- **SPEED UNITS** (GAME > LANGUAGE AND UNITS): MPH (the default, as the US game) or KM/H. The speedometer, the distance messages,
   records and stats then use kilometres and metres. The speedometer changes from the next race.
 
 ### Widescreen and field of view
@@ -573,15 +713,15 @@ AI or gameplay, except the few settings marked **opt-in** below. Those are off u
 - The port fills any window shape, ultrawide included. **RACE HUD LAYOUT** (DISPLAY) puts the race HUD at the screen's
   edges (Wide, the default) or keeps the PS2's 4:3 layout. **MENU LAYOUT** chooses how the menus fit a wide screen.
   **MENU MOVIE SIDES** fills the sides of the 4:3 menu videos with black or with a blurred copy of the video.
-- **FIELD OF VIEW** (CAMERA): from 60 to 120, where 90 is the game's own. **FOV CORRECTION** keeps your car the same
+- **FIELD OF VIEW** (DISPLAY > CAMERA): from 60 to 120, where 90 is the game's own. **FOV CORRECTION** keeps your car the same
   size on screen.
 
 ### Photo mode
 
 Pause a race (also during a crash or a Takedown cam), then choose **PHOTO MODE** in the pause menu (it follows
-SETTINGS), or press **P**, or **L3 + R3** on a gamepad. The HUD goes away and you get a free camera. The row is not in
-the two-player split screen, and the **PHOTO MODE IN PAUSE MENU** setting (INTERFACE, on by default) can hide it; P and
-L3 + R3 work either way:
+SETTINGS), or press **P**, or **L3 + R3** on a gamepad. The HUD goes away and you get a free camera. Photo mode is for
+one-player races: in the two-player split screen there is no row, and P and L3 + R3 do nothing. The **PHOTO MODE IN
+PAUSE MENU** setting (GAME > INTERFACE, on by default) can hide the row; P and L3 + R3 work either way:
 
 - **Keyboard:** WASD move, E / Q up / down, Shift fast, Alt slow, the mouse or the arrow keys look, the mouse wheel
   or the `-` / `=` keys zoom, Z / C tilt, R back to the game's view, **F12 takes the picture**.
@@ -590,14 +730,21 @@ L3 + R3 work either way:
 - **Gamepad:** left stick move, right stick look, RT / LT up / down, LB / RB tilt, D-pad up / down zoom.
 - **Depth of field:** F (gamepad: Back) turns it on. V / B (Start) sets the blur, N / M (D-pad left / right) moves
   the focus, and G (L3) chooses between focusing on your car or on the screen centre.
+- **Motion blur:** J (gamepad: a quick click of R3 on its own) cycles Off, Tracking, Panning and Static. K / L (R3 + D-pad left /
+  right) set the shutter from 1/500 to 1/15 s (1/60 at first). The streak is the speed times the shutter, as in a real
+  photo, so a slow car hardly blurs. Tracking: the camera travels with your car (it stays sharp, nearby things streak
+  most, the far skyline stays sharp). Panning: the camera stands and turns to follow your car (it stays sharp, the
+  background streaks); this looks best from the side. Static: the camera holds still (the scenery is sharp, the cars
+  streak). Cars move as fast as they were going when you paused. The picture builds up over about a quarter of a
+  second; F12 always saves the finished one.
 - Zoom, tilt and focus speed up the longer you hold the key; Shift (gamepad: A / Cross) makes them faster, Alt finer.
 - P, Escape, or B / Circle leaves photo mode, and the race stays paused.
 - **On-screen display:** a plate at the top right shows the mode and live gauges (field of view, tilt, depth of field
-  and its focus); a strip at the bottom lists the controls as key caps, or as the buttons of the pad in use (the
+  and its focus, motion blur and shutter); a strip at the bottom lists the controls as key caps, or as the buttons of the pad in use (the
   BUTTON PROMPTS setting). **H** (gamepad: Y / Triangle) cycles it: everything, the gauges alone, nothing. It scales
   with HUD SIZE, sits at the screen edges at every aspect ratio, and is never part of a screenshot.
 
-### Accessibility (INTERFACE > ACCESSIBILITY)
+### Accessibility (GAME > ACCESSIBILITY)
 
 - **SCREEN FLASHES Reduced** tones down full-screen white flashes and the flicker of camera changes.
 - **HUD COLOUR FILTER**: Deuteranopia, Protanopia or Tritanopia. This shifts the HUD's and menus' colours for
@@ -607,7 +754,7 @@ L3 + R3 work either way:
 - **BOOST Toggle** (*opt-in*): press boost once to keep boosting, and again to stop. This changes the input the game
   gets, so Hold, the original behaviour, is the default.
 
-### Music (INTERFACE > MUSIC, or the launcher's Music page)
+### Music (AUDIO > MUSIC, or the launcher's Music page)
 
 Choose a **MUSIC FOLDER** of MP3, FLAC, Ogg Vorbis or WAV files (subfolders count too), then the **PLAYLIST**: EA
 Trax only (the original and the default), Custom only, or Mixed. Your songs play through the game's own radio, with
@@ -625,16 +772,17 @@ playing in the same popup; that music still plays from its own app, so turn the 
 
 | Setting | What it does |
 |---|---|
-| **RUMBLE** (INTERFACE > CONTROLLER) | The game's own vibration on your gamepads, for both players, with **RUMBLE STRENGTH** and **TRIGGER RUMBLE** (the trigger motors of Xbox One and Series pads). The game's VIBRATION option in Driver Details still applies. |
-| **GHOST: Best lap** (INTERFACE > TIME ATTACK) | In Time Attack, your best lap on the track races with you as a see-through car. It is only drawn: the other cars and the game never know it is there. |
-| **INSTANT RESTART** (INTERFACE > SPEEDRUN) | F5, or Select + Start on a gamepad, restarts the event while you drive. It goes through the game's own pause menu (RESTART, YES), so the game gets menu presses you did not make. |
-| **BOOST Toggle** (INTERFACE > ACCESSIBILITY) | See Accessibility above. |
-| **DEVELOPER MODS** (INTERFACE > DEVELOPER) | A tuning console for the game's own values (a DEVELOPER tab and F9 in a race). Edits change gameplay. Meant for mod makers. Its CHANGED tab lists what you changed; R (Square) puts a value back, Ctrl+R (Select) puts back everything after asking. What each value does: [tuning options](modding/tuning-options.md). |
+| **RUMBLE** (CONTROLS > FEEDBACK) | The game's own vibration on your gamepads, for both players, with **RUMBLE STRENGTH** and **TRIGGER RUMBLE** (the trigger motors of Xbox One and Series pads). The game's VIBRATION option in Driver Details still applies. |
+| **GHOST: Best lap** (GAME > MODES) | In Time Attack, your best lap on the track races with you as a see-through car. It is only drawn: the other cars and the game never know it is there. |
+| **INSTANT RESTART** (CONTROLS > DRIVING) | F5, or Select + Start on a gamepad, restarts the event while you drive. It goes through the game's own pause menu (RESTART, YES), so the game gets menu presses you did not make. |
+| **BOOST Toggle** (CONTROLS > DRIVING) | See Accessibility above. |
+| **DEVELOPER MODS** (MODS > DEVELOPER) | A tuning console for the game's own values (a DEVELOPER tab and F9 in a race). Edits change gameplay. Meant for mod makers. Its CHANGED tab lists what you changed; R (Square) puts a value back, Ctrl+R (Select) puts back everything after asking. What each value does: [tuning options](modding/tuning-options.md). |
 
 These are off by default too, but they do not change the game:
 
 - **SPEEDRUN TIMER** shows the event's time in game time, with your bests and lap splits.
 - **RECORD REPLAYS** keeps each session as a small replay file that plays back exactly (the launcher's Replays page).
+  Watching a replay never changes your own ghosts or best times.
   The newest 20 are kept.
 
 ## 8. Mods
@@ -647,8 +795,13 @@ as it is on your disc.
 1. In the launcher, open the **Mods** page.
 2. Press **Add mod...** and choose the mod's **`.b3mod`** or **`.zip`** file. The launcher checks it and unpacks it
    into its own folder. A damaged or unsafe archive is refused, and nothing is written.
-   - A mod that comes as a **folder**: press **Open mods folder** and copy the folder in, so that
-     `mods/<the mod's folder>/mod.ini` exists. Then press **Look again**.
+   - A mod that comes as a **folder**: press **Add folder...** and choose it (it is copied into the mods folder), or
+     press **Open mods folder** and copy the folder in yourself, so that `mods/<the mod's folder>/mod.ini` exists,
+     then press **Look again**.
+   - A **pack of replacement files without a `mod.ini`** (a folder or zip holding the game's own folders, such as
+     `PVEH`, `TRACKS` or `DATA`): the launcher asks whether to install it as a file-replacement mod named after the
+     folder or zip, and writes its `mod.ini` for you. Such a mod has no code, so nothing in it runs. Anything else
+     without a `mod.ini` is refused, with a note on what a `mod.ini` is.
 3. Press **Turn on** on the mod's card. New mods are off.
 4. If you use several mods, order them with **Move up / Move down**. When two mods change the same file, the one
    higher in the list wins, and the page shows these conflicts.
@@ -657,10 +810,15 @@ as it is on your disc.
 **Mods that contain code.** Some mods carry a program library ("Contains code" on their card). When you turn one on,
 the launcher asks: **"Allow this mod's code to run?"** Such code runs as a program on your PC with your user's rights,
 like any program you install. **Allow code only from people you trust**, ideally with its source. You are asked again
-when a new version of the mod changes its code. Lua script mods run inside the game and can only do what the script
-interface offers, so they do not need this permission.
+when any of its code changes (a new version of the mod, or a library inside it). Lua script mods run inside the game
+and can only do what the script interface offers, so they do not need this permission, except a script that says it is
+unsafe (its card says "Unsafe script": it may write the game's memory and call its functions), which is asked about in
+the same way.
 
-A card that says **"Changes gameplay"** marks a mod whose times and replays are kept apart from normal play. Safe mode
+A card that says **"Changes gameplay"** marks a mod whose times and replays are kept apart from normal play: while
+such a mod is on, your ghosts and best times go to folders of that mod set (`ghosts/modded-<set>/`,
+`speedrun/modded-<set>/`, named by the gameplay-changing mods only, so turning a texture or sound mod on or off
+keeps them), and normal play never sees them; a replay made with it plays only with the same mods. Safe mode
 (section 9) always starts without mods.
 
 Want to make mods? Start with the [modding guide](modding/README.md).
@@ -672,9 +830,11 @@ Want to make mods? Start with the [modding guide](modding/README.md).
 If the game crashes or does not start, the launcher's Play page says so the next time you open it.
 
 - **START IN SAFE MODE** starts the game once with low settings: a window, the LOW preset, no anti-aliasing, no HD
-  textures, vsync, and no mods. Your own settings file stays as it is.
+  textures, vsync, and no mods. It also turns off the guest memory guards (see "guest memory overrun" under Common
+  problems). Your own settings file stays as it is.
 - After **two starts in a row that did not end cleanly**, the game picks safe mode by itself. The window title says
-  SAFE MODE. Once a run ends cleanly, the next start uses your own settings and mods again. On the Play page,
+  SAFE MODE. This automatic safe mode keeps the guest memory guards on, unless the run before it ended with a "guest
+  memory overrun". Once a run ends cleanly, the next start uses your own settings and mods again. On the Play page,
   **Clear the crash count** stops safe mode from being chosen for you.
 
 ### Logs
@@ -691,7 +851,8 @@ Mac, the same from Terminal: `"/Applications/Burnout 3 Native.app/Contents/MacOS
 1. Note what happened and roughly when (which mode, track or menu).
 2. Make a report:
    - **in the game, press F10**: a banner says "BUG REPORT SAVED" and where it went;
-   - **or in the launcher**: Play page, **Make a bug report**. Its folder opens afterwards.
+   - **or in the launcher**: Play page, **Bug report...**, then **Make report** (or **With my save**). Its folder
+     opens afterwards.
 3. You get one file, `bug-report-<date-time>.zip`, on your Desktop (or in Documents; on Linux, in your user data
    folder if you have neither). Attach it to a [bug report](../../../issues/new/choose) with your note.
 
@@ -699,7 +860,7 @@ If the game crashed, just make the report afterwards: the crashed run's log is i
 
 The zip holds the logs and controls recordings of your last 5 runs, your settings files, the port's version, and a
 short description of your system (the OS, CPU, memory, graphics card and driver, and display). It holds **no game
-data** and **no save file**, unless you set **Include my save: YES** on the launcher's Play page first (which helps
+data** and **no save file**, unless you choose **With my save** when you make it on the launcher's Play page (which helps
 when the problem depends on your progress). Your user name is taken out of the folder paths in it (they read `C:\Users\<user>\...` or `~/...`). Nothing
 is ever sent anywhere by itself: you send the report yourself.
 
@@ -717,6 +878,7 @@ is ever sent anywhere by itself: you send the report yourself.
 | **Linux: "Permission denied"** | The archive was unpacked without the programs' execute permission: run `chmod +x b3launcher native_play add-to-menu.sh` in the folder. |
 | **Linux: the controller also clicks or types on the desktop (windows open while you play)** | On Linux a game cannot take a controller for itself: other programs see the same presses. Most often it is Steam: with Steam running, its **desktop layout** turns the controller into a mouse and keyboard for everything that Steam does not know as a game. Start the port from Steam (add `b3launcher` as a non-Steam game, or use **Add to Steam** on the launcher's Settings page), or turn the desktop layout off in Steam's Controller settings, or close Steam while you play. Other controller-to-keyboard tools (AntiMicroX and the like) do the same. |
 | **Linux: no file picker opens** | Install `xdg-desktop-portal` (with your desktop's portal) or `zenity`. You can also use **Type a path...** in the launcher. |
+| **The game closes and the log or crash report says "guest memory overrun"** | The game tried to read or write past the end of the console's memory, and the port stopped it there before it could do any harm. Please send a bug report from the launcher (Make a bug report on the Play page): it has what we need to fix it. Until a fix is out, **START IN SAFE MODE** runs without this check (so does the safe mode the game picks by itself after such a crash), or set the environment variable `B3_GUEST_GUARDS=0` to turn it off with your own settings. The game may then still crash or misbehave at that point. |
 | **The race falls behind or the sound stutters** | Lower the QUALITY PRESET, set a FRAME RATE LIMIT, or try safe mode. If that helps, please send a bug report: it tells us what your PC needed. |
 
 ## 10. Known issues
@@ -736,8 +898,8 @@ bug report.
 - **The Crashbreaker explosion** is drawn in part: its brief full-screen orange flash is (SCREEN FLASHES Reduced limits it),
   So are the smoke, dust, glass and fire particles (at a lighter share than the SPARKS and CRASH DEBRIS levels: High draws half of them). The flying debris pieces of a crash (the game's debris array) are
   not drawn yet.
-- **Replays:** a session that ended in a crash of the game is not kept as a replay. The Replays list shows the date
-  and length, but not the track. A replay made with your own music plays back only with the same music settings and
+- **Replays:** a session that ended in a crash of the game (or was killed) is kept up to its last 10 seconds: the
+  replay is saved every 10 seconds of play while it records. The Replays list shows the date and length, but not the track. A replay made with your own music plays back only with the same music settings and
   folder.
 - **Mac:** the Mac app has been played less than the Windows build, and photo mode's depth of field has never run on
   a Mac (if it fails, it simply turns itself off). The app is not notarized, so its first start needs **Open Anyway**

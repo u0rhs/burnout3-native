@@ -106,16 +106,16 @@ only by the player car's driving / crashing controls) and logs each switch (`key
 | V | -- | Square (car select Color, MULTIPLAYER Change Names) | the pages' Square prompts [C shots, fe1] |
 
 Movies: Enter, Space or Escape (pad: Cross or Start) skips the movie that is playing (docs/remaster-features.md §2);
-a corner hint shows the button for the device in use (SETTINGS > INTERFACE > VIDEO SKIP HINT turns it off).
+a corner hint shows the button for the device in use (SETTINGS > GAME > INTERFACE > VIDEO SKIP HINT turns it off).
 The table is in `default_key_map()`: the default layout. Remapping (remap1, docs/pc-settings.md §7.9): SETTINGS >
-INTERFACE > CONTROLS in the game, or the launcher's Controllers page, rebinds any PS2 button or stick direction per
+CONTROLS > BINDINGS in the game, or the launcher's Controllers page, rebinds any PS2 button or stick direction per
 player, for the keyboard (separately while driving and in menus) and for controllers; the choice is saved in
 controls.ini in the user data folder and the prompts show the keys and buttons bound. Player 2 can have keys too (none
 by default): they then drive a second controller port.
 
 Button prompts (mac5, remaster-features §3): the game's button glyphs show the device used last -- key caps with
 these keys after a key press, Xbox / Nintendo / generic buttons after a pad's button, the game's PlayStation glyphs for
-a PlayStation pad and before any input. SETTINGS > INTERFACE > BUTTON PROMPTS fixes one; `B3_PROMPT_DEVICE=keyboard|
+a PlayStation pad and before any input. SETTINGS > GAME > INTERFACE > BUTTON PROMPTS fixes one; `B3_PROMPT_DEVICE=keyboard|
 playstation|ps5|xbox|nintendo|generic` (ps5 = ps4: the PS4 / PS5 style) fixes it for a run (offscreen shots).
 
 Two controllers (pad2, 2026-11-11; local 2-player: ROAD RAGE, TEAM CRUSH, DOUBLE IMPACT, PARTY CRASH, the
@@ -126,7 +126,7 @@ in. A pad keeps its player while it stays connected: if player 1's pad goes, pla
 connected becomes player 1 (to make a lone remaining pad player 1, disconnect and reconnect it). A third pad and more
 act as player 1 (as every pad did before) and take an empty seat when one frees up. With one gamepad (or none)
 nothing changes: port 2 stays empty. The button prompts follow player 1's devices (the keyboard and player 1's pad);
-photo mode and the PC SETTINGS page take player 1's pad; BOOST: Toggle applies to both players; with SETTINGS > INTERFACE > RUMBLE On
+photo mode and the PC SETTINGS page take player 1's pad; BOOST: Toggle applies to both players; with SETTINGS > CONTROLS > FEEDBACK > RUMBLE On
 both pads rumble, each for its own car (off by default). The log says `[b3pad] gamepad: <name>, player 2 (port 2 connected)` and
 `native_play: VBlank N: port 2: a gamepad plugged in (player 2)` / `pulled out`. `--keys2` (scripted port 2) and
 `--replay-pad` take precedence: the window's second pad is then ignored, and a pad recording holds port 1 only.

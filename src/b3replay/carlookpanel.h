@@ -1,5 +1,5 @@
 // carlookpanel.h -- the live tuner of the enhanced car reflections' look (reflect2; docs/car-look.md). A small overlay at
-// the right of the window, shown while PC SETTINGS > INTERFACE > DEVELOPER MODS is on (never otherwise). The values are
+// the right of the window, shown while PC SETTINGS > MODS > DEVELOPER MODS is on (never otherwise). The values are
 // carlook.h's (port renderer values, not the game's variables: the tuning console's registry is not touched); a change is
 // drawn on the next frame on every car, in a race, paused or in photo mode.
 //

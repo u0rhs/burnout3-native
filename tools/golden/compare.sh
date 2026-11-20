@@ -16,15 +16,27 @@
 #             pointer-argument bounce windows leave host bytes below the guest stack pointer; see
 #             tools/native/layer_check.sh) -- reported as transient, not a failure; RAM_STRICT=1 fails on it too
 #   rate      the median of the new rates within RATE_TOL % (default 2) of the old median (lower only: faster passes)
+# determ1: a scenario with any failing item is copied, as recorded, to $KEEP_FAILED/<scenario>.<UTC time> (default
+# <new recording>.failed; KEEP_FAILED=none: not kept), so that a re-run into the same folder (baseline.sh starts each
+# scenario afresh) does not erase the evidence of a run that differed.
 # Last line: "compare: PASS ..." or "compare: FAIL <scenario:item ...>"; exit 0 / 1.
 set -u
 OLD=${1:?usage: compare.sh <old> <new>}
 NEW=${2:?usage: compare.sh <old> <new>}
 RATE_TOL=${RATE_TOL:-2}
+KEEP_FAILED=${KEEP_FAILED:-${NEW%/}.failed}
 fail=""
 fl() { fail="$fail $1"; }
+keep() {   # keep <scenario>: determ1: the failing recording copied apart (once per scenario)
+  [ "$KEEP_FAILED" = none ] || [ ! -d "$NEW/$1" ] && return
+  local k
+  k=$KEEP_FAILED/$1.$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$KEEP_FAILED" && cp -a "$NEW/$1" "$k" && cp -a "$NEW/build.txt" "$k/build.txt" 2>/dev/null
+  echo "compare: $1: the failing recording kept in $k"
+}
 for d in "$OLD"/*/; do
   s=$(basename "$d")
+  fail_before=$fail
   [ -f "$d/verdict" ] || continue
   n=$NEW/$s
   if [ ! -d "$n" ]; then echo "compare: $s: FAIL not recorded in $NEW"; fl "$s"; continue; fi
@@ -134,6 +146,7 @@ else:
 PY
 )
   echo "compare: $s ram: $r"; case $r in PASS*) ;; *) fl "$s:ram" ;; esac
+  [ "$fail" = "$fail_before" ] || keep "$s"
 done
 # rate
 if [ -s "$OLD/rate.txt" ]; then

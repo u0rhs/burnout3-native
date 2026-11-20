@@ -31,11 +31,13 @@
 #include "menumouse.h"  // mac5
 #include "pcpage.h"     // mac5
 #include "photomode.h"  // photo mode
+#include "garagecam.h"  // garagecam1
 #include "fastforward.h"   // fastload1
 #include "modoverlay.h"   // sdk2b
 #include "carlookpanel.h"
 #include "tuneconsole.h"   // tune4
 #include "live.h"          // nofallback1: set_game_stopped
+#include "b3report/thread_name.h"   // split2p
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -77,6 +79,7 @@ std::vector<std::string> split_args(const char* s) {
 }
 
 void render_main() {
+    b3port::name_this_thread("render");   // split2p (the crash report): the window, its pads and the draws
 #ifdef _WIN32
     // Below the game: the game's thread must never wait for this one's CPU time.
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
@@ -188,6 +191,10 @@ B3R_EXPORT void b3r_rumble(int port, int small, int large) {
 // mac4: the key map's context for the next samples: 1 while the race simulation runs (W / Up accelerate, S / Down
 // brake, Space boost), 0 in menus and paused (W / Up / S / Down move, Space confirms); src/native/input_keys.h.
 B3R_EXPORT void b3r_pad_context(int driving) { b3replay::NativePad::instance().set_driving(driving != 0); }
+// todrace (tools/native/race_time.h): a track page is up (each VBlank), and the TIME OF DAY presses taken
+// there since the last call
+B3R_EXPORT void b3r_race_time_page(int up) { b3replay::NativePad::instance().set_race_time_page(up != 0); }
+B3R_EXPORT int b3r_race_time_presses() { return b3replay::NativePad::instance().take_race_time_presses(); }
 // play1: the native game's sound -- one VBlank's frames (48 kHz s16 stereo, L R interleaved) from native_play's
 // AudioSink; played when b3replay runs with --native-audio and a device opened, else counted and dropped.
 B3R_EXPORT void b3r_audio_push(const std::int16_t* lr, std::size_t frames) {
@@ -219,7 +226,7 @@ B3R_EXPORT void b3r_set_tune_hooks(const B3TuneHooks* hooks) { b3replay::TuneCon
 // photo mode (photomode.h): native_play says when the race's pause menu is up (1) or gone (0); photo mode can be entered
 // only then, and ends with it
 B3R_EXPORT void b3r_set_paused(int on) { b3replay::PhotoMode::instance().set_game_paused(on != 0); }
-// photorow1 (tools/native/pc_menu.h): the pause menu's PHOTO MODE row. PC SETTINGS > INTERFACE > PHOTO MODE IN PAUSE MENU
+// photorow1 (tools/native/pc_menu.h): the pause menu's PHOTO MODE row. PC SETTINGS > GAME > INTERFACE > PHOTO MODE IN PAUSE MENU
 // (1, default: the row is there), and the row's Confirm: photo mode on as with P (1: entered)
 B3R_EXPORT int b3r_photo_row() { return b3replay::PcPage::instance().settings().photo_row ? 1 : 0; }
 B3R_EXPORT int b3r_photo_enter() { return b3replay::PhotoMode::instance().request_enter("pause menu") ? 1 : 0; }
@@ -227,9 +234,9 @@ B3R_EXPORT int b3r_photo_enter() { return b3replay::PhotoMode::instance().reques
 B3R_EXPORT int b3r_date_format() { return b3replay::PcPage::instance().settings().date_format; }
 // units1: the speed units the game should show (b3settings::Settings::speed_units; tools/native/speed_units.h)
 B3R_EXPORT int b3r_speed_units() { return b3replay::PcPage::instance().settings().speed_units; }
-// replay1: PC SETTINGS > INTERFACE > RECORD REPLAYS (native_play reads it once, at the start: src/native/replay_file.h)
+// replay1: PC SETTINGS > GAME > MODES > RECORD REPLAYS (native_play reads it once, at the start: src/native/replay_file.h)
 B3R_EXPORT int b3r_record_replays() { return b3replay::PcPage::instance().settings().record_replays; }
-// fastload1 (tools/native/fast_load.h): PC SETTINGS > DISPLAY > FAST LOADING (b3settings::Settings::fast_loading), read
+// fastload1 (tools/native/fast_load.h): PC SETTINGS > GAME > STARTING AND LOADING > FAST LOADING (b3settings::Settings::fast_loading), read
 // by native_play each VBlank; and native_play's word that a load runs unpaced (1) or is over (0): the display then
 // shows the newest frame (fastforward.h)
 B3R_EXPORT int b3r_fast_loading() { return b3replay::PcPage::instance().settings().fast_loading ? 1 : 0; }
@@ -256,7 +263,7 @@ B3R_EXPORT int b3r_scene_wait(int max_ms) {
 // 1 custom only, 2 mixed) and the music folder (UTF-8) copied to `folder` (at most n - 1 bytes)
 B3R_EXPORT int b3r_music(char* folder, int n) { return b3replay::PcPage::instance().music(folder, n); }
 B3R_EXPORT int b3r_music_volume() { return b3replay::PcPage::instance().music_volume(); }   // musicvol1
-// nowplaying1 (tools/native/now_playing_popup.h): PC SETTINGS > INTERFACE > MUSIC > OTHER MUSIC APPS (0 off, 1 show
+// nowplaying1 (tools/native/now_playing_popup.h): PC SETTINGS > AUDIO > MUSIC > OTHER MUSIC APPS (0 off, 1 show
 // another app's song in the EA TRAX popup), read by native_play each VBlank; and what native_play detects (UTF-8, one
 // line; empty: not reading), shown in that row's description
 B3R_EXPORT int b3r_other_music_apps() { return b3replay::PcPage::instance().settings().other_music_apps ? 1 : 0; }
@@ -322,7 +329,10 @@ static void note_game_poll(const void* body, std::size_t n) {
     std::uint32_t h[2];
     if (!body || n < sizeof h) return;
     std::memcpy(h, body, sizeof h);
-    if (h[0] == 0x4B434954U) b3replay::PhotoMode::instance().set_game_poll(h[1]);   // 'TICK'
+    if (h[0] == 0x4B434954U) {   // 'TICK'
+        b3replay::PhotoMode::instance().set_game_poll(h[1]);
+        b3replay::GarageCam::instance().note_poll(h[1]);   // garagecam1: the right stick / drags from this poll on
+    }
 }
 
 // One poll's record (kind 1 delta / 2 keyframe; body = the 16-byte TICK head and its runs, as in a capture file).

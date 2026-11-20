@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "../native/input_keys_sdl.h"
+#include "garagecam.h"   // garagecam1
 #include "menumouse.h"
 #include "photomode.h"
 
@@ -92,8 +93,11 @@ bool NativePad::handle(const SDL_Event& e) {
             const bool p2 = seats_.role(e.gdevice.which) == b3native::input::PadSeats::Role::Player2;
             if (!p2) tracker_.press(device_of(e.gdevice.which), now_s());   // mac5: a pad just connected is the one about to be used
             pad_used(e.gdevice.which);   // padlayout
-            std::printf("[b3pad] gamepad: %s, %s (prompts: %s)\n", SDL_GetGamepadName(g) ? SDL_GetGamepadName(g) : "?",
-                        p2 ? "player 2 (port 2 connected)" : "player 1", prompt_device_name(tracker_.active()));
+            // split2p: the prompts are player 1's device's (pad2: one family on screen, from player 1's inputs), so player 2's
+            // line says whose they are (a DualSense's line read "prompts: Xbox": player 1's Xbox pad)
+            std::printf("[b3pad] gamepad: %s, %s (%s: %s)\n", SDL_GetGamepadName(g) ? SDL_GetGamepadName(g) : "?",
+                        p2 ? "player 2 (port 2 connected)" : "player 1", p2 ? "on-screen prompts: player 1's" : "prompts",
+                        prompt_device_name(tracker_.active()));
             std::fflush(stdout);
         }
         return true;
@@ -153,6 +157,12 @@ bool NativePad::handle(const SDL_Event& e) {
     }
     case SDL_EVENT_TEXT_INPUT: {   // mac5: typed text while the game's keyboard is up
         if (text_mode_ && e.text.text) type(e.text.text);
+        if (composing_) committed_at_ = now_s();   // settingsui: an input method's commit
+        composing_ = false;
+        return true;
+    }
+    case SDL_EVENT_TEXT_EDITING: {   // settingsui: an input method's composition (Enter then commits it)
+        composing_ = e.edit.text && *e.edit.text;
         return true;
     }
     case SDL_EVENT_GAMEPAD_SENSOR_UPDATE: {   // pad1: gyro steering's samples (only for pads whose sensors it turned on)
@@ -204,21 +214,36 @@ bool NativePad::handle(const SDL_Event& e) {
             return true;
         }
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && !shortcut_mods_locked(e.key.mod) &&
+            !(text_mode_ && typing_key(e.key.scancode)) &&   // settingsui: not while a name is typed
             (b3native::input::port_actions_of_key(controls_.port, std::uint16_t(e.key.scancode)) >> int(b3native::input::PortAction::Restart) & 1))
             ask_restart("INSTANT RESTART key");   // speedrun1: INSTANT RESTART (when on); rebind2: whatever key it is on
+        // todrace: the TIME OF DAY key on a track page (race_time.h) is the port's alone (its downs never reach the game)
+        if (e.type == SDL_EVENT_KEY_DOWN && race_page_.load() && race_keys_safe_ && !shortcut_mods_locked(e.key.mod) && !(text_mode_ && typing_key(e.key.scancode)) &&
+            (b3native::input::port_actions_of_key(controls_.port, std::uint16_t(e.key.scancode)) >> int(b3native::input::PortAction::RaceTime) & 1)) {
+            if (!e.key.repeat) {
+                race_time_press("key");
+                tracker_.press(PromptDevice::kKeyboard, now_s());
+                keyboard_used_ = true;
+            }
+            return true;
+        }
         if (e.type == SDL_EVENT_KEY_DOWN && text_mode_ && typing_key(e.key.scancode) && !shortcut_mods_locked(e.key.mod)) {
             // mac5: a typing key while the game's keyboard is up: text, not a pad button (key ups still reach the pad,
             // so a key held when the keyboard came up is released)
-            if (!e.key.repeat || e.key.scancode == SDL_SCANCODE_BACKSPACE) {
+            // settingsui: the Enter that commits an input method's composition is not the keyboard's Done
+            const bool enter = e.key.scancode == SDL_SCANCODE_RETURN || e.key.scancode == SDL_SCANCODE_KP_ENTER;
+            const bool ime_enter = enter && (composing_ || now_s() - committed_at_ < 0.1);
+            if ((!e.key.repeat || e.key.scancode == SDL_SCANCODE_BACKSPACE) && !(composing_ && e.key.scancode == SDL_SCANCODE_BACKSPACE)) {
                 if (e.key.scancode == SDL_SCANCODE_BACKSPACE) text_.push_back(8);
-                if (e.key.scancode == SDL_SCANCODE_RETURN || e.key.scancode == SDL_SCANCODE_KP_ENTER) text_.push_back(10);
+                if (enter && !ime_enter) text_.push_back(10);
             }
             if (!e.key.repeat) { tracker_.press(PromptDevice::kKeyboard, now_s()); keyboard_used_ = true; }
             MenuMouse::instance().other_device(now_s());
             return true;
         }
-        const bool used = b3native::input::handle_sdl_event(keys_, e);
-        b3native::input::handle_sdl_event(keys2_, e);   // remap1: player 2's keys (none by default)
+        // robust2: each player's keys with the other's map: a Ctrl one of them plays with is no window shortcut for either
+        const bool used = b3native::input::handle_sdl_event(keys_, e, &keys2_);
+        b3native::input::handle_sdl_event(keys2_, e, &keys_);   // remap1: player 2's keys (none by default)
         // rebind2: a shortcut's key (screenshot, fullscreen, ...) that is no game key does not make the prompts the keyboard's
         const std::uint16_t sc = std::uint16_t(e.key.scancode);
         const auto game_key = [&]() {
@@ -247,9 +272,18 @@ void NativePad::poll_gamepads() {
     std::array<float, b3native::input::kPortActions> port_amt{};   // rebind2
     const double t = now_s();
     std::vector<std::pair<SDL_Gamepad*, int>> ports;   // rumble1: each pad's port (0 player 1's, 1 player 2's)
+    float garage_x = 0, garage_y = 0;                  // garagecam1: player 1's right stick (the pad pushed furthest)
+    int section = 0;                                   // settingsui: player 1's right stick up / down (the page's sections)
+    bool race_held = false, race_any = false, race_taken = false;   // todrace: the TIME OF DAY chord held on the track page / at all / withheld
     for (SDL_Gamepad* g : open_) {
         const SDL_JoystickID id = SDL_GetGamepadID(g);
         const bool p1 = seats_.role(id) != b3native::input::PadSeats::Role::Player2;   // pad2: player 2's is its own report
+        if (p1) {
+            const int ry = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHTY);
+            const int was = section_stick_.load();   // past 60 % to start, back under 40 % to end
+            if (ry < -19660 || (was == 1 && ry < -13107)) section |= 1;
+            if (ry > 19660 || (was == 2 && ry > 13107)) section |= 2;
+        }
         ports.emplace_back(g, p1 ? 0 : 1);
         // mac5: a stick or trigger past half way, held (prompts.h PromptDeviceTracker: the hysteresis); pad2: player 1's
         bool past_half = false;
@@ -311,6 +345,16 @@ void NativePad::poll_gamepads() {
         }
         // remap1: the seat's bindings (player 1's for player 1's and the waiting pads); padlayout: the player's layout for
         // this pad's type (Auto), in the context the game is in (driving / menus, as the keys')
+        if (p1) {   // todrace: on a track page (race_time.h) the TIME OF DAY chord is taken out of the game's report, and
+                    // stays taken until it is released when the page goes meanwhile (no L1 reaches the next page: CAR SERIES)
+            const bool held = b3native::input::port_pad_amount(s, controls_.port, b3native::input::PortAction::RaceTime, 0.24f) >= 0.5f;
+            if (capture_ == 0 && race_pad_safe_ && race_chord_.take(held, race_page_.load())) {
+                b3native::input::take_port_chord(s, controls_.port, b3native::input::PortAction::RaceTime, 0.24f);
+                race_taken = true;
+                race_held = race_held || race_page_.load();
+            }
+            race_any = race_any || held;
+        }
         b3native::input::GamepadTuning tuning;   // 1.0.1: ANALOG TRIGGERS
         tuning.analog_pedals = analog_pedals_.load();
         const auto one = b3native::input::gamepad_sample(s, controls_.player[p1 ? 0 : 1], tuning,
@@ -321,6 +365,13 @@ void NativePad::poll_gamepads() {
             continue;
         }
         all = b3native::input::merge_samples(all.data(), one.data());
+        {   // garagecam1 (garagecam.h): the physical right stick, before the bindings
+            const float rx = std::clamp(float(s.right_x) / 32767.0f, -1.0f, 1.0f), ry = std::clamp(float(s.right_y) / 32767.0f, -1.0f, 1.0f);
+            if (capture_ == 0 && rx * rx + ry * ry > garage_x * garage_x + garage_y * garage_y) {
+                garage_x = rx;
+                garage_y = ry;
+            }
+        }
         // rebind2: the port actions' gamepad bindings (a chord: its inputs held together), the largest over player 1's pads
         for (int a = 0; a < b3native::input::kPortActions; ++a) {
             const auto pa = b3native::input::PortAction(a);
@@ -330,6 +381,9 @@ void NativePad::poll_gamepads() {
         }
     }
     pads_ = all;
+    if (race_chord_.end_poll(race_taken, race_any, race_held)) race_time_press("gamepad");   // todrace: a press begun on the page
+    GarageCam::instance().set_window_stick(garage_x, garage_y);   // garagecam1
+    section_stick_.store(section == 3 ? 0 : section);   // settingsui
     {   // padlayout: each player's pad (the last used; else the first open one) and the layout it gets, logged on a change
         for (int p = 0; p < 2; ++p) {
             int type = -1;
@@ -381,6 +435,9 @@ void NativePad::poll_gamepads() {
         photo.blur_less = btn(PA::PhotoBlurLess);
         photo.blur_more = btn(PA::PhotoBlurMore);
         photo.target = btn(PA::PhotoTarget);
+        photo.motion = btn(PA::PhotoMotion);   // photoblur
+        photo.shutter_faster = btn(PA::PhotoShutterFaster);
+        photo.shutter_slower = btn(PA::PhotoShutterSlower);
         photo.toggle = btn(PA::PhotoMode);
         // speedrun1: the INSTANT RESTART chord on player 1's pads (Select + Start; when on); the window's shortcuts: edges
         const bool combo = btn(PA::Restart);
@@ -627,6 +684,12 @@ void NativePad::set_controls(const b3native::input::Controls& c) {
     keys_.set_map(b3native::input::key_map(c.player[0]));
     keys2_.set_map(b3native::input::key_map(c.player[1]));
     keys2_on_ = c.player[1].has_keys();
+    // todrace: a TIME OF DAY PER RACE bound (in controls.ini) to an input the track pages read is left to the game there
+    race_keys_safe_ = b3native::input::port_page_safe(c, b3native::input::PortAction::RaceTime, b3native::input::Device::Keyboard);
+    race_pad_safe_ = b3native::input::port_page_safe(c, b3native::input::PortAction::RaceTime, b3native::input::Device::Gamepad);
+    if (!race_keys_safe_ || !race_pad_safe_)
+        std::printf("[b3controls] TIME OF DAY PER RACE: its %s binding is one the track pages read: not taken there\n",
+                    !race_keys_safe_ && !race_pad_safe_ ? "keyboard and controller" : !race_keys_safe_ ? "keyboard" : "controller");
 }
 
 b3native::input::Controls NativePad::controls() const {
@@ -693,8 +756,19 @@ void NativePad::sync_text_input(SDL_Window* w) {
     const bool want = text_mode_.load();
     if (!w || want == text_started_) return;
     text_started_ = want;
-    if (want) SDL_StartTextInput(w);
-    else SDL_StopTextInput(w);
+    if (want) {
+        // robust2: the game's name entry has its own letters on the pad, so the system's on-screen keyboard (Steam's in
+        // the Steam Deck's Gaming Mode, which SDL shows for any text input by default) must not open over it: only a
+        // real keyboard types here (the launcher's gating, src/b3launcher/main.cpp start_text_input).
+        // $B3_SYSTEM_KEYBOARD=1: SDL's default (Steam's keyboard shows).
+        const char* e = std::getenv("B3_SYSTEM_KEYBOARD");
+        if (e && *e == '1') SDL_ResetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD);
+        else SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, "0");
+        SDL_StartTextInput(w);
+    } else {
+        SDL_StopTextInput(w);
+        SDL_ResetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD);
+    }
     std::printf("[b3pad] the game's keyboard is %s: the keys %s\n", want ? "up" : "down", want ? "type" : "are the pad again");
     std::fflush(stdout);
 }
@@ -729,6 +803,12 @@ void NativePad::page_key(std::uint16_t scancode, bool down) {
     }
     if (down) page_keys_ |= bit;
     else page_keys_ &= ~bit;
+}
+
+bool NativePad::typing(std::uint16_t scancode, unsigned sdl_mod) const {
+    if (!text_mode_.load() || !typing_key(SDL_Scancode(scancode))) return false;
+    std::lock_guard<std::mutex> l(mu_);
+    return !shortcut_mods_locked(sdl_mod);
 }
 
 bool NativePad::shortcut_mods_locked(unsigned mod) const {
@@ -812,8 +892,13 @@ void NativePad::key(std::uint16_t scancode, bool down) {
         case 32: g.left_trigger = down ? 32767 : 0; break;
         case 33: g.right_trigger = down ? 32767 : 0; break;
         case 34: g.right_y = down ? -32768 : 0; break;
+        case 35: g.right_x = down ? -32768 : 0; break;   // garagecam1: the right stick left
+        case 36: g.right_x = down ? 32767 : 0; break;    // right
+        case 37: g.right_y = down ? 32767 : 0; break;    // down
         default: return;
         }
+        GarageCam::instance().set_test_stick(std::clamp(float(g.right_x) / 32767.0f, -1.0f, 1.0f),   // garagecam1
+                                             std::clamp(float(g.right_y) / 32767.0f, -1.0f, 1.0f));
         if (down) tracker_.press(prompt_device_for_pad(test_pad_type_, int(SDL_GetGamepadButtonLabelForType(SDL_GamepadType(test_pad_type_), SDL_GAMEPAD_BUTTON_SOUTH))), now_s());
         // the report's 16 buttons (active low) as this context gives them: the check reads the pad recording too
         const auto r = test_report();
@@ -847,8 +932,18 @@ void NativePad::key(std::uint16_t scancode, bool down) {
         if (down) hd_presses_.push_back(hd_poll);
         return;
     }
+    if (down && race_page_.load() && race_keys_safe_ && (b3native::input::port_actions_of_key(controls_.port, scancode) >> int(b3native::input::PortAction::RaceTime) & 1)) {
+        race_time_press("key (script)");   // todrace: a script's TIME OF DAY key on the track page (never the game's)
+        return;
+    }
     keys_.key(scancode, down);
     keys2_.key(scancode, down);
+}
+
+void NativePad::race_time_press(const char* by) {   // todrace
+    race_presses_.fetch_add(1);
+    std::printf("[b3pad] time of day: a press (%s) on the track page\n", by);
+    std::fflush(stdout);
 }
 
 void NativePad::ask_restart(const char* by) {

@@ -70,6 +70,12 @@ TEST(manifest_full) {
     CHECK(p.m.files_root == "files/disc");
 }
 
+TEST(manifest_with_a_utf8_bom) {   // modsec: Notepad's "UTF-8 with BOM"
+    const ParsedManifest p = parse_manifest("\xEF\xBB\xBF[mod]\r\nid = bom\r\nversion = 1\r\napi = 1\r\n");
+    CHECK(p.errors.empty() && p.warnings.empty() && p.m.id == "bom" && p.m.version == "1");
+    CHECK(!parse_manifest("\xEF\xBB[mod]\nid = bom\n").errors.empty());   // half a BOM is not skipped
+}
+
 TEST(manifest_defaults_and_warnings) {
     const ParsedManifest p = parse_manifest("[mod]\r\nid = x\r\n");   // CRLF too
     CHECK(p.errors.empty());
@@ -645,6 +651,126 @@ TEST(install_archive_good) {
     CHECK(found.size() == 1 && found[0].manifest.version == "2.0");
 }
 
+TEST(install_archive_top_folder_in_two_cases) {   // modsec: "My Mod/" and "my mod/" are one folder on Windows / macOS
+    const fs::path root = kRoot / "installcase";
+    fs::remove_all(root);
+    fs::create_directories(root);
+    const fs::path mods = root / "mods";
+    write_zip(root / "case.zip", {{"My Mod/mod.ini", "[mod]\nid = cased\nversion = 1\napi = 1\n"},
+                                  {"my mod/data/DATA/A.TXD", "a", true},
+                                  {"MY MOD/data/DATA/B.TXD", "b"}});
+    const InstallResult r = install_archive(root / "case.zip", mods);
+    CHECK(r.ok && r.files == 3);
+    CHECK(fs::exists(mods / "cased" / "data" / "DATA" / "A.TXD") && fs::exists(mods / "cased" / "data" / "DATA" / "B.TXD"));
+}
+
+TEST(replace_does_not_follow_links) {   // modsec: Replace removes the old folder's own files only
+    const fs::path root = fs::absolute(kRoot / "replacelink");
+    fs::remove_all(root);
+    const fs::path mods = root / "mods", outside = root / "outside", shared = root / "shared";
+    write(outside / "mod.ini", "[mod]\nid = linked\nversion = 1\napi = 1\n");
+    write(outside / "precious.txt", "the user's own files");
+    write(shared / "keep.txt", "also not the mod's");
+    fs::create_directories(mods);
+    std::error_code ec;
+    fs::create_directory_symlink(outside, mods / "linked", ec);   // the mod's folder is a link to elsewhere
+    CHECK(!ec);
+    fs::create_directory_symlink(shared, outside / "data", ec);    // and a link inside it
+    CHECK(!ec);
+    write_zip(root / "new.zip", {{"mod.ini", "[mod]\nid = linked\nversion = 2\napi = 1\n"}, {"data/DATA/X.BIN", "x"}});
+    InstallOptions o;
+    o.replace = true;
+    const InstallResult r = install_archive(root / "new.zip", mods, o);
+    CHECK(r.ok && r.replaced);
+    CHECK(fs::exists(outside / "precious.txt") && fs::exists(outside / "mod.ini") && fs::exists(shared / "keep.txt"));
+    CHECK(!fs::is_symlink(mods / "linked") && fs::exists(mods / "linked" / "data" / "DATA" / "X.BIN"));
+    CHECK(!fs::exists(mods / ".remove-linked"));
+    // remove_tree itself: links removed as links, real files removed
+    const fs::path t = root / "tree";
+    write(t / "a" / "f.txt", "f");
+    fs::create_directory_symlink(shared, t / "a" / "l", ec);
+    fs::create_symlink(shared / "keep.txt", t / "fl", ec);
+    CHECK(remove_tree(t) && !fs::exists(t) && fs::exists(shared / "keep.txt"));
+    CHECK(remove_tree(root / "not-there"));
+}
+
+TEST(install_says_when_it_cannot_clean_up) {   // modsec (review): remove_tree's result is not ignored
+    const fs::path root = fs::absolute(kRoot / "cleanup");
+    std::error_code e0;
+    fs::permissions(root / "mods" / ".install-stuck" / "locked", fs::perms::owner_all, e0);   // (a run stopped half way)
+    fs::remove_all(root, e0);
+    const fs::path mods = root / "mods";
+    write(mods / ".install-stuck" / "locked" / "file.txt", "x");
+    fs::permissions(mods / ".install-stuck" / "locked", fs::perms::owner_read | fs::perms::owner_exec);   // its file cannot go
+    std::error_code ec;
+    fs::remove(mods / ".install-stuck" / "locked" / "file.txt", ec);
+    const bool locked = fs::exists(mods / ".install-stuck" / "locked" / "file.txt");
+    write_zip(root / "s.zip", {{"mod.ini", "[mod]\nid = stuck\nversion = 1\napi = 1\n"}, {"data/A.BIN", "a"}});
+    const InstallResult r = install_archive(root / "s.zip", mods);
+    if (locked) {   // (root removes it anyway)
+        CHECK(!r.ok && has(r.errors, "cannot clear") && has(r.warnings, "could not remove all of"));
+        CHECK(!fs::exists(mods / "stuck"));
+    }
+    fs::permissions(mods / ".install-stuck" / "locked", fs::perms::owner_all);
+    const InstallResult r2 = install_archive(root / "s.zip", mods);
+    CHECK(r2.ok && r2.warnings.empty() && fs::exists(mods / "stuck" / "data" / "A.BIN") && !fs::exists(mods / ".install-stuck"));
+}
+
+TEST(a_pack_of_game_files_without_mod_ini) {   // item 11: a community pack of replacement files (synthetic here)
+    const fs::path root = fs::absolute(kRoot / "filespack");
+    fs::remove_all(root);
+    const fs::path mods = root / "mods";
+    // the game's folders at the top, any case, and a readme: offered, then installed as a file-replacement mod
+    write_zip(root / "Cool Cars #2.zip", {{"Pveh/Muscle/CAR1.BGV", "car bytes", true}, {"pveh/MUSCLE/CAR2.BGV", "car two"}, {"readme.txt", "by someone"}});
+    InstallResult r = install_archive(root / "Cool Cars #2.zip", mods);
+    CHECK(!r.ok && r.files_pack && has(r.errors, "file-replacement mod") && !fs::exists(mods / "cool-cars-2"));
+    InstallOptions o;
+    o.files_mod_name = "Cool Cars #2";
+    r = install_archive(root / "Cool Cars #2.zip", mods, o);
+    CHECK(r.ok && r.id == "cool-cars-2" && r.name == "Cool Cars  2" && r.files == 3);
+    CHECK(fs::exists(mods / "cool-cars-2" / "data" / "Pveh" / "Muscle" / "CAR1.BGV") && fs::exists(mods / "cool-cars-2" / "readme.txt"));
+    std::vector<Mod> found = discover(mods);
+    CHECK(found.size() == 1 && found[0].usable() && found[0].warnings.empty() && found[0].manifest.api == 1 &&
+          !found[0].manifest.code.present && !found[0].manifest.script.present && found[0].manifest.files_root == "data");
+    if (!found.empty()) {
+        const Overlay ov = Overlay::build({&found[0]});
+        CHECK(ov.find("PVEH/MUSCLE/CAR1.BGV") != nullptr && ov.find("PVEH/MUSCLE/CAR2.BGV") != nullptr && ov.find("README.TXT") == nullptr);
+    }
+    // the same pack again: another id (never over the first)
+    r = install_archive(root / "Cool Cars #2.zip", mods, o);
+    CHECK(r.ok && r.id == "cool-cars-2-2");
+    // one wrapper folder (a zipped folder), the game's folders inside it
+    write_zip(root / "wrapped.zip", {{"Wrapper/", ""}, {"Wrapper/tracks/AREA/X.DAT", "t"}, {"Wrapper/DATA/GLOBAL.TXD", "d"}});
+    o.files_mod_name = "wrapped";
+    r = install_archive(root / "wrapped.zip", mods, o);
+    CHECK(r.ok && r.id == "wrapped" && fs::exists(mods / "wrapped" / "data" / "tracks" / "AREA" / "X.DAT") && !fs::exists(mods / "wrapped" / "data" / "Wrapper"));
+    // anything else without a mod.ini: refused as before, and not offered
+    write_zip(root / "stuff.zip", {{"stuff/thing.txt", "x"}, {"other/x.bin", "y"}});
+    r = install_archive(root / "stuff.zip", mods, o);
+    CHECK(!r.ok && !r.files_pack && has(r.errors, "no game folders"));
+    write_zip(root / "mixed.zip", {{"PVEH/A/CAR1.BGV", "x"}, {"Screenshots/a.png", "y"}});   // a folder that is not the game's
+    r = install_archive(root / "mixed.zip", mods, o);
+    CHECK(!r.ok && !r.files_pack);
+    // a folder: the same rules (a pack, a mod with mod.ini), its files copied, the folder left as it was
+    write(root / "My Pack" / "SOUND" / "X.AWD", "s");
+    InstallOptions f;
+    r = install_folder(root / "My Pack", mods, f);
+    CHECK(!r.ok && r.files_pack);
+    f.files_mod_name = "My Pack";
+    r = install_folder(root / "My Pack", mods, f);
+    CHECK(r.ok && r.id == "my-pack" && fs::exists(mods / "my-pack" / "data" / "SOUND" / "X.AWD") && fs::exists(root / "My Pack" / "SOUND" / "X.AWD"));
+    write(root / "real" / "inner" / "mod.ini", "[mod]\nid = real\nversion = 1\napi = 1\n");
+    write(root / "real" / "inner" / "data" / "DATA" / "A.BIN", "a");
+    r = install_folder(root / "real", mods, {});
+    CHECK(r.ok && r.id == "real" && fs::exists(mods / "real" / "data" / "DATA" / "A.BIN"));
+    std::error_code ec;
+    fs::create_directory_symlink(root / "real", root / "My Pack" / "DATA", ec);   // a link inside: refused
+    r = install_folder(root / "My Pack", mods, f);
+    CHECK(!r.ok && has(r.errors, "a link"));
+    r = install_folder(mods / "real", mods, {});   // a folder of the mods folder itself
+    CHECK(!r.ok && has(r.errors, "inside the mods folder"));
+}
+
 TEST(install_archive_refusals) {
     const fs::path root = kRoot / "refusezip";
     fs::remove_all(root);
@@ -916,6 +1042,49 @@ TEST(texture_packs_in_load_order) {
     write(root / "a" / "textures" / "x.dds", "a changed");
     write(root / "a" / "textures" / "y.dds", "another");
     CHECK(Overlay::build(select(discover(root), {"a"}).mods).set_hash() == before);
+}
+
+// media1: which mods keep their ghosts and best times apart (src/b3replay/records.h)
+TEST(changes_gameplay_any_parts) {
+    ActiveMod m;
+    CHECK(!changes_gameplay_any(m));                         // files only (textures, sounds)
+    m.code.present = true;
+    CHECK(!changes_gameplay_any(m));                         // code, gameplay = no (the default)
+    m.code.gameplay = true;
+    CHECK(changes_gameplay_any(m));
+    ActiveMod s;
+    s.script.present = true;
+    s.script.gameplay = false;
+    CHECK(!changes_gameplay_any(s));                         // a script that only reads and draws
+    s.script.gameplay = true;
+    CHECK(changes_gameplay_any(s));
+    ActiveMod t;
+    t.tuning = "preset.ini";
+    CHECK(changes_gameplay_any(t) && t.changes_gameplay());  // a tuning preset
+}
+
+// media1: the modded ghosts' folder is named by the gameplay-changing mods alone (b3mod::gameplay_set_hash)
+TEST(gameplay_set_hash_ignores_other_mods) {
+    ActiveMod gp, gp2, tex, tex2;
+    gp.id = "faster-cars"; gp.version = "1.0"; gp.hash = 0x1111; gp.tuning = "preset.ini";
+    gp2.id = "lua-ai"; gp2.version = "2"; gp2.hash = 0x2222; gp2.script.present = true; gp2.script.gameplay = true;
+    tex.id = "hd-cars"; tex.version = "3"; tex.hash = 0x3333; tex.textures = "textures";
+    tex2.id = "speedo"; tex2.version = "1"; tex2.hash = 0x4444; tex2.script.present = true; tex2.script.gameplay = false;
+    CHECK(gameplay_set_hash({}).empty());
+    CHECK(gameplay_set_hash({tex, tex2}).empty());   // nothing changes gameplay: the plain folder
+    const std::string h = gameplay_set_hash({gp, gp2});
+    CHECK(h.size() == 16);
+    CHECK(gameplay_set_hash({tex, gp, gp2}) == h);          // a texture mod added
+    CHECK(gameplay_set_hash({gp, tex, gp2, tex2}) == h);    // added and moved between them, a read-only script too
+    CHECK(gameplay_set_hash({gp2, gp}) != h);               // the gameplay mods' own order counts
+    CHECK(gameplay_set_hash({gp}) != h);                    // one of them off
+    ActiveMod gp_new = gp;
+    gp_new.hash = 0x1112;                                   // its content changed
+    CHECK(gameplay_set_hash({gp_new, gp2}) != h);
+    gp_new = gp;
+    gp_new.version = "1.1";
+    CHECK(gameplay_set_hash({gp_new, gp2}) != h);
+    CHECK(set_hash_text({tex, gp, gp2}) != set_hash_text({gp, gp2}));   // (the whole set's hash does move)
 }
 
 TEST_MAIN("test_mods: the mod kit's loader (manifests, load order, overlay, hashes, requirements, conflicts, archives, patches, texture packs)")

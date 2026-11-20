@@ -15,6 +15,12 @@ ModOverlay& ModOverlay::instance() {
 }
 
 void ModOverlay::add_texture(std::uint32_t id, std::uint32_t w, std::uint32_t h, const std::uint8_t* rgba) {
+    if (!rgba && w == 0 && h == 0) {   // modsec: drop it
+        std::lock_guard<std::mutex> l(m_);
+        pending_.erase(id);
+        dropped_.push_back(id);
+        return;
+    }
     if (!rgba || w == 0 || h == 0 || w > 1024 || h > 1024) return;
     Pending p;
     p.w = w;
@@ -33,7 +39,7 @@ void ModOverlay::box(int w, int h, float& x, float& y, float& bw, float& bh) {
 }
 
 std::size_t ModOverlay::draw_list(b3gfx::Device& dev, int w, int h, const b3mod::OverlayList& list, std::vector<b3gfx::DrawItem>& out) {
-    if (w <= 0 || h <= 0 || list.items.empty()) return 0;
+    if (w <= 0 || h <= 0) return 0;
     if (epoch_.changed(dev)) {   // a track load released every id (the game's own took them): upload the mods' pictures again
         textures_.clear();
         white_ = b3gfx::kNone;
@@ -42,9 +48,19 @@ std::size_t ModOverlay::draw_list(b3gfx::Device& dev, int w, int h, const b3mod:
     }
     {   // textures given since the last frame
         std::map<std::uint32_t, Pending> fresh;
+        std::vector<std::uint32_t> dropped;
         {
             std::lock_guard<std::mutex> l(m_);
             fresh.swap(pending_);
+            dropped.swap(dropped_);
+        }
+        for (const std::uint32_t id : dropped) {   // modsec: a stopped mod's pictures
+            kept_.erase(id);
+            if (const auto t = textures_.find(id); t != textures_.end()) {
+                const std::uint8_t px[4] = {0, 0, 0, 0};
+                if (t->second != b3gfx::kNone) dev.update_texture(t->second, 1, 1, px);   // (no release call: its memory down to one texel)
+                textures_.erase(t);
+            }
         }
         for (auto& [id, p] : fresh) {
             // (try_emplace: operator[] would start the id at 0, a texture of the game's, which update_texture then replaces)
@@ -53,6 +69,7 @@ std::size_t ModOverlay::draw_list(b3gfx::Device& dev, int w, int h, const b3mod:
             kept_[id] = std::move(p);
         }
     }
+    if (list.items.empty()) return 0;   // (after the textures: a dropped one goes even when nothing is drawn)
     if (white_ == b3gfx::kNone) {
         const std::uint8_t px[4] = {255, 255, 255, 255};
         white_ = dev.create_texture({b3gfx::TextureLevel{1, 1, px}});

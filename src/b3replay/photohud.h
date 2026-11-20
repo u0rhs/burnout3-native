@@ -50,6 +50,7 @@ struct PhotoKeys {
     std::uint16_t zoom_out = SDL_SCANCODE_MINUS, zoom_out_alt = SDL_SCANCODE_KP_MINUS;
     std::uint16_t focus_far = SDL_SCANCODE_M, focus_near = SDL_SCANCODE_N;
     std::uint16_t dof = SDL_SCANCODE_F, blur_less = SDL_SCANCODE_V, blur_more = SDL_SCANCODE_B, target = SDL_SCANCODE_G;
+    std::uint16_t motion = SDL_SCANCODE_J, shutter_faster = SDL_SCANCODE_K, shutter_slower = SDL_SCANCODE_L;   // photoblur
     std::uint16_t reset = SDL_SCANCODE_R, hide_ui = SDL_SCANCODE_H;
     std::uint16_t exit_key = SDL_SCANCODE_P, exit_alt = SDL_SCANCODE_ESCAPE;   // (P also enters, from the pause menu)
     std::uint16_t shot = SDL_SCANCODE_F12;                                     // the window's screenshot key (not ours to take)
@@ -58,6 +59,10 @@ struct PhotoKeys {
     PhotoPadKey pad_up{PadButton::kR2}, pad_down{PadButton::kL2}, pad_fast{PadButton::kCross}, pad_roll_ccw{PadButton::kL1},
         pad_roll_cw{PadButton::kR1}, pad_dof{PadButton::kSelect}, pad_blur{PadButton::kStart}, pad_target{PadButton::kL3},
         pad_reset{PadButton::kSquare}, pad_hide{PadButton::kTriangle}, pad_exit{PadButton::kCircle};
+    // photoblur: the motion button; the shutter's chords. `pad_shutter_dpad`: they are the motion button with the D-pad
+    // left / right (the defaults; the strip shows the button and the D-pad), else their own chips
+    PhotoPadKey pad_motion{PadButton::kR3}, pad_shutter_faster{PadButton::kR3}, pad_shutter_slower{PadButton::kR3};
+    bool pad_shutter_dpad = true;
     bool operator==(const PhotoKeys&) const = default;
 };
 
@@ -72,6 +77,9 @@ struct PhotoHudData {
     int dof_level = 4, dof_levels = 6;
     bool focus_car = true;      // the focus on the player's car (else the screen centre)
     float focus_stops = 0;      // the focus offset (-4..4 stops)
+    int motion_mode = 0;        // photoblur: PhotoMotion::Mode (0 off)
+    int shutter = 3, shutters = 6;   // the shutter's step (0: the fastest) of `shutters`
+    int shutter_den = 60;       // 1 / the shutter time
     // the pictures only change with these (the whole degree, the focus to 0.05 stop)
     bool same_picture(const PhotoHudData& o) const;
 };

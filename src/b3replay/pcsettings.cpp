@@ -10,12 +10,29 @@
 
 namespace b3replay {
 
+namespace {
+// SUN SHADOWS (the row; $B3_SUN_SHADOWS wins) and its map's side: 2048 texels from ANTI-ALIASING 4x (the High preset),
+// 1024 below (Medium); $B3_SUN_SHADOW_SIZE wins
+bool sun_shadows_on(const b3settings::Settings& s) {
+    if (const char* e = std::getenv("B3_SUN_SHADOWS"); e && *e) return *e != '0';
+    return s.sun_shadows;
+}
+int sun_shadow_side(const b3settings::Settings& s) {
+    if (const char* e = std::getenv("B3_SUN_SHADOW_SIZE"); e && *e) return std::clamp(std::atoi(e), 256, 4096);
+    return s.msaa >= 4 ? 2048 : 1024;
+}
+}  // namespace
+
 void apply_view(View& v, const b3settings::Settings& s) {
-    v.effects.shadows = s.shadows;
-    v.effects.trails = s.skid_marks;
-    v.effects.sparks = s.sparks;
-    v.effects.scrapes = s.scrapes;
-    v.effects.popcorn = s.popcorn;
+    // split2p: both views' effects (split screen keeps player 2's in View::view2_state, swapped in for its view only: it
+    // kept the defaults, so SHADOWS, SKID MARKS, SPARKS, SCRAPES and CRASH DEBRIS changed only player 1's view)
+    for (Effects* e : {&v.effects, &v.view2_state.effects}) {
+        e->shadows = s.shadows;
+        e->trails = s.skid_marks;
+        e->sparks = s.sparks;
+        e->scrapes = s.scrapes;
+        e->popcorn = s.popcorn;
+    }
     v.show_sun = s.sun;
     v.show_coronas = s.coronas;
     v.show_blur = s.motion_blur;
@@ -46,6 +63,39 @@ void apply_view(View& v, const b3settings::Settings& s) {
     v.fov_correction = s.fov_correction;
     v.chase_distance = float(std::clamp(s.camera_distance, 90, 150)) / 100.0f;   // 1.1
     v.chase_height = float(std::clamp(s.camera_height, 0, 100)) / 100.0f;
+    {   // carpaint (view.h CarPaint): the settings for player 1, the environment's paint over them (B3_PAINT, B3_DECALS)
+        CarPaint p1 = v.car_paint[0];
+        p1.custom = s.car_paint == 1;
+        p1.rgb = std::uint32_t(std::clamp(s.paint_red, 0, 255)) << 16 | std::uint32_t(std::clamp(s.paint_green, 0, 255)) << 8 |
+                 std::uint32_t(std::clamp(s.paint_blue, 0, 255));
+        p1.decals = s.car_decals;
+        p1.finish = std::clamp(s.paint_finish, 0, 2);
+        v.car_paint[0] = car_paint_env(0, p1);
+        CarPaint p2 = v.car_paint[1];   // padpaint: player 2's rows (B3_PAINT_P2 over them)
+        p2.custom = s.p2_car_paint == 1;
+        p2.rgb = std::uint32_t(std::clamp(s.p2_paint_red, 0, 255)) << 16 | std::uint32_t(std::clamp(s.p2_paint_green, 0, 255)) << 8 |
+                 std::uint32_t(std::clamp(s.p2_paint_blue, 0, 255));
+        p2.decals = s.p2_car_decals;
+        p2.finish = p1.finish;
+        v.car_paint[1] = car_paint_env(1, p2);
+    }
+    // night (view.h NightLook; remaster-features §17 / §18), drawn only: $B3_NIGHT / $B3_MOON win over the rows
+    if (!night_env_set()) v.night.on = false;   // 1.3.0: night mode held back (TIME OF DAY hidden); $B3_NIGHT still turns it on
+    if (const char* e = std::getenv("B3_MOON"); !e || !*e) v.night.moon = s.moon;
+    // nightlights (§17.2): the projected headlight beams by the preset the values match: HIGH, ULTRA and custom values 8
+    // cars, MEDIUM 4, LOW and PS2 ORIGINAL the ground quads (no depth pre-pass); $B3_NIGHT_LIGHTS wins
+    if (const char* e = std::getenv("B3_NIGHT_LIGHTS"); !e || !*e) {
+        const b3settings::Preset p = b3settings::matching_preset(s);
+        v.night.lights = p == b3settings::Preset::kLow || p == b3settings::Preset::kPs2 ? 0 : p == b3settings::Preset::kMedium ? 4 : 8;
+    }
+    v.surface_detail = s.surface_detail;
+    v.ambient_occlusion = false;   // 1.3.0: AMBIENT OCCLUSION held back (noise lines over the picture)
+    // SUN SHADOWS (view.h; remaster-features §20), drawn only: 2048 texels from ANTI-ALIASING 4x (the High preset), the
+    // softer 5 x 5 kernel at 8x (Ultra), 1024 below (Medium); $B3_SUN_SHADOWS / _SIZE / _FILTER win
+    v.sun_shadows = sun_shadows_on(s);
+    v.sun_shadow_size = sun_shadow_side(s);
+    v.sun_shadow_filter = s.msaa >= 8 ? 1 : 0;
+    if (const char* e = std::getenv("B3_SUN_SHADOW_FILTER"); e && *e) v.sun_shadow_filter = *e == '1' ? 1 : 0;
     v.hud_colour_filter = s.hud_colour_filter;   // accessibility (a11y.h): the 2D layer only, drawn only
     v.reduce_flashes = s.screen_flashes == 1;
     v.hud_size = s.hud_size;   // textsize1 (a11y.h): the race HUD scaled per component, drawn only
@@ -53,7 +103,14 @@ void apply_view(View& v, const b3settings::Settings& s) {
     v.series_glyphs = s.series_shoulders == 1;   // carsel1: the car select's L1 / R1 glyphs (with the shoulders' series change)
 }
 
-void scale_options(const b3settings::Settings& s, b3gfx::Options& o) { o.render_scale = float(std::clamp(s.render_scale, 50, 100)) / 100.0f; }
+void scale_options(const b3settings::Settings& s, b3gfx::Options& o) {
+    o.render_scale = float(std::clamp(s.render_scale, 50, 200)) / 100.0f;
+    // finalfix: what is on at start has its pipelines made with the fixed set; the map's size counts in the supersampling budget
+    o.warm_sun_shadows = sun_shadows_on(s);
+    o.sun_shadow_side = o.warm_sun_shadows ? sun_shadow_side(s) : 0;
+    const char* surf = std::getenv("B3_SURFACE");   // (view.cpp surface_from_env: the prototype's switch, AO included)
+    o.warm_ambient_occlusion = surf && *surf && *surf != '0';   // (the AO row is held back in 1.3.0)
+}
 
 void filter_options(b3settings::Filter f, b3gfx::Options& o) {
     using b3settings::Filter;

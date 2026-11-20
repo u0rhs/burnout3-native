@@ -256,6 +256,24 @@ TEST(ptr_arg_window_overrun_is_fatal) {   // boot2: a callee writing past its bo
     }
     CHECK(quiet && big.a[1] == 7);
 }
+TEST(pointer_argument_is_checked_for_its_whole_pointee) {   // modsec: a mod's b3.call / set_arg gives any address
+    Rig r;
+    struct Big { int a[200]; };   // 800 bytes
+    const gaddr last = mini::R5900::kRamSize - 4u;   // the last word of RAM
+    bool small_ok = true, big_threw = false;
+    try {
+        (void)detail::from_image<int*>(last);   // 4 bytes: inside
+    } catch (const HostError&) {
+        small_ok = false;
+    }
+    try {
+        (void)detail::from_image<Big*>(last);   // 800 bytes from there: past the end of RAM
+    } catch (const HostError&) {
+        big_threw = true;
+    }
+    CHECK(small_ok && big_threw);
+    CHECK(detail::from_image<Big*>(0) == nullptr);   // null stays null
+}
 TEST(ptr_arg_window_leaves_no_host_bytes) {   // gen1 (determinism): a closed window restores the guest stack under it
     Rig r;
     const gaddr sp = r.be.stack_pointer();

@@ -11,10 +11,13 @@
 #include "iso_writer.h"
 #include "chd_writer.h"   // chd1
 #include "b3settings/page.h"   // chd1: translate_text
+#include "b3port/user_dir.h"   // portable mode
+#include "../src/native/save_store.h"
 
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <iterator>
 #include <thread>
 
@@ -58,6 +61,35 @@ const b3settings::Row* find_row(const b3settings::Content& c, const std::string&
 }
 
 }  // namespace
+
+// portable mode (1.3.0): launcher.ini's folders inside the launcher's folder written as "<install>/..." and read back
+// against it (the file on disk, the program's own folder; and the same text beside the program on another drive); a
+// folder outside stays absolute; native_play's reader (save_store.h chosen_saves_root) resolves it the same way
+TEST(config_folders_inside_the_install_kept_relative) {
+    const fs::path install = b3io::exe_dir();
+    CHECK(!install.empty());
+    if (install.empty()) return;
+    const fs::path dir = fs::path("build") / "test_launcher.install_relative";
+    fs::remove_all(dir);
+    Config c;
+    c.game_dir = utf8_of(install / "game");
+    c.saves_dir = utf8_of(install / "appdata" / "native" / "my-saves");
+    c.steam_cover = "/home/me/Pictures/cover.png";
+    CHECK(save_config(config_file(dir), c));
+    std::ifstream f(config_file(dir), std::ios::binary);
+    std::stringstream text;
+    text << f.rdbuf();
+    CHECK(text.str().find("game_dir = <install>/game") != std::string::npos);
+    CHECK(text.str().find("saves_dir = <install>/appdata/native/my-saves") != std::string::npos);
+    CHECK(text.str().find("/home/me/Pictures/cover.png") != std::string::npos);
+    Config back;
+    CHECK(load_config(config_file(dir), back) && back == c);
+    CHECK(b3native::save::chosen_saves_root(dir) == install / "appdata" / "native" / "my-saves");
+    Config other = config_from_ini(text.str());
+    config_paths_from_install(other, "/run/media/other/B3");
+    CHECK(fs::path(other.game_dir) == fs::path("/run/media/other/B3/game") && other.steam_cover == c.steam_cover);
+    fs::remove_all(dir);
+}
 
 TEST(config_ini_round_trip) {
     Config c;
@@ -408,14 +440,23 @@ TEST(row_steps) {
 TEST(settings_rows_are_the_games) {
     b3settings::Settings st;
     b3settings::Content c = settings_content(st, "", false);
-    // the in-game tabs without SAVES (the launcher's page)
-    CHECK(c.tabs.size() == 5);
+    // the in-game tabs without SAVES (the launcher's page; settingsui: its own LAUNCHER tab is drawn after them)
+    CHECK(c.tabs.size() == 8);   // DISPLAY GRAPHICS EFFECTS CAR CONTROLS AUDIO GAME MODS
     for (const auto& t : c.tabs) CHECK(t.label != "SAVES");
-    CHECK(find_row(c, "HD TEXTURE PACK") && !find_row(c, "REMOVE HD PACK") && !find_row(c, "HD TEXTURES"));
+    // settingsui (Env::launcher): a row that opens the launcher's HD Textures, Music and Controllers pages stands in for
+    // the game's rows; OPEN THE LAUNCHER AT START is on the LAUNCHER tab, not GAME
+    const b3settings::Row* hd = find_row(c, "HD TEXTURE PACK");
+    CHECK(hd && hd->id == b3settings::kActionOpenHdPage && !hd->disabled);
+    CHECK(!find_row(c, "REMOVE HD PACK") && !find_row(c, "HD TEXTURES"));
+    const b3settings::Row* music = find_row(c, "MUSIC FOLDER");
+    CHECK(music && music->id == b3settings::kActionOpenMusic && !find_row(c, "PLAYLIST"));
+    const b3settings::Row* pads = find_row(c, "BUTTONS AND KEYS");
+    CHECK(pads && pads->id == b3settings::kActionOpenControllers);
+    CHECK(!find_row(c, "OPEN THE LAUNCHER AT START"));
+    CHECK(b3settings::launcher_at_start_row(st).label == "OPEN THE LAUNCHER AT START" && b3settings::launcher_at_start_row(st).value == 1);
     st.hd_pack_dir = "/packs/b3";
     c = settings_content(st, "Folder chosen.", true);
-    CHECK(find_row(c, "REMOVE HD PACK") && find_row(c, "HD TEXTURES"));
-    CHECK(find_row(c, "HD TEXTURE PACK")->description.find("Folder chosen.") != std::string::npos);
+    CHECK(find_row(c, "HD TEXTURES") && !find_row(c, "REMOVE HD PACK"));   // the switch here, the folder on the HD page
     // an edit through the row's step: the in-game rule, and the file the game reads
     const b3settings::Row* vs = find_row(c, "VSYNC");
     CHECK(vs && vs->value == 0);
@@ -427,6 +468,57 @@ TEST(settings_rows_are_the_games) {
     CHECK(b3settings::save_file((dir / "pc_settings.ini").string(), st));
     b3settings::Settings back;
     CHECK(b3settings::load_file((dir / "pc_settings.ini").string(), back) && back == st && back.hd_pack_dir == "/packs/b3");
+}
+
+// settingsui: a picture's visible box (the Play page's logo: the whole of it, with a margin, inside the picture)
+TEST(logo_visible_box) {
+    ArtImage im;
+    im.w = 8;
+    im.h = 4;
+    im.rgba.assign(8 * 4 * 4, 0);
+    const auto opaque = [&](int x, int y) { im.rgba[(std::size_t(y) * 8 + std::size_t(x)) * 4 + 3] = 255; };
+    PixelBox b = visible_box(im, 1);
+    CHECK(b.x0 == 0 && b.y0 == 0 && b.x1 == 8 && b.y1 == 4);   // none visible: the whole picture
+    opaque(2, 1);
+    opaque(6, 2);
+    b = visible_box(im);
+    CHECK(b.x0 == 2 && b.y0 == 1 && b.x1 == 7 && b.y1 == 3);
+    b = visible_box(im, 3);   // the margin, kept inside the picture
+    CHECK(b.x0 == 0 && b.y0 == 0 && b.x1 == 8 && b.y1 == 4);
+    im.rgba[(1 * 8 + 2) * 4 + 3] = 5;   // faint (under the threshold): not counted
+    b = visible_box(im);
+    CHECK(b.x0 == 6 && b.x1 == 7 && b.y0 == 2 && b.y1 == 3);
+}
+
+// settingsui: the tab strip: it fits when it can (padding first), else it scrolls so the chosen tab is whole, in view and
+// clear of the arrows' room; every tab reachable that way
+TEST(tab_strip_layout) {
+    const std::vector<float> nine = {80, 85, 70, 40, 95, 55, 45, 50, 90};   // 610 of text
+    StripLayout l = strip_layout(nine, 940, 0);
+    CHECK(!l.over && l.shift == 0 && l.spans.front().first == 0 && std::fabs(l.spans.back().first + l.spans.back().second - l.total) < 0.01f);
+    CHECK(l.total <= 940.5f);
+    l = strip_layout(nine, 900, 8);   // padding down to 16 still fits: no scrolling
+    CHECK(!l.over && l.shift == 0);
+    for (std::size_t sel = 0; sel < nine.size(); ++sel) {   // a narrow strip: it scrolls
+        l = strip_layout(nine, 500, sel);
+        CHECK(l.over);
+        const auto [x, w] = l.spans[sel];
+        CHECK(x >= -0.01f && x + w <= 500 - kStripEdge + 0.01f);   // the chosen tab whole and clear of the right arrow
+        if (sel == 0) CHECK(l.shift == 0);
+        for (std::size_t k = 1; k < l.spans.size(); ++k) CHECK(std::fabs(l.spans[k].first - (l.spans[k - 1].first + l.spans[k - 1].second)) < 0.01f);
+    }
+    CHECK(strip_layout({}, 500, 0).spans.empty());
+}
+
+// settingsui: the window opens at 1280x720, or 1440x810 where the display has 900 or more points of usable height
+TEST(window_size) {
+    CHECK(default_window_size(1366, 728) == std::make_pair(1280, 720));     // a 1366x768 laptop
+    CHECK(default_window_size(1280, 800) == std::make_pair(1280, 720));     // the Steam Deck
+    CHECK(default_window_size(1920, 1040) == std::make_pair(1440, 810));    // 1080p less the task bar
+    CHECK(default_window_size(1440, 899) == std::make_pair(1280, 720));
+    CHECK(default_window_size(1024, 560) == std::make_pair(995, 560));       // a small display: inside its usable area, 16:9
+    CHECK(default_window_size(1200, 900) == std::make_pair(1200, 675));      // tall but narrow: 1280x720 scaled to fit the width
+    CHECK(kMinWindowW == 1024 && kMinWindowH == 576 && kMinWindowW * 9 == kMinWindowH * 16);
 }
 
 // ---- the Music page (the custom soundtrack: Settings::music_folder / playlist_mode, src/native/custom_music.h) ----

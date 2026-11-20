@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -45,12 +46,16 @@ struct Settings {
     int upscaling = 1;                // 1.1: RENDER SCALE's upscale, 0 bilinear (as 1.0), 1 sharp (post.frag sharp_upscale)
     int render_scale = 100;           // effects2: RENDER SCALE, % of the window the 3D picture (effects and full-screen passes with it) is
                                       // drawn at, then scaled up; the HUD and menus stay at the window's size. 100 (the default) is the
-                                      // picture as before, byte for byte. 50..100; the presets: LOW 75, the others 100. Drawn only
+                                      // picture as before, byte for byte. 50..200 (perf4: above 100 supersampled, brought down with a box
+                                      // filter); the presets: LOW 75, the others 100. Drawn only
     bool dither = false;              // perf1: an ordered dither at the final output against 8-bit gradient bands (the presets leave it)
     bool hd_textures = true;          // the HD pack, when one is given ($B3_HD_PACK / --hd-pack)
     std::string hd_pack_dir;          // mac5 (remaster-features §8): the HD pack folder chosen on the SETTINGS page or in the
                                       // launcher (a PCSX2 replacement folder; empty: none, or $B3_HD_PACK). --hd-pack wins.
                                       // Applies at the next start
+    bool xbox_textures = false;       // xboximport (1.3.0): the pack Import Xbox textures built from the player's Xbox disc
+                                      // (<user data>/xbox-textures, b3asset/xboximport.h), below the mods' packs and hd_pack_dir;
+                                      // set by a finished import, off by default; used with hd_textures (F4). Next start
     int car_reflections = 2;          // reflect1: 0 off (no env pass), 1 original (the game's own pass), 2 enhanced (glossy sky / sun
                                       // reflections on the paint and glass; drawn only). PS2 ORIGINAL and LOW use 1
     bool car_detail_highest = false;  // cars at LOD 3 at any distance (else the game's LOD choice)
@@ -80,6 +85,30 @@ struct Settings {
     // game's) and up (centimetres, 0..100 in 25s), tilted to keep the car where it was on screen (View::apply_fov)
     int camera_distance = 100;
     int camera_height = 0;
+    // carpaint (remaster-features §15; b3asset/carpaint.h), drawn only: player 1's car in a colour of the player's own
+    // (car_paint 1: paint_red / green / blue, 0..255 as on screen) instead of the paint picked in the car select, and
+    // car_decals false: the car without its logos, numbers and stripes. The game keeps the car select's paint (replays,
+    // ghosts, saves, the other players see it); cars with one fixed livery keep it. Off by default
+    int car_paint = 0;
+    int paint_red = 195, paint_green = 30, paint_blue = 30;   // padpaint: on the rows' 15-step grid (was 192 / 24 / 24)
+    bool car_decals = true;
+    // padpaint: player 2's (the split screen's second car), the same rows; and the finish of both players' paint (0
+    // Gloss: the game's, 1 Metallic: a stronger reflection in the paint's colour and a flake sparkle, 2 Pearl: the
+    // paint's hue shifting with the view angle). Drawn only; Gloss and Game (the defaults) draw the cars as before
+    int p2_car_paint = 0;
+    int p2_paint_red = 30, p2_paint_green = 90, p2_paint_blue = 210;
+    bool p2_car_decals = true;
+    int paint_finish = 0;
+    // night (remaster-features §17 / §18), drawn only, off by default: time_of_day 1 = TIME OF DAY Night (the races after
+    // dark: the grade, the night sky, the headlights); moon: MOON (the disc and its light, at night); surface_detail:
+    // SURFACE DETAIL (relief and sheen from the track's textures); ambient_occlusion: AMBIENT OCCLUSION
+    int time_of_day = 0;
+    bool moon = true;
+    bool surface_detail = false;
+    bool ambient_occlusion = false;
+    // SUN SHADOWS (remaster-features §19), drawn only, off by default: the cars' shadows from the sun (the moon at night)
+    // on the road. The map's size and kernel follow ANTI-ALIASING (b3replay::apply_view); the PS2 and Low presets turn it off
+    bool sun_shadows = false;
     // Interface
     int fps_view = 0;                 // fpsoverlay2: the FPS COUNTER (src/b3replay/fpspanel.h): 0 off, 1 minimal, 2 standard, 3 detailed.
                                       // An ini from before the views holds `fps_counter = true / false`: true reads as 2, false as 0
@@ -112,7 +141,11 @@ struct Settings {
     // launcher into <preferences>/languages. Host-only: the game opens DATA/GLOBALUS.BIN and HEADUS.BIN as on the US
     // disc and gets that language's GLOBAL<code>.BIN / HEAD<code>.BIN instead (the same string ids). Next start.
     std::string language;             // a disc's code ("IT", "FR", "GE", ...); empty: English (the game's own text)
-    // Accessibility (remaster-features "Accessibility"; PC SETTINGS > INTERFACE, section ACCESSIBILITY). The defaults are
+    int voices = 0;                   // 1.3.0 VOICES: 0 the LANGUAGE's voices (French, German, Italian, Spanish): the DJ when
+                                      // its banks are imported (b3asset/language.h dj_*; the game opens its E_DJ*.RWS banks
+                                      // and gets the language's) and the race training's narration (tools/native/
+                                      // training_voice.h); 1 always the English ones. Next start
+    // Accessibility (remaster-features "Accessibility"; PC SETTINGS > GAME, section ACCESSIBILITY). The defaults are
     // the game exactly: the frames byte-identical, the pad reports untouched.
     int screen_flashes = 0;           // 0 full (the game's), 1 reduced: the 2D layer's full-screen bright fills and the
                                       // camera-change static capped (drawn only; src/b3replay/a11y.h)
@@ -154,6 +187,11 @@ struct Settings {
     // (the page's own series change) and small L1 / R1 glyphs (the device's buttons) are drawn beside its series arrows.
     // INPUT-CHANGING, opt-in: the game reads presses the player made on other buttons
     int series_shoulders = 0;
+    // Garage camera (garagecam1; src/b3replay/garagecam.h): on (the default), on the front end's car pages the right
+    // stick (or a mouse drag on the car) turns the view round the car, the game's spin back a second after it is let
+    // go. Drawn only: the game's camera, input and state are untouched (without the stick the frames are the game's).
+    // Off: the car pages as the game draws them, and a mouse click there presses Cross on the press as before
+    bool garage_camera = true;
     // Replay files (replay1, remaster-features §5; src/native/replay_file.h). Host-only: 0 off (nothing recorded), 1 on:
     // native_play keeps each session from its start to its end as <prefs>/replays/<date-time>.b3replay (the inputs, the
     // save as it was at the start; the newest 20 automatic ones kept), played back from the launcher's Replays page.
@@ -173,8 +211,9 @@ Settings with_preset(Settings s, Preset p);
 // effects2: the levels (Settings::sparks, popcorn): the name of one, the share of the particles it draws (0, 25, 50, 100 %)
 enum : int { kLevelOff = 0, kLevelLow = 1, kLevelMedium = 2, kLevelHigh = 3 };
 const char* level_name(int level);
-// effects2: RENDER SCALE's choices (percent), the nearest one's index of a value
-constexpr int kRenderScales[] = {100, 85, 75, 67, 50};
+// effects2: RENDER SCALE's choices (percent), the nearest one's index of a value. perf4: above 100 supersampled (drawn larger,
+// brought down with a box filter; capped to what the GPU's targets take)
+constexpr int kRenderScales[] = {200, 150, 125, 100, 85, 75, 67, 50};
 std::size_t render_scale_index(int percent);
 // effects2: BATTERY SAVER's change while the PC runs on battery (nothing when the row is off): the frame rate capped to 60
 // and SPARKS / CRASH DEBRIS to at most Medium. Host-only; the stored settings are never changed (the host applies this copy).
@@ -186,8 +225,19 @@ const char* preset_name(Preset p);
 // key = value text (also the HSET payload). Unknown keys are ignored, bad values keep the default.
 std::string to_ini(const Settings& s);
 Settings from_ini(std::string_view text, std::vector<std::string>* warnings = nullptr);
+// portable mode (1.3.0): the folder settings (hd_pack_dir, music_folder) that lie inside `install` (the program's
+// folder) are kept in the file as "<install>/..." (b3port/user_dir.h install_relative) and read back against it, so a
+// USB stick whose drive letter changes still finds them. load_file / save_file do it with the program's own folder.
+void paths_to_install(Settings& s, const std::filesystem::path& install);
+void paths_from_install(Settings& s, const std::filesystem::path& install);
 bool load_file(const std::string& path, Settings& s, std::string* why = nullptr);   // false: no file (s unchanged)
 bool save_file(const std::string& path, const Settings& s, std::string* why = nullptr);
+// settingsui: the launcher and the game both edit pc_settings.ini; each writes only what it changed. `mine` with every
+// ini key it has as `base` (what this program last read or wrote) taken from `disk` (the file as it is now), the keys it
+// changed kept.
+Settings merge_changes(const Settings& base, const Settings& mine, const Settings& disk);
+// The file read again (none: `base`), merge_changes into `mine`, written; `mine` is then what the file holds.
+bool save_merged(const std::string& path, const Settings& base, Settings& mine, std::string* why = nullptr);
 
 // The HSET host record (published at kHostSetBase, the renderer reads it per tick):
 // {u32 'HSET', u32 serial, u32 payload bytes, u32 0}, then the payload (to_ini), padded to 16 bytes.

@@ -35,6 +35,8 @@
 // Each row charges the virtual EE time of the retail libdbc code it replaces (platform_charge.h): its calls into libsif
 // and the kernel, in order; the status copy runs with interrupts off (DIntr / EIntr called for real, as libdbc does).
 #include "platform.h"
+#include "b3port/fileio.h"   // fsrobust
+#include "b3port/user_dir.h"   // portable mode: the rescue copy
 #include "platform_charge.h"
 #include "platform_sif.h"
 #include "pad_actuator.h"
@@ -123,11 +125,16 @@ void publish(std::int32_t id, std::uint32_t v) {
 // The card in the slot: the active profile's save card (save_store.h), when $B3NATIVE_SAVES_ROOT names a saves folder
 save::ProfileCard* profile_card() {
     static save::ProfileCard* c = []() -> save::ProfileCard* {
-        const char* root = std::getenv("B3NATIVE_SAVES_ROOT");
-        if (!root || !*root) return nullptr;
-        auto* p = new save::ProfileCard(root);
+        const auto root_s = b3io::getenv("B3NATIVE_SAVES_ROOT");   // fsrobust: UTF-8 (native_play sets it wide)
+        if (!root_s) return nullptr;
+        const std::string& root = *root_s;
+        // fsrobust: a folder named on the command line or in the environment is made when it is missing (native_play
+        // names the launcher's chosen folder only when it is there); later saves never make it again
+        std::string why;
+        if (!save::saves_root_ready(b3io::u8path(root), true, &why)) std::fprintf(stderr, "[save] %s\n", why.c_str());
+        auto* p = new save::ProfileCard(b3io::u8path(root));
         std::string err;
-        if (!p->attach(save::read_active_slot(root), &err))
+        if (!p->attach(save::read_active_slot(b3io::u8path(root)), &err))
             std::fprintf(stderr, "[save] %s: an empty card this run, nothing saved (the file is left as it is)\n", err.c_str());
         stub_note("save card", "profile slot " + std::to_string(p->slot()) + " of " + root + " in the card slot" +
                                    (p->persist() ? "; saves written to its .sav" : "; saves kept in memory (B3NATIVE_CARD_PERSIST=1 writes them)"));
@@ -443,9 +450,14 @@ std::uint64_t actuator_requests(std::uint64_t* busy) {
     return g_actuator_requests;
 }
 save::ProfileCard* save_profile_card() { return profile_card(); }
-void save_card_flush() {
-    std::string err;
-    if (save::ProfileCard* p = profile_card(); p && !p->flush(&err)) std::fprintf(stderr, "[save] at exit: %s\n", err.c_str());
+std::string save_card_flush(bool throwaway) {
+    save::ProfileCard* p = profile_card();
+    if (!p) return {};
+    // (the local user data folder: a copy when the save folder fails; portable mode: this computer's own folder, so
+    // that a removed or write-protected stick's save still lands somewhere -- the only write outside the stick)
+    const b3io::UserDirChoice in_use = b3io::user_dir_choice();
+    const std::filesystem::path data = in_use.kind == b3io::UserDirKind::kPortable ? b3io::platform_user_dir() : save::user_data_dir();
+    return p->flush_at_exit(data.empty() ? data : data / "unsaved", throwaway);
 }
 
 // The device manager's VBlank: the card inserted when its time comes, the profile's settled saves written, then every

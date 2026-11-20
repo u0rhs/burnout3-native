@@ -28,7 +28,7 @@ SETTINGS (a MODS tab), draw over the game, and read files. The launcher asks bef
 patched ELF) do nothing here: a code mod does the same change in C.
 
 **Tuning presets**: a mod's `[tuning] preset` sets the game's tuning variables (boost and score rules, AI, car physics,
-cameras, sound mixing) as the game registers them, and the **tuning console** (PC SETTINGS > INTERFACE > DEVELOPER
+cameras, sound mixing) as the game registers them, and the **tuning console** (PC SETTINGS > MODS > DEVELOPER
 MODS) shows and changes them live: [tuning.md](tuning.md), [tutorial 04](tutorials/04-a-tuning-preset.md); what each
 value does: [tuning-options.md](tuning-options.md). Both
 change gameplay and are marked so.

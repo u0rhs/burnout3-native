@@ -1,5 +1,6 @@
 // carlookpanel.cpp -- see carlookpanel.h (reflect2).
 #include "carlookpanel.h"
+#include "b3port/fileio.h"   // fsrobust: UTF-8 paths
 
 #include <algorithm>
 #include <cmath>
@@ -96,7 +97,7 @@ std::string CarLookPanel::copy_locked() {
     status_ = "VALUES IN THE LOG AND THE CLIPBOARD";
     const std::string path = carlook::values_path();
     if (!path.empty()) {
-        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        std::ofstream f(b3io::u8path(path), std::ios::binary | std::ios::trunc);
         if (f) { f << text; status_ = "WROTE car_look_values.txt, AND THE CLIPBOARD"; }
     }
     SDL_SetClipboardText(text.c_str());

@@ -44,7 +44,9 @@ struct B3ModSelf {
     std::vector<b3mod::SettingRow> rows;   // added in b3mod_main (into the live settings once loaded)
     std::vector<std::pair<std::uint32_t, std::vector<std::uint8_t>>> deferred;   // writes made in b3mod_main
     std::vector<b3mod::OverlayItem> items;   // queued since the last frame
-    bool items_warned = false, late_warned = false;
+    bool items_warned = false, late_warned = false, textures_warned = false;
+    std::vector<std::uint32_t> textures;   // modsec: its live texture ids, and their bytes (CodeMods::kModTexture*)
+    std::uint64_t texture_bytes = 0;
     void* lib = nullptr;
     std::shared_ptr<b3native::CodeMods::Builtin> builtin;   // lua6: a script mod's runtime (kept as long as the mod)
 };
@@ -94,6 +96,32 @@ void close_library(void* lib) {
     dlclose(lib);
 #endif
 }
+
+// The files a library load reads, held open without write or delete sharing (Windows) from their last hash to the
+// load, so what loads is what was hashed. Elsewhere a no-op (the loader hashes right before dlopen; a short window
+// stays: dlopen of /proc/self/fd/<n> would close it, but breaks $ORIGIN for the libraries beside the mod's, so it is
+// documented instead, sdk-reference.md "Trust").
+class FileHolds {
+public:
+    FileHolds() = default;
+    FileHolds(const FileHolds&) = delete;
+    FileHolds& operator=(const FileHolds&) = delete;
+#ifdef _WIN32
+    ~FileHolds() {
+        for (HANDLE h : held_) CloseHandle(h);
+    }
+    void hold(const std::filesystem::path& p) {
+        const HANDLE h = CreateFileW(std::filesystem::absolute(p).wstring().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                     FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h != INVALID_HANDLE_VALUE) held_.push_back(h);
+    }
+
+private:
+    std::vector<HANDLE> held_;
+#else
+    void hold(const std::filesystem::path&) {}
+#endif
+};
 
 // ---- registers ----
 void to_regs(const b3host::CallArgs& a, B3ModRegs& r) {
@@ -308,9 +336,21 @@ struct CodeMods::Impl {
     }
     static std::uint32_t texture(B3ModSelf* s, std::uint32_t w, std::uint32_t h, const std::uint8_t* rgba) {
         if (!s || !rgba || w == 0 || h == 0 || w > 1024 || h > 1024) return 0;
+        const std::uint64_t bytes = std::uint64_t(w) * h * 4;
+        if (s->textures.size() >= kModTextures || s->texture_bytes + bytes > kModTextureBytes) {
+            if (!s->textures_warned) {
+                s->textures_warned = true;
+                say(of(s), "mod " + s->id + ": texture refused: a mod may have " + std::to_string(kModTextures) + " textures of " +
+                               std::to_string(kModTextureBytes >> 20) + " MB in all (" + std::to_string(s->textures.size()) + " made, " +
+                               std::to_string(s->texture_bytes >> 10) + " KB): make each once, at the start");
+            }
+            return 0;
+        }
         const std::uint32_t id = ++g_texture_ids;
         CodeMods& c = of(s);
         if (c.host_.texture) c.host_.texture(id, w, h, rgba);
+        s->textures.push_back(id);
+        s->texture_bytes += bytes;
         return id;
     }
     static bool room(B3ModSelf* s) {
@@ -426,6 +466,16 @@ CodeMods::~CodeMods() {
     // the libraries stay loaded: the hook table keeps their functions for the rest of the process
 }
 
+void CodeMods::release_textures(B3ModSelf* s) {
+    if (!s || !s->owner) return;
+    CodeMods& c = *s->owner;
+    if (c.host_.texture_free)
+        for (const std::uint32_t id : s->textures) c.host_.texture_free(id);
+    s->textures.clear();
+    s->texture_bytes = 0;
+    s->textures_warned = false;
+}
+
 std::vector<std::string> CodeMods::loaded_ids() const {
     std::vector<std::string> v;
     for (const auto& s : loaded_) v.push_back(s->id);
@@ -440,6 +490,7 @@ std::vector<CodeMods::Result> CodeMods::load(const std::vector<Candidate>& mods,
         auto fail = [&](const std::string& why, B3ModSelf* s) {
             res.reason = why;
             Impl::say(*this, "native_play: mods: " + m.id + ": not loaded: " + why);
+            if (s) release_textures(s);   // (made in its b3mod_main)
             if (s) close_library(s->lib);
             out.push_back(res);
         };
@@ -456,6 +507,17 @@ std::vector<CodeMods::Result> CodeMods::load(const std::vector<Candidate>& mods,
             s->builtin = m.builtin;
         } else {
             std::string why;
+            FileHolds holds;   // (Windows: no writer or delete from this hash to the load)
+            if (!m.trust_digest.empty()) {
+                std::vector<b3mod::TrustFile> files;
+                if (!b3mod::trust_files(m.dir, m.code, b3mod::ScriptSpec{}, files, &why)) { fail("its libraries cannot be checked: " + why, nullptr); continue; }
+                for (const b3mod::TrustFile& f : files) holds.hold(m.dir / b3mod::path_from_utf8(f.rel));
+                files.clear();
+                if (!b3mod::trust_files(m.dir, m.code, b3mod::ScriptSpec{}, files, &why) || b3mod::trust_digest(files) != m.trust_digest) {
+                    fail("its libraries changed after they were checked (" + (why.empty() ? std::string("a file differs") : why) + "): start the game again", nullptr);
+                    continue;
+                }
+            }
             s->lib = open_library(m.library, why);
             if (!s->lib) { fail(why + ": " + b3mod::path_utf8(m.library), nullptr); continue; }
             using BuiltFor = unsigned (*)();

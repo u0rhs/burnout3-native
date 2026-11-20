@@ -16,7 +16,10 @@
 #   sif.log       B3NATIVE_SIF_LOG (the EE<->IOP traffic, stamped with the VBlank and the EE cycles), gzipped
 #   rwa.log       B3NATIVE_RWA_LOG (RW Audio's commands and replies), gzipped
 #   ram.txt       B3NATIVE_RAM_HASH=$RAM_GRID: an FNV-1a hash of each MB of guest RAM at those VBlanks
-#   tail.log      the last 40 lines of native_play's log (the full log and the shots are deleted)
+#   tail.log      the last 40 lines of native_play's log
+#   native_play.log.gz   determ1: the whole log (each 600 VBlanks' wall rate, the loads: a run that differs from the
+#                 reference can be told apart by its timing). The shots (rc/) are deleted unless the verdict is not
+#                 PASS; a recording compare.sh fails is kept apart by compare.sh (KEEP_FAILED)
 # and <out>/rate.txt: RATE_RUNS unpaced runs of the plain race scenario (no trace, no logs) -- race_check's "last
 # windows N VBlanks/s", one per line; <out>/build.txt: the binary's path, SHA-256 and the tree's git description.
 #
@@ -36,7 +39,8 @@
 #   RATE_RUNS     default 3 (0: none)
 #   JOBS          native_play runs at once, default 2 (at most 2 for this tool on a typical desktop)
 #   B3_GAME_DIR, SAVES   as race_check.sh (local.env)
-#   B3_PHOTO_ROW=0 is exported (photorow1: no PHOTO MODE row in the pause menu, so the pause menu frames stay the game's own)
+#   B3_PHOTO_ROW=0 is exported (photorow1: no PHOTO MODE row in the pause menu, so the pause menu frames stay the game's own),
+#   and B3_RACE_TIME_LABEL=0 (todrace: no "Time of day" prompt on the track pages; the choice itself still works)
 # Last line: "baseline: PASS recorded <n> scenarios in <out>" or "baseline: FAIL <scenarios>" (a run that did not PASS
 # is still recorded: compare.sh then reports it).
 set -u
@@ -57,6 +61,8 @@ export B3_PARTICLES=${B3_PARTICLES:-off}                      # effects3: the pa
 export B3_BLOOM_LEVEL=${B3_BLOOM_LEVEL:-standard}            # bloom2: the game's own bloom (the PC default is Soft)
 export B3_BLOOM_SPLIT=${B3_BLOOM_SPLIT:-1}                   # bloom3: the original bloom pass form (the lean MSAA form differs by rounding)
 export B3NATIVE_SAVE_SCREENS=${B3NATIVE_SAVE_SCREENS:-show}   # the reference flow: the autosave page is drawn (SAVE SCREENS defaults to Hide; only crashresults live_17200 differs)
+export B3_SUB_CLAMP=${B3_SUB_CLAMP:-0}                       # subtractive blends not clamped at 0 (the record predates the clamp: the race shots' wire edges differ)
+export B3_RACE_TIME_LABEL=${B3_RACE_TIME_LABEL:-0}           # todrace: the track pages without the "Time of day" prompt (the record predates it)
 SCEN=${SCENARIOS:-race pause photo music takedown timeattack roadrage crash worldtour movie multiplayer partycrash online ddrewards ddrecords ddsettings crashnav carselect crashresults nfsdemo}
 KERNEL_ROWS=10BB00,10BB20,10BB30,10BB40,10BB50,10CA38,10C9D0,10C968,10C900,10BA20,10C160,10BE20,10BE30,10BE40,10BE50,10BE60,10BE70,10BE80,10BC20,10BC30,10BC40,10BC50,10BC60,10BC70,10BC80,10BCB0,10BD10,10BD20,10BD30,10BD40,10BD50,10CCD0,10BBA0,10BBB0,10BC00,10BC10,114E60,114EB8,10BED0,10C130,2372F0
 TRACE=${TRACE:-$KERNEL_ROWS}
@@ -127,7 +133,8 @@ record() {   # record <scenario>
     if [ "${KEEP_TRACE:-0}" = 1 ]; then gzip -f "$d/trace.raw"; else rm -f "$d/trace.raw"; fi
   fi
   gzip -f "$d/sif.log" "$d/rwa.log" 2>/dev/null
-  rm -rf "$d/rc"
+  gzip -c "$d/rc/native_play.log" > "$d/native_play.log.gz" 2>/dev/null
+  case $(cat "$d/verdict") in "race_check: PASS"*) rm -rf "$d/rc" ;; esac   # determ1: a failing run keeps its shots
   # further trace groups: trace-only runs (a build with fewer time_trace slots than addresses)
   for ((g = 1; g < ${#TGROUPS[@]}; ++g)); do
     k=$((g + 1))

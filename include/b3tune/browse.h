@@ -20,6 +20,7 @@
 
 #include "b3tune/tune.h"
 #include "b3tune/tune_abi.h"
+#include "b3port/fileio.h"   // fsrobust: UTF-8 paths
 
 #include <algorithm>
 #include <cctype>
@@ -619,7 +620,7 @@ public:
         dirty_ = false;
     }
     bool load(const std::string& path) {
-        std::ifstream f(path, std::ios::binary);
+        std::ifstream f(b3io::u8path(path), std::ios::binary);
         if (!f) return false;
         std::stringstream ss;
         ss << f.rdbuf();
@@ -627,9 +628,7 @@ public:
         return true;
     }
     bool save(const std::string& path) {
-        std::ofstream f(path, std::ios::binary | std::ios::trunc);
-        f << text();
-        if (!f) return false;
+        if (!b3io::replace_file(b3io::u8path(path), text())) return false;
         dirty_ = false;
         return true;
     }

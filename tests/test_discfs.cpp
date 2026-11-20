@@ -99,7 +99,7 @@ struct Spec {
 
 // The test volume: / {SYSTEM.CNF, SLUS_210.50, Mixed.Txt, NOEXT., DATA/ (two sectors), TRACKS/EU/C1_V1/
 // {STATIC.DAT, STREAMED.DAT}, MULTI.BIN (three extents)} (DATA: 52 files), and with `far` FAR.DAT at LBA 0x240000 (byte offset 4.5 GB)
-Iso build(Spec& spec, bool far) {
+Iso build(Spec& spec, bool far, bool odd = false) {
     Iso iso;
     const std::uint32_t root = 18, data = 19 /* 2 sectors */, tracks = 21, eu = 22, c1 = 23;
     auto file = [&](const std::string& path, std::uint32_t seed, std::size_t n) {
@@ -132,6 +132,12 @@ Iso build(Spec& spec, bool far) {
         iso.put(spec.far_lba, bytes.data(), bytes.size());
         spec.files["FAR.DAT"] = bytes;
         rr.push_back(record("FAR.DAT;1", std::uint32_t(spec.far_lba), 100000, 0));
+    }
+    if (odd) {   // fsrobust: names a real disc never has: a byte >= 0x80 (read as Latin-1: CAFÉ) and a separator (left out)
+        const auto cafe = file("CAF\xC3\x89.TXT", 11, 300);
+        rr.push_back(record("CAF\xC9.TXT;1", cafe.first, cafe.second, 0));
+        rr.push_back(record("A/B.TXT;1", cafe.first, cafe.second, 0));
+        rr.push_back(record("A\\C.TXT;1", cafe.first, cafe.second, 0));
     }
     std::vector<std::vector<std::uint8_t>> dr = {record(std::string(1, '\0'), data, 4096, 2), record(std::string(1, '\1'), root, 2048, 2),
                                                  record("EMPTY.BIN;1", empty.first, 0, 0)};
@@ -545,6 +551,26 @@ TEST(chd_damaged) {
     CHECK(disc::image_error(kDir / "chd_src.iso").empty() && disc::image_error(kDir / "missing.chd").empty());
 }
 
+TEST(odd_names_in_an_image) {
+    // fsrobust: a name byte >= 0x80 became an fs::path that throws on Windows (a made image in the game folder ended
+    // the launcher); now Latin-1 read as UTF-8, and a name with a separator is not listed
+    fs::create_directories(kDir);
+    Spec spec;
+    const Iso iso = build(spec, false, true);
+    const fs::path img = kDir / "odd.iso";
+    CHECK(write_image(iso, img, 0));
+    bool cafe = false, sep = false;
+    for (const disc::Entry& e : disc::list_dir(img)) {
+        cafe = cafe || e.name == "CAF\xC3\x89.TXT";
+        sep = sep || e.name.find_first_of("/\\") != std::string::npos;
+    }
+    CHECK(cafe);
+    CHECK(!sep);
+    std::vector<std::uint8_t> d;
+    CHECK(disc::read_file(img / fs::path(std::u8string(u8"CAF\u00C9.TXT")), d) && d == spec.files["CAF\xC3\x89.TXT"]);
+    CHECK(!disc::resolve_ci(img, "caf\xC3\x89.txt").empty());   // (the case of the ASCII letters only)
+}
+
 TEST(not_an_image) {
     const fs::path p = kDir / "plain.bin";
     { std::ofstream f(p, std::ios::binary); const auto b = pattern(3, 100000); f.write(reinterpret_cast<const char*>(b.data()), std::streamsize(b.size())); }
@@ -651,6 +677,205 @@ TEST(language_packs_on_a_disc_folder) {
     const auto none = lang::import_from_disc(root / "nowhere", root / "pref2", &why);
     CHECK(none.empty() && !why.empty());
     CHECK(lang::normalise("it") == "IT" && lang::normalise("ITA").empty() && lang::normalise("1t").empty());
+    fs::remove_all(root, ec);
+}
+
+// 1.3.0 (b3asset/language.h dj_*): the DJ voice. Synthetic stand-in banks only (dj_test_bank: headers and zero bytes,
+// no game audio). The redirect table, the header checks, the missing-file fallback, and the import (a temporary
+// folder renamed into place; cancelled: nothing kept; a bad bank refused).
+namespace {
+void put_bank(const fs::path& p, const std::vector<std::uint8_t>& b) {
+    fs::create_directories(p.parent_path());
+    std::ofstream(p, std::ios::binary).write(reinterpret_cast<const char*>(b.data()), std::streamsize(b.size()));
+}
+}  // namespace
+
+TEST(dj_redirect_table) {
+    namespace lang = b3asset::language;
+    CHECK(lang::dj_letter("FR") == 'F' && lang::dj_letter("ge") == 'G' && lang::dj_letter("IT") == 'I' && lang::dj_letter("SP") == 'S');
+    CHECK(!lang::dj_letter("EN") && !lang::dj_letter("DU") && !lang::dj_letter("SW") && !lang::dj_letter("") && !lang::dj_letter("JA"));
+    CHECK(lang::disc_key("tracks\\eu\\c1_v1\\e_djrace.rws") == "TRACKS/EU/C1_V1/E_DJRACE.RWS");
+    CHECK(lang::disc_key("\\TRACKS\\E_DJGEN.RWS") == "TRACKS/E_DJGEN.RWS");
+    CHECK(lang::dj_counterpart("TRACKS/EU/C1_V1/E_DJRACE.RWS", 'G') == "TRACKS/EU/C1_V1/G_DJRACE.RWS");
+    CHECK(lang::dj_counterpart("TRACKS/E_DJGEN.RWS", 'S') == "TRACKS/S_DJGEN.RWS");
+    CHECK(lang::dj_counterpart("TRACKS/E_DJMBL.RWS", 'F') == "TRACKS/F_DJMBL.RWS");
+    // not an English DJ bank, or no language: no redirect
+    CHECK(lang::dj_counterpart("TRACKS/E_DJGEN.RWS", 0).empty());
+    CHECK(lang::dj_counterpart("TRACKS/_EATRAX1.RWS", 'G').empty());
+    CHECK(lang::dj_counterpart("TRACKS/G_DJGEN.RWS", 'G').empty());
+    CHECK(lang::dj_counterpart("SOUND/E_DJGEN.RWS", 'G').empty());
+    CHECK(lang::dj_counterpart("TRACKS/EU/C1_V1/STATIC.DAT", 'G').empty());
+    CHECK(lang::dj_counterpart("TRACKS/E_DJGEN.AWD", 'G').empty());
+    CHECK(lang::dj_counterpart("TRACKS/../E_DJGEN.RWS", 'G').empty());
+}
+
+TEST(dj_header_checks) {
+    namespace lang = b3asset::language;
+    const auto b = lang::dj_test_bank(5, 0x800, "DJMBL");
+    lang::RwsHeader h, e;
+    std::string why;
+    CHECK(lang::rws_header(b.data(), b.size(), b.size(), h, &why) && lang::dj_format(h));
+    CHECK(h.segments == 5 && h.layers == 1 && h.bank == "DJMBL" && h.largest_segment == 0x800 && h.data_size == 5 * 0x800);
+    // the same bank with longer lines (a German bank): it stands in; another line count, name or codec does not
+    const auto longer = lang::dj_test_bank(5, 0x1000, "DJMBL");
+    CHECK(lang::rws_header(longer.data(), longer.size(), longer.size(), e) && lang::dj_matches(e, h, &why));
+    const auto fewer = lang::dj_test_bank(4, 0x800, "DJMBL"), other = lang::dj_test_bank(5, 0x800, "DJMCR"), codec = lang::dj_test_bank(5, 0x800, "DJMBL", 9);
+    CHECK(lang::rws_header(fewer.data(), fewer.size(), fewer.size(), e) && !lang::dj_matches(e, h, &why) && why.find("line count") != std::string::npos);
+    CHECK(lang::rws_header(other.data(), other.size(), other.size(), e) && !lang::dj_matches(e, h, &why) && why.find("name") != std::string::npos);
+    CHECK(lang::rws_header(codec.data(), codec.size(), codec.size(), e) && !lang::dj_matches(e, h, &why) && why.find("codec") != std::string::npos);
+    // broken files: refused with a reason
+    CHECK(!lang::rws_header(b.data(), b.size(), b.size() + 1, h, &why));              // truncated / padded
+    auto bad = b;
+    bad[0] = 0x0E;
+    CHECK(!lang::rws_header(bad.data(), bad.size(), bad.size(), h, &why) && why.find("0x80D") != std::string::npos);
+    bad = b;
+    bad[0x18 + 0x60 + 0x1F] = 0x7F;   // the first line's offset past the data
+    CHECK(!lang::rws_header(bad.data(), bad.size(), bad.size(), h, &why) && why.find("segment") != std::string::npos);
+    bad = b;
+    bad[0x18 + 0x28] = 2;   // two layers: not the DJ's layout
+    CHECK(lang::rws_header(bad.data(), bad.size(), bad.size(), h) && !lang::dj_format(h, &why));
+    const std::string junk(200, 'x');
+    CHECK(!lang::rws_header(reinterpret_cast<const std::uint8_t*>(junk.data()), junk.size(), junk.size(), h, &why));
+}
+
+TEST(dj_redirect_and_fallback) {
+    namespace lang = b3asset::language;
+    const fs::path root = fs::path("build") / "test_dj_redirect";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    const fs::path us = root / "us", dj = root / "pref" / "languages" / "DJ" / "GE";
+    put_bank(us / "TRACKS" / "E_DJGEN.RWS", lang::dj_test_bank(18, 0x800, "DJGEN"));
+    put_bank(us / "TRACKS" / "E_DJMBL.RWS", lang::dj_test_bank(5, 0x800, "DJMBL"));
+    put_bank(us / "TRACKS" / "EU" / "C1_V1" / "E_DJRACE.RWS", lang::dj_test_bank(38, 0x800, "EU_C1"));
+    put_bank(us / "TRACKS" / "US" / "C1_V1" / "E_DJRACE.RWS", lang::dj_test_bank(38, 0x800, "US_C1"));
+    put_bank(dj / "TRACKS" / "G_DJGEN.RWS", lang::dj_test_bank(18, 0x1000, "DJGEN"));             // longer lines: fine
+    put_bank(dj / "TRACKS" / "g_djmbl.rws", lang::dj_test_bank(4, 0x800, "DJMBL"));               // a line short: English
+    put_bank(dj / "TRACKS" / "EU" / "C1_V1" / "G_DJRACE.RWS", lang::dj_test_bank(38, 0x800, "EU_C1"));
+    // (no US/C1_V1/G_DJRACE.RWS: that track's DJ stays English)
+    std::string why;
+    const auto eng = [&](const std::string& k) { return disc::resolve_ci(us, k); };
+    CHECK(lang::dj_redirect(dj, 'G', "TRACKS/E_DJGEN.RWS", eng("TRACKS/E_DJGEN.RWS"), &why).filename() == "G_DJGEN.RWS");
+    CHECK(lang::dj_redirect(dj, 'G', "TRACKS/EU/C1_V1/E_DJRACE.RWS", eng("TRACKS/EU/C1_V1/E_DJRACE.RWS"), &why).filename() == "G_DJRACE.RWS");
+    CHECK(lang::dj_redirect(dj, 'G', "TRACKS/US/C1_V1/E_DJRACE.RWS", eng("TRACKS/US/C1_V1/E_DJRACE.RWS"), &why).empty() && why == "not imported");
+    CHECK(lang::dj_redirect(dj, 'G', "TRACKS/E_DJMBL.RWS", eng("TRACKS/E_DJMBL.RWS"), &why).empty() && why.find("line count") != std::string::npos);
+    CHECK(lang::dj_redirect(dj, 'G', "TRACKS/_EATRAX1.RWS", eng("TRACKS/E_DJGEN.RWS"), &why).empty() && why.empty());
+    CHECK(lang::dj_redirect(dj, 0, "TRACKS/E_DJGEN.RWS", eng("TRACKS/E_DJGEN.RWS"), &why).empty());
+    CHECK(lang::dj_redirect({}, 'G', "TRACKS/E_DJGEN.RWS", eng("TRACKS/E_DJGEN.RWS"), &why).empty());
+    // the imported folder lists as the disc does (the rows' sizes; the game's "is anything imported")
+    const auto v = lang::dj_on_disc(dj);
+    CHECK(v.size() == 1 && v[0].code == "GE" && v[0].files.size() == 3);
+    fs::remove_all(root, ec);
+}
+
+TEST(dj_import_temp_rename_cancel) {
+    namespace lang = b3asset::language;
+    const fs::path root = fs::path("build") / "test_dj_import";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    const fs::path eu = root / "eu", us = root / "us", pref = root / "pref";
+    // a European disc with two DJ voices (and the English banks it does not need), a US disc to check against
+    for (const char* l : {"G", "I"}) {
+        put_bank(eu / "TRACKS" / (std::string(l) + "_DJGEN.RWS"), lang::dj_test_bank(18, 0x4000, "DJGEN"));
+        put_bank(eu / "TRACKS" / "EU" / "C1_V1" / (std::string(l) + "_DJRACE.RWS"), lang::dj_test_bank(38, 0x4000, "EU_C1"));
+    }
+    put_bank(eu / "TRACKS" / "E_DJGEN.RWS", lang::dj_test_bank(18, 0x800, "DJGEN"));
+    put_bank(eu / "TRACKS" / "EU" / "C1_V1" / "STATIC.DAT", {1, 2, 3});
+    put_bank(us / "TRACKS" / "E_DJGEN.RWS", lang::dj_test_bank(18, 0x800, "DJGEN"));
+    put_bank(us / "TRACKS" / "EU" / "C1_V1" / "E_DJRACE.RWS", lang::dj_test_bank(38, 0x800, "EU_C1"));
+    const auto found = lang::dj_on_disc(eu);
+    CHECK(found.size() == 2 && found[0].code == "GE" && found[1].code == "IT");
+    CHECK(found.size() == 2 && found[0].files.size() == 2 && found[0].bytes == found[1].bytes && found[0].bytes > 38 * 0x4000);
+    if (found.size() != 2) return;
+    std::string why;
+    // cancelled at once: nothing kept, not even the temporary folder
+    std::atomic<bool> cancel{true};
+    lang::DjProgress pr;
+    pr.cancel = &cancel;
+    CHECK(!lang::dj_import(found[0], pref, us, pr, &why) && why == "cancelled");
+    CHECK(!fs::exists(lang::dj_root(pref, "GE")) && !fs::exists(fs::path(lang::dj_root(pref, "GE")).concat(".part")));
+    CHECK(lang::dj_imported_bytes(pref, "GE") == 0);
+    // cancelled half way (after the first file's first MB): the same
+    cancel = false;
+    std::uint64_t seen = 0, total = 0;
+    pr.step = [&](std::uint64_t d, std::uint64_t t) { seen = d; total = t; if (d > 0) cancel = true; };
+    CHECK(!lang::dj_import(found[0], pref, us, pr, &why) && why == "cancelled" && !fs::exists(lang::dj_root(pref, "GE")));
+    // the whole import: progress to the end, the files in dj_root, no temporary folder left
+    cancel = false;
+    pr.step = [&](std::uint64_t d, std::uint64_t t) { seen = d; total = t; };
+    CHECK(lang::dj_import(found[0], pref, us, pr, &why));
+    CHECK(seen == total && total == found[0].bytes);
+    CHECK(lang::dj_imported_bytes(pref, "GE") == found[0].bytes);
+    CHECK(fs::exists(lang::dj_root(pref, "GE") / "TRACKS" / "EU" / "C1_V1" / "G_DJRACE.RWS"));
+    CHECK(!fs::exists(fs::path(lang::dj_root(pref, "GE")).concat(".part")));
+    std::vector<std::uint8_t> a, b;
+    CHECK(disc::read_file(lang::dj_root(pref, "GE") / "TRACKS" / "G_DJGEN.RWS", a) && disc::read_file(eu / "TRACKS" / "G_DJGEN.RWS", b) && a == b);
+    // imported again over it: replaced in one step, still one copy
+    CHECK(lang::dj_import(found[0], pref, us, pr, &why) && lang::dj_imported_bytes(pref, "GE") == found[0].bytes);
+    CHECK(!fs::exists(fs::path(lang::dj_root(pref, "GE")).concat(".old")));
+    // a bank that does not match the US one (another line count): refused before anything is written
+    put_bank(us / "TRACKS" / "EU" / "C1_V1" / "E_DJRACE.RWS", lang::dj_test_bank(37, 0x800, "EU_C1"));
+    CHECK(!lang::dj_import(found[1], pref, us, pr, &why) && why.find("line count") != std::string::npos && !fs::exists(lang::dj_root(pref, "IT")));
+    // without a US disc to compare: the format alone
+    CHECK(lang::dj_import(found[1], pref, {}, pr, &why) && lang::dj_imported_bytes(pref, "IT") == found[1].bytes);
+    // a damaged bank on the disc (cut short): refused
+    {
+        auto broken = lang::dj_test_bank(18, 0x4000, "DJGEN");
+        broken.resize(broken.size() - 100);
+        put_bank(eu / "TRACKS" / "I_DJGEN.RWS", broken);
+        const auto f2 = lang::dj_on_disc(eu);
+        CHECK(f2.size() == 2 && !lang::dj_import(f2[1], pref, {}, pr, &why) && why.find("I_DJGEN.RWS") != std::string::npos);
+        CHECK(lang::dj_imported_bytes(pref, "IT") == found[1].bytes);   // the earlier import untouched
+    }
+    // not a language with a DJ of its own
+    lang::DjVoice en = found[0];
+    en.code = "DU";
+    CHECK(!lang::dj_import(en, pref, us, pr, &why));
+    // removed: gone, the other language stays
+    CHECK(lang::dj_remove(pref, "GE", &why) && lang::dj_imported_bytes(pref, "GE") == 0 && !fs::exists(lang::dj_root(pref, "GE")));
+    CHECK(lang::dj_imported_bytes(pref, "IT") == found[1].bytes);
+    fs::remove_all(root, ec);
+}
+
+TEST(training_videos_redirect_and_import) {
+    // 1.3.0: the race training's localized pictures (OVID/TRC_ / TRD_<FRA|GER|ITA|SPA>.M2V): the key mapping, and their
+    // import as a pack of its own (stand-in videos: a sequence header and zeros)
+    namespace lang = b3asset::language;
+    std::string code, en;
+    CHECK(lang::training_video("OVID/TRC_GER.M2V", &code, &en) && code == "GE" && en == "OVID/TRC_ENG.M2V");
+    CHECK(lang::training_video("OVID/TRD_SPA.M2V", &code, &en) && code == "SP" && en == "OVID/TRD_ENG.M2V");
+    CHECK(lang::training_video("OVID/TRD_FRA.M2V", &code) && code == "FR" && lang::training_video("OVID/TRC_ITA.M2V", &code) && code == "IT");
+    CHECK(!lang::training_video("OVID/TRC_ENG.M2V") && !lang::training_video("OVID/TRC_DUT.M2V") && !lang::training_video("OVID/TRC_JAP.M2V"));
+    CHECK(!lang::training_video("OVID/MOVIE.RWS") && !lang::training_video("DATA/TRC_GER.M2V") && !lang::training_video("OVID/GERMAN30.M2V"));
+    const fs::path root = fs::path("build") / "test_training";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    const fs::path eu = root / "eu", pref = root / "pref";
+    put_bank(eu / "OVID" / "TRC_GER.M2V", lang::training_test_video(0x30000));
+    put_bank(eu / "OVID" / "trd_ger.m2v", lang::training_test_video(0x20000));
+    put_bank(eu / "OVID" / "TRC_FRA.M2V", lang::training_test_video(0x30000));   // no TRD_FRA: not offered
+    put_bank(eu / "OVID" / "TRC_ITA.M2V", std::vector<std::uint8_t>(0x30000, 7)); // not an MPEG-2 video
+    put_bank(eu / "OVID" / "TRD_ITA.M2V", lang::training_test_video(0x20000));
+    const auto found = lang::training_on_disc(eu);
+    CHECK(found.size() == 2 && found[0].code == "GE" && found[1].code == "IT");
+    if (found.size() != 2) return;
+    CHECK(found[0].files.size() == 2 && found[0].bytes == 0x30004 + 0x20004);
+    lang::DjProgress pr;
+    std::string why;
+    CHECK(lang::pack_import(found[0], pref, {}, pr, lang::Pack::kTraining, &why));
+    CHECK(lang::pack_imported_bytes(pref, "GE", lang::Pack::kTraining) == found[0].bytes);
+    CHECK(fs::exists(lang::pack_root(pref, "GE", lang::Pack::kTraining) / "OVID" / "TRD_GER.M2V"));
+    CHECK(lang::pack_imported_bytes(pref, "GE", lang::Pack::kDj) == 0);   // the DJ pack is another folder
+    CHECK(!lang::pack_import(found[1], pref, {}, pr, lang::Pack::kTraining, &why) && why.find("TRC_ITA.M2V") != std::string::npos &&
+          !fs::exists(lang::pack_root(pref, "IT", lang::Pack::kTraining)));
+    // the folders go through the remover the caller gives (the launcher: b3mod::remove_tree): the pack and its leftovers
+    std::vector<fs::path> removed;
+    const lang::RemoveTree spy = [&](const fs::path& p) { removed.push_back(p); return lang::remove_all_tree(p); };
+    CHECK(lang::pack_remove(pref, "GE", lang::Pack::kTraining, &why, spy) && lang::pack_imported_bytes(pref, "GE", lang::Pack::kTraining) == 0);
+    CHECK(removed.size() == 3 && removed[0] == lang::pack_root(pref, "GE", lang::Pack::kTraining));
+    removed.clear();
+    std::atomic<bool> stop{true};
+    pr.cancel = &stop;
+    CHECK(!lang::pack_import(found[0], pref, {}, pr, lang::Pack::kTraining, &why, spy) && why == "cancelled" && !removed.empty());
     fs::remove_all(root, ec);
 }
 

@@ -7,6 +7,12 @@
 #include <cstdio>
 #include <fstream>
 #include <vector>
+#ifndef _WIN32
+#include <csignal>
+#include <sys/wait.h>
+#include <unistd.h>
+#include "../tools/native/crash_report.h"   // the crash report's "guest memory overrun" line
+#endif
 
 using namespace b3host;
 
@@ -146,5 +152,176 @@ TEST(function_info_lookup) {
     CHECK(describe_function(0x00100014u).find("inside calls_missing") == 0);
     CHECK(describe_function(0x00300000u) == "unknown");
 }
+
+// hostfix: guest RAM and the scratchpad sit inside no-access guards (GuardedRegion). Every byte of both windows is
+// usable and starts zeroed, the accessors still work at both ends, and one byte before or past either window faults
+// (in a child process: the fault ends it with SIGSEGV / SIGBUS) and is described as a guest memory overrun.
+TEST(guest_windows_in_range_and_zeroed) {
+    Setup s;
+    const auto ram = s.nb.ram();
+    const auto spr = s.nb.scratchpad();
+    CHECK(ram.size() == kMainRamSize && spr.size() == kScratchpadSize);
+    bool zero = true;
+    for (std::size_t k = 0; k < ram.size(); k += 4093) zero = zero && ram[k] == 0;
+    for (std::size_t k = 0; k < spr.size(); ++k) zero = zero && spr[k] == 0;
+    CHECK(zero && ram[ram.size() - 1] == 0);
+    store<std::uint32_t>(0x00000000u, 0x11223344u);
+    store<std::uint32_t>(kMainRamSize - 4, 0x55667788u);
+    store<std::uint32_t>(kScratchpadBase, 0x99AABBCCu);
+    store<std::uint32_t>(kScratchpadBase + kScratchpadSize - 4, 0xDDEEFF00u);
+    CHECK(load<std::uint32_t>(0x00000000u) == 0x11223344u && load<std::uint32_t>(kMainRamSize - 4) == 0x55667788u);
+    CHECK(load<std::uint32_t>(kScratchpadBase) == 0x99AABBCCu);
+    CHECK(load<std::uint32_t>(kScratchpadBase + kScratchpadSize - 4) == 0xDDEEFF00u);
+    CHECK(host_pointer(kMainRamSize - 4, 4) == ram.data() + kMainRamSize - 4);
+    CHECK(host_pointer(kMainRamSize - 4, 5) == nullptr);
+    CHECK_THROWS(host_pointer_checked(kMainRamSize - 4, 5));
+    CHECK_THROWS(host_pointer_checked(kScratchpadBase + kScratchpadSize - 2, 4));
+    s.nb.clear();
+    CHECK(load<std::uint32_t>(kMainRamSize - 4) == 0 && load<std::uint32_t>(kScratchpadBase) == 0);
+}
+
+TEST(guard_text_names_the_size) {
+    Setup s;
+    const std::string t = s.nb.guard_text();
+    CHECK(t.find("guest RAM guards: ") == 0 && t.find(" MB each") != std::string::npos && t.find("scratchpad 64 KB") != std::string::npos);
+    // a direct fallback check: a region whose guards cannot be reserved (more than the address space) is plain memory
+    GuardedRegion plain(4096, std::size_t{1} << 62, "test block");
+    CHECK(plain.guard() == 0 && plain.data() != nullptr && plain.data()[0] == 0 && plain.data()[4095] == 0);
+    plain.data()[4095] = 7;
+    char line[200];
+    CHECK(!guard_overrun(plain.data() + 4096, line, sizeof line));
+}
+
+// the off switch (safe mode asked for, automatic safe mode after a guest memory overrun, B3_GUEST_GUARDS=0; the
+// policy: b3settings::safe_mode_guards_off, test_settings safe_mode_guard_policy): the plain blocks, the same windows,
+// no guards and none registered
+TEST(guards_off_switch) {
+    char line[200];
+    {
+        NativeBackend nb("safe mode after a guest memory overrun");
+        CHECK(nb.guard_text() == "guest RAM guards: off (safe mode after a guest memory overrun)" && nb.ram_guard() == 0);
+    }
+    {
+        NativeBackend nb("");   // automatic safe mode, no overrun: on
+        CHECK(nb.ram_guard() > 0 && nb.guard_text().find(" MB each") != std::string::npos);
+    }
+    {
+        NativeBackend nb("safe mode");
+        BackendScope scope{nb};
+        CHECK(nb.guard_text() == "guest RAM guards: off (safe mode)");
+        CHECK(nb.ram_guard() == 0 && nb.ram().size() == kMainRamSize && nb.scratchpad().size() == kScratchpadSize);
+        CHECK(nb.ram()[0] == 0 && nb.ram()[kMainRamSize - 1] == 0 && nb.scratchpad()[kScratchpadSize - 1] == 0);
+        store<std::uint32_t>(kMainRamSize - 4, 0xCAFEF00Du);
+        store<std::uint32_t>(kScratchpadBase + kScratchpadSize - 4, 0x0BADF00Du);
+        CHECK(load<std::uint32_t>(kMainRamSize - 4) == 0xCAFEF00Du);
+        CHECK(load<std::uint32_t>(kScratchpadBase + kScratchpadSize - 4) == 0x0BADF00Du);
+        CHECK(!guard_overrun(nb.ram().data() + kMainRamSize, line, sizeof line));
+        CHECK(!guard_overrun(nb.scratchpad().data() - 1, line, sizeof line));
+    }
+#ifndef _WIN32
+    setenv("B3_GUEST_GUARDS", "0", 1);
+    {
+        NativeBackend nb;
+        CHECK(nb.guard_text() == "guest RAM guards: off (B3_GUEST_GUARDS=0)" && nb.ram_guard() == 0);
+        NativeBackend asked("safe mode");   // an explicit reason wins
+        CHECK(asked.guard_text() == "guest RAM guards: off (safe mode)");
+    }
+    setenv("B3_GUEST_GUARDS", "1", 1);
+    {
+        NativeBackend nb;   // anything but 0: on
+        CHECK(nb.ram_guard() > 0 && nb.guard_text().find(" MB each") != std::string::npos);
+    }
+    unsetenv("B3_GUEST_GUARDS");
+#endif
+}
+
+TEST(guard_overrun_is_described) {
+    Setup s;
+    const auto ram = s.nb.ram();
+    const auto spr = s.nb.scratchpad();
+    char line[200];
+    CHECK(!guard_overrun(ram.data(), line, sizeof line));
+    CHECK(!guard_overrun(ram.data() + ram.size() - 1, line, sizeof line));
+    CHECK(guard_overrun(ram.data() + ram.size(), line, sizeof line) &&
+          std::string(line).find("guest memory overrun") == 0 && std::string(line).find("past the end of guest RAM") != std::string::npos);
+    CHECK(guard_overrun(ram.data() - 1, line, sizeof line) && std::string(line).find("before the start of guest RAM") != std::string::npos);
+    // the whole 32-bit reach: an in-window pointer plus any 32-bit offset or length stays in the guards (4 GB each
+    // side; under an address-space limit, the guard's own far end)
+    const std::size_t g = s.nb.ram_guard();
+    CHECK(g == (std::size_t{1} << 32) || g >= 0x10000u);
+    CHECK(guard_overrun(ram.data() + ram.size() + g - 1, line, sizeof line));
+    CHECK(guard_overrun(ram.data() - g, line, sizeof line));
+    if (g == (std::size_t{1} << 32)) {
+        CHECK(guard_overrun(ram.data() + ram.size() - 1 + 0xFFFFFFFFull, line, sizeof line));
+        CHECK(guard_overrun(ram.data() - 0xFFFFFFFFull, line, sizeof line));
+    }
+    CHECK(guard_overrun(spr.data() + spr.size(), line, sizeof line) && std::string(line).find("the scratchpad") != std::string::npos);
+    CHECK(guard_overrun(spr.data() - 1, line, sizeof line));
+    int on_stack = 0;
+    CHECK(!guard_overrun(&on_stack, line, sizeof line));
+}
+
+#ifndef _WIN32
+namespace {
+// Runs `touch` in a child process; true when the child died of SIGSEGV or SIGBUS (the guard page)
+bool faults_in_child(void (*touch)(volatile std::uint8_t*), volatile std::uint8_t* p) {
+    std::fflush(stdout);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        signal(SIGSEGV, SIG_DFL);
+        signal(SIGBUS, SIG_DFL);
+        touch(p);
+        _exit(0);   // no fault: the test fails
+    }
+    int status = 0;
+    if (pid < 0 || waitpid(pid, &status, 0) != pid) return false;
+    return WIFSIGNALED(status) && (WTERMSIG(status) == SIGSEGV || WTERMSIG(status) == SIGBUS);
+}
+void read_byte(volatile std::uint8_t* p) { (void)*p; }
+void write_byte(volatile std::uint8_t* p) { *p = 1; }
+}  // namespace
+
+TEST(one_byte_past_either_window_faults) {
+    Setup s;
+    std::uint8_t* ram = s.nb.ram().data();
+    std::uint8_t* spr = s.nb.scratchpad().data();
+    CHECK(faults_in_child(read_byte, ram + kMainRamSize));
+    CHECK(faults_in_child(read_byte, ram - 1));
+    CHECK(faults_in_child(write_byte, ram + kMainRamSize));
+    CHECK(faults_in_child(read_byte, spr + kScratchpadSize));
+    CHECK(faults_in_child(read_byte, spr - 1));
+    CHECK(faults_in_child(write_byte, spr + kScratchpadSize));
+    CHECK(faults_in_child(read_byte, ram + kMainRamSize + s.nb.ram_guard() - 1));   // the guard's far end (4 GB)
+    CHECK(faults_in_child(read_byte, ram - s.nb.ram_guard()));
+    CHECK(!faults_in_child(read_byte, ram + kMainRamSize - 1));             // the last bytes are fine
+    CHECK(!faults_in_child(write_byte, spr));
+}
+
+// native_play's crash report (tools/native/crash_report.h) names a fault in a guard: the child's stdout is a pipe
+TEST(crash_report_names_the_overrun) {
+    Setup s;
+    volatile std::uint8_t* past = s.nb.ram().data() + kMainRamSize + 0x1234;
+    int fds[2];
+    CHECK(pipe(fds) == 0);
+    std::fflush(stdout);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        dup2(fds[1], 1);
+        close(fds[0]);
+        b3native::install_crash_report();
+        *past = 1;   // the report ends the process (exit 4)
+        _exit(0);
+    }
+    close(fds[1]);
+    std::string out;
+    char buf[4096];
+    for (ssize_t n; (n = read(fds[0], buf, sizeof buf)) > 0;) out.append(buf, static_cast<std::size_t>(n));
+    close(fds[0]);
+    int status = 0;
+    CHECK(waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 4);
+    CHECK(out.find("crash: guest memory overrun: host address") != std::string::npos &&
+          out.find("0x1234 bytes past the end of guest RAM") != std::string::npos);
+}
+#endif
 
 TEST_MAIN("native backend (S0)")

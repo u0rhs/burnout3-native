@@ -44,6 +44,8 @@ public:
         std::function<std::int64_t(const std::string& disc_path, std::uint64_t offset, void* dst, std::uint64_t n)> disc_read;
         // a mod's texture for the renderer (id unique in the process)
         std::function<void(std::uint32_t id, std::uint32_t w, std::uint32_t h, const std::uint8_t* rgba)> texture;
+        // modsec: the renderer may drop that texture (its mod did not load, or its script stopped or reloaded)
+        std::function<void(std::uint32_t id)> texture_free;
         // a mod's settings values as saved (key -> text; window runs: mod-settings/<id>.ini; else none)
         std::function<std::map<std::string, std::string>(const std::string& id)> saved_values;
         // one line of the log (default: stdout)
@@ -62,6 +64,11 @@ public:
         std::filesystem::path dir, library;   // library: absolute ("" : none for this system)
         bool platform = false;                // [code] platform = yes
         std::shared_ptr<Builtin> builtin;     // lua6: set instead of a library (script mods)
+        // the set of files the user allowed (b3mod::trust_digest over dir with `code`): when given, the loader hashes
+        // the set again right before it loads the library and refuses it when it differs (a file changed after the
+        // check); on Windows the files are held open without write or delete sharing from that hash to the load
+        b3mod::CodeSpec code;
+        std::string trust_digest;
     };
     struct Result {
         std::string id;
@@ -89,6 +96,13 @@ public:
     // The overlay record when this frame's items differ from the last one published (else empty); after frame()
     std::vector<std::uint8_t> overlay_record();
     void shutdown();                 // every on_shutdown callback, in reverse load order (once)
+
+    // modsec: a mod's textures (B3ModApi.texture) are capped per mod: kModTextures of them, kModTextureBytes in all
+    // (RGBA); beyond that texture() refuses (0, one log line). release_textures drops a mod's own (the renderer's
+    // copies too): the loader does it for a mod that did not load, a script mod when it stops or reloads.
+    static constexpr std::size_t kModTextures = 64;
+    static constexpr std::uint64_t kModTextureBytes = std::uint64_t(16) << 20;
+    static void release_textures(B3ModSelf* s);
 
     // the API's implementation (sdk/include/b3mod_api.h); public for the C trampolines in code_mods.cpp
     struct Impl;

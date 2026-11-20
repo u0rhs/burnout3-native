@@ -433,8 +433,26 @@ TEST(every_string_translated) {
         "Cannot read your image {}: choose it again, or Use the port's art.", "Could not make the pictures.",
         "A check run writes only to a made-up Steam folder.", "Cannot find the launcher's own program file, so it cannot be added.",
         "Steam is running.", "Close Steam, then press Add to Steam again: Steam rewrites its list of games when it closes.",
-        "On a Steam Deck, do this in Desktop Mode: exit Steam from its icon in the taskbar first.",
-        "Flatpak's Steam needs to see this folder: flatpak override --user --filesystem={} com.valvesoftware.Steam",
+        "Right-click the Steam icon by the clock and choose Exit.",
+        "In the menu bar: Steam > Quit Steam.",
+        "On a Steam Deck: right-click the Steam icon in the taskbar (bottom right) and choose Exit Steam, then press Add to Steam again.",
+        "Flatpak's Steam needs to see this folder and your data folder: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam",
+        // robust2: macOS App Translocation, Steam's Flatpak sandbox, the update's cancel and its disk image
+        "macOS runs this app from a temporary copy, because it was opened where it was downloaded.",
+        "Move the app to Applications (drag it there in Finder), open it from there, then press Add to Steam again.",
+        "Started from Steam's Flatpak",
+        "Steam's Flatpak runs the game in its own sandbox, so the launcher and the game keep their settings, saves and mods in a folder of their own: {}.",
+        "To use the same data as outside Steam, run this once in a terminal, then start the game from Steam again: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam",
+        "Two data folders",
+        "Steam's Flatpak can reach the data folder you use outside Steam, but the sandbox's own folder holds saves too, so it stays in use: {}.",
+        "To use the other one from Steam, copy what you want to keep from the sandbox's folder into ~/.local/share/b3port/native, then delete the sandbox's folder.",
+        "Sandbox settings left behind",
+        "Steam's Flatpak can now reach the data folder you use outside Steam, so the launcher and the game use it: {}.",
+        "The settings written earlier in the sandbox's own folder stay there, unused (the sandbox's folder holds no save): {}.",
+        "Stops the download.", "Nothing is installed; your current version stays as it is.", "Update cancelled.",
+        "An update is being installed: wait for it to finish (or cancel it).",
+        "The update {} is downloaded and checked, but its disk image did not open.",
+        "Open it yourself ({}), then quit and drag the app to Applications.",
         "The next Add to Steam uses the port's own pictures.",
         "Choose a cover picture for Steam (PNG or JPEG)", "Choose a background picture for Steam (PNG or JPEG)",
         "Choose a logo picture for Steam (PNG or JPEG)",
@@ -445,6 +463,47 @@ TEST(every_string_translated) {
         "Already in Steam (1 account): its pictures were updated.", "Already in Steam ({} accounts): its pictures were updated.",
         "Start Steam to see it.", "A shortcuts.vdf of Steam's could not be read, so it was left as it is.", "Could not read {}.",
         "Could not write {}.", "Could not make the backup {}.",
+        // item 11: the Mods page's Add folder and a pack of the game's files without a mod.ini
+        "Install as a file-replacement mod?", "This pack has no mod.ini.", "Install it as a file-replacement mod named {}?",
+        "Its files replace the game's files of the same names; it has no code, so nothing in it runs.",
+        "A mod.ini is written for it, and it starts off.", "Install", "Not a mod", "{} was not installed; nothing was written.",
+        "It has no mod.ini, and no folders of the game's own (DATA, PVEH, TRACKS, SOUND, OVID) to install as replacement files.",
+        "A mod.ini is the small text file at the top of a mod that names it: its id, name and version.",
+        "How to make one: docs/modding in the port's source.", "Add folder...",
+        "Installs a mod from a folder: copied into its own folder in the mods folder.",
+        "A pack of the game's own files without a mod.ini (its DATA, PVEH or TRACKS folders) can be installed as a file-replacement mod.",
+        "Add a mod: choose its folder (a mod, or a pack of the game's files)",
+        "Open the mod's folder, then Start: it is copied into the mods folder.",
+        // settingsui: the launcher's tidy-up (the prompt bar, the Play page, the LAUNCHER and TEST tabs, the lines made of pieces)
+        "Go back", "Bug report...", "Make a bug report?", "Make report", "With my save", "Click a row twice to open it", "LAUNCHER",
+        "TEST", "Left stick", "built {}", "Burnout 3 native port, a test build", "{} preset", "fullscreen", "window", "no MSAA",
+        "{} fps limit", "no HD pack", "HD pack", "HD pack off", "saved {}",
+        "(an older profile-{} folder: read, and saved as a .sav at the first save)", "(new: the game makes it at its first save)",
+        "An older profile-{} folder (read; saved as a .sav at the first save)", "Released {}", "Last checked {}", "Version {}",
+        "Not checked for updates yet", "Checking for updates...", "Update check off (Settings > Launcher)", "Update available: {}",
+        "Up to date ({} is the latest release)", "Up to date (no release published yet)", "Couldn't check for updates ({})",
+        "Installed: {}", "on: {}", "gold", "silver", "bronze", "Paint {}", "NOT SET", "Not saved: {}",
+        // xboximport (1.3.0): Import Xbox textures (the HD Textures page, its progress, results and Remove)
+        "Xbox textures", "Builds a texture pack on this computer from your own Xbox disc image of the game (.iso or .xiso).",
+        "It is a small improvement: some building fronts, signs and car paint are somewhat sharper.",
+        "An HD texture pack looks far better; this is for players who want to use their Xbox disc.",
+        "Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Not imported.",
+        "{} textures imported.", "Size: {} MB.", "From: {}.", "Made by an older version: import again for the newest result.",
+        "XBOX TEXTURES is off.", "HD TEXTURES is off.", "Import Xbox textures...",
+        "Choose your Xbox disc image of the game (.iso or .xiso).", "Choose your Xbox disc image of the game (.iso or .xiso)",
+        "The import runs on this computer in about a minute.", "Deletes the imported textures (your disc image is not touched).",
+        "Disc images here: A on one imports its textures.", "No disc images here: open the folder that holds your Xbox disc image.",
+        "Xbox disc images (*.iso, *.xiso)", "Importing Xbox textures", "Reading the game's files: {}.", "Building the textures: {}.",
+        "Textures written: {}.", "Cancelling...", "Used from the next start.", "Import cancelled: nothing was changed.",
+        "The import failed.", "Remove the Xbox textures?", "The imported textures are deleted.",
+        "You can import them again from your disc at any time.", "The Xbox textures were removed.", "Cannot open the disc image.",
+        "Not an Xbox disc image (no XDVDFS volume in it).", "This Xbox disc image is not Burnout 3: Takedown.",
+        "The game's files were not found (choose the game's folder first).", "Not enough free space (about 200 MB needed).",
+        "Could not read the disc or write the textures (is the drive full?).",
+        "No Xbox texture matched the game's (a different version of the game?).",
+        "Could not replace the earlier import (a file in it is open?).", "Could not move the textures into place.",
+        "Out of memory while reading the disc image (a damaged image?).", "The import stopped: {}.",
+        "The import stopped: an unknown error.",
     };
     for (const b3settings::i18n::Table& t : b3settings::i18n::kTables) {
         for (const char* w : kWords) {
@@ -454,6 +513,12 @@ TEST(every_string_translated) {
             CHECK(found);
         }
     }
+}
+
+TEST(mac_app_translocation) {   // robust2
+    CHECK(steam::translocated("/private/var/folders/x1/abc/T/AppTranslocation/0F1E-22/d/Burnout 3.app/Contents/MacOS/b3launcher"));
+    CHECK(!steam::translocated("/Applications/Burnout 3.app/Contents/MacOS/b3launcher"));
+    CHECK(!steam::translocated("/home/me/Games/burnout3-native/b3launcher"));
 }
 
 TEST(scratch_removed) {

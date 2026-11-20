@@ -19,12 +19,16 @@ main = scripts/main.lua
 gameplay = no           # no: it only reads and draws (writes refused); yes (or not given): it may change the game
 budget = 1000000        # optional: Lua instructions per VBlank (10000 to 50000000; default 1000000)
 memory = 64             # optional: megabytes of Lua memory (1 to 512; default 64)
+# unsafe = yes          # optional: b3.mem.write, b3.call, b3.hook.replace, set_arg / set_result (the player is asked, as for a code mod)
+# calls = 0x00151780    # with unsafe: the game functions b3.call may call
 ```
 
 | Key | Meaning |
 |---|---|
 | `main` | the script the game runs, a `.lua` file in a folder of the mod (`scripts/main.lua`; a script at the top of the mod is refused). Its folder is the script folder: `require` finds the other scripts there, and every file in it is in the mod hash. |
 | `gameplay` | `no`: the script only reads and draws; every call that could change the game is refused (below). `yes`, or not given (with a note in the log): it may write the game's memory, call its functions and replace them, and the Mods page shows the mod as changing gameplay. |
+| `unsafe` | `yes`: the script may also write the game's memory (`b3.mem.write`, `write_bytes`), call the game's functions (`b3.call`, only those `calls` lists), replace them (`b3.hook.replace`) and change a hooked call's integer arguments and result (`call:set_arg`, `call:set_result`). Each hands the game's own native code values the script chose (a pointer, an index), which can reach past the sandbox, so the launcher asks the player's permission as it does for a code mod (once per mod id and set of files: mod.ini and every file of the script folder; asked again when any of them changes), and the game then runs the script from the bytes it hashed, with the rights the hashed mod.ini gives. Needs `gameplay = yes`. Not given or `no`: those calls are refused, and the script reads, draws, watches calls (`b3.hook.wrap`, `call:next`), changes float arguments and the float result (`set_farg`, `set_fresult`, with `gameplay = yes`) and uses the rest of `b3`. A hot reload (Developer mods only) runs the edited files without asking. |
+| `calls` | with `unsafe = yes`: the game functions `b3.call` may call, their addresses separated by commas (`0x00151780, 0x001519F0`; at most 64). A call to any other address is refused. |
 | `budget` | how many Lua instructions the script may run per VBlank (below). |
 | `memory` | how much memory its Lua state may use (below). |
 
@@ -33,7 +37,9 @@ with `[script]` needs 3. A mod has `[code]` or `[script]`, not both (make two mo
 ABI (`B3MOD_API_VERSION` 1) did not change: a script mod runs on it inside the game.
 
 Scripts are data: there is no build step, and the same files work on Windows, Linux and macOS. The launcher does not ask
-before a script runs (it asks for code mods), because a script can only do what the `b3` table offers.
+before a script runs (it asks for code mods), because a script can only do what the `b3` table offers; a script with
+`unsafe = yes` is the exception (it is asked about as a code mod is: see `unsafe` above). Offscreen runs (the port's own
+checks) are never asked: a test-only behaviour.
 
 ## Loading
 
@@ -68,7 +74,7 @@ native_play: mods: my-script: script loaded (0 replaced, 2 wrapped, 1 settings, 
 
 `warn(...)` messages go to the log as warnings.
 
-## Limits: the budget and the memory cap
+## Limits: the budget, the time limit and the memory cap
 
 - **Budget.** Every Lua instruction the script runs between two VBlanks counts: its `on_vblank`, `on_frame` and event
   functions and its hooks. Past `budget` (default 1,000,000; looked at every 1,000 instructions) the script is
@@ -77,6 +83,13 @@ native_play: mods: my-script: script loaded (0 replaced, 2 wrapped, 1 settings, 
   mod my-script: error: the script was stopped at VBlank 9301: it ran past 1000000 Lua instructions in one VBlank (its budget: a loop that does not end?); the game goes on without it
   mod my-script: error:   scripts/main.lua:20: the script was stopped (its instruction budget, or an error before)
   ```
+- **Time.** The script's own time (from each call into it to its return, not counting the game's code it calls through
+  `b3.call` or `call:next()`, nor another script's hooks the game reaches meanwhile) may add up
+  to 1 second per VBlank (10 seconds for the main chunk and `on_load`), wall clock. This is for what the budget cannot
+  count: time inside Lua's C library, where no instruction runs (a pattern that backtracks, as several `.-` on a long
+  string). It is looked at by the budget's count, at each memory allocation and at each step of a pattern search; past
+  it the script is stopped as past its budget (`it ran for more than 1000 ms in one VBlank (its time limit: ...)`). A
+  script within its budget is far from it, so it never changes a run that plays back.
 - **Memory.** Its Lua state may hold up to `memory` megabytes; past that, the allocation fails, and the script is
   stopped with `it used more than 64 MB (its memory cap)`.
 - **Errors.** An error that reaches the game (not caught by the script's own `pcall`) stops the script too, with the
@@ -87,9 +100,9 @@ game's function with the game's arguments (a hook that stopped half way: the cal
 its drawing ends, its Lua state is closed. The game goes on. With Developer mods on, a changed script loads again
 (hot reload, below).
 
-What the budget does not see: a single call into Lua's C library runs to its end before the budget is looked at again
-(`string.rep`, `table.concat` and the like are bounded by the memory cap; a pattern search on a long string with several
-`.-` can take long).
+What the budget does not see, the time limit and the memory cap bound: a single call into Lua's C library runs no
+instruction (`table.concat` and the like are bounded by the memory cap; a pattern search, by the time limit).
+`string.rep` gives `""` at once when the result is empty and refuses a result larger than the memory cap.
 
 ## Determinism
 
@@ -123,6 +136,7 @@ A script mod plays back exactly from a pad recording or a replay file made with 
 | `b3.id`, `b3.version` | the mod's id and version (mod.ini) |
 | `b3.port_version` | the port's version line |
 | `b3.gameplay` | `false` when mod.ini says `gameplay = no` |
+| `b3.unsafe` | `true` when mod.ini says `unsafe = yes` (`b3.mem.write*`, `b3.call`, `b3.hook.replace`, `set_arg`, `set_result` allowed) |
 | `b3.developer` | `true` with Developer mods on (hot reload) |
 | `b3.vblank()` | the virtual VBlank count, an integer: the clock to use |
 | `b3.log(...)` | one line in the game's log: `mod <id>: <the values, as tostring gives them, separated by spaces>` |
@@ -170,7 +184,7 @@ its name a guess, so `lap` is read from the score instead). Other events: `b3.ho
 | Name | What |
 |---|---|
 | `b3.mem.read(kind, addr)` | the value at a guest address: `kind` `"u8"`, `"s8"`, `"u16"`, `"s16"`, `"u32"`, `"s32"` (integers) or `"f32"` (a float); `nil` outside EE RAM (32 MB) and the scratchpad |
-| `b3.mem.write(kind, addr, value)` | write it; `true` done, `false` outside them or in the program's code (0x00100000-0x00483F00: that code never runs natively, use a hook). A value that does not fit the kind is an error. **`gameplay = no`: refused (an error).** |
+| `b3.mem.write(kind, addr, value)` | write it; `true` done, `false` outside them or in the program's code (0x00100000-0x00483F00: that code never runs natively, use a hook). A value that does not fit the kind is an error. **Only with `unsafe = yes`; otherwise refused (an error).** |
 | `b3.mem.read_bytes(addr, n)` | `n` bytes (up to 1 MB) as a string, or `nil` |
 | `b3.mem.write_bytes(addr, s)` | the string's bytes; as `write` |
 
@@ -180,9 +194,9 @@ The guest is little-endian. Writes from the main chunk are applied once the mod 
 
 | Name | What |
 |---|---|
-| `b3.call(addr, ...)` | call the game's function at `addr` through every hook on it, from a callback or a hook (not from the main chunk, nor from inside a coroutine). Arguments in order: integers and booleans into a0, a1, a2, a3, t0 .. t3; floats (Lua numbers with a fraction, or `1.0`) into f12 .. f19. Returns `v0` (an integer: the low 64 bits, a 32-bit result sign-extended), `f0` (a float), `v1`. An error when there is no native function there. **`gameplay = no`: refused.** |
+| `b3.call(addr, ...)` | call the game's function at `addr` through every hook on it, from a callback or a hook (not from the main chunk, nor from inside a coroutine). Arguments in order: integers and booleans into a0, a1, a2, a3, t0 .. t3; floats (Lua numbers with a fraction, or `1.0`) into f12 .. f19. Returns `v0` (an integer: the low 64 bits, a 32-bit result sign-extended), `f0` (a float), `v1`. An error when there is no native function there. **Only with `unsafe = yes`, and only to an address in `[script] calls`; otherwise refused.** A pointer argument the game's function takes must point at the whole of what it points to inside guest RAM (or the scratchpad), else the game stops with a guest memory error. A fatal error in the game's code it reaches (here or in `call:next()`) is not the script's: no `pcall` sees it, the script is stopped there, and the error goes on to the game as without the script. |
 | `b3.hook.wrap(addr, fn)` | main chunk only: `fn(call)` runs around every call of the function at `addr` (on top of the port's own wrappers, as a code mod's wrap). If `fn` does not call `call:next()`, the game's function runs after it: a wrap never drops the call. |
-| `b3.hook.replace(addr, fn)` | main chunk only: `fn(call)` runs instead; the game's function runs only if `fn` calls `call:next()`. One mod per address. **`gameplay = no`: refused.** |
+| `b3.hook.replace(addr, fn)` | main chunk only: `fn(call)` runs instead; the game's function runs only if `fn` calls `call:next()`. One mod per address. **Only with `unsafe = yes`.** |
 
 The `call` object (valid only during its hook):
 
@@ -193,8 +207,8 @@ The `call` object (valid only during its hook):
 | `call:sp()` | the guest stack pointer (stack arguments from it) |
 | `call:next()` | run the layer below (the game's function, or another mod's replace) with the arguments as they are now; returns `v0, f0, v1`. Once per call. |
 | `call:result()` | `v0, f0, v1` as they are now |
-| `call:set_arg(i, v)`, `call:set_farg(i, v)` | change an argument before `next` (**`gameplay = no`: refused**) |
-| `call:set_result(v0 [, f0])`, `call:set_fresult(f0)` | what the caller gets (**`gameplay = no`: refused**) |
+| `call:set_arg(i, v)`, `call:set_farg(i, v)` | change an argument before `next` (`set_arg`: **only with `unsafe = yes`**; `set_farg`: `gameplay = no` refuses it) |
+| `call:set_result(v0 [, f0])`, `call:set_fresult(f0)` | what the caller gets (`set_result`: **only with `unsafe = yes`**; `set_fresult`: `gameplay = no` refuses it) |
 
 Which addresses can be hooked and what a hook sees (calls between two generated units may not go through it):
 [hooks.md](hooks.md). Addresses: the decomp's `config/symbol_addrs.txt`, `gen/native/manifest.tsv`.
@@ -216,7 +230,7 @@ while the game runs reaches the script at the next VBlank; `native_play --mod-se
 |---|---|
 | `b3.draw.quad(x, y, w, h [, rgba [, texture]])` | a rectangle in the game's 640 x 448 screen (top left 0, 0), filled with the colour (white when not given), or the texture tinted by it |
 | `b3.draw.text(x, y, size, rgba, text)` | text from its top left, capital letters `size` high, in the port's stroke font (A-Z, 0-9, space, `+ - / . : ;`; lower case drawn as upper case) |
-| `b3.draw.texture(w, h, pixels)` | a texture from a string of `w * h * 4` bytes (red, green, blue, alpha per pixel, rows from the top; up to 1024 x 1024); its id |
+| `b3.draw.texture(w, h, pixels)` | a texture from a string of `w * h * 4` bytes (red, green, blue, alpha per pixel, rows from the top; up to 1024 x 1024); its id. A mod may have 64 textures, 16 MB of pixels in all (make each once, in the main chunk): past that, an error. A stopped script's textures are dropped (a hot reload makes its own again). |
 
 Draw in `on_frame`, every frame: what is drawn during a frame is shown until the next one. Up to 256 items per mod and
 frame. Drawing never changes the game.
@@ -280,13 +294,15 @@ src/b3replay/capture.h ScoreState ([C], the speedrun timer reads them):
 
 A script that writes the game's memory, calls its functions or changes a call (a replace, `set_arg`, `set_result`) can
 change the game, so a script mod is gameplay-changing unless its mod.ini says `gameplay = no` ([DESIGN.md](DESIGN.md)
-§6: times and replays made with it are kept apart). With `gameplay = no` the port refuses those calls: each is an error
+§6: times and replays made with it are kept apart). Writing memory, `b3.call`, `b3.hook.replace`, `set_arg` and
+`set_result` also need `unsafe = yes` (above). With
+`gameplay = no` the port refuses those calls: each is an error
 naming the refusal, which stops the script (a `pcall` around it lets the script go on). Reading, drawing, the log,
 settings, files, events and `b3.hook.wrap` (watching calls, not changing them) stay allowed.
 
 ## Hot reload (Developer mods)
 
-With **Developer mods** on (the launcher's Mods page or PC SETTINGS > INTERFACE > DEVELOPER MODS: one switch, which
+With **Developer mods** on (the launcher's Mods page or PC SETTINGS > MODS > DEVELOPER MODS: one switch, which
 also turns on the tuning console; `--developer-mods` for one run), the port looks at each script folder every 30 VBlanks
 (half a second); when a file changed, the script is loaded again at that VBlank, in a new Lua state: the main chunk, then
 `on_load(true)`. The hooks, rows and wrapped events of the first load stay (the new script's `b3.hook.wrap` / `replace`
@@ -298,14 +314,18 @@ mod my-script: its script changed: loaded again at VBlank 4210 (hot reload, Deve
 ```
 
 Without Developer mods (every normal run, every test) a script is read once, at the start: a run is always one version of
-each script.
+each script. (An `unsafe = yes` script is read whole at the start, mod.ini and its script folder, checked against what the
+player allowed, and `require` reads from those bytes; a hot reload, with Developer mods only, runs the edited files
+without asking.)
 
 ## Checks
 
 `tests/test_script_mods.cpp` (in `make test`): the `[script]` manifest and its files in the mod hash; the sandbox's
 refusals (libraries, `load` of a precompiled chunk, `require` outside the folder, files outside the mod); a runaway loop
-(also inside `pcall`) stopped by the budget with the game's call going on; the memory cap; `math.random` seeded per id
+(also inside `pcall`) stopped by the budget with the game's call going on; a backtracking pattern stopped by the time
+limit, `string.rep`'s bounds; the memory cap; `math.random` seeded per id
 and the same string-key order in two states; the API on synthetic guest memory and a synthetic hook table (memory kinds,
-calls, replace and wrap, settings, drawing, views, the five events); `gameplay = no`; hot reload with and without
+calls, replace and wrap, settings, drawing, views, the five events); `gameplay = no`; `unsafe` and `calls` (writes and
+calls refused without them, the allowed set checked at load, a file swapped after the load not run); hot reload with and without
 Developer mods. In the game: [tutorial 06](tutorials/06-a-lua-script.md) runs the example with `race_check.sh` and its
 replay with `replay_check.sh`.

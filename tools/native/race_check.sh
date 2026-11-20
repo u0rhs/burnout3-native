@@ -117,10 +117,26 @@ fi
 #   crashnav      WORLD TOUR's Crash Nav: the regions, a location, its event list, an ELIMINATOR event driven to its
 #                 end (crashes, eliminated), the results, the BURNOUT POINTS page
 #   carselect     SINGLE EVENT > RACE: the car select's series / car pages and the paint (Square: Color), then the race
+#   garagecam     garagecam1 (src/b3replay/garagecam.h): the carselect path's SELECT CAR with a scripted pad
+#                 (B3NATIVE_TEST_PAD=$PAD, default xbox; no buttons of it used: the keys drive the menus): the game's
+#                 spin (shots 10560, 10600), the right stick left 21100-21140 (10670: the view turning), at rest (10690,
+#                 10700: the view held), the spin back a second after (10740, 10780); the stick down 21500-21560 (the
+#                 view up to its height cap: 10896), then left for ~90 degrees three times (10936, 10986, 11036: the
+#                 highest view at four angles round the car); a mouse drag on the car 22300-22350 (11300: turned,
+#                 nothing pressed; GARAGECAM_MOUSE=0: no mouse, so the shots keep the pad's prompts); then the race.
+#                 (Front-end polls here: VBlank / 2 + 106.) The log must show no orbit before the stick, the view taken
+#                 by the stick (and by the mouse), the spin resumed after each, no mouse press; the shots at rest within
+#                 the second the same picture, the spin's shots before and after different
 #   carseries     carsel1: the carselect path with PC SETTINGS > CAR SERIES ON L1 / R1 On ($OUT/pc_settings.ini
 #                 series_shoulders = 1): on the car select R1 (R) twice, L1 (Q) once, then Right (the D-pad, as before), a
 #                 car down, the race. The log must show each shoulder press given to the game as Right / Right / Left and
 #                 the carousel's series following them (1, 2, 1, 2); shots of the page with the L1 / R1 glyphs
+#   racetime      todrace (tools/native/race_time.h): SINGLE EVENT > RACE with PC SETTINGS > TIME OF DAY Day ($OUT/
+#                 pc_settings.ini): on SELECT OPTIONS T (the TIME OF DAY action) twice (Default > Day > Night), the race
+#                 (at night), the pause menu's QUIT (B3_PHOTO_ROW=0: six rows), YES, Back to the main menu (the choice
+#                 back to Default), SINGLE EVENT > RACE again: the label reads Default, the race by day. The log must show
+#                 the two presses, the choice Night, the race taking Night, the main menu's reset, the next race taking
+#                 Default; shots of the page with the label (RACETIME_DEVICE: the prompts' device, default keyboard)
 #   crashresults  SINGLE EVENT > CRASH: the junction, the crash, CRASH RESULTS, CRASH $ and back to SELECT MODE
 #   nfsdemo       DRIVER DETAILS > EXTRAS > PLAY NFS:UNDERGROUND 2 DEMO, YES: the game shuts down and asks for the demo
 #                 (LoadExecPS2); the port ends there (platform.cpp load_exec_ps2), exit 0
@@ -136,7 +152,7 @@ fe_keys() {   # fe_keys <vblank>:<scancode> (a 10-VBlank tap) or <vblank>:<scanc
 }
 FE=""
 case "${SCENARIO:-race}" in
-  multiplayer|partycrash|online|ddrewards|ddrecords|ddsettings|eatrax|crashnav|carselect|carseries|crashresults|nfsdemo) FE=$SCENARIO ;;
+  multiplayer|partycrash|online|ddrewards|ddrecords|ddsettings|eatrax|crashnav|carselect|carseries|garagecam|crashresults|nfsdemo|racetime) FE=$SCENARIO ;;
 esac
 if [ -n "$FE" ]; then
   K="9000:41:1,9010:41:0,15500:29:1,15510:29:0,16300:29:1,16310:29:0"
@@ -209,6 +225,14 @@ if [ -n "$FE" ]; then
       23700:$X 24500:$X 24600:$X:1
     FE_SHOTS=${FE_SHOTS:-9800,10150,10650,10900,11400,11650,11900,12400,13150}
     ;;
+  garagecam)   # garagecam1: the scripted pad's right stick (nativepad.h kTestPadCode + 35 left, + 37 down)
+    VBL=${VBLANKS:-27000}
+    export B3NATIVE_TEST_PAD=${PAD:-xbox}
+    fe_keys 17900:$DN 18300:$X 19100:$X 19900:$X 21100:1059:1 21140:1059:0 21500:1061:1 21560:1061:0 \
+      21600:1059:1 21643:1059:0 21700:1059:1 21743:1059:0 21800:1059:1 21843:1059:0 23700:$X 24500:$X 24600:$X:1
+    [ "${GARAGECAM_MOUSE:-1}" = 1 ] && MOUSE=${MOUSE:-22290:move:0.5:0.5,22300:down:1,22310:move:0.53:0.5,22320:move:0.57:0.51,22330:move:0.62:0.52,22350:up:1}
+    FE_SHOTS=${FE_SHOTS:-10560,10600,10670,10690,10700,10740,10780,10896,10936,10986,11036,11300,13150}
+    ;;
   carseries)   # carsel1: R = R1, Q = L1 (docs/mac.md §5); the row on through the renderer's --settings
     VBL=${VBLANKS:-27000}
     printf 'series_shoulders = 1\n%s' "${CARSERIES_INI:-}" > "$OUT/pc_settings.ini"   # (CARSERIES_INI: more rows, e.g. button_prompts = 2)
@@ -216,6 +240,19 @@ if [ -n "$FE" ]; then
     fe_keys 17900:$DN 18300:$X 19100:$X 19900:$X 20900:21 21300:21 21700:20 22100:$RT 22500:$DN 23300:$UP \
       23700:$X 24500:$X 24600:$X:1
     FE_SHOTS=${FE_SHOTS:-10150,10650,10850,11050,11250,11400,13150}
+    ;;
+  racetime)   # todrace: T = TIME OF DAY (scancode 23); the race's Cross held 20400-23000; the pause menu's QUIT is row 6
+    VBL=${VBLANKS:-${RACETIME_VBL:-34000}}
+    printf 'time_of_day = 0\n%s' "${RACETIME_INI:-}" > "$OUT/pc_settings.ini"
+    RENDER_EXTRA="${RENDER_EXTRA:+$RENDER_EXTRA }--settings $OUT/pc_settings.ini"
+    export B3_PHOTO_ROW=0 B3_PROMPT_DEVICE=${RACETIME_DEVICE:-keyboard} B3_RACE_TIME_LABEL=1   # (the label on, golden pin or not)
+    fe_keys 17900:$DN 18300:$X 19100:$X 19400:23 19600:23 19900:$X 20400:$X:1 23000:$X:0 \
+      ${RACETIME_KEYS:-23200:41 23500:$DN 23600:$DN 23700:$DN 23800:$DN 23900:$DN 24200:$X 24600:$UP 24900:$X 26000:$BK 27600:$X 28400:$X 29200:$X 30000:$X:1}
+    # shots: the page before the presses (Default (Day)), after them (Night), the race (night), the page again after the
+    # main menu (Default (Day)), the second race (day). (Polls: VBlank / 2 + 106 in the first front end, VBlank - 10108 in
+    # the first race, VBlank / 2 + 2437 after it, VBlank - 12577 in the second race.)
+    # 17300: SELECT CAR's showroom after the night race (the race's value is still Night until the next load: drawn by day)
+    FE_SHOTS=${FE_SHOTS:-9800,9956,10700,11500,17000,17300,18300,18900}
     ;;
   crashresults)
     VBL=${VBLANKS:-33000}
@@ -238,12 +275,16 @@ fi
 # SCENARIO=pausemouse (mac5, remaster-features §8): the pause menu at 21600 (Cross released at 21700) driven by the mouse
 # (tools/native/menu_mouse.h): hover AUDIO, the wheel down to CONTROLLERS, a click on SETTINGS (the PC SETTINGS page opens),
 # a right click (it closes), a click on the prompt bar's START Resume (the race goes on); positions for the wide layout
-# at RENDER_EXTRA's size (1280 x 720 or any 16:9). The log must show the presses, the page opened and closed, and the
-# race driven again.
+# at RENDER_EXTRA's size (1280 x 720 or any 16:9; pinned here: at 4:3 the START prompt is at x 0.25-0.40, so the click
+# at 0.5 misses it) with the PHOTO MODE row on (pinned: without it the menu has six rows and they move); each point is
+# its row's centre (AUDIO 0.40-0.47, SETTINGS 0.54-0.60). The log must show the presses, the page opened and closed,
+# and the race driven again.
 if [ "${SCENARIO:-race}" = pausemouse ]; then
   VBL=${VBLANKS:-24000}
   K="$K,21600:41:1,21610:41:0,21700:29:0"
-  MOUSE=${MOUSE:-21800:move:0.15:0.47,21900:wheel:-1,22000:move:0.15:0.60,22010:click:1,22400:move:0.5:0.5,22600:click:3,23300:move:0.5:0.93,23310:click:1}
+  export B3_PHOTO_ROW=1
+  RENDER_EXTRA="${RENDER_EXTRA:---size 1280x720}"
+  MOUSE=${MOUSE:-21800:move:0.15:0.44,21900:wheel:-1,22000:move:0.15:0.57,22010:click:1,22400:move:0.5:0.5,22600:click:3,23300:move:0.5:0.93,23310:click:1}
 fi
 # SCENARIO=pausemouseq (mac5): the pause menu's confirmation popup by mouse. Hover jumps straight to the row (no stepping
 # presses): hover QUIT and click it ("Are you sure you want to quit?", the game's message box), hover YES (the highlight
@@ -310,7 +351,7 @@ if [ "${SCENARIO:-race}" = photo ] || [ "${SCENARIO:-race}" = photodof ] || [ "$
     SHOTS=$SHOTS,$DOF_SHOTS
   fi
 fi
-# SCENARIO=boosttoggle (accessibility: PC SETTINGS > INTERFACE > ACCESSIBILITY > BOOST Toggle; opt-in, it changes the
+# SCENARIO=boosttoggle (accessibility: PC SETTINGS > CONTROLS > DRIVING > BOOST Toggle; opt-in, it changes the
 # input): the race scenario with $OUT/pc_settings.ini `boost_mode = 1` (the renderer's --settings), Left Shift (R1, boost)
 # tapped for 10 VBlanks at 21400 and again at 22800 (the driving context begins near 21070; a tap in the countdown is
 # passed as it is). The log must show the latch taken and dropped, and the pad recording R1 held from the first tap to
@@ -329,11 +370,19 @@ fi
 # Triangle; the throttle let go at 21700 as the keyboard scenarios do), A / Cross at 22000 (RESUME if still paused; PS:
 # held on as the throttle; Xbox: the right trigger again). The verdict reads the pad recording (the reports the game
 # read): Cross from South in the menus; R1 (not Cross) from A while driving with the Xbox layout; R2 from B while
-# driving, Triangle from B in the pause menu (Xbox); Circle while driving, R2 from R3, Triangle in the pause menu (PS)
+# driving, Triangle from B in the pause menu (Xbox); Circle while driving, R2 from R3, Triangle in the pause menu (PS).
+# PAD=switch (padpaint): a Switch Pro pad with CONTROLLER LAYOUT Nintendo ($OUT/controls.ini `layout = nintendo`, the
+# renderer's --controls): the Xbox script with South and East swapped (A, the right button, confirms and boosts; B, the
+# bottom one, is the Crashbreaker and goes back) and the same verdict, plus the log's "controller layout: player 1 nintendo"
 if [ "${SCENARIO:-race}" = padlayout ]; then
   PADT=${PAD:-xbox}
   export B3NATIVE_TEST_PAD=$PADT
   P=1024; S=$P; E=$((P+1)); N=$((P+3)); ST=$((P+6)); R3=$((P+8)); RB=$((P+10)); DD=$((P+12)); RT=$((P+33))
+  if [ "$PADT" = switch ]; then
+    printf 'version = 3\n[player1.gamepad]\nlayout = nintendo\n' > "$OUT/controls.ini"
+    RENDER_EXTRA="${RENDER_EXTRA:+$RENDER_EXTRA }--controls $OUT/controls.ini"
+    S=$((P+1)); E=$P   # the labels: A (the confirm and boost) is East, B South
+  fi
   K="9000:$ST:1,9010:$ST:0"
   for v in $(seq 15500 800 16300); do K="$K,$v:$S:1,$((v+10)):$S:0"; done
   K="$K,17900:$DD:1,17910:$DD:0,18300:$S:1,18310:$S:0"
@@ -504,6 +553,71 @@ if [ -n "$FE" ]; then   # fe1: the front-end tours' verdict (no race needed)
   partycrash|carselect|crashnav|crashresults)   # (the garage showroom's backdrop counts as a load too)
     [ "${TL:-0}" -ge 1 ] || why="${why:+$why; }no track load"
     [ "$RACE" -ge 1 ] || why="${why:+$why; }no race shot" ;;
+  garagecam)   # garagecam1: the view taken by the stick (not before it) and by a drag, the spin back after each, no press
+    [ "${TL:-0}" -ge 1 ] || why="${why:+$why; }no track load"
+    [ "$RACE" -ge 1 ] || why="${why:+$why; }no race shot"
+    GT=$(grep -m1 -o 'garagecam\] poll [0-9]*: the view taken (right stick)' "$LOG" | awk '{print $3}' | tr -dc 0-9)
+    [ -n "$GT" ] || why="${why:+$why; }the right stick did not take the view"
+    [ -n "$GT" ] && [ "$GT" -lt 10500 ] && why="${why:+$why; }the view taken at poll $GT, before the stick (VBlank 21100)"
+    [ "${GARAGECAM_MOUSE:-1}" = 1 ] && ! grep -q 'garagecam\] poll [0-9]*: the view taken (mouse)' "$LOG" && why="${why:+$why; }the mouse drag did not take the view"
+    GR=$(grep -c 'garagecam\] poll [0-9]*: the stick at rest .* the game.s spin resumes' "$LOG")
+    [ "$GR" -ge 2 ] || why="${why:+$why; }the spin resumed $GR times, not 2 or more"
+    grep -q 'menu mouse press' "$LOG" && why="${why:+$why; }the drag pressed a button"
+    # the share of pixels two shots differ in (held: rounding only, under 1 %; turning: most of the car and the room)
+    pxdiff() {
+      python3 -I - "$OUT/shots/live_$1_0.png" "$OUT/shots/live_$2_0.png" <<'PY'
+import struct, sys, zlib
+def png(p):
+    b = open(p, 'rb').read(); i = 8; idat = b''
+    while i < len(b):
+        n = struct.unpack('>I', b[i:i + 4])[0]; t = b[i + 4:i + 8]; d = b[i + 8:i + 8 + n]
+        if t == b'IHDR': w, h, _, ct = struct.unpack('>IIBB', d[:10])
+        if t == b'IDAT': idat += d
+        i += 12 + n
+    raw = zlib.decompress(idat); bpp = {2: 3, 6: 4}[ct]; st = w * bpp; out = []; prev = bytearray(st); q = 0
+    for _ in range(h):
+        f = raw[q]; ln = bytearray(raw[q + 1:q + 1 + st]); q += 1 + st
+        for x in range(st):
+            a = ln[x - bpp] if x >= bpp else 0; c = prev[x - bpp] if x >= bpp else 0; u = prev[x]
+            if f == 1: ln[x] = (ln[x] + a) & 255
+            elif f == 2: ln[x] = (ln[x] + u) & 255
+            elif f == 3: ln[x] = (ln[x] + (a + u) // 2) & 255
+            elif f == 4:
+                pa, pb, pc = abs(u - c), abs(a - c), abs(a + u - 2 * c)
+                ln[x] = (ln[x] + (a if pa <= pb and pa <= pc else u if pb <= pc else c)) & 255
+        out.append(bytes(ln[k] for k in range(st) if k % bpp < 3)); prev = ln
+    return out
+try:
+    A, B = png(sys.argv[1]), png(sys.argv[2])
+    n = sum(1 for ra, rb in zip(A, B) for k in range(0, len(ra), 3) if ra[k:k + 3] != rb[k:k + 3])
+    print(int(1000 * n / (len(A) * len(A[0]) // 3)))
+except Exception:
+    print(-1)
+PY
+    }
+    D_HELD=$(pxdiff 10690 10700); D_BACK=$(pxdiff 10740 10780); D_SPIN=$(pxdiff 10560 10600)
+    { [ "$D_HELD" -ge 0 ] && [ "$D_HELD" -lt 10 ]; } || why="${why:+$why; }the view moved at rest within the second (10690 / 10700: ${D_HELD} per mille differ)"
+    [ "$D_BACK" -ge 100 ] || why="${why:+$why; }the spin did not resume (10740 / 10780: ${D_BACK} per mille differ)"
+    [ "$D_SPIN" -ge 100 ] || why="${why:+$why; }no spin before the stick (10560 / 10600: ${D_SPIN} per mille differ)"
+    EATX="; the view taken at poll $GT, the spin resumed $GR times; shots differ (per mille): spinning $D_SPIN, held $D_HELD, resumed $D_BACK" ;;
+  racetime)   # todrace: two presses, Night, the race at night, the main menu's reset, the next race by day
+    [ "${TL:-0}" -ge 2 ] || why="${why:+$why; }track loads ${TL:-0}, not 2"
+    [ "$RACE" -ge 4 ] || why="${why:+$why; }race shots $RACE, not 4"
+    TP=$(grep -c '\[b3pad\] time of day: a press' "$LOG")
+    [ "$TP" = 2 ] || why="${why:+$why; }$TP time of day presses, not 2"
+    # (a replay played: the choice is the recording's, "the replay's")
+    TSEQ=$(grep -o 'native_play: VBlank [0-9]*: time of day: .*' "$LOG" | sed 's/^native_play: VBlank [0-9]*: time of day: //' |
+           sed "s/(the replay's)/(a press on the track page)/" | tr '\n' '|')
+    [ "$TSEQ" = "Day (a press on the track page)|Night (a press on the track page)|the race takes Night|Default (the main menu: back to the setting)|the race takes Default|" ] ||
+      why="${why:+$why; }the choice's steps '${TSEQ}'"
+    grep -q 'shot poll 9800: time of day label drawn (Time of day: Default (Day)' "$LOG" || why="${why:+$why; }no Default label at 9800"
+    grep -q 'shot poll 9956: time of day label drawn (Time of day: Night' "$LOG" || why="${why:+$why; }no Night label at 9956"
+    grep -q 'shot poll 17000: time of day label drawn (Time of day: Default (Day)' "$LOG" || why="${why:+$why; }no Default label at 17000"
+    for q in 10700 11500; do grep -q "shot poll $q: drawn at night (the race's own choice)" "$LOG" || why="${why:+$why; }race shot $q not at night"; done
+    for q in 18300 18900; do grep -q "shot poll $q: drawn at night" "$LOG" && why="${why:+$why; }race shot $q at night"; done
+    grep -q 'shot poll 17300 .* front end' "$LOG" || why="${why:+$why; }17300 not the front end's showroom"
+    grep -q 'keys: driving' "$LOG" || why="${why:+$why; }never driving"
+    EATX="; time of day: $TP presses, Night taken by the race and Default after the main menu" ;;
   carseries)   # carsel1: three shoulder presses translated, the series after each (and the D-pad's Right after them)
     [ "${TL:-0}" -ge 1 ] || why="${why:+$why; }no track load"
     [ "$RACE" -ge 1 ] || why="${why:+$why; }no race shot"
@@ -638,6 +752,9 @@ fi
 PADL=""
 if [ "${SCENARIO:-race}" = padlayout ]; then   # the reports the game read at each of the pad's presses
   grep -q "\[b3pad\] test pad: ${PAD:-xbox} " "$LOG" || why="${why:+$why; }no test pad"
+  if [ "${PAD:-xbox}" = switch ]; then
+    grep -q "\[b3controls\] .*(controller layout: player 1 nintendo," "$LOG" || why="${why:+$why; }no Nintendo layout in the log"
+  fi
   PADV=$(python3 -I - "$OUT/pads.txt" "${PAD:-xbox}" <<'PY'
 import sys
 rows = []
@@ -657,11 +774,13 @@ def held(v):
     w = ~(b[0] | b[1] << 8) & 0xFFFF
     return {NAMES[i] for i in range(16) if w >> i & 1}, b[3]
 xbox = sys.argv[2] != 'ps'
-want = [(15505, {"CROSS"}, "menus: South confirms")]
+nin = sys.argv[2] == 'switch'   # the Nintendo layout: A (East) and B (South) by label
+A, B = ("A (East)", "B (South)") if nin else ("A", "B")
+want = [(15505, {"CROSS"}, "menus: East (A) confirms" if nin else "menus: South confirms")]
 if xbox:
-    want += [(21300, {"R1"}, "driving: A boosts (not Cross; the throttle on the right stick)"),
-             (21455, {"R2"}, "driving: B is the Crashbreaker"),
-             (21805, {"TRIANGLE"}, "pause menu: B goes back")]
+    want += [(21300, {"R1"}, "driving: %s boosts (not Cross; the throttle on the right stick)" % A),
+             (21455, {"R2"}, "driving: %s is the Crashbreaker" % B),
+             (21805, {"TRIANGLE"}, "pause menu: %s goes back" % B)]
 else:
     want += [(21300, {"R1", "CROSS"}, "driving: R1 boosts, Cross accelerates"),
              (21455, {"CIRCLE", "CROSS"}, "driving: Circle the horn"),

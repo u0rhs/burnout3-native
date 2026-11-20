@@ -56,6 +56,11 @@ constexpr int kPadButtonInputs = 21;   // South .. Touchpad (SDL_GAMEPAD_BUTTON_
 bool pad_input_analog(PadInput p);     // the half axes and the triggers
 const char* pad_input_key(PadInput p); // the ini's name: "south", "left_x-", "right_trigger", ...
 std::optional<PadInput> parse_pad_input(std::string_view s);
+// robust2: a [port.gamepad] chord, its inputs joined with '+' ("guide+left_shoulder"). The half-axis inputs end in
+// '+' themselves ("left_x+"), so the text is read input by input, the longest name first, each followed by '+' / ','
+// or the end: "left_x++start" and "start+left_x+" read back as written (a split on '+' lost them). Spaces are allowed
+// around the inputs. Unknown items go to `unknown`; an input is listed once.
+std::vector<PadInput> parse_pad_chord(std::string_view text, std::vector<std::string>* unknown = nullptr);
 // The labels a page shows: by the pad's family (positions are SDL's; the labels on them differ)
 enum class PadStyle : std::uint8_t { Generic, PlayStation, Xbox, Nintendo };
 std::string pad_input_label(PadInput p, PadStyle style);
@@ -88,6 +93,8 @@ using PadBindings = std::array<std::vector<PadBind>, kActions>;   // per action 
 // padlayout (1.2.1): CONTROLLER LAYOUT, per player. Auto picks by the pad (pad_family): a PlayStation pad gets the
 // PlayStation layout, every other pad (Xbox, Nintendo by position, generic) the Xbox layout. Xbox / PlayStation: that
 // layout whatever the pad. Custom: the player's own bindings (PlayerControls::pad; never changed by the other choices).
+// Nintendo (2026-11-19): the Xbox layout by label for a Nintendo pad (never picked by Auto): A (East) confirms and boosts,
+// B (South) goes back and is the Crashbreaker, X (North) and Y (West) swapped the same way.
 // The layouts (docs/PLAYING.md "Controllers"), in PS2 buttons:
 //   Xbox: RT Cross (accelerate) and LT Square (brake) in both contexts; while driving A R1 (boost), B R2 (Crashbreaker),
 //         X L1 (look back), Y Triangle (camera), View / Back L2 (music), LS click Circle (horn); in menus A Cross
@@ -97,8 +104,9 @@ using PadBindings = std::array<std::vector<PadBind>, kActions>;   // per action 
 //         analog), R3 (the right stick click) the Crashbreaker, L3 the music track skip; Circle, Triangle, L1, R1,
 //         Start, Share / Create (Select) button for button; the right stick the game's right stick (up accelerates,
 //         down brakes); both contexts. (The 1.x layout with the right stick added.)
-enum class PadLayout : std::uint8_t { Auto, Xbox, PlayStation, Custom };
-const char* pad_layout_key(PadLayout l);     // the ini's: "auto", "xbox", "playstation", "custom"
+enum class PadLayout : std::uint8_t { Auto, Xbox, PlayStation, Nintendo, Custom };
+constexpr std::size_t kPadLayouts = 5;
+const char* pad_layout_key(PadLayout l);     // the ini's: "auto", "xbox", "playstation", "nintendo", "custom"
 std::optional<PadLayout> parse_pad_layout(std::string_view s);
 // A pad's family from its SDL_GamepadType value (no SDL here; nativepad.cpp static_asserts the values): PS3 / PS4 /
 // PS5 PlayStation, Xbox 360 / One Xbox, the Switch Pro, Joy-Cons and GameCube Nintendo, the rest Generic
@@ -107,7 +115,7 @@ constexpr int kSdlPadXbox360 = 2, kSdlPadXboxOne = 3, kSdlPadPS3 = 4, kSdlPadPS4
 PadStyle pad_family(int sdl_gamepad_type);
 // The layout a player's pad of this family gets (Auto resolved: Xbox, PlayStation or Custom)
 PadLayout resolved_layout(PadLayout l, PadStyle family);
-const PadBindings& layout_bindings(PadLayout l);   // Xbox / PlayStation (Auto: Xbox's; Custom: the 1.x defaults)
+const PadBindings& layout_bindings(PadLayout l);   // Xbox / PlayStation / Nintendo (Auto: Xbox's; Custom: the 1.x defaults)
 // pad1 (gyro steering, src/native/pad_gyro.h; docs/pc-settings.md §7.12): per player, OPT-IN and input-changing. Off by
 // default: the reports are the ones before, byte for byte. While driving, on pads with a gyroscope: the pad's roll (tilt)
 // or yaw (turn) steers, mixed with the stick's steering or in its place; the recentre button makes the present pose
@@ -142,9 +150,12 @@ enum class PortAction : std::uint8_t {
     PhotoForward, PhotoBackward, PhotoLeft, PhotoRight, PhotoUp, PhotoDown,
     PhotoLookLeft, PhotoLookRight, PhotoLookUp, PhotoLookDown, PhotoRollLeft, PhotoRollRight,
     PhotoWider, PhotoNarrower, PhotoFocusNear, PhotoFocusFar, PhotoFast, PhotoSlow,
-    PhotoDof, PhotoBlurLess, PhotoBlurMore, PhotoBlurCycle, PhotoTarget, PhotoReset, PhotoHelp, PhotoExit,
+    PhotoDof, PhotoBlurLess, PhotoBlurMore, PhotoBlurCycle, PhotoTarget,
+    PhotoMotion, PhotoShutterFaster, PhotoShutterSlower,   // photoblur (1.3.0): the motion blur's mode and shutter
+    PhotoReset, PhotoHelp, PhotoExit,
     CarLook,   // reflect2: the CAR LOOK panel (DEVELOPER MODS)
     HdTextures,   // 1.2 (hdkey): the HD texture pack or the original textures, at once (the renderer keeps both)
+    RaceTime,     // todrace (1.3.0): DAY / NIGHT per race on the track pages (tools/native/race_time.h); those pages only
     Count
 };
 constexpr int kPortActions = int(PortAction::Count);
@@ -152,6 +163,9 @@ const char* port_key(PortAction a);                 // the ini's name: "restart"
 const char* port_label(PortAction a);               // "INSTANT RESTART", "PHOTO: MOVE FORWARD", ...
 const char* port_use(PortAction a);                 // what it does, for the pages
 bool port_photo(PortAction a);                      // one of photo mode's (conflicts only with the other port actions)
+// todrace: taken on game pages that read none of its inputs only (RaceTime: the track pages, race_time.h):
+// it conflicts only with the other port actions, and never with photo mode's (the two are never active together)
+bool port_page(PortAction a);
 bool port_has_pad(PortAction a);                    // a gamepad binding is meaningful (not the tuning overlay, the sections)
 bool port_analog(PortAction a);                     // a gamepad stick / trigger axis drives it (photo mode's movement and look)
 std::optional<PortAction> parse_port_action(std::string_view s);
@@ -166,6 +180,27 @@ const PortControls& default_port();
 std::uint64_t port_actions_of_key(const PortControls& p, std::uint16_t scancode);
 // A gamepad's travel 0..1 of the action's chord (the smallest of its inputs; 0 when unbound), the sticks past `dead_zone`
 float port_pad_amount(const GamepadState& g, const PortControls& p, PortAction a, float dead_zone);
+// todrace: the action's chord taken out of `g` (its inputs released, its axes at rest) when the whole chord is held, so
+// the game's report has none of it; true when it was held
+bool take_port_chord(GamepadState& g, const PortControls& p, PortAction a, float dead_zone);
+// todrace: a page action's chord over the window's polls: taken from the game's report while its page is up, and after
+// the page goes for as long as it stays held (a shoulder held into SELECT CAR is no L1 there: CAR SERIES ON L1 / R1)
+class PageChord {
+public:
+    // per pad, before its report: take its chord now? (`held`: the whole chord held on that pad)
+    bool take(bool held, bool page) const { return held && (page || withheld_); }
+    // after the poll's pads: any chord taken, held at all, held while the page is up; true when a press began on the page
+    bool end_poll(bool taken, bool held_any, bool held_on_page) {
+        const bool press = held_on_page && !prev_;
+        prev_ = held_any;
+        withheld_ = taken;
+        return press;
+    }
+    bool withheld() const { return withheld_; }
+
+private:
+    bool withheld_ = false, prev_ = false;
+};
 
 struct PlayerControls {
     std::array<std::vector<KeyBind>, kActions> keys;   // per action (Ds2 value)
@@ -235,7 +270,9 @@ std::string to_ini(const Controls& c);
 Controls controls_from_ini(std::string_view text, std::vector<std::string>* warnings = nullptr);
 // false: no file (c = the defaults)
 bool load_controls(const std::string& path, Controls& c, std::vector<std::string>* warnings = nullptr);
-bool save_controls(const std::string& path, const Controls& c, std::string* why = nullptr);
+// fsrobust: replaced safely (b3io::replace_file); `durable` false: not flushed to the disk (a file rewritten on every
+// edit: the page writes it durably once when it closes)
+bool save_controls(const std::string& path, const Controls& c, std::string* why = nullptr, bool durable = true);
 
 // ---- editing (the PC SETTINGS page and the launcher) ----
 struct PhysInput {
@@ -258,7 +295,9 @@ std::string auto_text(PadStyle family, bool connected);
 // The player's layout set (Xbox / PlayStation / Auto / Custom): the Custom bindings stay as they are
 void set_layout(Controls& c, int player, PadLayout l);
 std::vector<PhysInput> bound(const Controls& c, int player, Device d, Ds2 action, KeyCtx view);
-std::string bound_text(const Controls& c, int player, Device d, Ds2 action, KeyCtx view, PadStyle style);   // "ENTER, Z"; "-"
+// settingsui: what bound_text says for an action with nothing bound (a word: a bound Minus key reads "-")
+inline constexpr const char* kUnbound = "NOT SET";
+std::string bound_text(const Controls& c, int player, Device d, Ds2 action, KeyCtx view, PadStyle style);   // "ENTER, Z"; kUnbound
 // The action's inputs in the view differ from what "back to the default" gives (reset_action): the pages mark it
 bool moved(const Controls& c, int player, Device d, Ds2 action, KeyCtx view);
 std::string input_label(const PhysInput& in, PadStyle style);
@@ -277,7 +316,12 @@ enum class Resolve : std::uint8_t { Swap, Clear, Keep };
 // (uses()): Swap gives them the action's previous first input in the view (none: they lose it), Clear removes it from
 // them, Keep leaves them.
 void rebind(Controls& c, int player, Device d, Ds2 action, const PhysInput& in, KeyCtx view, Resolve r, bool add = false);
-void remove_last(Controls& c, int player, Device d, Ds2 action, KeyCtx view);   // the last input shown in the view
+// The last input shown in the view. settingsui: never the last input that confirms (CROSS) or goes back (TRIANGLE) in the
+// menus on that device (a player could no longer leave the page): kKeptForMenus then, nothing changed.
+enum class Removed { kDone, kNothing, kKeptForMenus };
+Removed remove_last(Controls& c, int player, Device d, Ds2 action, KeyCtx view);
+// The words for kKeptForMenus (LAST CHANGE, the launcher's note)
+constexpr const char* kKeptForMenusText = "Kept: the menus need one input that confirms and one that goes back.";
 void reset(Controls& c, int player, Device d);   // that player's device to its defaults (a gamepad: its gyro, Auto too)
 
 // rebind2: one action back to its default (a keyboard action: in the view), and everything back (both players, the port
@@ -294,6 +338,13 @@ std::vector<Use> uses_port(const Controls& c, PortAction a, Device d, const Phys
 void rebind_port(Controls& c, PortAction a, Device d, const PhysInput& in, Resolve r, bool add = false);
 void remove_last_port(Controls& c, PortAction a, Device d);
 void reset_port(Controls& c, PortAction a, Device d);   // that action's device back to its default
+// todrace: an input the track pages read themselves -- bound by either player, in the menus, to their Confirm (Cross), Back
+// (Triangle) or a direction (the D-pad, the left stick) -- which a page action (port_page) must not take: the page would
+// lose it. A gamepad input counts in any controller layout.
+bool page_reads_input(const Controls& c, const PhysInput& in);
+// None of the action's inputs on device `d` is one (a hand-edited controls.ini can bind one; the window then leaves them
+// to the game)
+bool port_page_safe(const Controls& c, PortAction a, Device d);
 // An action's name in a message: "PHOTO: MOVE FORWARD", or "PLAYER 2 CROSS" for a game action of player 2
 std::string use_label(const Use& u);
 
@@ -333,6 +384,8 @@ public:
     KeyCtx view() const { return view_; }
     // The text a page shows while active: "PRESS A KEY FOR CROSS (WHILE DRIVING) ..." / the conflict and its choices
     std::string message(PadStyle style) const;
+    // todrace: the last input refused while waiting (page_reads_input, for a page action): the flow goes on waiting
+    const std::optional<PhysInput>& refused() const { return refused_; }
 
 private:
     State state_ = State::Idle;
@@ -346,6 +399,7 @@ private:
     float waited_ = 0;
     PhysInput pressed_;
     std::optional<PhysInput> swap_;   // what Swap gives the other uses
+    std::optional<PhysInput> refused_;   // todrace
     std::vector<Use> conflicts_;
 };
 

@@ -37,6 +37,7 @@ extern "C" int GetLockedRewardString__23CB3RewardImageComponentF18EB3RewardImage
     case 3:
         return func_00271A00(&D_0051BA44, func_003F5FB0(p1));
     }
+    b3host::draft_fall_off("0x003F6420 GetLockedRewardString: type outside 0..3"); /* decomp2host T47: retail leaves the caller's v0 here (b .L003F64C4, 0x3F6450) */ return 0;
 }
 
 }  // namespace b3gen_func_003F6420

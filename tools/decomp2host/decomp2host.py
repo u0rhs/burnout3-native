@@ -1130,7 +1130,14 @@ def t46_local_arrays(text, report=None):
 # 1.2.1 T47: a statement a draft gets wrong against retail's code, written as retail has it. Function address ->
 # [(a regex the draft's text matches exactly once inside the marked function, its replacement, retail's evidence)]. A
 # pattern that no longer matches once (the decomp changed or fixed the draft) stops the generation, so the entry is
-# looked at again.
+# looked at again. genret: a fourth element ("decl", CLASS) matches inside the unit's declaration of CLASS before the
+# marker instead (after T13), e.g. a placeholder virtual's return type; a declaration that already reads as the
+# replacement (another entry of the same unit fixed it) is left as it is.
+# genret: a non-void function whose draft falls off its end (undefined behaviour in C++: GCC compiled ForAllGames into
+# the next block, the online JOIN GAME page broke). Where retail's v0 comes from the code path, the draft returns it;
+# where retail leaves the caller's v0 (not derivable here), a defined value plus b3host::draft_fall_off, noted once.
+# tools/native/check_returns.py (make check-returns) fails on any new case.
+_T47_FALL_OFF = 'b3host::draft_fall_off("%s"); /* decomp2host T47: retail leaves the caller\'s v0 here (%s) */ return %s;'
 T47_DRAFT_FIXES = {
     # CB3TabbedDisplayComponent::SetRecordsContentPanelContents (DRIVER DETAILS > RECORDS, the CAR column). Retail
     # places each car icon at y = 168 + D_004C9E88.y / 2 + 32 (i - 1), anchored at its left middle (0, 0.5), so the
@@ -1145,7 +1152,90 @@ T47_DRAFT_FIXES = {
          r"\1CGtV2d(0.0f, 0.5f) /* decomp2host T47: retail's anchor (0, 0.5), sw 0x3F000000 0x114(sp), 0x3A4F38 */\2",
          "anchor"),
     ],
+    # CGtLobbyPS2DirtySock::ForAllGamesFound / ForAllGames: after the loop, retail tail-calls vtable slot 0x14
+    # (GetLobbyStatus__20CGtLobbyPS2DirtySockFv 0x33BC20) and returns its v0 (ForAllGamesFound: jalr, then b to the
+    # epilogue, nothing writes v0; ForAllGames: jalr $t9 0x339900, b .L00339A2C 0x339908, epilogue only). The draft
+    # calls it as `void vfunc_14()` and falls off the end.
+    0x00339480: [
+        (r"\bvoid vfunc_14\(\);",
+         "int vfunc_14();   /* decomp2host T47: GetLobbyStatus (slot 0x14) returns the lobby status in v0 */",
+         "vfunc_14's return type", ("decl", "CGtLobbyPS2DirtySock")),
+        (r"\n    vfunc_14\(\);\n\}",
+         "\n    return vfunc_14();   /* decomp2host T47: retail returns slot 0x14's v0 (GetLobbyStatus) */\n}",
+         "return of vfunc_14"),
+    ],
+    0x00339830: [
+        (r"\bvoid vfunc_14\(\);",
+         "int vfunc_14();   /* decomp2host T47: GetLobbyStatus (slot 0x14) returns the lobby status in v0 */",
+         "vfunc_14's return type", ("decl", "CGtLobbyPS2DirtySock")),
+        (r"\n    vfunc_14\(\);\n\}",
+         "\n    return vfunc_14();   /* decomp2host T47: retail returns slot 0x14's v0 (jalr 0x339900, b 0x339908) */\n}",
+         "return of vfunc_14"),
+    ],
+    # GetLockedRewardString__23CB3RewardImageComponentF18EB3RewardImageTypei: a type outside 0..3 branches straight to
+    # the epilogue (b .L003F64C4, 0x3F6450) with v0 untouched
+    0x003F6420: [
+        (r"(return func_00271A00\(&D_0051BA44, func_003F5FB0\(p1\)\);\n    \}\n)\}",
+         r"\1    " + (_T47_FALL_OFF % ("0x003F6420 GetLockedRewardString: type outside 0..3", "b .L003F64C4, 0x3F6450",
+                                    "0")) + "\n}",
+         "a defined return on the fall-off path"),
+    ],
+    # func_003F64D0 (the reward's description string): p0 outside 0..3 branches to the epilogue (b .L003F6584,
+    # 0x3F6500) with v0 untouched
+    0x003F64D0: [
+        (r"(return func_00271A00\(&D_0051BA44, r0\);\n    \}\n)\}",
+         r"\1    " + (_T47_FALL_OFF % ("0x003F64D0 reward string: p0 outside 0..3", "b .L003F6584, 0x3F6500",
+                                    "nullptr")) + "\n}",
+         "a defined return on the fall-off path"),
+    ],
+    # func_003F66F0's inlined helper (the marker sits above it): field_10 neither 0 nor 1 branches to the epilogue
+    # (b .L003F6754, 0x3F6718) with v0 untouched
+    0x003F66F0: [
+        (r"(return 0x8000000001ULL;\n    \}\n)\}",
+         r"\1    " + (_T47_FALL_OFF % ("0x003F66F0 status: field_10 neither 0 nor 1", "b .L003F6754, 0x3F6718",
+                                    "0")) + "\n}",
+         "a defined return on the fall-off path"),
+    ],
 }
+
+
+def _t47_region(text, addr):
+    """The function marked `// 0xADDR` in text: (marker match, body start, body end), or None when the unit does not
+    hold it (no marker, or only the marker of a dropped function)."""
+    mk = re.search(r"^//\s*0x%08X\b.*$" % addr, text, re.M | re.I)
+    if not mk:
+        return None
+    end = re.search(r"^\}", text[mk.end():], re.M)
+    if not end:
+        die("T47: no end of the function marked 0x%08X" % addr)
+    lo, hi = mk.end(), mk.end() + end.end()
+    nxt = re.search(r"^//\s*0x[0-9A-F]{8}\b", text[lo:hi], re.M | re.I)
+    if nxt and not re.search(r"^\{", text[lo:lo + nxt.start()], re.M):
+        # genret: the next function's marker comes before any body: the marked function was dropped from this unit
+        # (T5, a selection without it: gen/decomp's B3RewardImageComponent.cpp keeps only 0x003F64D0's comment)
+        return None
+    return mk, lo, hi
+
+
+def t47_check_applied(units_dir, names, generated):
+    """genret: every T47 entry whose function this generation emitted (`generated`: the manifest's addresses) was
+    applied in some unit (its marked function there carries a `decomp2host T47` replacement); an entry that matched
+    no unit (the function moved or its marker changed) stops the generation, as a pattern that stopped matching
+    does. Entries for functions outside the selection (gen/decomp has none of them) are not looked for."""
+    want = {a for a in T47_DRAFT_FIXES if a in generated}
+    if not want:
+        return
+    for nm in names:
+        with open(os.path.join(units_dir, nm + ".cpp"), encoding="utf-8") as f:
+            text = f.read()
+        for a in list(want):
+            r = _t47_region(text, a)
+            if r and "decomp2host T47" in text[r[1]:r[2]]:
+                want.discard(a)
+        if not want:
+            return
+    die("T47: %s generated but no unit carries the fix (marker or unit changed? update T47_DRAFT_FIXES)" %
+        ", ".join("0x%08X" % a for a in sorted(want)))
 
 
 def t47_draft_fixes(text, report=None):
@@ -1153,23 +1243,36 @@ def t47_draft_fixes(text, report=None):
     form. Returns (text, count)."""
     n = 0
     for addr, fixes in T47_DRAFT_FIXES.items():
-        mk = re.search(r"^//\s*0x%08X\b.*$" % addr, text, re.M | re.I)
-        if not mk:
+        r = _t47_region(text, addr)
+        if not r:
             continue
-        end = re.search(r"^\}", text[mk.end():], re.M)
-        if not end:
-            die("T47: no end of the function marked 0x%08X" % addr)
-        lo, hi = mk.end(), mk.end() + end.end()
-        body = text[lo:hi]
-        for pat, repl, what in fixes:
-            if len(re.findall(pat, body)) != 1:
+        mk, lo, hi = r
+        head, body = text[:mk.start()], text[lo:hi]
+        for fix in fixes:
+            pat, repl, what = fix[:3]
+            if len(fix) > 3:
+                # ("decl", CLASS): inside the unit's declaration of CLASS (before the marker)
+                cls = re.search(r"^(?:class|struct)\s+%s\b[^;{]*\{.*?^\};" % re.escape(fix[3][1]), head, re.M | re.S)
+                if not cls:
+                    die("T47: 0x%08X: no declaration of %s before the marker (for the draft's %s)" %
+                        (addr, fix[3][1], what))
+                part = cls.group(0)
+                if not re.findall(pat, part) and part.count(repl) == 1:
+                    continue                                    # already fixed (another function of this unit)
+            else:
+                part = body
+            if len(re.findall(pat, part)) != 1:
                 die("T47: 0x%08X: the draft's %s (`%s`) is not there once (decomp changed it? update T47_DRAFT_FIXES)" %
                     (addr, what, pat))
-            body = re.sub(pat, repl, body)
+            part = re.sub(pat, repl, part)
+            if len(fix) > 3:
+                head = head[:cls.start()] + part + head[cls.end():]
+            else:
+                body = part
             n += 1
             if report is not None:
                 report.append("T47 %08X: %s as retail" % (addr, what))
-        text = text[:lo] + body + text[hi:]
+        text = head + text[mk.start():lo] + body + text[hi:]
     return text, n
 
 
@@ -6107,6 +6210,8 @@ def generate(decomp, sel, a, keep_going=False):
             for f, why in failed:
                 o.write("%s\t%s\n" % (f, why.replace("\t", " ")))
     prune_units(a.out, {unit_name(f) for f in units}, getattr(a, "objects", None))
+    t47_check_applied(os.path.join(a.out, "units"), sorted(unit_name(f) for f in units),
+                      {int(l.split("\t", 1)[0], 16) for l in manifest if re.match(r"[0-9A-Fa-f]{8}\t", l)})
     _phase('manifest + prune')
     return len(entries), len(units)
 

@@ -13,6 +13,7 @@ bool read_file(const std::string& path, std::vector<std::uint8_t>& out) { return
 bool write_obj(const Model& m, const std::string& dir, const std::string& stem) {
     for (std::size_t t = 0; t < m.textures.size(); ++t) {
         const Image& im = m.textures[t].levels.at(0);
+        if (im.bc) continue;   // hdgpu: a BC level (an HD replacement on the GPU) has no texels here
         if (!write_png_rgba(dir + "/" + stem + "_tex" + std::to_string(t) + ".png", im.w, im.h, im.rgba.data())) return false;
     }
     FILE* mtl = std::fopen((dir + "/" + stem + ".mtl").c_str(), "w");

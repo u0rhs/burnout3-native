@@ -478,12 +478,5 @@ int main(int argc, char** argv) {
         std::printf("%s: %s\n", p->name(), describe(t).c_str());
         return 0;
     }
-    std::printf("now playing (other music apps)\n");
-    for (auto& c : t::cases()) {
-        const int before = t::failures();
-        try { c.fn(); } catch (const std::exception& e) { t::fail(__FILE__, __LINE__, std::string("exception: ") + e.what()); }
-        std::printf("  %-44s %s\n", c.name, t::failures() == before ? "ok" : "FAILED");
-    }
-    std::printf("%zu tests, %d checks, %d failures\n", t::cases().size(), t::checks(), t::failures());
-    return t::failures() ? 1 : 0;
+    return t::run_all("now playing (other music apps)");
 }

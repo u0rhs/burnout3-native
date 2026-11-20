@@ -227,14 +227,16 @@ TEST(the_split_screen_setting) {
     CHECK(from_ini(to_ini(s)).split_layout == 1);
     CHECK(to_ini(s).find("split_layout = 1") != std::string::npos);
     CHECK(from_ini("split_layout = 5\n").split_layout == 0);   // out of range: the default
-    // the row: CAMERA (after FOV CORRECTION), id 180, two values; an edit sets it
+    // the row: DISPLAY > LAYOUT (settingsui: after MENU MOVIE SIDES, the section's last), id 180, two values; an edit sets it
     const Content c = build_content(s, Env{});
     const Row* row = nullptr;
-    const Tab* cam = nullptr;
-    for (const Tab& t : c.tabs) if (t.label == "CAMERA") cam = &t;
-    if (cam) for (const Row& r : cam->rows) if (r.label == "SPLIT SCREEN") row = &r;
-    for (const Row& r : c.tabs[0].rows) CHECK(r.label != "SPLIT SCREEN");   // not on DISPLAY (the golden PC SETTINGS shot)
-    CHECK(cam != nullptr && row != nullptr && &cam->rows.back() == row);
+    const Tab& disp = c.tabs[0];
+    CHECK(disp.label == "DISPLAY");
+    std::size_t at = 0;
+    for (std::size_t k = 0; k < disp.rows.size(); ++k) if (disp.rows[k].label == "SPLIT SCREEN") { row = &disp.rows[k]; at = k; }
+    for (const Tab& t : c.tabs) if (&t != &disp) for (const Row& r : t.rows) CHECK(r.label != "SPLIT SCREEN");
+    CHECK(row != nullptr && at > 0 && at + 1 < disp.rows.size() && disp.rows[at - 1].label == "MENU MOVIE SIDES" &&
+          disp.rows[at + 1].kind == RowKind::kSection && disp.rows[at + 1].label == "CAMERA");
     if (row) {
         CHECK(row->id == 180 && row->values.size() == 2 && row->value == 1);
         CHECK(row->values[0] == "Top / bottom" && row->values[1] == "Side by side");

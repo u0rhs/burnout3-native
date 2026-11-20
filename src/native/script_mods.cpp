@@ -2,6 +2,7 @@
 #include "script_mods.h"
 
 #include "../../sdk/include/b3mod_api.h"
+#include "b3host/host.h"
 
 // Lua is compiled as C++ (script_lua.cpp): its headers without lua.hpp's extern "C"
 #include "../third_party/lua-5.4.9/src/lua.h"
@@ -12,9 +13,20 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 #include <cstring>
+#include <exception>
+#include <map>
 #include <system_error>
 #include <vector>
+
+namespace b3native {
+
+namespace {
+class ScriptMod;
+thread_local ScriptMod* g_running = nullptr;   // the script whose state runs now on this thread (its outermost entry)
+}  // namespace
+}  // namespace b3native
 
 namespace b3native {
 
@@ -108,10 +120,46 @@ public:
     bool mem_hit_ = false;
     std::uint64_t used_ = 0, limit_ = 0;
     bool over_ = false;
+    // modsec: the time limit, wall clock, of the script's own time (from each outermost entry into the state to its
+    // return) per VBlank (the main chunk and on_load: kScriptLoadTimeFactor times it): the budget counts Lua
+    // instructions only, and a C library call (a pattern that backtracks, a huge string) runs none. Looked at in the
+    // count hook, in the allocator and at each step of the pattern matcher (script_lua.cpp); past it the script is
+    // stopped as past its budget. A script within its budget never comes near it, so runs stay deterministic.
+    std::int64_t time_used_ = 0;   // ns
+    std::chrono::steady_clock::time_point t0_{};
+    bool timed_out_ = false;
+    unsigned ticks_ = 0;
+    std::int64_t time_limit() const {
+        const std::int64_t per = std::int64_t(cfg_.time_limit_ms) * 1000000;
+        return limit_ > cfg_.budget ? per * std::int64_t(kScriptLoadTimeFactor) : per;
+    }
+    bool past_time() {   // (only while it runs: g_running == this)
+        if (timed_out_) return true;
+        if (time_used_ + (std::chrono::steady_clock::now() - t0_).count() > time_limit()) timed_out_ = true;
+        return timed_out_;
+    }
+    // review: the clock runs only while this script's own code runs. Every entry into its state makes it the running
+    // script (the one before it paused); its calls out into the game's code (b3.call, call:next) pause it, so the
+    // game's time (a track load, a VBlank wait while the window is unfocused) and another script's hooks the game
+    // reaches are not charged to it.
+    void clock_in() {
+        t0_ = std::chrono::steady_clock::now();
+        g_running = this;
+    }
+    void clock_out() {
+        time_used_ += (std::chrono::steady_clock::now() - t0_).count();
+        g_running = nullptr;
+    }
     bool in_main_ = false;     // inside the loader's call (the first load: registrations go to the API)
     bool reloading_ = false;   // a hot reload's main chunk (registrations matched against the first load's)
     bool dead_ = false;        // stopped: nothing more runs in the state
     int depth_ = 0;            // protected calls into the state now running (a hook inside b3.call: 2)
+    // modsec: the host's fatal error (b3host::HostError) met in the game's code the script called (b3.call,
+    // call:next). The script must not see it (a pcall would make it a probe, and the game's function stopped halfway):
+    // the binding keeps it here, stops the script (every later instruction raises), and protect() throws it on to the
+    // game once the state has unwound, as if no script had been there
+    std::exception_ptr fatal_;
+    std::string fatal_what_;
     std::string warn_;
     std::vector<std::string> wants_;   // the event lists with a handler (no Lua call to find out)
 
@@ -138,6 +186,15 @@ public:
     std::vector<Row> rows_;
     int last_state_ = -1, last_laps_ = -1;   // the polled events
     std::uint64_t sig_ = 0, next_look_ = 0;  // hot reload
+    // an unsafe script's files as read and hashed at load (path inside the mod -> bytes): the main chunk and require()
+    // read only these, so what runs is what was checked
+    bool snapped_ = false;
+    std::map<std::string, std::string> snap_;
+    bool snapshot(bool check);
+    const std::string* snapped(const std::string& rel) const {
+        const auto it = snap_.find(rel);
+        return it == snap_.end() ? nullptr : &it->second;
+    }
 
     // ---- helpers ----
     void log(int level, const std::string& s) { api_->log(self_, level, s.c_str()); }
@@ -201,6 +258,7 @@ void* lua_alloc(void* ud, void* ptr, std::size_t osize, std::size_t nsize) {
         m.mem_hit_ = true;
         return nullptr;
     }
+    if (nsize > old && g_running == &m && (m.timed_out_ || ((++m.ticks_ & 63u) == 0 && m.past_time()))) return nullptr;   // its time
     void* p = std::realloc(ptr, nsize);
     if (!p) return nullptr;
     m.mem_ = m.mem_ - old + nsize;
@@ -213,7 +271,7 @@ void count_hook(lua_State* L, lua_Debug*) {
     ScriptMod& m = self_of(L);
     if (!m.over_) {
         m.used_ += kStep;
-        if (m.used_ <= m.limit_ && !m.dead_) return;
+        if (m.used_ <= m.limit_ && !m.dead_ && !(g_running == &m && m.past_time())) return;
         m.over_ = !m.dead_ || m.over_;
     }
     lua_sethook(L, &count_hook, LUA_MASKCOUNT, 1);
@@ -227,6 +285,55 @@ void warn_fn(void* ud, const char* msg, int tocont) {
     if (!tocont) {
         m.log(B3MOD_LOG_WARN, m.warn_);
         m.warn_.clear();
+    }
+}
+
+// the game's code called from a binding (b3.call, call:next): a HostError there is kept for protect() and the script
+// stopped; nothing the script runs after it (a pcall's handler, the next instruction) gets past the count hook
+// a HostError met in a binding: kept (the first one), the script stopped; raised in the state as an error nothing in the
+// script gets past (the count hook raises again at every instruction)
+[[noreturn]] void host_fatal(lua_State* L, ScriptMod& m, const b3host::HostError& e) {
+    if (!m.fatal_) {
+        m.fatal_ = std::make_exception_ptr(e);
+        m.fatal_what_ = e.what();
+    }
+    m.dead_ = true;
+    lua_sethook(L, &count_hook, LUA_MASKCOUNT, 1);
+    luaL_error(L, "the game's code stopped with a fatal error");
+    std::abort();   // (luaL_error does not return)
+}
+template <class G>
+void game_code(lua_State* L, ScriptMod& m, G&& g) {
+    bool hit = false;
+    std::string what;
+    struct Pause {   // the game's own time is not the script's
+        ScriptMod& m;
+        explicit Pause(ScriptMod& s) : m(s) { m.clock_out(); }
+        ~Pause() { m.clock_in(); }
+    };
+    try {
+        Pause p(m);
+        g();
+    } catch (const b3host::HostError& e) {
+        if (!m.fatal_) {
+            m.fatal_ = std::current_exception();
+            m.fatal_what_ = e.what();
+        }
+        hit = true;
+    }
+    if (!hit) return;
+    m.dead_ = true;
+    lua_sethook(L, &count_hook, LUA_MASKCOUNT, 1);
+    luaL_error(L, "the game's code stopped with a fatal error");
+}
+// every C function a script can call: a HostError inside it (a guest read, a view, a draw ...) is the game's, never a
+// Lua error a pcall could catch. Lua's own errors (thrown through C++ here) pass untouched.
+template <lua_CFunction F>
+int guarded(lua_State* L) {
+    try {
+        return F(L);
+    } catch (const b3host::HostError& e) {
+        host_fatal(L, self_of(L), e);
     }
 }
 
@@ -246,6 +353,18 @@ bool ScriptMod::protect(F&& f) {
         return 0;
     });
     lua_pushlightuserdata(L, &box);
+    struct Clock {   // this script's time from its entry to its return (also through a rethrown fatal); the one it interrupted paused
+        ScriptMod& m;
+        ScriptMod* prev;
+        explicit Clock(ScriptMod& s) : m(s), prev(g_running) {
+            if (prev) prev->clock_out();
+            m.clock_in();
+        }
+        ~Clock() {
+            m.clock_out();
+            if (prev) prev->clock_in();
+        }
+    } clock(*this);
     ++depth_;
     const int rc = lua_pcall(L, 1, 0, top + 1);
     --depth_;
@@ -254,6 +373,16 @@ bool ScriptMod::protect(F&& f) {
         const char* s = lua_tolstring(L, -1, &n);
         const std::string msg = s ? std::string(s, n) : std::string("(an error that is not a string)");
         lua_settop(L, top);
+        if (fatal_) {   // the game's own fatal error, through the script: on to the game (the outermost entry closes the state)
+            const std::exception_ptr e = fatal_;
+            if (depth_ == 0) {
+                dead_ = false;   // (so stop() logs it)
+                stop(rc, "");
+                fatal_ = nullptr;
+                close();
+            }
+            std::rethrow_exception(e);
+        }
         stop(rc, msg);
         return false;
     }
@@ -285,6 +414,12 @@ std::uint32_t check_addr(lua_State* L, int i) {
 }
 void need_gameplay(lua_State* L, const char* what) {
     if (!self_of(L).cfg_.gameplay) luaL_error(L, "%s: refused: this mod says gameplay = no (it may only read and draw)", what);
+}
+// modsec: writing the game's memory and calling its functions reach the game's own code with the script's values
+void need_unsafe(lua_State* L, const char* what) {
+    need_gameplay(L, what);
+    if (!self_of(L).cfg_.unsafe)
+        luaL_error(L, "%s: refused: only a script whose mod.ini says unsafe = yes in [script] (the player is then asked to allow it, as for a code mod)", what);
 }
 // game code runs only from the state's main thread: a hook it reaches calls into that thread
 void need_main_thread(lua_State* L, const char* what) {
@@ -455,7 +590,7 @@ int l_mem_read(lua_State* L) {
 }
 int l_mem_write(lua_State* L) {
     ScriptMod& m = self_of(L);
-    need_gameplay(L, "b3.mem.write");
+    need_unsafe(L, "b3.mem.write");
     const Kind& k = check_kind(L, 1);
     const std::uint32_t a = check_addr(L, 2);
     std::uint8_t b[4] = {};
@@ -487,7 +622,7 @@ int l_mem_read_bytes(lua_State* L) {
 }
 int l_mem_write_bytes(lua_State* L) {
     ScriptMod& m = self_of(L);
-    need_gameplay(L, "b3.mem.write_bytes");
+    need_unsafe(L, "b3.mem.write_bytes");
     const std::uint32_t a = check_addr(L, 1);
     std::size_t n = 0;
     const char* p = luaL_checklstring(L, 2, &n);
@@ -508,8 +643,10 @@ int l_call(lua_State* L) {
     ScriptMod& m = self_of(L);
     const std::uint32_t a = check_addr(L, 1);
     if (m.in_main_ || m.reloading_) return luaL_error(L, "b3.call: not in the main chunk (the game has not started); call from a callback or a hook");
-    need_gameplay(L, "b3.call");
+    need_unsafe(L, "b3.call");
     need_main_thread(L, "b3.call");
+    if (std::find(m.cfg_.calls.begin(), m.cfg_.calls.end(), a) == m.cfg_.calls.end())
+        return luaL_error(L, "b3.call: refused: %s is not in [script] calls (the game functions this mod may call)", hex(a).c_str());
     if (!m.api_->has_function(m.self_, a)) return luaL_error(L, "b3.call: no native function at %s", hex(a).c_str());
     B3ModRegs regs{};
     unsigned ng = 0, nf = 0;
@@ -526,7 +663,7 @@ int l_call(lua_State* L) {
         }
     }
     B3ModResult r{};
-    m.api_->call(m.self_, a, &regs, &r);
+    game_code(L, m, [&] { m.api_->call(m.self_, a, &regs, &r); });
     push_result(L, r);
     return 3;
 }
@@ -559,7 +696,7 @@ int lc_sp(lua_State* L) {
 }
 int lc_set_arg(lua_State* L) {
     CallState& c = check_call(L);
-    need_gameplay(L, "call:set_arg");
+    need_unsafe(L, "call:set_arg");   // (review: an argument is often a pointer or an index the game's code follows)
     const int r = check_reg(L, 2);
     c.regs.gpr[r] = static_cast<std::uint64_t>(luaL_checkinteger(L, 3));
     return 0;
@@ -578,7 +715,7 @@ int lc_next(lua_State* L) {
     if (c.next_called) return luaL_error(L, "call:next() twice");
     need_main_thread(L, "call:next");
     c.next_called = true;
-    m.api_->next(c.ctx, &c.regs, &c.result);
+    game_code(L, m, [&] { m.api_->next(c.ctx, &c.regs, &c.result); });
     push_result(L, c.result);
     return 3;
 }
@@ -588,7 +725,7 @@ int lc_result(lua_State* L) {
 }
 int lc_set_result(lua_State* L) {
     CallState& c = check_call(L);
-    need_gameplay(L, "call:set_result");
+    need_unsafe(L, "call:set_result");   // (a result is often a pointer or an index)
     c.result.v0 = static_cast<std::uint64_t>(luaL_checkinteger(L, 2));
     c.result.v0_hi = 0;
     if (!lua_isnoneornil(L, 3)) {
@@ -638,7 +775,7 @@ int l_hook(lua_State* L, bool replace) {
     ScriptMod& m = self_of(L);
     const char* what = replace ? "b3.hook.replace" : "b3.hook.wrap";
     need_main_chunk(L, what);
-    if (replace) need_gameplay(L, what);
+    if (replace) need_unsafe(L, what);   // (review: skips the game's function and hands back a chosen v0)
     const std::uint32_t a = check_addr(L, 1);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     ScriptMod::HookRec* rec = nullptr;
@@ -811,6 +948,14 @@ int l_draw_texture(lua_State* L) {
 // up to n bytes of `path` from `offset` (to its end when n < 0) pushed as a string; false (nothing pushed): no file
 bool push_data(lua_State* L, const char* path, std::int64_t off, std::int64_t n) {
     ScriptMod& m = self_of(L);
+    if (m.snapped_) {   // an unsafe script's own files: the bytes read and hashed at load
+        if (const std::string* s = m.snapped(path)) {
+            const std::size_t o = std::size_t(std::clamp<std::int64_t>(off, 0, std::int64_t(s->size())));
+            const std::size_t k = n < 0 ? s->size() - o : std::min<std::size_t>(std::size_t(n), s->size() - o);
+            lua_pushlstring(L, s->data() + o, k);
+            return true;
+        }
+    }
     const std::int64_t size = m.api_->data_size(m.self_, path);
     if (size < 0) return false;
     if (off < 0) off = 0;
@@ -912,7 +1057,7 @@ int l_require(lua_State* L) {
         return 1;
     }
     lua_pop(L, 1);
-    if (!push_data(L, rel.c_str(), 0, -1)) return luaL_error(L, "require \"%s\": no file %s in the mod", name, rel.c_str());
+    if ((m.snapped_ && !m.snapped(rel)) || !push_data(L, rel.c_str(), 0, -1)) return luaL_error(L, "require \"%s\": no file %s in the mod", name, rel.c_str());
     std::size_t n = 0;
     const char* text = lua_tolstring(L, 3, &n);
     if (luaL_loadbufferx(L, text, n, ("@" + rel).c_str(), "t") != LUA_OK) return lua_error(L);   // 4
@@ -939,6 +1084,28 @@ int l_load(lua_State* L) {
     if (n >= 4) lua_pushvalue(L, 4);
     lua_call(L, n >= 4 ? 4 : 3, LUA_MULTRET);
     return lua_gettop(L) - n;
+}
+// string.rep(s, n [, sep]): the result no larger than the script's memory, and "" at once when it would be empty (the
+// library's own loop would copy nothing 2^63 times: string.rep("", math.maxinteger) never returns)
+int l_rep(lua_State* L) {
+    std::size_t l = 0, lsep = 0;
+    luaL_checklstring(L, 1, &l);
+    const lua_Integer n = luaL_checkinteger(L, 2);
+    luaL_optlstring(L, 3, "", &lsep);
+    if (n <= 0 || l + lsep == 0) {
+        lua_pushliteral(L, "");
+        return 1;
+    }
+    const long double total = (long double)l * (long double)n + (long double)lsep * (long double)(n - 1);
+    if (total > (long double)self_of(L).cap_) {
+        char b[96];
+        std::snprintf(b, sizeof b, "string.rep: a result of %.0Lf bytes is more than the script's memory", total);
+        return luaL_error(L, "%s", b);
+    }
+    lua_pushvalue(L, lua_upvalueindex(1));
+    lua_insert(L, 1);
+    lua_call(L, lua_gettop(L) - 1, 1);
+    return 1;
 }
 int l_randomseed(lua_State* L) {
     if (lua_gettop(L) == 0)
@@ -1039,13 +1206,16 @@ void setup(lua_State* L) {
     lua_getglobal(L, "string");
     lua_pushnil(L);
     lua_setfield(L, -2, "dump");
+    lua_getfield(L, -1, "rep");
+    lua_pushcclosure(L, &guarded<l_rep>, 1);
+    lua_setfield(L, -2, "rep");
     lua_pop(L, 1);
     lua_getglobal(L, "load");
-    lua_pushcclosure(L, &l_load, 1);
+    lua_pushcclosure(L, &guarded<l_load>, 1);
     lua_setglobal(L, "load");
-    lua_pushcfunction(L, &l_require);
+    lua_pushcfunction(L, &guarded<l_require>);
     lua_setglobal(L, "require");
-    lua_pushcfunction(L, &l_log);
+    lua_pushcfunction(L, &guarded<l_log>);
     lua_setglobal(L, "print");
     // math.random: seeded from the mod's id (FNV-1a 64 of it), the same in every run; randomseed() needs a seed
     lua_getglobal(L, "math");
@@ -1054,28 +1224,28 @@ void setup(lua_State* L) {
     const std::uint64_t seed = b3mod::fnv1a64(m.cfg_.id.data(), m.cfg_.id.size());
     lua_pushinteger(L, static_cast<lua_Integer>(seed));
     lua_call(L, 1, 0);
-    lua_pushcclosure(L, &l_randomseed, 1);
+    lua_pushcclosure(L, &guarded<l_randomseed>, 1);
     lua_setfield(L, -2, "randomseed");
     lua_pop(L, 1);
     // the call object's and the file's metatables
     luaL_newmetatable(L, "b3.call");
-    const luaL_Reg call_methods[] = {{"arg", lc_arg},       {"farg", lc_farg},     {"set_arg", lc_set_arg},       {"set_farg", lc_set_farg},
-                                     {"next", lc_next},     {"result", lc_result}, {"set_result", lc_set_result}, {"set_fresult", lc_set_fresult},
-                                     {"sp", lc_sp},         {nullptr, nullptr}};
+    const luaL_Reg call_methods[] = {{"arg", &guarded<lc_arg>},       {"farg", &guarded<lc_farg>},     {"set_arg", &guarded<lc_set_arg>},       {"set_farg", &guarded<lc_set_farg>},
+                                     {"next", &guarded<lc_next>},     {"result", &guarded<lc_result>}, {"set_result", &guarded<lc_set_result>}, {"set_fresult", &guarded<lc_set_fresult>},
+                                     {"sp", &guarded<lc_sp>},         {nullptr, nullptr}};
     luaL_newlib(L, call_methods);
     lua_setfield(L, -2, "__index");
     lua_pushliteral(L, "b3.call");
     lua_setfield(L, -2, "__metatable");
     lua_pop(L, 1);
     luaL_newmetatable(L, "b3.file");
-    const luaL_Reg file_methods[] = {{"read", l_file_read}, {"seek", l_file_seek}, {"tell", l_file_tell}, {"size", l_file_size}, {nullptr, nullptr}};
+    const luaL_Reg file_methods[] = {{"read", &guarded<l_file_read>}, {"seek", &guarded<l_file_seek>}, {"tell", &guarded<l_file_tell>}, {"size", &guarded<l_file_size>}, {nullptr, nullptr}};
     luaL_newlib(L, file_methods);
     lua_setfield(L, -2, "__index");
     lua_pop(L, 1);
     // b3
-    const luaL_Reg b3[] = {{"log", l_log},         {"warn", l_warn},           {"vblank", l_vblank},     {"has_function", l_has_function},
-                           {"rgba", l_rgba},       {"on_vblank", l_on_vblank}, {"on_frame", l_on_frame}, {"on_shutdown", l_on_shutdown},
-                           {"on_load", l_on_load}, {"on", l_on},               {"call", l_call},         {nullptr, nullptr}};
+    const luaL_Reg b3[] = {{"log", &guarded<l_log>},         {"warn", &guarded<l_warn>},           {"vblank", &guarded<l_vblank>},     {"has_function", &guarded<l_has_function>},
+                           {"rgba", &guarded<l_rgba>},       {"on_vblank", &guarded<l_on_vblank>}, {"on_frame", &guarded<l_on_frame>}, {"on_shutdown", &guarded<l_on_shutdown>},
+                           {"on_load", &guarded<l_on_load>}, {"on", &guarded<l_on>},               {"call", &guarded<l_call>},         {nullptr, nullptr}};
     luaL_newlib(L, b3);
     lua_pushstring(L, m.cfg_.id.c_str());
     lua_setfield(L, -2, "id");
@@ -1085,6 +1255,8 @@ void setup(lua_State* L) {
     lua_setfield(L, -2, "port_version");
     lua_pushboolean(L, m.cfg_.gameplay);
     lua_setfield(L, -2, "gameplay");
+    lua_pushboolean(L, m.cfg_.unsafe);
+    lua_setfield(L, -2, "unsafe");
     lua_pushboolean(L, m.cfg_.developer);
     lua_setfield(L, -2, "developer");
     auto sub = [&](const char* name, const luaL_Reg* fns) {
@@ -1092,12 +1264,12 @@ void setup(lua_State* L) {
         luaL_setfuncs(L, fns, 0);
         lua_setfield(L, -2, name);
     };
-    const luaL_Reg mem[] = {{"read", l_mem_read}, {"write", l_mem_write}, {"read_bytes", l_mem_read_bytes}, {"write_bytes", l_mem_write_bytes}, {nullptr, nullptr}};
-    const luaL_Reg hook[] = {{"wrap", l_hook_wrap}, {"replace", l_hook_replace}, {nullptr, nullptr}};
-    const luaL_Reg settings[] = {{"add", l_settings_add}, {"get", l_settings_get}, {"index", l_settings_index}, {nullptr, nullptr}};
-    const luaL_Reg draw[] = {{"quad", l_draw_quad}, {"text", l_draw_text}, {"texture", l_draw_texture}, {nullptr, nullptr}};
-    const luaL_Reg data[] = {{"size", l_data_size}, {"read", l_data_read}, {"open", l_data_open}, {nullptr, nullptr}};
-    const luaL_Reg view[] = {{"race", l_view_race}, {"player", l_view_player}, {"score", l_view_score}, {nullptr, nullptr}};
+    const luaL_Reg mem[] = {{"read", &guarded<l_mem_read>}, {"write", &guarded<l_mem_write>}, {"read_bytes", &guarded<l_mem_read_bytes>}, {"write_bytes", &guarded<l_mem_write_bytes>}, {nullptr, nullptr}};
+    const luaL_Reg hook[] = {{"wrap", &guarded<l_hook_wrap>}, {"replace", &guarded<l_hook_replace>}, {nullptr, nullptr}};
+    const luaL_Reg settings[] = {{"add", &guarded<l_settings_add>}, {"get", &guarded<l_settings_get>}, {"index", &guarded<l_settings_index>}, {nullptr, nullptr}};
+    const luaL_Reg draw[] = {{"quad", &guarded<l_draw_quad>}, {"text", &guarded<l_draw_text>}, {"texture", &guarded<l_draw_texture>}, {nullptr, nullptr}};
+    const luaL_Reg data[] = {{"size", &guarded<l_data_size>}, {"read", &guarded<l_data_read>}, {"open", &guarded<l_data_open>}, {nullptr, nullptr}};
+    const luaL_Reg view[] = {{"race", &guarded<l_view_race>}, {"player", &guarded<l_view_player>}, {"score", &guarded<l_view_score>}, {nullptr, nullptr}};
     sub("mem", mem);
     sub("hook", hook);
     sub("settings", settings);
@@ -1109,7 +1281,7 @@ void setup(lua_State* L) {
 
 bool ScriptMod::open_state() {
     close();
-    dead_ = over_ = mem_hit_ = false;
+    dead_ = over_ = mem_hit_ = timed_out_ = false;
     wants_.clear();
     cap_ = std::size_t(cfg_.memory);
     L_ = lua_newstate(&lua_alloc, this);
@@ -1129,7 +1301,12 @@ void ScriptMod::stop(int rc, const std::string& msg) {
     dead_ = true;
     const bool loading = in_main_ || reloading_;
     std::string head;
-    if (over_) {
+    if (fatal_) {
+        head = "a fatal error in the game's code it called (b3.call or call:next): " + fatal_what_ + "; the error goes on to the game";
+    } else if (timed_out_) {
+        head = "it ran for more than " + std::to_string(time_limit() / 1000000) + " ms" + (loading ? " while loading" : " in one VBlank") +
+               " (its time limit: a string function or pattern that does not end?)";
+    } else if (over_) {
         head = loading ? "its main chunk ran past " + std::to_string(cfg_.budget * kScriptLoadBudgetFactor) + " Lua instructions (its load budget)"
                        : "it ran past " + std::to_string(cfg_.budget) + " Lua instructions in one VBlank (its budget: a loop that does not end?)";
     } else if (mem_hit_ || rc == LUA_ERRMEM) {
@@ -1147,14 +1324,24 @@ void ScriptMod::stop(int rc, const std::string& msg) {
         if (nl == std::string::npos) break;
         at = nl + 1;
     }
+    CodeMods::release_textures(self_);   // modsec: its pictures go with it (a reload makes its own again)
     if (loading) log(B3MOD_LOG_ERROR, "the script did not load: " + head);
-    else log(B3MOD_LOG_ERROR, "the script was stopped at VBlank " + std::to_string(vblank()) + ": " + head + "; the game goes on without it");
+    else log(B3MOD_LOG_ERROR, "the script was stopped at VBlank " + std::to_string(vblank()) + ": " + head + (fatal_ ? "" : "; the game goes on without it"));
     for (std::size_t i = 0; i < lines.size() && i < 8; ++i) log(B3MOD_LOG_ERROR, "  " + lines[i]);
     if (cfg_.developer) log(B3MOD_LOG_INFO, "it loads again when its script changes (hot reload, Developer mods)");
 }
 
 // the script's text, from the loader's file API (the mod's own folder); false with a log line when it is not there
 bool read_script(ScriptMod& m, std::string& text) {
+    if (m.snapped_) {
+        const std::string* s = m.snapped(m.cfg_.main_file);
+        if (!s) {
+            m.log(B3MOD_LOG_ERROR, "the script did not load: no file " + m.cfg_.main_file + " in the mod");
+            return false;
+        }
+        text = *s;
+        return true;
+    }
     const std::int64_t size = m.api_->data_size(m.self_, m.cfg_.main_file.c_str());
     if (size < 0) {
         m.log(B3MOD_LOG_ERROR, "the script did not load: no file " + m.cfg_.main_file + " in the mod");
@@ -1184,6 +1371,42 @@ bool ScriptMod::run_main(const std::string& text) {
     });
 }
 
+// An unsafe script's files, read once (b3mod::trust_files: mod.ini and the script folder); check: they must hash to the
+// set the user allowed (cfg_.trust_digest, when given)
+bool ScriptMod::snapshot(bool check) {
+    snap_.clear();
+    snapped_ = false;
+    if (!cfg_.unsafe) return true;
+    b3mod::ScriptSpec sp;
+    sp.present = sp.unsafe = true;
+    sp.main_file = cfg_.main_file;
+    std::vector<b3mod::TrustFile> files;
+    std::string why;
+    if (!b3mod::trust_files(cfg_.dir, b3mod::CodeSpec{}, sp, files, &why)) {
+        log(B3MOD_LOG_ERROR, "the script did not load: its files cannot be read (" + why + ")");
+        return false;
+    }
+    if (check && !cfg_.trust_digest.empty() && b3mod::trust_digest(files) != cfg_.trust_digest) {
+        log(B3MOD_LOG_ERROR, "the script did not load: its files changed after they were checked against what you allowed (start the game again)");
+        return false;
+    }
+    for (b3mod::TrustFile& f : files) snap_[f.rel] = std::move(f.bytes);
+    // review: what the script may do is read from the mod.ini that was hashed, not the one parsed before (a file
+    // changed between the two would otherwise hand the checked script other rights)
+    const auto ini = snap_.find(b3mod::kManifestName);
+    const b3mod::ParsedManifest pm = b3mod::parse_manifest(ini == snap_.end() ? std::string_view() : std::string_view(ini->second));
+    if (!pm.errors.empty() || !pm.m.script.present || pm.m.script.main_file != cfg_.main_file || pm.m.id != cfg_.id) {
+        log(B3MOD_LOG_ERROR, "the script did not load: its mod.ini changed after it was read (start the game again)");
+        snap_.clear();
+        return false;
+    }
+    cfg_.gameplay = pm.m.script.gameplay;
+    cfg_.unsafe = pm.m.script.unsafe;
+    cfg_.calls = pm.m.script.calls;
+    snapped_ = true;
+    return true;
+}
+
 std::uint64_t ScriptMod::signature() const {
     // the script folder's files: names, sizes, modification times (hot reload looks for a change)
     std::error_code ec;
@@ -1207,18 +1430,21 @@ void ScriptMod::reload() {
     for (const auto& h : hooks_) h->bound = false;
     last_state_ = last_laps_ = -1;
     std::string text;
-    if (!read_script(*this, text)) {
+    if (!snapshot(false) || !read_script(*this, text)) {   // (Developer mods: the edited files run unasked)
         close();
         dead_ = true;
         return;
     }
+    CodeMods::release_textures(self_);   // modsec: the new state makes its own
     if (!open_state()) return;
     reloading_ = true;
     used_ = 0;
+    time_used_ = 0;
     limit_ = cfg_.budget * kScriptLoadBudgetFactor;
     run_main(text);
     reloading_ = false;
     used_ = 0;
+    time_used_ = 0;
     limit_ = cfg_.budget;
 }
 
@@ -1227,15 +1453,17 @@ int ScriptMod::main(const B3ModApi* api, B3ModSelf* self) {
     self_ = self;
     in_main_ = true;
     used_ = 0;
+    time_used_ = 0;
     limit_ = cfg_.budget * kScriptLoadBudgetFactor;
     std::string text;
-    const bool ok = read_script(*this, text) && open_state() && run_main(text);
+    const bool ok = snapshot(true) && read_script(*this, text) && open_state() && run_main(text);
     in_main_ = false;
     if (!ok) return 1;
     api_->on_vblank(self_, [](void* u) { static_cast<ScriptMod*>(u)->on_vblank(); }, this);
     api_->on_frame(self_, [](void* u) { static_cast<ScriptMod*>(u)->on_frame(); }, this);
     api_->on_shutdown(self_, [](void* u) { static_cast<ScriptMod*>(u)->on_shutdown(); }, this);
     used_ = 0;
+    time_used_ = 0;
     limit_ = cfg_.budget;
     if (cfg_.developer) sig_ = signature();
     return 0;
@@ -1254,6 +1482,7 @@ void ScriptMod::on_vblank() {
     }
     close_if_dead();
     if (dead_ || !L_) return;
+    time_used_ = 0;
     used_ = 0;   // this VBlank's budget (the frames and the hooks until the next VBlank count to it)
     limit_ = cfg_.budget;
     // the events read from the player's score: race_start (its state becomes 2, racing), lap (laps done grows)
@@ -1294,6 +1523,7 @@ void ScriptMod::on_frame() {
 void ScriptMod::on_shutdown() {
     if (!dead_ && L_) {
         used_ = 0;
+    time_used_ = 0;
         limit_ = cfg_.budget;
         run_list("shutdown", [](lua_State*) {});
     }
@@ -1305,13 +1535,29 @@ void ScriptMod::on_shutdown() {
 
 std::shared_ptr<CodeMods::Builtin> make_script_mod(const ScriptConfig& c) { return std::make_shared<ScriptMod>(c); }
 
-CodeMods::Candidate script_candidate(const b3mod::ActiveMod& m, bool developer) {
+}  // namespace b3native
+
+// script_lua.cpp's pattern matcher, at each step: true once the running script is past its time limit (the matcher then
+// raises "pattern too complex" in that script's state; the count hook stops the script)
+bool b3_script_c_tick() {
+    b3native::ScriptMod* m = b3native::g_running;
+    if (!m) return false;
+    if (m->timed_out_) return true;
+    return (++m->ticks_ & 1023u) == 0 && m->past_time();
+}
+
+namespace b3native {
+
+CodeMods::Candidate script_candidate(const b3mod::ActiveMod& m, bool developer, const std::string& trust_digest) {
     ScriptConfig c;
     c.id = m.id;
     c.version = m.version;
     c.dir = m.dir;
     c.main_file = m.script.main_file;
     c.gameplay = m.script.gameplay;
+    c.unsafe = m.script.unsafe;
+    c.calls = m.script.calls;
+    c.trust_digest = trust_digest;
     c.budget = m.script.budget;
     c.memory = std::uint64_t(m.script.memory_mb) << 20;
     c.developer = developer;

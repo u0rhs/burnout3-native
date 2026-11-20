@@ -7,6 +7,7 @@
 #include <zlib.h>
 
 #include "b3asset/discfs.h"
+#include "b3mod/mods.h"
 #include "b3report/zip.h"
 
 namespace b3modtool {
@@ -147,12 +148,12 @@ bool zip_read(const Buf& z, const ZipEntry& e, Buf& out, std::string* why) {
     return true;
 }
 
-bool read_host_file(const std::string& path, Buf& out) { return b3asset::disc::read_file(path, out); }
+bool read_host_file(const std::string& path, Buf& out) { return b3asset::disc::read_file(b3mod::path_from_utf8(path), out); }   // (UTF-8)
 
 bool write_host_file(const std::string& path, const Buf& data, std::string* why) {
     namespace fs = std::filesystem;
     std::error_code ec;
-    const fs::path p(path);
+    const fs::path p = b3mod::path_from_utf8(path);   // (UTF-8)
     if (p.has_parent_path()) fs::create_directories(p.parent_path(), ec);
 #ifdef _WIN32
     std::FILE* f = _wfopen(p.c_str(), L"wb");

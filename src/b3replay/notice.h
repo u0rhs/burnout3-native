@@ -17,16 +17,28 @@ namespace b3replay {
 
 class Notice {
 public:
+    // saveflow (2026-11-20): kBubble is the save notices' look: one small row in the window's top right corner (the strip
+    // above the menus' titles and the race HUD's boxes), small text, a coloured bar on its left by the tone (kOk green:
+    // saved; kWarn amber; kBad red: not saved)
+    enum class Style { kBanner, kBubble };
+    enum class Tone { kNeutral, kOk, kWarn, kBad };
     // Show `lines` (upper case reads best: the stroke font draws lower case as upper) for `hold_s` seconds, then a
     // one-second fade
     void show(std::vector<std::string> lines, float hold_s = 10.0f);
+    // saveflow: the same as a bubble of `tone` (the banner style otherwise kept for show())
+    void show_bubble(std::vector<std::string> lines, Tone tone, float hold_s);
+    // saveflow: a save's status text (save_store.h ProfileCard: "SAVED", "SAVE FAILED - YOUR LAST SAVE IS KEPT - ...")
+    // as a bubble: one line per " - " part (the first the heading), and its tone (SAVE WARNING amber; SAVE FAILED and
+    // NOT SAVED red; else, SAVED, green)
+    static Tone save_bubble_lines(const std::string& status, std::vector<std::string>& lines);
     bool visible() const { return !lines_.empty() && age_ < hold_ + 1.0f; }
     // Opacity 0..1 at `age` seconds after show() (held, then a linear one-second fade)
     static float opacity(float age, float hold);
     // Advance by `dt` seconds and append the banner's draw item in window pixels (`w` x `h`) to `out`
     void draw_list(b3gfx::Device& dev, int w, int h, float dt, std::vector<b3gfx::DrawItem>& out);
     // The banner's picture for a window `window_h` pixels high: straight RGBA rows, `w` x `h`
-    static void picture(const std::vector<std::string>& lines, int window_h, int& w, int& h, std::vector<std::uint8_t>& rgba);
+    static void picture(const std::vector<std::string>& lines, int window_h, int& w, int& h, std::vector<std::uint8_t>& rgba,
+                        Style style = Style::kBanner, Tone tone = Tone::kNeutral);
     // The same picture, kept: when one line's text changes and the box keeps its size, only that line's rows are drawn
     // again (devnav1, 2026-11-13: photo mode's help box shows the field of view and the focus, new every frame while
     // they are held; the whole box cost ~16 ms at an 1800-pixel window, the line ~1-2 ms). Equal to picture() to the bit.
@@ -35,17 +47,20 @@ public:
     bool box(int w, int h, float (&xywh)[4]) const;
     // photo mode's help box (photomode.h): at the bottom centre instead of the top
     bool bottom = false;
+    Style style() const { return style_; }
 
 private:
     struct Kept {
         std::vector<std::string> lines;
-        int window_h = -1, w = 0, h = 0;
+        int window_h = -1, w = 0, h = 0, look = -1;   // look: style and tone
         glyph::Canvas back{0, 0}, pic{0, 0};       // the box alone; the box and the lines
         std::vector<std::array<int, 2>> rows;     // each line's rows (Canvas::strokes_rows)
         std::vector<std::uint8_t> rgba;
     } kept_;
     std::vector<std::string> lines_;
     float hold_ = 10.0f, age_ = 0.0f;
+    Style style_ = Style::kBanner;
+    Tone tone_ = Tone::kNeutral;
     b3gfx::TextureId tex_ = b3gfx::kNone;
     b3gfx::BufferId vb_ = b3gfx::kNone, ib_ = b3gfx::kNone;
     b3gfx::ResourceEpoch epoch_;   // a track load clears the ids above (Device::resource_epoch)

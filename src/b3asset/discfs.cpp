@@ -11,6 +11,7 @@
 // out: each track's frames padded to a multiple of 4, its pregap stored first when PGTYPE starts with 'V'. The volume
 // is on the first data track.
 #include "b3asset/discfs.h"
+#include "b3port/fileio.h"   // fsrobust: image names as UTF-8
 
 #include "../native/third_party/libchdr/include/libchdr/chd.h"
 
@@ -643,6 +644,11 @@ struct Image {
                 if (const auto semi = name.find(';'); semi != std::string::npos) name.resize(semi);
                 if (!dir && !name.empty() && name.back() == '.') name.pop_back();
                 if (name.empty()) continue;
+                // fsrobust: an image's names are bytes (d-characters on a real disc; anything in a made one): a separator
+                // would break the paths made from them, and a byte >= 0x80 is not UTF-8 (fs::path throws on Windows). The
+                // name is read as Latin-1 and kept as UTF-8, as every other path here.
+                if (name.find_first_of(std::string_view("/\\\0", 3)) != std::string::npos) continue;
+                name = b3io::latin1_to_utf8(name);
                 const std::uint32_t xl = le32(r + 2), xb = le32(r + 10);
                 if (multi >= 0 && !dir && nodes[std::size_t(multi)].name == name) {   // the file's next extent
                     Node& m = nodes[std::size_t(multi)];
@@ -905,7 +911,7 @@ std::vector<Entry> list_dir(const fs::path& dir) {
         const Node& d = l.img->nodes[l.node];
         for (const std::uint32_t k : d.kids) {
             const Node& n = l.img->nodes[k];
-            out.push_back({n.name, dir / n.name, n.dir});
+            out.push_back({n.name, dir / from_u8(n.name), n.dir});
         }
     } else if (l.kind == Loc::kHost) {
         std::error_code ec;

@@ -52,6 +52,10 @@ std::optional<Directories> read_card_image(const std::uint8_t* bytes, std::size_
 std::optional<CardSaveDirectory> read_psu(const Bytes& bytes, std::string* error = nullptr);
 Bytes write_psu(const CardSaveDirectory& dir);
 std::optional<CardSaveDirectory> read_max(const Bytes& bytes, std::string* error = nullptr);
+// read_max's second half: the directory `name`'s `count` files from the unpacked stream ({u32 size, name (32), bytes,
+// padded so the next record + 8 is 16-aligned} each). nullopt (and *error) when the stream ends before them.
+std::optional<CardSaveDirectory> read_max_files(const Bytes& unpacked, std::uint32_t count, const std::string& name,
+                                                std::string* error = nullptr);
 // Okumura's LZARI as AR MAX uses it (N 4096, F 60, threshold 2): `out_size` bytes from `in`; nullopt when `in` ends
 // too early (more than a few zero bits past its end would be needed).
 std::optional<Bytes> lzari_decode(const std::uint8_t* in, std::size_t size, std::size_t out_size);
@@ -63,6 +67,11 @@ std::optional<Bytes> lzari_decode(const std::uint8_t* in, std::size_t size, std:
 std::optional<Directories> read_any(const std::filesystem::path& p, std::string* error = nullptr);
 // The game's save (kGameSaveDirectory) among them, alone; nullopt (and *error) when there is none.
 std::optional<Directories> game_save(const Directories& dirs, std::string* error = nullptr);
+// saveflow: the game's own load check on its save file [C func_00421700; the layout in save_stats.h]: the
+// kGameSaveDirectory file is 61,772 bytes, version 0x10, and its checksum (the 32-bit sum of the words before +0xF148)
+// matches. A save that fails it the game calls corrupt ("Please delete the corrupt data using the console's browser",
+// which the port has no way to do). False (and *why) when `game` (game_save's) fails it.
+bool game_save_intact(const Directories& game, std::string* why = nullptr);
 
 }  // namespace b3native::save
 

@@ -2,6 +2,7 @@
 // manual's (PRIM, RGBAQ, ST, UV, XYZ2, TEX0, TEX1, CLAMP, SCISSOR, ALPHA, FRAME) [C research/ext/PS2Docs]; the packet
 // shapes Gt2dRenderer writes are its Construct 0x21A290 tags (REGLIST ST/RGBAQ/XYZ2 groups, PACKED A+D) [C matched].
 #include <array>
+#include "b3port/fileio.h"   // fsrobust: UTF-8 paths
 #include "hud.h"
 
 #include <cmath>
@@ -600,6 +601,7 @@ std::shared_ptr<const HudFrame> HudDecoder::decode(const Image& im, std::shared_
             c.index = rd32(p);
             c.car = rd32(p + 4);
             c.rwcamera = rd32(p + 8);
+            c.player = rd32(p + 12);   // padpaint
             hf.fe_cars.push_back(c);
             break;
         }
@@ -1075,6 +1077,16 @@ std::uint8_t host_skip_hint_decode(const Image& im) {
     return std::uint8_t(std::min<std::uint32_t>(rd32(head + 8), 255U));
 }
 
+HostRaceTime host_race_time_decode(const Image& im) {   // todrace
+    std::uint8_t head[16];
+    HostRaceTime r;
+    if (!im.read(kHostRaceTimeBase, head, 16) || rd32(head) != 0x31445448U) return r;   // 'HTD1'
+    r.race = std::uint8_t(std::min<std::uint32_t>(rd32(head + 8), 2U));
+    r.label_choice = std::uint8_t(std::min<std::uint32_t>(rd32(head + 12) & 0xFFU, 2U));
+    r.label_opacity = std::uint8_t(rd32(head + 12) >> 8 & 0xFFU);
+    return r;
+}
+
 bool host_hold_decode(const Image& im) {
     std::uint8_t head[16];
     return im.read(kHostHoldBase, head, 16) && rd32(head) == 0x31444848U && rd32(head + 8) != 0;   // 'HHD1'
@@ -1222,11 +1234,11 @@ std::shared_ptr<const HostSettings> host_settings_decode(const Image& im, std::s
 }
 
 bool read_png_rgba(const std::string& path, int& w, int& h, std::vector<std::uint8_t>& rgba) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(b3io::u8path(path), std::ios::binary);
     if (!f && path.size() > 2 && path[1] == ':') {   // C:\x\y -> /mnt/c/x/y
         std::string q = "/mnt/" + std::string(1, char(std::tolower(static_cast<unsigned char>(path[0])))) + path.substr(2);
         for (char& ch : q) if (ch == '\\') ch = '/';
-        f.open(q, std::ios::binary);
+        f.open(b3io::u8path(q), std::ios::binary);
     }
     if (!f) return false;
     const std::vector<std::uint8_t> d((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());

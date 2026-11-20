@@ -30,6 +30,7 @@ layout(location = 2) out vec3 v_normal;
 layout(location = 3) out float v_w;   // view depth (clip w), for the fog
 // line meshes: x = signed distance from the centre line (pixels), y = half the line width (pixels); screen-linear
 layout(location = 4) noperspective out vec2 v_line;
+layout(location = 5) out vec3 v_wpos;  // surface (remaster, off by default): the world position, for mesh.frag's per-pixel frame
 
 // The programs' float-bit tricks: ITOF0 of a float's bits, and FTOI0 then those integer bits read as a float (the VU
 // has no Inf/NaN: exponent 255 is +-Fmax).
@@ -70,6 +71,7 @@ vec4 line_clip(vec4 p, vec4 q) {
 void main() {
     vec4 wpos = model * vec4(in_pos, 1.0);
     v_line = vec2(0.0);
+    v_wpos = wpos.xyz;
     if (shade.x > 0.5 && shade.x < 1.5 && int(shade.y + 0.5) == 3) {
         vec4 a = view_proj * wpos;
         vec4 b = view_proj * (model * vec4(in_normal, 1.0));

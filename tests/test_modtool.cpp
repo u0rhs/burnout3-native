@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <cstdlib>
 #include <fstream>
 #include <random>
 
@@ -54,6 +55,10 @@ void write(const fs::path& p, const std::string& bytes) {
     f << bytes;
 }
 std::string str(const Buf& b) { return std::string(b.begin(), b.end()); }
+std::string read_text(const fs::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+}
 Buf random_bytes(std::size_t n, unsigned seed) {
     std::mt19937 r(seed);
     Buf b(n);
@@ -190,6 +195,52 @@ bool roundtrip_same(const Buf& txd, bool strict = false) {
 }
 
 }  // namespace
+
+// modsec: the commands that write one file refuse to write it over one of their inputs (the real tool, built beside)
+TEST(commands_do_not_write_over_their_input) {
+#ifdef B3_MODTOOL_BIN
+    const fs::path d = fs::absolute(kRoot / "sameout");
+    fs::remove_all(d);
+    fs::create_directories(d);
+    write(d / "a.bin", "aaaa");
+    write(d / "b.bin", "abab");
+    write(d / "m.gltf", "{}");
+    auto run = [&](const std::string& args) {
+        const std::string cmd = std::string("\"") + B3_MODTOOL_BIN + "\" " + args + " >/dev/null 2>&1";
+        return std::system(cmd.c_str());
+    };
+    const std::string a = "'" + (d / "a.bin").string() + "'", b = "'" + (d / "b.bin").string() + "'", m = "'" + (d / "m.gltf").string() + "'";
+    CHECK(run("diff " + a + " " + b + " " + a) != 0);
+    CHECK(run("diff " + a + " " + b + " " + b) != 0);
+    CHECK(run("strings export " + a + " " + a) != 0);
+    CHECK(run("vdb export " + a + " " + a) != 0);
+    CHECK(run("preview " + m + " " + m) != 0);
+    CHECK(read_text(d / "a.bin") == "aaaa" && read_text(d / "b.bin") == "abab" && read_text(d / "m.gltf") == "{}");
+    CHECK(run("diff " + a + " " + b + " '" + (d / "ab.b3patch").string() + "'") == 0 && fs::exists(d / "ab.b3patch"));   // another name: fine
+#endif
+}
+
+// modsec: a pack that fails leaves no partial archive, and an older archive of that name as it was
+TEST(pack_failure_leaves_no_partial_archive) {
+    const fs::path d = kRoot / "packfail";
+    fs::remove_all(d);
+    write(d / "mod" / "mod.ini", "[mod]\nid = p\nversion = 1\napi = 1\n");
+    write(d / "mod" / "data" / "DATA" / "A.TXT", "a");
+    const fs::path out = d / "p.b3mod";
+    std::string why;
+    CHECK(pack_mod((d / "mod").string(), out.string(), nullptr, &why) && fs::exists(out));
+    const std::string good = read_text(out);
+    write(d / "mod" / "data" / "DATA" / "B.TXT", "b");
+    fs::permissions(d / "mod" / "data" / "DATA" / "B.TXT", fs::perms::none);   // unreadable: the pack fails at it
+    const bool unreadable = !std::ifstream(d / "mod" / "data" / "DATA" / "B.TXT").good();   // (root reads it anyway)
+    if (unreadable) {
+        CHECK(!pack_mod((d / "mod").string(), out.string(), nullptr, &why));
+        CHECK(read_text(out) == good);
+        CHECK(!fs::exists(d / "p.b3mod.part"));
+    }
+    fs::permissions(d / "mod" / "data" / "DATA" / "B.TXT", fs::perms::owner_read | fs::perms::owner_write);
+    CHECK(pack_mod((d / "mod").string(), out.string(), nullptr, &why) && read_text(out) != good && !fs::exists(d / "p.b3mod.part"));
+}
 
 TEST(glob_patterns) {
     CHECK(glob_match("*.TXD", "DATA/GLOBAL.TXD"));

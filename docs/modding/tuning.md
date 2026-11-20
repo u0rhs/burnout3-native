@@ -18,7 +18,7 @@ mod with a preset is always marked as changing gameplay.
 
 ## Turning it on
 
-PC SETTINGS > INTERFACE > DEVELOPER (the last section but CONTROLS) > **DEVELOPER MODS**: On, then start the game again.
+PC SETTINGS > MODS > DEVELOPER (the last section but CONTROLS) > **DEVELOPER MODS**: On, then start the game again.
 The launcher's PC SETTINGS page has the same row, and its Mods page's **Developer mods** button is the same switch (it
 also lets code mods marked `platform = yes` hook the platform tier). From then on:
 

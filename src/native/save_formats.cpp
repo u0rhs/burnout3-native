@@ -2,6 +2,7 @@
 // memory card filesystem and the common PS2 save tools define them [C: read back from images built in
 // tests/test_save_formats.cpp; locally, not in the repo, on a PCSX2 Mcd001.ps2 and a uLaunchELF .psu of the same save].
 #include "save_formats.h"
+#include "b3port/fileio.h"
 
 #include <algorithm>
 #include <array>
@@ -184,6 +185,9 @@ private:
     }
     // `len` bytes along the chain from allocatable cluster `first`.
     std::optional<Bytes> read_chain(std::uint32_t first, std::size_t len, std::string* error) const {
+        // fsrobust: a length no chain on this image can hold (a corrupt entry: up to 4 GB) fails before the reserve
+        if (len > n_ || len > std::size_t{clusters_} * csize_)
+            return fail<Bytes>(error, "card image: a file longer than the card");
         Bytes out;
         out.reserve(len + csize_);
         Bytes buf(csize_);
@@ -440,26 +444,9 @@ bool write_sav_file(const fs::path& p, const Directories& dirs, std::string* err
     const Bytes bytes = write_sav(dirs);
     std::error_code ec;
     if (p.has_parent_path()) fs::create_directories(p.parent_path(), ec);
-    const fs::path tmp = p.string() + ".tmp";
-    {
-        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-        out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        out.flush();
-        if (!out) {
-            if (error) *error = "cannot write " + tmp.string();
-            return false;
-        }
-    }
-    fs::rename(tmp, p, ec);   // replaces p (std::filesystem::rename does on Windows too)
-    if (ec) {
-        fs::remove(p, ec);
-        fs::rename(tmp, p, ec);
-        if (ec) {
-            if (error) *error = "cannot rename " + tmp.string() + " to " + p.string() + ": " + ec.message();
-            return false;
-        }
-    }
-    return true;
+    // fsrobust: p.tmp written, flushed to the disk and checked, then one atomic replace; p is never removed first, so a
+    // failed write (disk full, read-only, a sync client's lock) leaves the old save as it was
+    return b3io::replace_file(p, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), error);
 }
 
 // ---- card images ----
@@ -551,13 +538,21 @@ std::optional<CardSaveDirectory> read_max(const Bytes& b, std::string* error) {
     const std::size_t packed = clen == length || clen < 4 ? avail : std::min<std::size_t>(clen - 4, avail);
     auto s = lzari_decode(b.data() + 0x5C, packed, length);
     if (!s) return fail<CardSaveDirectory>(error, ".max: the compressed data ends early");
+    return read_max_files(*s, count,
+                          std::string(reinterpret_cast<const char*>(b.data() + 16), strnlen(reinterpret_cast<const char*>(b.data() + 16), 32)),
+                          error);
+}
+
+std::optional<CardSaveDirectory> read_max_files(const Bytes& unpacked, std::uint32_t count, const std::string& name, std::string* error) {
+    const Bytes* s = &unpacked;
     CardSaveDirectory out;
-    out.name = std::string(reinterpret_cast<const char*>(b.data() + 16), strnlen(reinterpret_cast<const char*>(b.data() + 16), 32));
+    out.name = name;
     if (!usable_name(out.name)) return fail<CardSaveDirectory>(error, ".max: a bad directory name");
     out.mode = 0x8427;   // exists, 0x0400, directory, rwx (as mymc+ gives a .max's directory)
     std::size_t o = 0;
     for (std::uint32_t i = 0; i < count; ++i) {
-        if (s->size() - o < 36) return fail<CardSaveDirectory>(error, ".max: the unpacked data ends early");
+        // fsrobust: the padding after a file can take `o` past the end (count 2, 37 bytes, a 1-byte file: o = 40)
+        if (o > s->size() || s->size() - o < 36) return fail<CardSaveDirectory>(error, ".max: the unpacked data ends early");
         const std::uint32_t len = g32(s->data() + o);
         CardFile f;
         f.name = std::string(reinterpret_cast<const char*>(s->data() + o + 4), strnlen(reinterpret_cast<const char*>(s->data() + o + 4), 32));
@@ -582,10 +577,10 @@ std::optional<Directories> read_any(const fs::path& given, std::string* error) {
     if (fs::is_directory(p, ec)) {
         // a PCSX2 folder memory card (save folders inside) or one save folder (files only)
         bool has_subdirs = false;
-        for (const auto& e : fs::directory_iterator(p, ec)) {
+        for (fs::directory_iterator it(p, ec), end; !ec && it != end; it.increment(ec)) {   // fsrobust: never throws
             std::error_code eec;
-            const std::string n = e.path().filename().string();
-            if (e.is_directory(eec) && !n.empty() && n.front() != '.') has_subdirs = true;
+            const std::string n = it->path().filename().string();
+            if (it->is_directory(eec) && !n.empty() && n.front() != '.') has_subdirs = true;
         }
         if (!has_subdirs) {
             auto d = load_save_folder(p, error);
@@ -593,10 +588,10 @@ std::optional<Directories> read_any(const fs::path& given, std::string* error) {
             return Directories{std::move(*d)};
         }
         std::vector<fs::path> folders;
-        for (const auto& e : fs::directory_iterator(p, ec)) {
+        for (fs::directory_iterator it(p, ec), end; !ec && it != end; it.increment(ec)) {
             std::error_code eec;
-            const std::string n = e.path().filename().string();
-            if (e.is_directory(eec) && !n.empty() && n.front() != '.') folders.push_back(e.path());
+            const std::string n = it->path().filename().string();
+            if (it->is_directory(eec) && !n.empty() && n.front() != '.') folders.push_back(it->path());
         }
         std::sort(folders.begin(), folders.end());
         Directories out;
@@ -638,6 +633,30 @@ std::optional<Directories> game_save(const Directories& dirs, std::string* error
     for (const auto& d : dirs) names += (names.empty() ? "" : ", ") + d.name;
     return fail<Directories>(error, std::string("no Burnout 3 save (") + kGameSaveDirectory + ") in it" +
                                         (names.empty() ? std::string(" (empty)") : " (found: " + names + ")"));
+}
+
+bool game_save_intact(const Directories& game, std::string* why) {
+    constexpr std::size_t kBytes = 61772, kChecksum = 0xF148;   // save_stats.h kGameSaveBytes, kChecksumOffset
+    constexpr std::uint32_t kVersion = 0x10;                      // save_stats.h kGameSaveVersion
+    auto say = [why](std::string w) { if (why) *why = std::move(w); return false; };
+    for (const CardSaveDirectory& d : game) {
+        if (d.name != kGameSaveDirectory) continue;
+        for (const CardFile& f : d.files) {
+            if (f.name != kGameSaveDirectory) continue;
+            const Bytes& b = f.content;
+            auto u32 = [&b](std::size_t o) {
+                return std::uint32_t(b[o]) | std::uint32_t(b[o + 1]) << 8 | std::uint32_t(b[o + 2]) << 16 | std::uint32_t(b[o + 3]) << 24;
+            };
+            if (b.size() != kBytes) return say("the game's save is " + std::to_string(b.size()) + " bytes, not " + std::to_string(kBytes));
+            if (u32(0) != kVersion) return say("the game's save has an unknown version (" + std::to_string(u32(0)) + ")");
+            std::uint32_t sum = 0;
+            for (std::size_t o = 0; o < kChecksum; o += 4) sum += u32(o);
+            if (sum != u32(kChecksum)) return say("the game's save is damaged (its checksum does not match)");
+            return true;
+        }
+        return say(std::string("no ") + kGameSaveDirectory + " file in the save");
+    }
+    return say(std::string("no Burnout 3 save (") + kGameSaveDirectory + ") in it");
 }
 
 }  // namespace b3native::save

@@ -20,7 +20,7 @@
 //     B3TuneHooks::changes: the game's value after the mods' presets), each with its default, and the car page's
 //     FREEZE DAMAGE, INFINITE BOOST and boost use rate while the console's; a changed row is marked `*` (in the
 //     accent colour, with "(default X)"), and tabs, sections and subsections show how many changed values they hold.
-//   - the DEVELOPER tab of PC SETTINGS (pcpage.cpp), shown while PC SETTINGS > INTERFACE > DEVELOPER MODS is on and
+//   - the DEVELOPER tab of PC SETTINGS (pcpage.cpp), shown while PC SETTINGS > MODS > DEVELOPER MODS is on and
 //     the console is in this run: SAVE AS PRESET, a status line, then the same tree one page at a time (a category
 //     list, then BACK and the page's rows); CONFIRM or Right opens, Left on a section or BACK goes up, on a value
 //     Left / Right step it and CONFIRM puts back its default. RESET ALL (and RESET THIS PAGE in a page) ask for a

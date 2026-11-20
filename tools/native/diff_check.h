@@ -166,19 +166,19 @@ private:
     void call(unsigned k, const b3host::CallArgs& a, b3host::CallResult& r) {
         Fn& f = fns_[k];
         ++f.calls;
-        std::vector<std::uint8_t>& ram = nb_->ram();
-        std::vector<std::uint8_t>& spr = nb_->scratchpad();
+        const b3host::GuestBytes ram = nb_->ram();
+        const b3host::GuestBytes spr = nb_->scratchpad();
         const b3asm::State vu0 = b3asm::state();
-        saved_ram_ = ram;
-        saved_spr_ = spr;
+        saved_ram_.assign(ram.begin(), ram.end());
+        saved_spr_.assign(spr.begin(), spr.end());
         b3host::CallResult rr{};
         calls_retail_.clear();
         calls_native_.clear();
         recording_ = &calls_retail_;
         fb_->run_retail(f.address, a, rr);   // retail
         recording_ = nullptr;
-        retail_ram_ = ram;
-        retail_spr_ = spr;
+        retail_ram_.assign(ram.begin(), ram.end());
+        retail_spr_.assign(spr.begin(), spr.end());
         const b3asm::State vu_retail = b3asm::state();
         std::memcpy(ram.data(), saved_ram_.data(), ram.size());
         std::memcpy(spr.data(), saved_spr_.data(), spr.size());

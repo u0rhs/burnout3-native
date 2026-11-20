@@ -4,7 +4,7 @@
 // rows' value steps.
 //
 // The launcher edits the files the game reads and nothing else: pc_settings.ini (include/b3settings/settings.h) and
-// run_state.ini (safemode.h) in the user's data folder (SDL_GetPrefPath("b3port", "native")), the saves folder's
+// run_state.ini (safemode.h) in the user's data folder (b3io::user_dir(), include/b3port/user_dir.h), the saves folder's
 // active-slot.txt and profile-N.sav (src/native/save_store.h). Its own choice of game data folder is launcher.ini
 // beside them; the game gets it as `native_play --game <folder>`.
 #ifndef B3LAUNCHER_CORE_H
@@ -41,14 +41,22 @@ struct Config {
     // issue #8: ADD TO STEAM's pictures of the player's choice (PNG / JPEG files, UTF-8 paths; steam.h); empty: the
     // port's own (steam_art.h). Written only when set.
     std::string steam_cover, steam_hero, steam_logo;
+    // saveflow: the profile-N-unsaved-<stamp>.sav files the player chose "Leave it" (or "Use it") for on the Saves page
+    // (file names; one unsaved_left line each)
+    std::vector<std::string> unsaved_left;
     bool operator==(const Config&) const = default;
 };
 std::string config_to_ini(const Config& c);
 Config config_from_ini(std::string_view text);           // unknown keys ignored
+// portable mode (1.3.0): game_dir, saves_dir and the Steam pictures that lie inside `install` (the launcher's folder)
+// are written as "<install>/..." and read back against it (b3port/user_dir.h): load_config / save_config do it with the
+// program's own folder, so a USB stick whose drive letter changes still finds them
+void config_paths_to_install(Config& c, const fs::path& install);
+void config_paths_from_install(Config& c, const fs::path& install);
 bool load_config(const fs::path& path, Config& c);       // false: no file (c unchanged)
 bool save_config(const fs::path& path, const Config& c, std::string* why = nullptr);
 
-// The files of the user's data folder (`pref`: SDL_GetPrefPath("b3port", "native"), as the game's window uses).
+// The files of the user's data folder (`pref`: b3io::user_dir(), as the game's window uses).
 fs::path settings_file(const fs::path& pref);    // pc_settings.ini
 fs::path run_state_file(const fs::path& pref);   // run_state.ini
 fs::path config_file(const fs::path& pref);      // launcher.ini
@@ -113,7 +121,7 @@ struct HdCheck {
 };
 HdCheck check_hd_folder(const fs::path& dir, std::size_t limit = 100000);
 
-// ---- the music folder (the custom soundtrack, remaster-features §6; in the game SETTINGS > INTERFACE > MUSIC) ----
+// ---- the music folder (the custom soundtrack, remaster-features §6; in the game SETTINGS > AUDIO > MUSIC) ----
 // The folder and the playlist mode are Settings::music_folder / playlist_mode in pc_settings.ini, as the in-game page
 // keeps them; the songs are the game's own scan (src/native/custom_music.h list_audio_files / read_tags), so the count
 // is the one native_play plays from.
@@ -150,6 +158,12 @@ struct SaveSlot {
     std::uintmax_t bytes = 0;            // the .sav's size
     std::optional<std::int64_t> modified;   // the .sav's (else the folder's) time, Unix seconds
     bool active = false;                 // active-slot.txt names it
+    std::string problem;                 // saveflow: why the game cannot play it (save_store.h profile_problem); empty: fine
+    struct Unsaved {                     // saveflow: a save the game wrote beside it (save_store.h unsaved_saves)
+        fs::path path;
+        std::optional<std::int64_t> modified;
+    };
+    std::vector<Unsaved> unsaved;        // newest first
 };
 std::vector<SaveSlot> list_save_slots(const fs::path& saves_root);
 // "61 KB", "1.2 MB"
@@ -168,7 +182,7 @@ RunSummary summarize_run(const b3settings::RunState& r, bool have_file);
 
 // ---- launchskip1: starting the game without the launcher's window ----
 // Settings::launcher_at_start off ("Start the game directly next time" on the Play page, OPEN THE LAUNCHER AT START in
-// the game's PC SETTINGS > INTERFACE): starting the launcher starts the game at once, as START GAME does. The launcher
+// the game's PC SETTINGS > GAME > STARTING AND LOADING): starting the launcher starts the game at once, as START GAME does. The launcher
 // still shows when one of these holds (the first that does is the reason given).
 enum class SkipBlock {
     kNone,          // skip: start the game
@@ -179,6 +193,7 @@ enum class SkipBlock {
     kBadGameData,   // the game data is there but will not run (GameCheck::warning)
     kNoProgram,     // native_play is not beside the launcher
     kLastRun,       // the last run did not end cleanly (or the game is still running; safe mode may be next)
+    kPortable,      // portable mode (1.3.0): the game asked for its data to be moved, or the old copy can be removed (asks first)
 };
 struct SkipInput {
     bool launcher_at_start = true;   // Settings::launcher_at_start
@@ -212,9 +227,30 @@ const char* drive_name(b3native::input::Ds2 c);   // "Accelerate", "Boost", ...
 
 // The launcher's tabs of the in-game page: every tab but SAVES (the launcher's own page), the HD pack's rows as the
 // game shows them when a folder is chosen.
+// settingsui: the launcher's window. The minimum (1024x576: the canvas at 0.8, its text still readable), and the
+// size it opens at for the usable area (points) of the display it opens on: 1280x720, or 1440x810 when the area is 900
+// or more high (the same 16:9 canvas at 1.125); never more than the area (smaller in both, kept 16:9).
+constexpr int kMinWindowW = 1024, kMinWindowH = 576;
+
+// settingsui: a strip of tabs `w` wide for labels of these text widths: 40 around each label, tighter (down to 16)
+// before it has to scroll; when it still does not fit, the shift that puts the chosen tab in the middle, clamped so
+// that the first tab starts at 0 and the last ends `kStripEdge` (the arrow's room) inside the right end. Spans are
+// (x, width) from the strip's left edge before the shift is taken off.
+constexpr float kStripEdge = 30;
+struct StripLayout {
+    std::vector<std::pair<float, float>> spans;   // x already shifted
+    float total = 0, shift = 0;
+    bool over = false;
+};
+StripLayout strip_layout(const std::vector<float>& text_w, float w, std::size_t sel);
+std::pair<int, int> default_window_size(int usable_w, int usable_h);
+
+// xboximport: `xbox_imported`: an Import Xbox textures pack is in the user data folder (the XBOX TEXTURES row)
 b3settings::Content settings_content(const b3settings::Settings& s, const std::string& hd_status, bool hd_has_images,
                                      const std::vector<std::pair<std::string, std::string>>& languages = {},
-                                     const std::string& language_status = {});   // 1.0.1: the imported languages
+                                     const std::string& language_status = {}, bool xbox_imported = false,   // 1.0.1: the imported languages
+                                     const std::vector<b3settings::Env::DjVoice>& dj = {},   // 1.3.0: the DJ VOICE / TRAINING VIDEOS import rows
+                                     const std::string& dj_status = {});
 
 // ---- osk1: a text field's text and cursor ----
 // UTF-8 text with a cursor (a byte offset, always at a character's start): typed text goes in at the cursor, the

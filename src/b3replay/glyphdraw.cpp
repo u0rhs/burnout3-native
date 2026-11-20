@@ -350,4 +350,17 @@ float text_width(std::string_view s, float cap, float t) {
     return text(s, 0, 0, cap, t, scratch);
 }
 
+float text_mass_x(std::string_view s, float cap, float t) {
+    std::vector<Line> l;
+    const float w = text(s, 0, 0, cap, t, l);
+    double m = 0, len = 0;
+    for (const Line& p : l)
+        for (std::size_t i = 1; i < p.size(); ++i) {
+            const double d = std::hypot(double(p[i].x - p[i - 1].x), double(p[i].y - p[i - 1].y));
+            m += d * 0.5 * double(p[i].x + p[i - 1].x);
+            len += d;
+        }
+    return len > 0 ? float(m / len) : 0.5f * w;
+}
+
 }  // namespace b3replay::glyph

@@ -84,6 +84,46 @@ TEST(schedule_clock_two_tick_frames) {
     CHECK(c.margin_ms > 16.7 && c.margin_ms < 25.0);   // the pair's first tick arrives a tick after its stamp
 }
 
+// split2p (a report: split screen choppy at 150-200 FPS): native_play's 2-tick frames (split screen, crashes) latch their
+// two polls back to back (stamps 0.3 ms apart) and then wait two VBlanks. The display must still advance a tick per VBlank
+// at every frame: no held frames, no jumps (it used to reach the newest tick half way through each frame, hold, then jump).
+TEST(schedule_clock_two_tick_frames_one_latch) {
+    const double vb = 1e9 / 59.94;
+    Feed f;
+    std::mt19937 r(11);
+    std::uniform_int_distribution<int> lag(2000000, 6000000);
+    for (std::size_t i = 0; i < 600; ++i) {
+        const std::uint64_t s = 1000000000ull + std::uint64_t(double(i / 2) * 2.0 * vb) + (i % 2) * 300000ull;
+        f.sched.push_back(s);
+        f.arrive.push_back(s + std::uint64_t(lag(r)));
+    }
+    b3replay::DisplayClockT<Feed> c;
+    std::uint64_t frames = 0, held = 0, judder = 0, backwards = 0, starved = 0;
+    double prev = -1;
+    std::uint64_t prev_ns = 0;
+    for (std::uint64_t now = f.arrive[3]; now < f.arrive.back(); now += 5300000) {   // ~190 fps
+        f.receive_until(now);
+        const double x = c.step_sched(f, 1.0, 1.5, now);
+        if (now > f.arrive[120]) {
+            ++frames;
+            starved += c.starved;
+            const double want = double(now - prev_ns) * 1e-9 * 59.94;
+            if (x == prev) ++held;
+            if (x < prev) ++backwards;
+            if (std::fabs((x - prev) / want - 1.0) > 0.25) ++judder;
+        }
+        prev = x;
+        prev_ns = now;
+    }
+    CHECK(frames > 1000);
+    CHECK(held == 0);
+    CHECK(backwards == 0);
+    CHECK(judder * 100 < frames * 2);
+    CHECK(starved * 100 < frames * 3);
+    CHECK_NEAR(c.rate, 59.94, 0.1);
+    CHECK(c.margin_ms > 5.0 && c.margin_ms < 8.0);   // p95 of the frames' first ticks' 2..6 ms lags, + 1 ms
+}
+
 TEST(no_stamps_falls_back_to_the_arrival_clock) {
     Feed f = steady(200, 1000000000ull, false);
     b3replay::DisplayClockT<Feed> c, ref;

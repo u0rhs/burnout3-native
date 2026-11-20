@@ -123,6 +123,7 @@ bool valid_id(std::string_view id) {
 
 ParsedManifest parse_manifest(std::string_view text) {
     ParsedManifest r;
+    if (text.size() >= 3 && text.substr(0, 3) == "\xEF\xBB\xBF") text.remove_prefix(3);   // a UTF-8 BOM (Notepad's "UTF-8 with BOM")
     Manifest& m = r.m;
     std::string section;
     bool have_mod = false, have_api = false, have_version = false, have_name = false;
@@ -202,6 +203,36 @@ ParsedManifest parse_manifest(std::string_view text) {
                     r.errors.push_back(where + ": [script] budget \"" + l.value + "\": Lua instructions per VBlank, " + std::to_string(ScriptSpec::kMinBudget) + " to " +
                                        std::to_string(ScriptSpec::kMaxBudget));
                 else m.script.budget = std::uint64_t(n);
+            } else if (l.key == "unsafe") {   // modsec: b3.call and b3.mem.write, with the user's permission
+                const std::string v = lower(l.value);
+                if (v == "yes" || v == "1" || v == "true" || v == "on") m.script.unsafe = true;
+                else if (v == "no" || v == "0" || v == "false" || v == "off") m.script.unsafe = false;
+                else r.errors.push_back(where + ": [script] unsafe = \"" + l.value + "\": yes or no");
+            } else if (l.key == "calls") {   // modsec: the game functions b3.call may call, "0x00151780, 0x001519F0"
+                std::string tok;
+                bool bad = false;
+                auto flush = [&] {
+                    if (tok.empty()) return;
+                    std::uint64_t v = 0;
+                    const bool hexa = tok.size() > 2 && tok[0] == '0' && (tok[1] == 'x' || tok[1] == 'X');
+                    std::size_t k = hexa ? 2 : 0;
+                    for (; k < tok.size() && !bad; ++k) {
+                        const char c = tok[k];
+                        const int d = c >= '0' && c <= '9' ? c - '0' : hexa && c >= 'a' && c <= 'f' ? c - 'a' + 10 : hexa && c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+                        if (d < 0) bad = true;
+                        v = v * (hexa ? 16 : 10) + std::uint64_t(d);
+                        if (v > 0xFFFFFFFFull) bad = true;
+                    }
+                    if (!bad) m.script.calls.push_back(std::uint32_t(v));
+                    tok.clear();
+                };
+                for (char c : l.value) {
+                    if (c == ',' || c == ' ' || c == '\t') flush();
+                    else tok += c;
+                }
+                flush();
+                if (bad) r.errors.push_back(where + ": [script] calls \"" + l.value + "\": the game functions' addresses (0x00151780, ...), separated by commas");
+                else if (m.script.calls.size() > ScriptSpec::kMaxCalls) r.errors.push_back(where + ": [script] calls: more than " + std::to_string(ScriptSpec::kMaxCalls) + " functions");
             } else if (l.key == "memory") {
                 int n = 0;
                 if (!parse_int(l.value, n) || n < 1 || unsigned(n) > ScriptSpec::kMaxMemoryMb)
@@ -240,6 +271,10 @@ ParsedManifest parse_manifest(std::string_view text) {
             r.errors.push_back("[script] needs api = " + std::to_string(kScriptApi) + " (the script API; this mod says api " + std::to_string(m.api) + ")");
         if (m.script.main_file.empty() && r.errors.empty()) r.errors.push_back("[script] names no script (main = scripts/main.lua)");
         if (m.code.present) r.errors.push_back("[code] and [script] in one mod: a mod is a library or a script (make two mods)");
+        if (m.script.unsafe && !m.script.gameplay)
+            r.errors.push_back("[script] unsafe = yes with gameplay = no: an unsafe script writes the game (say gameplay = yes, or drop unsafe)");
+        if (!m.script.calls.empty() && !m.script.unsafe)
+            r.warnings.push_back("[script] calls without unsafe = yes: b3.call is refused all the same (add unsafe = yes)");
         if (!m.script.gameplay_given)
             r.warnings.push_back("[script] says nothing about gameplay: read as gameplay = yes (it may change the game; say gameplay = no for a script that only reads and draws)");
     }
@@ -637,7 +672,9 @@ bool walk_patch(const std::vector<std::uint8_t>& patch, PatchInfo& info, const s
     if (out) {
         out->clear();
         if (info.dst_size > (std::uint64_t(1) << 32)) return pfail(why, "target larger than 4 GB");
-        out->reserve(std::size_t(info.dst_size));
+        // fsrobust: reserved up to what an edit of the source can make (its bytes and the patch's), never the header's
+        // claim alone (up to 4 GB from a 48-byte file); a longer result grows as its runs are added
+        out->reserve(std::size_t(std::min<std::uint64_t>(info.dst_size, std::uint64_t(src ? src->size() : 0) + patch.size())));
     }
     std::size_t at = kPatchHeader;
     std::uint64_t produced = 0;
@@ -733,6 +770,17 @@ std::string set_hash_text(const std::vector<ActiveMod>& mods) {
     std::string t = "b3mods api 1\n";   // the hash text's version (sdk2b: api 2 did not change it)
     for (const ActiveMod& m : mods) t += "mod " + m.id + " " + m.version + " " + hex64(m.hash) + "\n";
     return t;
+}
+
+std::string gameplay_set_hash(const std::vector<ActiveMod>& mods) {
+    std::string t = "b3mods gameplay 1\n";
+    bool any = false;
+    for (const ActiveMod& m : mods)
+        if (changes_gameplay_any(m)) {
+            t += "mod " + m.id + " " + m.version + " " + hex64(m.hash) + "\n";
+            any = true;
+        }
+    return any ? hex64(fnv1a64(t.data(), t.size())) : std::string();
 }
 
 // ================================================================================================ the overlay

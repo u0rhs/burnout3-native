@@ -276,6 +276,8 @@ Bytes with_entry(const ShortcutsFile& f, const NewShortcut& s) {
     return out;
 }
 
+bool translocated(std::string_view exe_path) { return exe_path.find("/AppTranslocation/") != std::string_view::npos; }
+
 bool same_exe(std::string_view a, std::string_view b, bool fold) {
     a = unquote(a);
     b = unquote(b);

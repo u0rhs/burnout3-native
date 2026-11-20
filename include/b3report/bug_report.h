@@ -20,7 +20,7 @@
 namespace b3port {
 
 struct BugReportInput {
-    std::filesystem::path pref;      // the user data folder (SDL_GetPrefPath("b3port", "native"))
+    std::filesystem::path pref;      // the user data folder (b3io::user_dir(), include/b3port/user_dir.h)
     std::filesystem::path out_dir;   // where the zip is written (report_folder)
     int runs = 5;                    // the newest runs' logs and pad recordings
     std::filesystem::path save_file; // empty: no save in the report

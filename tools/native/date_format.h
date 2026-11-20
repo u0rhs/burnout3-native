@@ -2,7 +2,7 @@
 // either the US way or as DD/MM/YYYY). The game writes its dates (the profile's DATE OF SAVE, func_004482A0)
 // with GLOBALUS.BIN string 2598 (0xA26) "%1/%2/%3", filled with the month, the day and the year [C decomp
 // src/nonmatching/func_004482A0.cpp: func_00449FC0(buffer, func_00271A00(&D_0051BA44, 0xA26), &month, &day, &year)].
-// With SETTINGS > INTERFACE > DATE FORMAT at Day/Month/Year, the string lookup func_00271A00 answers that id with our
+// With SETTINGS > GAME > LANGUAGE AND UNITS > DATE FORMAT at Day/Month/Year, the string lookup func_00271A00 answers that id with our
 // own "%2/%1/%3" (the same fields, day first) in free guest RAM (the mod arena's port region GuestArena::kDateFormat);
 // every other string is the game's. Text only: the values the game keeps are untouched. B3NATIVE_DATE_FORMAT=0 / 1 overrides the setting (tests).
 #ifndef B3NATIVE_DATE_FORMAT_H
@@ -58,7 +58,7 @@ inline bool DateFormat::install(HookTable& hooks, FormatFn format) {
     }
     format_ = format;
     instance() = this;
-    std::printf("date_format: the game's dates follow SETTINGS > INTERFACE > DATE FORMAT\n");
+    std::printf("date_format: the game's dates follow SETTINGS > GAME > LANGUAGE AND UNITS > DATE FORMAT\n");
     return true;
 }
 

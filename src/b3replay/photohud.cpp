@@ -26,7 +26,8 @@ PhotoUi photo_ui_next(PhotoUi u) {
 bool PhotoHudData::same_picture(const PhotoHudData& o) const {
     return std::lround(fov_deg) == std::lround(o.fov_deg) && std::lround(roll_deg) == std::lround(o.roll_deg) && dof_on == o.dof_on &&
            dof_level == o.dof_level && dof_levels == o.dof_levels && focus_car == o.focus_car &&
-           std::lround(focus_stops * 20.0f) == std::lround(o.focus_stops * 20.0f);
+           std::lround(focus_stops * 20.0f) == std::lround(o.focus_stops * 20.0f) && motion_mode == o.motion_mode && shutter == o.shutter &&
+           shutters == o.shutters && shutter_den == o.shutter_den;
 }
 
 namespace {
@@ -99,6 +100,8 @@ std::vector<Group> make_groups(bool keyboard, const PhotoKeys& K) {
             {"BLUR", 1, 9, {key(K.blur_less), key(K.blur_more)}},
             {"FOCUS", 1, 10, {key(K.focus_near), key(K.focus_far)}},
             {"FOCUS ON", 1, 11, {key(K.target)}},
+            {"MOTION", 1, 12, {key(K.motion)}},
+            {"SHUTTER", 1, 13, {key(K.shutter_faster), key(K.shutter_slower)}},
             {"RESET", 2, 6, {key(K.reset)}},
             {"HIDE UI", 2, 5, {key(K.hide_ui)}},
             {"PHOTO", 2, 5, {key(K.shot)}},
@@ -115,6 +118,9 @@ std::vector<Group> make_groups(bool keyboard, const PhotoKeys& K) {
         {"BLUR", 1, 9, {pk(K.pad_blur)}},
         {"FOCUS", 1, 10, {dpad(4 | 8)}},
         {"FOCUS ON", 1, 11, {pk(K.pad_target)}},
+        {"MOTION", 1, 12, {pk(K.pad_motion)}},
+        K.pad_shutter_dpad ? Group{"SHUTTER", 1, 13, {pk(K.pad_motion), dpad(4 | 8)}}
+                           : Group{"SHUTTER", 1, 13, {pk(K.pad_shutter_faster), pk(K.pad_shutter_slower)}},
         {"RESET", 2, 6, {pk(K.pad_reset)}},
         {"HIDE UI", 2, 5, {pk(K.pad_hide)}},
         {"EXIT", 2, 1, {pk(K.pad_exit)}},
@@ -204,7 +210,7 @@ std::vector<const Group*> kept(const std::vector<Group>& all, int keep) {
 struct Ro {
     float pad, head_h, row_h, row_gap, label_w, gauge_w, val_w, gap, w, h;
 };
-constexpr int kRoRows = 4;
+constexpr int kRoRows = 6;   // FOV, ROLL, DOF, FOCUS, MOTION, SHUTTER (photoblur)
 Ro ro_of(const M& m) {
     Ro r{};
     r.pad = m.pad();
@@ -492,6 +498,37 @@ void PhotoHud::picture_readouts(const Layout& l, const PhotoHudData& d, PromptDe
               d.dof_on ? (f >= 0 ? centre + 1 + n : centre) : 0, centre, kOrange);
         if (!d.dof_on) value_text(c, m, "--", vx, mid, kFaint);
         else value_text(c, m, d.focus_car ? "CAR" : "CENTRE", vx, mid, col);
+        y += r.row_h + r.row_gap;
+    }
+    const bool motion_on = d.motion_mode > 0;
+    {   // photoblur: MOTION, one cell per mode (tracking, panning, static), the chosen one lit
+        const float mid = y + 0.5f * r.row_h;
+        label("MOTION", mid, motion_on ? kAmber : kSoft);
+        constexpr int kModes = 3;
+        const float cell_w = r.gauge_w / float(kModes);
+        for (int i = 0; i < kModes; ++i) {
+            const float x0 = gx + float(i) * cell_w + 1 * m.s, cw = cell_w - 3 * m.s;
+            const float skew = 0.22f * 11 * m.s, top = mid - 5.5f * m.s, bot = mid + 5.5f * m.s;
+            const std::vector<Pt> p{{x0 + skew, top}, {x0 + skew + cw, top}, {x0 + cw, bot}, {x0, bot}};
+            c.polygon(p, motion_on && i == d.motion_mode - 1 ? kAmber : kCell);
+        }
+        static const char* const kShort[] = {"OFF", "TRACK", "PAN", "STATIC"};
+        value_text(c, m, kShort[std::clamp(d.motion_mode, 0, 3)], vx, mid, motion_on ? kWhite : kFaint);
+        y += r.row_h + r.row_gap;
+    }
+    {   // SHUTTER: the steps from the fastest, lit up to the one in use; dim while the motion blur is off
+        const float mid = y + 0.5f * r.row_h;
+        label("SHUTTER", mid, motion_on ? kSoft : kFaint);
+        const int steps = std::max(1, d.shutters);
+        const float cell_w = r.gauge_w / float(steps);
+        for (int i = 0; i < steps; ++i) {
+            const float x0 = gx + float(i) * cell_w + 1 * m.s, cw = cell_w - 3 * m.s;
+            const float skew = 0.22f * 11 * m.s, top = mid - 5.5f * m.s, bot = mid + 5.5f * m.s;
+            const std::vector<Pt> p{{x0 + skew, top}, {x0 + skew + cw, top}, {x0 + cw, bot}, {x0, bot}};
+            c.polygon(p, motion_on && i <= d.shutter ? kOrange : kCell);
+        }
+        std::snprintf(buf, sizeof buf, "1/%d", d.shutter_den);
+        value_text(c, m, buf, vx, mid, motion_on ? kWhite : kFaint);
     }
     rgba.assign(std::size_t(w) * std::size_t(h) * 4, 0);
     c.store(rgba.data(), w, 0, 0);

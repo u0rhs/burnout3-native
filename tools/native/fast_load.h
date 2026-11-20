@@ -1,4 +1,4 @@
-// fast_load.h -- PC SETTINGS > DISPLAY > FAST LOADING (fastload1, 2026-11-12; docs/remaster-features.md "Fast
+// fast_load.h -- PC SETTINGS > GAME > STARTING AND LOADING > FAST LOADING (fastload1, 2026-11-12; docs/remaster-features.md "Fast
 // loading", docs/pc-settings.md §7.8): native_play stops pacing the guest to real time while the game shows its loading
 // screen, so a load takes as long as this PC needs, not as long as the PS2 needed.
 //

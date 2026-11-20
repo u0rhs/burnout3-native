@@ -1,6 +1,9 @@
 // settings1: the PC settings model, ini, HSET record and the page's menu model (include/b3settings).
 #include "test.h"
+#include <sstream>
+#include "b3port/user_dir.h"
 
+#include "b3settings/i18n.h"
 #include "b3settings/page.h"
 #include "b3settings/safemode.h"
 #include "b3settings/settings.h"
@@ -8,8 +11,32 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
+#include <fstream>
+#include <map>
 
 using namespace b3settings;
+
+// settingsui: every tab's rows in one list (rows found by label wherever they are; their order: the tabs' order)
+Tab all_rows(const Content& c) {
+    Tab t{"ALL", {}};
+    for (const Tab& x : c.tabs) t.rows.insert(t.rows.end(), x.rows.begin(), x.rows.end());
+    return t;
+}
+// the index of the row (not a section) labelled `label` in `t`, or t.rows.size()
+std::size_t row_at(const Tab& t, const std::string& label) {
+    for (std::size_t i = 0; i < t.rows.size(); ++i)
+        if (t.rows[i].kind != RowKind::kSection && t.rows[i].label == label) return i;
+    return t.rows.size();
+}
+
+// settingsui: the tab holding a (non-section) row with this label, or none
+const Tab* holding(const Content& c, const std::string& label) {
+    for (const Tab& t : c.tabs)
+        for (const Row& r : t.rows)
+            if (r.kind != RowKind::kSection && r.label == label) return &t;
+    return nullptr;
+}
 
 TEST(defaults_are_main_and_the_high_preset) {
     const Settings d{};
@@ -90,7 +117,7 @@ TEST(fov_scale) {
 
 TEST(every_row_applies) {
     const Content c = build_content(Settings{}, Env{true});
-    CHECK(c.tabs.size() == 5);
+    CHECK(c.tabs.size() == 8);   // settingsui: DISPLAY GRAPHICS EFFECTS CAR CONTROLS AUDIO GAME MODS (SAVES with a card)
     int rows = 0;
     for (const Tab& t : c.tabs)
         for (const Row& r : t.rows) {
@@ -122,12 +149,12 @@ TEST(controls_section) {
     const Content c = build_content(Settings{}, e);
     CHECK(c.tabs.size() == plain.tabs.size());
     const Tab& t = c.tabs[4];
-    CHECK(t.label == "INTERFACE");
+    CHECK(t.label == "CONTROLS");   // settingsui: BINDINGS after FEEDBACK and DRIVING
     const std::size_t before = plain.tabs[4].rows.size();
     for (std::size_t k = 0; k < before; ++k) CHECK(t.rows[k].id == plain.tabs[4].rows[k].id && t.rows[k].label == plain.tabs[4].rows[k].label);
     // the section, PLAYER, DEVICE, KEYS FOR (the keyboard), the two actions, RESET
     CHECK(t.rows.size() == before + 8);   // (rebind2: and RESET ALL CONTROLS after RESET)
-    CHECK(t.rows[before].kind == RowKind::kSection && t.rows[before].label == "CONTROLS");
+    CHECK(t.rows[before].kind == RowKind::kSection && t.rows[before].label == "BINDINGS");
     CHECK(t.rows[before + 1].id == kRowCtlPlayer && t.rows[before + 2].id == kRowCtlDevice && t.rows[before + 3].id == kRowCtlView);
     CHECK(t.rows[before + 4].id == kActionCtlFirst && t.rows[before + 4].values[0] == "ENTER, Z" && !t.rows[before + 4].disabled);
     CHECK(t.rows[before + 6].id == kActionCtlReset);
@@ -140,7 +167,8 @@ TEST(controls_section) {
     e.controls.status = "PLAYER 1 CROSS: B";
     const Content g = build_content(Settings{}, e);
     CHECK(g.tabs[4].rows.size() == before + 10);
-    CHECK(g.tabs[4].rows[before + 3].id == kRowCtlLayout && g.tabs[4].rows[before + 3].values.size() == 4);
+    CHECK(g.tabs[4].rows[before + 3].id == kRowCtlLayout && g.tabs[4].rows[before + 3].values.size() == 5);   // padpaint: Nintendo
+    CHECK(g.tabs[4].rows[before + 3].values[3] == "Nintendo" && g.tabs[4].rows[before + 3].values[4] == "Custom");
     CHECK(g.tabs[4].rows[before + 4].id == kRowCtlView && g.tabs[4].rows[before + 4].label == "BUTTONS FOR");
     CHECK(g.tabs[4].rows.back().id == kRowCtlStatus);
     for (std::size_t k = before; k < g.tabs[4].rows.size(); ++k) {   // the host's rows, all of them
@@ -159,7 +187,7 @@ TEST(controls_shortcuts_and_reset) {
     e.controls.actions = {{"INSTANT RESTART", "F5", ""}, {"FULLSCREEN", "F11", ""}};
     const Content c = build_content(Settings{}, e);
     const Tab* t = nullptr;
-    for (const Tab& x : c.tabs) if (x.label == "INTERFACE") t = &x;
+    for (const Tab& x : c.tabs) if (x.label == "CONTROLS") t = &x;
     CHECK(t != nullptr);
     if (!t) return;
     bool view = false, reset = false, all = false, player3 = false;
@@ -203,12 +231,12 @@ TEST(saves_tab) {
     e.profile_used = {true, true, false, false, false};
     e.saves_folder = "/saves";
     const Content c = build_content(Settings{}, e);
-    CHECK(c.tabs.size() == 6 && c.tabs.back().label == "SAVES");
-    const Tab& t = c.tabs.back();
+    CHECK(c.tabs.size() == 9 && c.tabs[7].label == "SAVES" && c.tabs.back().label == "MODS");   // settingsui: SAVES, then MODS
+    const Tab& t = c.tabs[7];
     bool file = false, ex = false, im = false, folder = false;
     for (const Row& r : t.rows) {
         Settings s;
-        CHECK(apply_edit(s, Edit{r.id, r.value, 0, r.kind == RowKind::kAction}) == (r.id == kRowSaveScreens));
+        CHECK(!apply_edit(s, Edit{r.id, r.value, 0, r.kind == RowKind::kAction}));   // (SAVE SCREENS: GAME, settingsui)
         if (r.id == kRowSaveFile) file = r.kind == RowKind::kChoice && r.values.size() == 5 && r.value == 2 && r.values[2] == "File 3 (new)" && r.values[1] == "File 2";
         if (r.id == kActionExportSave) ex = r.kind == RowKind::kAction && !r.disabled;
         if (r.id == kActionImportSave) im = r.kind == RowKind::kAction && !r.disabled;
@@ -219,7 +247,7 @@ TEST(saves_tab) {
     e.save_status = "IMPORT FAILED: no Burnout 3 save";
     bool status = false;
     const Content with_status = build_content(Settings{}, e);
-    for (const Row& r : with_status.tabs.back().rows) status = status || (r.label == "LAST RESULT" && r.values[0] == "Failed");
+    for (const Row& r : with_status.tabs[7].rows) status = status || (r.label == "LAST RESULT" && r.values[0] == "Failed");
     CHECK(status);
 }
 
@@ -241,7 +269,7 @@ TEST(save_screens_row) {
     for (const auto& t : build_content(Settings{}, e).tabs)
         for (const auto& r : t.rows)
             if (r.label == "SAVE SCREENS") {
-                found = t.label == "SAVES" && r.kind == RowKind::kChoice && r.values.size() == 2 && r.values[0] == "Hide" && r.value == 0;
+                found = t.label == "GAME" && r.kind == RowKind::kChoice && r.values.size() == 2 && r.values[0] == "Hide" && r.value == 0;
                 Settings x;
                 CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && !x.hide_save_screens);
                 CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.hide_save_screens);
@@ -311,7 +339,7 @@ TEST(skip_hint_row) {
     for (const auto& t : build_content(Settings{}, Env{true}).tabs)
         for (const auto& r : t.rows)
             if (r.label == "VIDEO SKIP HINT") {
-                found = t.label == "INTERFACE" && r.kind == RowKind::kToggle && !r.disabled && r.value == 1;
+                found = t.label == "GAME" && r.kind == RowKind::kToggle && !r.disabled && r.value == 1;
                 Settings x;
                 CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && !x.skip_hint);
                 CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.skip_hint);
@@ -334,7 +362,7 @@ TEST(fast_loading_row) {
     for (const auto& t : build_content(Settings{}, Env{true}).tabs)
         for (const auto& r : t.rows)
             if (r.label == "FAST LOADING") {
-                found = t.label == "DISPLAY" && r.kind == RowKind::kToggle && !r.disabled && r.value == 1;
+                found = t.label == "GAME" && r.kind == RowKind::kToggle && !r.disabled && r.value == 1;
                 Settings x;
                 CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && !x.fast_loading);
                 CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.fast_loading);
@@ -343,8 +371,8 @@ TEST(fast_loading_row) {
 }
 
 TEST(button_prompts_row) {
-    // mac5 (remaster-features §3): BUTTON PROMPTS is Auto by default, in the file (0-5), a live choice on the INTERFACE
-    // tab, and no preset touches it
+    // mac5 (remaster-features §3): BUTTON PROMPTS is Auto by default, in the file (0-5), a live choice on GAME > INTERFACE
+    // and no preset touches it
     CHECK(Settings{}.button_prompts == 0);
     Settings s;
     s.button_prompts = 2;
@@ -356,7 +384,7 @@ TEST(button_prompts_row) {
     for (const auto& t : build_content(Settings{}, Env{true}).tabs)
         for (const auto& r : t.rows)
             if (r.label == "BUTTON PROMPTS") {
-                found = t.label == "INTERFACE" && r.kind == RowKind::kChoice && !r.disabled && r.value == 0 && r.values.size() == 7 &&
+                found = t.label == "GAME" && r.kind == RowKind::kChoice && !r.disabled && r.value == 0 && r.values.size() == 7 &&
                         r.values[1] == "PlayStation" && r.values[2] == "PS4 / PS5" && r.values[3] == "Xbox" && r.values[6] == "Keyboard";
                 // the page lists PS4 / PS5 beside PlayStation; the ini keeps its values (PS4 / PS5 = 6, Xbox = 2)
                 Settings x;
@@ -375,7 +403,7 @@ TEST(button_prompts_row) {
 TEST(menu_edits_tabs_and_close) {
     Settings s;
     Menu m;
-    m.open();
+    m.open(1);   // settingsui: GRAPHICS, QUALITY PRESET its first row
     Input idle;
     const Content c0 = build_content(s, Env{});
     CHECK(m.update(c0, idle).edits.empty());
@@ -396,11 +424,11 @@ TEST(menu_edits_tabs_and_close) {
     r2.seconds = 0.4f;
     CHECK(m.update(build_content(s, Env{}), r2).edits.size() == 1);   // Ultra -> Custom
     m.update(build_content(s, Env{}), idle);
-    // next tab: GRAPHICS, focus on its first selectable row
+    // next tab: EFFECTS, focus on its first selectable row
     Input next;
     next.next_tab = true;
     m.update(build_content(s, Env{}), next);
-    CHECK(m.tab() == 1);
+    CHECK(m.tab() == 2);
     m.update(build_content(s, Env{}), idle);
     Input back;
     back.back = true;
@@ -958,6 +986,24 @@ TEST(menu_animation_is_a_function_of_the_polls) {
     }
 }
 
+TEST(safe_mode_guard_policy) {
+    // hostfix: safe mode asked for turns the guest RAM guards off; the automatic one keeps them on unless the previous
+    // run's log shows a guest memory overrun (its crash line, or its own guards-off line for that reason)
+    StartDecision asked = start_run(clean_end(), true), autom, none = start_run(clean_end(), false);
+    autom.safe = true;
+    CHECK(safe_mode_guards_off(asked, false) == "safe mode" && safe_mode_guards_off(asked, true) == "safe mode");
+    CHECK(safe_mode_guards_off(autom, false).empty());
+    CHECK(safe_mode_guards_off(autom, true) == "safe mode after a guest memory overrun");
+    CHECK(safe_mode_guards_off(none, true).empty());
+    const std::string a = "build/test_guard_log_a.log", b = "build/test_guard_log_b.log", c = "build/test_guard_log_c.log";
+    std::ofstream(a) << "native_play: guest RAM guards: 4096 MB each, scratchpad 64 KB\ncrash: SIGSEGV at 0x0\n";
+    std::ofstream(b) << "native_play: started\ncrash: guest memory overrun: host address 0x7f0000000000 is 0x10 bytes past the end of guest RAM\n";
+    std::ofstream(c) << "native_play: guest RAM guards: off (safe mode after a guest memory overrun)\ncrash: SIGSEGV at 0x0\n";
+    CHECK(!log_shows_guard_overrun(a) && log_shows_guard_overrun(b) && log_shows_guard_overrun(c));
+    CHECK(!log_shows_guard_overrun("build/no-such-run.log"));
+    std::remove(a.c_str()); std::remove(b.c_str()); std::remove(c.c_str());
+}
+
 TEST(safe_mode_after_two_unclean_runs) {
     // mac5 (remaster-features §8): a run that never reached its clean end counts; two in a row start in safe mode
     RunState st;                                   // first start ever
@@ -1007,6 +1053,32 @@ TEST(hd_pack_folder_in_the_ini) {
     CHECK(has(build_content(s, Env{}), kActionClearHdPack));
 }
 
+TEST(xbox_textures_row_and_ini) {
+    // xboximport (1.3.0): XBOX TEXTURES, off by default, in the ini; the row (id 383) only with an import there, and
+    // HD TEXTURES with it (the import is switched by it too) even with no folder chosen
+    CHECK(!Settings{}.xbox_textures);
+    Settings s{};
+    s.xbox_textures = true;
+    const Settings b = from_ini(to_ini(s));
+    CHECK(b.xbox_textures && b == s);
+    auto row = [](const Content& c, const char* label) -> const Row* {
+        for (const Tab& t : c.tabs) for (const Row& r : t.rows) if (r.label == label) return &r;
+        return nullptr;
+    };
+    CHECK(!row(build_content(Settings{}, Env{}), "XBOX TEXTURES") && !row(build_content(Settings{}, Env{}), "HD TEXTURES"));
+    Env env{};
+    env.xbox_textures = true;
+    const Content c = build_content(Settings{}, env);
+    const Row* r = row(c, "XBOX TEXTURES");
+    CHECK(r && r->id == 383 && r->value == 0 && row(c, "HD TEXTURES"));
+    Settings t{};
+    Edit e;
+    e.id = 383;
+    e.value = 1;
+    CHECK(apply_edit(t, e) && t.xbox_textures);
+    CHECK(!safe_settings(s).hd_textures);   // safe mode: no pack, the import's neither
+}
+
 TEST(music_folder_and_playlist) {
     // the custom soundtrack (remaster-features §6): the folder survives the ini, the mode is 0..2, default EA Trax only
     CHECK(Settings{}.playlist_mode == 0 && Settings{}.music_folder.empty());
@@ -1030,7 +1102,7 @@ TEST(music_folder_and_playlist) {
         Env both;
         both.music = true;
         both.profile = 1;
-        CHECK(build_content(Settings{}, both).tabs.size() == 6);
+        CHECK(build_content(Settings{}, both).tabs.size() == 9);
     }
     Env e;
     e.music = true;
@@ -1095,12 +1167,15 @@ TEST(accessibility_rows) {
     CHECK(matching_preset(s) == Preset::kHigh);
     for (const Env& env : {Env{true}, Env{false}}) {   // (the launcher's Env too: no music, no card)
         const Content c = build_content(Settings{}, env);
-        CHECK(c.tabs.size() == 5);
+        CHECK(c.tabs.size() == 8);
         const Tab* in = nullptr;
-        for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
+        for (const Tab& t : c.tabs) if (t.label == "GAME") in = &t;
         CHECK(in != nullptr);
         if (!in) return;
         std::size_t sec = 0, flashes = 0, colour = 0, size = 0, boost = 0;
+        // settingsui: BOOST in CONTROLS > DRIVING; ACCESSIBILITY ends with a pointer row to it
+        const Tab* controls = holding(c, "BOOST");
+        CHECK(controls && controls->label == "CONTROLS");
         for (std::size_t i = 0; i < in->rows.size(); ++i) {
             const Row& r = in->rows[i];
             if (r.kind == RowKind::kSection && r.label == "ACCESSIBILITY") sec = i;
@@ -1122,8 +1197,16 @@ TEST(accessibility_rows) {
                 for (std::size_t v = 0; v < 4; ++v) CHECK(apply_edit(x, Edit{r.id, v, 0, false}) && x.hud_size == int(v));
                 CHECK(r.description.find("Menus keep their size") != std::string::npos);
             }
-            if (r.label == "BOOST") {
+            if (r.label == "BOOST HOLD OR TOGGLE") {
                 boost = i;
+                CHECK(r.disabled && r.description.find("CONTROLS > DRIVING > BOOST") != std::string::npos);
+            }
+        }
+        for (std::size_t i = 0; controls && i < controls->rows.size(); ++i) {
+            const Row& r = controls->rows[i];
+            Settings x;
+            if (r.label == "BOOST") {
+                CHECK(i > 0 && controls->rows[i - 1].label == "ANALOG TRIGGERS");
                 CHECK(r.kind == RowKind::kChoice && r.values.size() == 2 && r.values[0] == "Hold" && r.values[1] == "Toggle" && r.value == 0);
                 CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.boost_mode == 1);
                 CHECK(r.description.find("input") != std::string::npos);   // says it changes the game's input
@@ -1154,13 +1237,13 @@ TEST(ghost_row) {
     for (const Env& env : {Env{true}, Env{false}}) {
         const Content c = build_content(Settings{}, env);
         const Tab* in = nullptr;
-        for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
+        for (const Tab& t : c.tabs) if (t.label == "GAME") in = &t;
         CHECK(in != nullptr);
         if (!in) return;
         std::size_t sec = 0, row = 0, access = 0;
         for (std::size_t i = 0; i < in->rows.size(); ++i) {
             const Row& r = in->rows[i];
-            if (r.kind == RowKind::kSection && r.label == "TIME ATTACK") sec = i;
+            if (r.kind == RowKind::kSection && r.label == "MODES") sec = i;   // settingsui: GAME > MODES
             if (r.kind == RowKind::kSection && r.label == "ACCESSIBILITY") access = i;
             if (r.label == "GHOST") {
                 row = i;
@@ -1198,15 +1281,13 @@ TEST(speedrun_rows) {
     CHECK(matching_preset(s) == Preset::kHigh);
     for (const Env& env : {Env{true}, Env{false}}) {
         const Content c = build_content(Settings{}, env);
-        const Tab* in = nullptr;
-        for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
-        CHECK(in != nullptr);
-        if (!in) return;
+        const Tab all = all_rows(c);
+        const Tab* in = &all;
         std::size_t ta = 0, sec = 0, timer = 0, restart = 0, access = 0;
         for (std::size_t i = 0; i < in->rows.size(); ++i) {
             const Row& r = in->rows[i];
-            if (r.kind == RowKind::kSection && r.label == "TIME ATTACK") ta = i;
-            if (r.kind == RowKind::kSection && r.label == "SPEEDRUN") sec = i;
+            if (r.kind == RowKind::kSection && r.label == "DRIVING") ta = i;
+            if (r.kind == RowKind::kSection && r.label == "MODES") sec = i;
             if (r.kind == RowKind::kSection && r.label == "ACCESSIBILITY") access = i;
             Settings x;
             if (r.label == "SPEEDRUN TIMER") {
@@ -1221,7 +1302,9 @@ TEST(speedrun_rows) {
                 CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.instant_restart == 1);
             }
         }
-        CHECK(ta > 0 && sec > ta && timer == sec + 1 && restart == sec + 2 && access > restart);
+        // settingsui: SPEEDRUN TIMER in GAME > MODES after GHOST; INSTANT RESTART in CONTROLS > DRIVING after BOOST
+        CHECK(ta > 0 && restart == ta + 3 && sec > restart && timer == sec + 2 && access > timer);
+        CHECK(holding(c, "SPEEDRUN TIMER")->label == "GAME" && holding(c, "INSTANT RESTART")->label == "CONTROLS");
     }
 }
 
@@ -1251,15 +1334,15 @@ TEST(rumble_rows) {
     for (const Env& env : {Env{true}, Env{false}}) {
         const Content c = build_content(Settings{}, env);
         const Tab* in = nullptr;
-        for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
+        for (const Tab& t : c.tabs) if (t.label == "CONTROLS") in = &t;   // settingsui: CONTROLS > FEEDBACK
         CHECK(in != nullptr);
         if (!in) return;
         std::size_t sec = 0, on = 0, strength = 0, triggers = 0, ghost = 0;
         for (std::size_t i = 0; i < in->rows.size(); ++i) {
             const Row& r = in->rows[i];
             Settings x;
-            if (r.kind == RowKind::kSection && r.label == "CONTROLLER") sec = i;
-            if (r.kind == RowKind::kSection && r.label == "TIME ATTACK") ghost = i;
+            if (r.kind == RowKind::kSection && r.label == "FEEDBACK") sec = i;
+            if (r.kind == RowKind::kSection && r.label == "DRIVING") ghost = i;
             if (r.label == "RUMBLE") {
                 on = i;
                 CHECK(r.kind == RowKind::kChoice && r.values.size() == 2 && r.values[0] == "Off" && r.values[1] == "On" && r.value == 0 &&
@@ -1280,7 +1363,7 @@ TEST(rumble_rows) {
                 CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.rumble_triggers);
             }
         }
-        CHECK(sec > 0 && on == sec + 1 && strength == sec + 2 && triggers == sec + 3 && ghost > triggers);
+        CHECK(sec == 0 && in->rows[0].kind == RowKind::kSection && on == sec + 1 && strength == sec + 2 && triggers == sec + 3 && ghost > triggers);
         for (const Tab& t : build_content(s, env).tabs)   // shown as set
             for (const Row& r : t.rows) {
                 if (r.label == "RUMBLE") CHECK(r.value == 1);
@@ -1331,7 +1414,7 @@ TEST(other_music_apps_row) {
     CHECK(apply_edit(x, Edit{r->id, 0, 0, false}) && x.other_music_apps == 0);
     // right after PLAYLIST and its CUSTOM MUSIC VOLUME (musicvol1)
     const Tab* in = nullptr;
-    for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
+    for (const Tab& t : c.tabs) if (t.label == "AUDIO") in = &t;   // settingsui: AUDIO > MUSIC
     CHECK(in != nullptr);
     if (!in) return;
     for (std::size_t i = 0; i + 2 < in->rows.size(); ++i)
@@ -1362,7 +1445,7 @@ TEST(adaptive_trigger_rows) {
     for (const Env& env : {Env{true}, Env{false}}) {
         const Tab* in = nullptr;
         const Content c = build_content(Settings{}, env);
-        for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
+        for (const Tab& t : c.tabs) if (t.label == "CONTROLS") in = &t;   // settingsui: CONTROLS > FEEDBACK
         CHECK(in != nullptr);
         if (!in) return;
         std::size_t triggers = 0, on = 0, strength = 0, ghost = 0;
@@ -1370,7 +1453,7 @@ TEST(adaptive_trigger_rows) {
             const Row& r = in->rows[i];
             Settings x;
             if (r.label == "TRIGGER RUMBLE") triggers = i;
-            if (r.kind == RowKind::kSection && r.label == "TIME ATTACK") ghost = i;
+            if (r.kind == RowKind::kSection && r.label == "DRIVING") ghost = i;
             if (r.label == "ADAPTIVE TRIGGERS") {
                 on = i;
                 CHECK(r.id == 190 && r.kind == RowKind::kChoice && r.values.size() == 2 && r.value == 0 && !r.disabled);
@@ -1410,15 +1493,15 @@ TEST(series_shoulders_row) {
     for (const Env& env : {Env{true}, Env{false}}) {
         const Tab* in = nullptr;
         const Content c = build_content(Settings{}, env);
-        for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
+        for (const Tab& t : c.tabs) if (t.label == "CAR") in = &t;   // settingsui: CAR > GARAGE
         CHECK(in != nullptr);
         if (!in) return;
         std::size_t strength = 0, row = 0, ghost = 0;
         for (std::size_t i = 0; i < in->rows.size(); ++i) {
             const Row& r = in->rows[i];
             Settings x;
-            if (r.label == "TRIGGER STRENGTH") strength = i;
-            if (r.kind == RowKind::kSection && r.label == "TIME ATTACK") ghost = i;
+            if (r.label == "GARAGE CAMERA") strength = i;
+            if (r.kind == RowKind::kSection && r.label == "GARAGE") ghost = i;
             if (r.label == "CAR SERIES ON L1 / R1") {
                 row = i;
                 CHECK(r.id == 200 && r.kind == RowKind::kChoice && r.values.size() == 2 && r.values[0] == "Off" && r.values[1] == "On" &&
@@ -1428,11 +1511,37 @@ TEST(series_shoulders_row) {
                 CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.series_shoulders == 0);
             }
         }
-        // 1.0.1: ANALOG TRIGGERS between CAR SERIES and the TIME ATTACK section
-        CHECK(strength > 0 && row == strength + 1 && ghost == row + 2 && in->rows[row + 1].label == "ANALOG TRIGGERS");
+        // settingsui: CAR > GARAGE: GARAGE CAMERA, then CAR SERIES ON L1 / R1, the tab's last row
+        CHECK(ghost > 0 && strength == ghost + 1 && row == strength + 1 && row + 1 == in->rows.size());
         for (const Tab& t : build_content(s, env).tabs)
             for (const Row& r : t.rows)
                 if (r.label == "CAR SERIES ON L1 / R1") CHECK(r.value == 1);
+    }
+}
+
+// garagecam1 (src/b3replay/garagecam.h): GARAGE CAMERA, on by default, drawn only; the ini key, the row, the presets keep it
+TEST(garage_camera_row) {
+    const Settings d;
+    Settings o;
+    o.garage_camera = false;
+    CHECK(d.garage_camera && to_ini(d).find("garage_camera") != std::string::npos && !from_ini(to_ini(o)).garage_camera);
+    CHECK(!from_ini("garage_camera = 0\n").garage_camera && from_ini("").garage_camera);
+    Settings off;
+    off.garage_camera = false;
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(!with_preset(off, p).garage_camera);
+    for (const Env& env : {Env{true}, Env{false}}) {
+        int seen = 0;
+        for (const Tab& t : build_content(Settings{}, env).tabs)
+            for (const Row& r : t.rows)
+                if (r.label == "GARAGE CAMERA") {
+                    ++seen;
+                    CHECK(t.label == "CAR" && r.id == 290 && r.value == 1 && !r.disabled);
+                    CHECK(r.description.find("right stick") != std::string::npos && r.description.find("The game is unchanged.") != std::string::npos);
+                    Settings x;
+                    CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && !x.garage_camera);
+                    CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.garage_camera);
+                }
+        CHECK(seen == 1);
     }
 }
 
@@ -1456,7 +1565,7 @@ TEST(gyro_controls_rows) {
     env.controls.gyro_recentre_labels = {"NONE", "TOUCHPAD", "SELECT", "L3", "R3", "MIC", "PADDLE L1", "PADDLE R1"};
     const Tab* in = nullptr;
     const Content c = build_content(Settings{}, env);
-    for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
+    for (const Tab& t : c.tabs) if (t.label == "CONTROLS") in = &t;
     CHECK(in != nullptr);
     if (!in) return;
     std::size_t action = 0, reset = 0, first = 0, n = 0;
@@ -1476,7 +1585,9 @@ TEST(gyro_controls_rows) {
         if (r.id == kRowCtlGyroDeadZone) CHECK(r.values.size() == 11 && r.value == 4);
         if (r.id == kRowCtlGyroRecentre) CHECK(r.values.size() == 8 && r.value == 3 && r.values[3] == "L3");
     }
-    CHECK(n == 5 && first == action + 1 && reset == first + 5);
+    // settingsui: the GYRO section after the bindings and their resets (RESET, RESET ALL CONTROLS)
+    CHECK(n == 5 && action > 0 && reset > action && first == reset + 3 && in->rows[first - 1].kind == RowKind::kSection &&
+          in->rows[first - 1].label == "GYRO" && first + 5 == in->rows.size());
 }
 
 TEST(record_replays_row) {
@@ -1495,13 +1606,13 @@ TEST(record_replays_row) {
     for (const Env& env : {Env{true}, Env{false}}) {
         const Content c = build_content(Settings{}, env);
         const Tab* in = nullptr;
-        for (const Tab& t : c.tabs) if (t.label == "INTERFACE") in = &t;
+        for (const Tab& t : c.tabs) if (t.label == "GAME") in = &t;   // settingsui: GAME > MODES
         CHECK(in != nullptr);
         if (!in) return;
         std::size_t sec = 0, row = 0, ghost = 0;
         for (std::size_t i = 0; i < in->rows.size(); ++i) {
             const Row& r = in->rows[i];
-            if (r.kind == RowKind::kSection && r.label == "REPLAYS") sec = i;
+            if (r.kind == RowKind::kSection && r.label == "MODES") sec = i;
             if (r.label == "GHOST") ghost = i;
             if (r.label == "RECORD REPLAYS") {
                 row = i;
@@ -1511,14 +1622,14 @@ TEST(record_replays_row) {
                 CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.record_replays == 0);
             }
         }
-        CHECK(ghost > 0 && sec > ghost && row == sec + 1);
+        CHECK(sec > 0 && ghost == sec + 1 && row == sec + 3);
         for (const Tab& t : build_content(s, env).tabs)
             for (const Row& r : t.rows)
                 if (r.label == "RECORD REPLAYS") CHECK(r.value == 1);
     }
 }
 
-TEST(launcher_at_start_row) {
+TEST(launcher_at_start_setting) {
     // launchskip1: OPEN THE LAUNCHER AT START On / Off (default On: the launcher shows), in the INTERFACE tab right
     // after DATE FORMAT (never on DISPLAY), row 210; ini key launcher_at_start; untouched by the presets; the launcher
     // reads it (src/b3launcher/core.h skip_launcher)
@@ -1544,7 +1655,7 @@ TEST(launcher_at_start_row) {
                 const Row& r = t.rows[i];
                 if (r.label != "OPEN THE LAUNCHER AT START") continue;
                 ++found;
-                CHECK(t.label == "INTERFACE" && i > 0 && t.rows[i - 1].label == "DATE FORMAT");
+                CHECK(t.label == "GAME" && i > 0 && t.rows[i - 1].label == "PAUSE WHEN UNFOCUSED");   // settingsui: STARTING AND LOADING
                 CHECK(r.id == 210 && r.kind == RowKind::kToggle && r.values.size() == 2 && r.values[0] == "Off" && r.values[1] == "On" &&
                       r.value == 1 && !r.disabled);
                 Settings x;
@@ -1585,8 +1696,8 @@ TEST(speed_units_row) {
                 const Row& r = t.rows[i];
                 if (r.label != "SPEED UNITS") continue;
                 ++found;
-                CHECK(t.label == "INTERFACE" && i + 2 < t.rows.size() && t.rows[i + 1].label == "DATE FORMAT" &&
-                      t.rows[i + 2].label == "OPEN THE LAUNCHER AT START");
+                CHECK(t.label == "GAME" && i + 2 < t.rows.size() && t.rows[i + 1].label == "DATE FORMAT" &&
+                      t.rows[i + 2].label == "MODES");   // settingsui: LANGUAGE AND UNITS' last two rows
                 CHECK(r.id == 220 && r.kind == RowKind::kChoice && r.values.size() == 2 && r.values[0] == "MPH" && r.values[1] == "KM/H" &&
                       r.value == 0 && !r.disabled);
                 Settings x;
@@ -1631,7 +1742,7 @@ TEST(photo_row_setting) {
                 const Row& r = t.rows[i];
                 if (r.label != "PHOTO MODE IN PAUSE MENU") continue;
                 ++found;
-                CHECK(t.label == "INTERFACE" && i > 0 && t.rows[i - 1].label == "VIDEO SKIP HINT");
+                CHECK(t.label == "GAME" && i > 0 && t.rows[i - 1].label == "VIDEO SKIP HINT");
                 CHECK(r.id == 240 && r.kind == RowKind::kToggle && r.values.size() == 2 && r.values[0] == "Off" && r.values[1] == "On" &&
                       r.value == 1 && !r.disabled);
                 Settings x;
@@ -1671,7 +1782,7 @@ TEST(fps_counter_rows_and_old_ini) {
                 const Row& r = t.rows[i];
                 if (r.label != "FPS COUNTER") continue;
                 ++found;
-                CHECK(t.label == "INTERFACE" && i == 0 && r.id == 255 && r.kind == RowKind::kChoice && r.values.size() == 4 && r.value == 3);
+                CHECK(t.label == "GAME" && i == 4 && r.id == 255 && r.kind == RowKind::kChoice && r.values.size() == 4 && r.value == 3);   // settingsui: INTERFACE's 4th
                 CHECK(r.values[0] == "Off" && r.values[1] == "Minimal" && r.values[2] == "Standard" && r.values[3] == "Detailed");
                 CHECK(t.rows[i + 1].id == 256 && t.rows[i + 1].values.size() == 4 && t.rows[i + 1].value == 1);
                 Settings x;
@@ -1733,12 +1844,12 @@ TEST(effect_levels_effects2) {
         for (const Tab& t : build_content(with_preset(Settings{}, Preset::kLow), env).tabs)
             for (const Row& r : t.rows)
                 if (r.label == "SPARKS" || r.label == "CRASH DEBRIS") CHECK(r.value == 1);
-        for (const Row& r : c.tabs[0].rows) CHECK(r.id != 245);   // not on DISPLAY (its scroll bar is in the golden record)
+        for (const Row& r : c.tabs[2].rows) CHECK(r.id != 245);   // settingsui: on DISPLAY > WINDOW, not EFFECTS
     }
 }
 
 TEST(battery_saver_effects2) {
-    // BATTERY SAVER (EFFECTS > POWER, row 245, default off): the host's copy while on battery holds the frame rate to 60 and
+    // BATTERY SAVER (DISPLAY > WINDOW, row 245, default off): the host's copy while on battery holds the frame rate to 60 and
     // the particle effects to at most Medium; off, or plugged in (the host does not call it), nothing changes
     Settings s;
     CHECK(!s.battery_saver && to_ini(s).find("battery_saver = false") != std::string::npos);
@@ -1759,7 +1870,7 @@ TEST(battery_saver_effects2) {
         for (const Row& r : t.rows)
             if (r.label == "BATTERY SAVER") {
                 ++found;
-                CHECK(t.label == "EFFECTS" && r.id == 245 && r.kind == RowKind::kToggle && r.value == 0);
+                CHECK(t.label == "DISPLAY" && r.id == 245 && r.kind == RowKind::kToggle && r.value == 0);   // settingsui: WINDOW
                 Settings x;
                 CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.battery_saver);
             }
@@ -1768,7 +1879,7 @@ TEST(battery_saver_effects2) {
 
 TEST(render_scale_effects2) {
     // RENDER SCALE (GRAPHICS tab, row 246, default 100 %): the 3D picture at a share of the window; the presets: LOW 75,
-    // the others 100; ini `render_scale` 50..100
+    // the others 100; ini `render_scale` 50..200 (perf4: 125 / 150 / 200 supersampled)
     const Settings d{};
     CHECK(d.render_scale == 100);
     for (Preset p : {Preset::kPs2, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(with_preset(d, p).render_scale == 100);
@@ -1781,9 +1892,12 @@ TEST(render_scale_effects2) {
     std::vector<std::string> w;
     CHECK(from_ini("render_scale = 20\n", &w).render_scale == 100 && w.size() == 1);   // out of range: the default
     CHECK(from_ini("render_scale = 85\n").render_scale == 85);
+    CHECK(from_ini("render_scale = 200\n").render_scale == 200 && from_ini("render_scale = 150\n").render_scale == 150);   // perf4
+    CHECK(from_ini("render_scale = 201\n").render_scale == 100);
     CHECK(from_ini("").render_scale == 100);   // an older file
-    CHECK(render_scale_index(100) == 0 && render_scale_index(75) == 2 && render_scale_index(50) == 4 && render_scale_index(60) == 3 &&
-          render_scale_index(90) == 1);
+    CHECK(render_scale_index(100) == 3 && render_scale_index(75) == 5 && render_scale_index(50) == 7 && render_scale_index(60) == 6 &&
+          render_scale_index(90) == 4 && render_scale_index(200) == 0 && render_scale_index(150) == 1 && render_scale_index(125) == 2 &&
+          render_scale_index(110) == 3);
     int found = 0;
     for (const Env& env : {Env{true}, Env{false}}) {
         const Content c = build_content(Settings{}, env);
@@ -1791,8 +1905,8 @@ TEST(render_scale_effects2) {
             for (const Row& r : t.rows)
                 if (r.label == "RENDER SCALE") {
                     ++found;
-                    CHECK(t.label == "GRAPHICS" && r.id == 246 && r.kind == RowKind::kChoice && r.values.size() == 5 && r.values[0] == "100%" &&
-                          r.values[4] == "50%" && r.value == 0);
+                    CHECK(t.label == "GRAPHICS" && r.id == 246 && r.kind == RowKind::kChoice && r.values.size() == 8 && r.values[0] == "200%" &&
+                          r.values[3] == "100%" && r.values[7] == "50%" && r.value == 3);
                     for (std::size_t v = 0; v < r.values.size(); ++v) {
                         Settings x;
                         CHECK(apply_edit(x, Edit{r.id, v, 0, false}) && x.render_scale == kRenderScales[v]);
@@ -1801,13 +1915,16 @@ TEST(render_scale_effects2) {
         for (const Row& r : c.tabs[0].rows) CHECK(r.id != 246);   // not on DISPLAY
         for (const Tab& t : build_content(with_preset(Settings{}, Preset::kLow), env).tabs)
             for (const Row& r : t.rows)
-                if (r.label == "RENDER SCALE") CHECK(r.value == 2);
+                if (r.label == "RENDER SCALE") CHECK(r.value == 5);
     }
     CHECK(found == 2);
 }
 
-TEST(mods_tab_only_with_code_mod_rows) {   // sdk2b: PC SETTINGS > MODS (the code mods' rows; none: no tab, the page as before)
-    for (const auto& t : build_content(Settings{}, Env{true}).tabs) CHECK(t.label != "MODS");
+TEST(mods_tab_only_with_code_mod_rows) {   // sdk2b: PC SETTINGS > MODS (the code mods' rows; settingsui: then DEVELOPER MODS)
+    {
+        const Content plain = build_content(Settings{}, Env{true});
+        CHECK(plain.tabs.back().label == "MODS" && plain.tabs.back().rows.size() == 2 && plain.tabs.back().rows[1].label == "DEVELOPER MODS");
+    }
     Env e{true};
     Row sec;
     sec.id = kSectionModBase;
@@ -1820,7 +1937,8 @@ TEST(mods_tab_only_with_code_mod_rows) {   // sdk2b: PC SETTINGS > MODS (the cod
     r.values = {"Off", "On"};
     e.mod_rows = {sec, r};
     const Content c = build_content(Settings{}, e);
-    CHECK(!c.tabs.empty() && c.tabs.back().label == "MODS" && c.tabs.back().rows.size() == 2 && c.tabs.back().rows[1].id == kModRowBase);
+    CHECK(!c.tabs.empty() && c.tabs.back().label == "MODS" && c.tabs.back().rows.size() == 4 && c.tabs.back().rows[1].id == kModRowBase &&
+          c.tabs.back().rows[2].label == "DEVELOPER" && c.tabs.back().rows[3].label == "DEVELOPER MODS");
     Settings s;
     CHECK(!apply_edit(s, Edit{kModRowBase, 1, 1, false}));   // the host's row, not a setting
 }
@@ -1860,10 +1978,17 @@ TEST(translations_cover_the_page) {
     env.music = true;
     env.language_import = true;
     env.languages = {{"FR", "Fran\xC3\xA7" "ais (French)"}};
+    // 1.3.0: the DJ VOICE import rows in their three states (on the disc, being imported, imported)
+    env.dj_voices = {{"FR", "Fran\xC3\xA7" "ais (French)", 285556736, 0, -1}, {"GE", "Deutsch (German)", 352722944, 0, 40},
+                     {"IT", "Italiano (Italian)", 0, 330457088, -1}, {"GE", "Deutsch (German)", 135000000, 0, -1, true},
+                     {"FR", "Fran\xC3\xA7" "ais (French)", 0, 135000000, -1, true}, {"SP", "Espa\xC3\xB1" "ol (Spanish)", 1, 0, 3, true}};
+    env.xbox_textures = true;   // xboximport: XBOX TEXTURES
     env.profile = 1;
     env.next_profile = 2;
     env.controls.on = true;
     env.controls.gyro = true;
+    env.portable.shown = true;   // portable mode (1.3.0): PORTABLE MODE, disabled with its reason
+    env.portable.disabled = "The install folder cannot be written by you: move the game to a folder of your own to use portable mode.";
     Settings s;
     s.hd_pack_dir = "/packs/SLUS-21050";
     s.music_folder = "/music";
@@ -1905,6 +2030,9 @@ TEST(translations_cover_the_shortcuts) {
             const in::PortAction pa = in::PortAction(a);
             if (dev == in::Device::Gamepad && !in::port_has_pad(pa)) continue;
             Env::Controls::Action row;
+            // the ids the hosts give (src/b3replay/pcpage.cpp port_row_id): photoblur's block, todrace's 413; the rest positional
+            row.id = pa == in::PortAction::PhotoMotion ? kActionCtlPhotoFirst : pa == in::PortAction::PhotoShutterFaster ? kActionCtlPhotoFirst + 1
+                   : pa == in::PortAction::PhotoShutterSlower ? kActionCtlPhotoFirst + 2 : pa == in::PortAction::RaceTime ? kActionCtlRaceTime : 0;
             row.label = in::port_label(pa);
             row.value = in::bound_port_text(defaults, pa, dev, in::PadStyle::PlayStation);
             row.description = std::string(in::port_use(pa)) + " Bound: " + row.value + ". CONFIRM: press a new " +
@@ -1941,6 +2069,44 @@ TEST(translations_cover_the_shortcuts) {
             CHECK(rows == env.controls.actions.size());
         }
     }
+}
+
+TEST(translations_cover_the_controls_change_notes) {
+    // polish122: the CONTROLS change notes (in the game: the LAST CHANGE row, src/b3replay/pcpage.cpp controls_changed; the
+    // launcher's Controls page note, src/b3launcher/main.cpp controls_save) are composed from these words, each translated
+    // on its own (the key and button names between them stay). Every one is in every language's table.
+    namespace in = b3native::input;
+    std::vector<std::string> words = {
+        // the game's page
+        "PLAYER", "KEYBOARD", "CONTROLLER", "DRIVING", "MENUS", "SHORTCUTS", "CONTROLLER LAYOUT", "RESET TO DEFAULTS",
+        "ALL CONTROLS RESET TO DEFAULTS", "PRESS RESET ALL CONTROLS AGAIN TO PUT EVERYTHING BACK (ANY OTHER ROW CANCELS)",
+        "(this run only)", "(NOT SAVED: {})", "GYRO STEERING", "GYRO AXIS", "GYRO SENSITIVITY", "GYRO DEAD ZONE",
+        "GYRO RECENTRE", "Off", "Mix", "Replace", "Tilt", "Turn", "{} DEG",
+        // the launcher's
+        "{}: saved (the game reads it at its next start).", "Cannot save the controls:", "Player 1", "Player 2", "Shortcuts",
+        "controller layout", "gyro steering", "gyro axis", "gyro sensitivity", "gyro dead zone", "gyro recentre button",
+        "keyboard reset to the defaults", "controller reset to the defaults", "All controls reset to the defaults",
+        "Xbox", "PlayStation", "Custom"};
+    for (in::PadStyle f : {in::PadStyle::Generic, in::PadStyle::PlayStation, in::PadStyle::Xbox, in::PadStyle::Nintendo})
+        for (bool connected : {false, true}) words.push_back(in::auto_text(f, connected));
+    for (int k = 0; k < in::kActions; ++k)
+        if (std::strpbrk(in::action_label(in::Ds2(k)), " -")) words.push_back(in::action_label(in::Ds2(k)));   // the button names stay
+    for (int k = 0; k < in::kPortActions; ++k) words.push_back(in::port_label(in::PortAction(k)));
+    for (const i18n::Table& t : i18n::kTables)
+        for (const std::string& w : words) {
+            bool found = false;
+            for (std::size_t e = 0; e < t.count && !found; ++e) found = w == t.entries[e].en;
+            if (!found) std::printf("  %s lacks: %s\n", t.code, w.c_str());
+            CHECK(found);
+        }
+    // the launcher's form: the {} entry's text with {} kept, then filled; the game's: a whole status sentence
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"}) {
+        const std::string t = translate_text("{}: saved (the game reads it at its next start).", code);
+        CHECK(t.find("{}") != std::string::npos && t.find("saved") == std::string::npos);
+        CHECK(translate_text("(NOT SAVED: disk full)", code).find("disk full") != std::string::npos);
+        CHECK(translate_text("(NOT SAVED: disk full)", code) != "(NOT SAVED: disk full)");
+    }
+    CHECK(translate_text("{}: saved (the game reads it at its next start).", "") == "{}: saved (the game reads it at its next start).");
 }
 
 TEST(translations_cover_the_player_rows) {
@@ -2018,7 +2184,7 @@ TEST(translations_cover_the_controller_layout) {
     for (in::PadStyle f : {in::PadStyle::Generic, in::PadStyle::PlayStation, in::PadStyle::Xbox, in::PadStyle::Nintendo})
         for (bool connected : {false, true}) autos.push_back(in::auto_text(f, connected));
     in::PlayerControls p;
-    for (in::PadLayout l : {in::PadLayout::Xbox, in::PadLayout::PlayStation, in::PadLayout::Custom}) {
+    for (in::PadLayout l : {in::PadLayout::Xbox, in::PadLayout::PlayStation, in::PadLayout::Nintendo, in::PadLayout::Custom}) {
         p.layout = l;
         autos.push_back(in::layout_text(p, in::PadStyle::Xbox, true));   // the change notes' names (the fixed values)
     }
@@ -2034,7 +2200,7 @@ TEST(translations_cover_the_controller_layout) {
         for (const char* w : {"Buttons for", "CONTROLLER LAYOUT", "BUTTONS FOR"}) CHECK(translate_text(w, code) != w);
         for (std::size_t player = 0; player < 2; ++player)
             for (std::size_t view = 0; view < 2; ++view)
-                for (std::size_t layout = 0; layout < 4; ++layout)
+                for (std::size_t layout = 0; layout < 5; ++layout)   // padpaint: Nintendo the fourth
                     for (const std::string& a : autos) {
                         if (a.rfind("Auto:", 0) != 0) continue;
                         env.controls.player = player;
@@ -2046,14 +2212,14 @@ TEST(translations_cover_the_controller_layout) {
                         for (const Tab& tab : c.tabs)
                             for (const Row& r : tab.rows) {
                                 if (r.id == kRowCtlLayout) {
-                                    row = r.values.size() == 4 && r.values[0] == a && r.value == layout;
+                                    row = r.values.size() == 5 && r.values[0] == a && r.value == layout;
                                 }
                                 if (r.id == kRowCtlView) buttons = r.label == "BUTTONS FOR";
                             }
                         CHECK(row && buttons);
                         for (const std::string& m : untranslated(c, code))
                             if (m.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") != std::string::npos &&
-                                m != env.languages[0].second && m != "Xbox" && m != "PlayStation") {
+                                m != env.languages[0].second && m != "Xbox" && m != "PlayStation" && m != "Nintendo") {
                                 std::printf("  %s lacks: %s\n", code, m.c_str());
                                 CHECK(false);
                             }
@@ -2123,7 +2289,7 @@ TEST(chase_camera_and_upscaling_rows) {
             const Row& r = t.rows[k];
             if (r.label == "CAMERA DISTANCE") {
                 dist = &r;
-                CHECK(t.label == "CAMERA" && k > 0 && t.rows[k - 1].label == "FOV CORRECTION");
+                CHECK(t.label == "DISPLAY" && k > 0 && t.rows[k - 1].label == "FOV CORRECTION");   // settingsui: DISPLAY > CAMERA
             }
             if (r.label == "CAMERA HEIGHT") height = &r;
             if (r.label == "UPSCALING") {
@@ -2145,6 +2311,258 @@ TEST(chase_camera_and_upscaling_rows) {
     CHECK(from_ini("camera_distance = 200\n").camera_distance == 100);   // out of range
 }
 
+TEST(car_paint_rows) {
+    // carpaint (remaster-features §15): CAR > CAR PAINT, first on the tab; off by default, the colour rows disabled
+    // until Custom, the sliders in steps of 15, kept in the ini
+    Settings s;
+    CHECK(s.car_paint == 0 && s.car_decals && s.paint_red == 195 && s.paint_green == 30 && s.paint_blue == 30);   // padpaint: on the steps
+    Content c = build_content(s, Env{true});
+    const Row *paint = nullptr, *red = nullptr, *blue = nullptr, *decals = nullptr;
+    for (const Tab& t : c.tabs)
+        for (std::size_t k = 0; k < t.rows.size(); ++k) {
+            const Row& r = t.rows[k];
+            if (r.label == "CAR PAINT" && r.kind != RowKind::kSection) { paint = &r; CHECK(t.label == "CAR"); }   // settingsui
+            if (r.label == "PAINT RED") red = &r;
+            if (r.label == "PAINT BLUE") blue = &r;
+            if (r.label == "DECALS") decals = &r;
+        }
+    CHECK(paint && red && blue && decals);
+    if (!paint || !red || !blue || !decals) return;
+    CHECK(paint->values[paint->value] == "Game" && red->disabled && red->level_text == "195" && red->value == 13);
+    CHECK(red->swatch == 0xC31E1E && blue->swatch == 0xC31E1E);   // padpaint: the colour the rows make
+    CHECK(decals->value == 1);
+    Settings e;
+    CHECK(apply_edit(e, Edit{paint->id, 1, 0, false}) && e.car_paint == 1);
+    CHECK(apply_edit(e, Edit{blue->id, 17, 0, false}) && e.paint_blue == 255);
+    CHECK(apply_edit(e, Edit{red->id, 0, 0, false}) && e.paint_red == 0);
+    CHECK(apply_edit(e, Edit{decals->id, 0, 0, false}) && !e.car_decals);
+    c = build_content(e, Env{true});
+    for (const Tab& t : c.tabs) for (const Row& r : t.rows) if (r.label == "PAINT BLUE") CHECK(!r.disabled && r.level_text == "255");
+    const Settings back = from_ini(to_ini(e));
+    CHECK(back.car_paint == 1 && back.paint_red == 0 && back.paint_blue == 255 && !back.car_decals);
+    CHECK(from_ini("paint_green = 100\n").paint_green == 100);   // the ini takes any value; the slider shows the nearest step
+    CHECK(from_ini("paint_green = 300\n").paint_green == 30);    // out of range: the default
+    CHECK(with_preset(e, Preset::kLow).car_paint == 1);           // the presets leave it
+}
+
+// padpaint: every default colour is on the rows' steps (a value the rows can give back after a change); FINISH and
+// PLAYER 2 CAR PAINT after DECALS (CAR > CAR PAINT), with their row ids; off by default; kept in the ini
+TEST(car_paint_finish_and_player2_rows) {
+    Settings s;
+    for (int v : {s.paint_red, s.paint_green, s.paint_blue, s.p2_paint_red, s.p2_paint_green, s.p2_paint_blue}) CHECK(v % 15 == 0);
+    CHECK(s.paint_finish == 0 && s.p2_car_paint == 0 && s.p2_car_decals);
+    const Content c = build_content(s, Env{true});
+    const Tab* g = nullptr;
+    for (const Tab& t : c.tabs) if (t.label == "CAR") g = &t;   // settingsui: CAR > CAR PAINT, then PLAYER 2 CAR PAINT
+    CHECK(g != nullptr);
+    if (!g) return;
+    std::size_t at = 0;
+    while (at < g->rows.size() && g->rows[at].label != "FINISH") ++at;
+    CHECK(at + 9 < g->rows.size());
+    if (at + 9 >= g->rows.size()) return;
+    const Row& fin = g->rows[at];
+    CHECK(fin.id == 285 && fin.label == "FINISH" && fin.values.size() == 3 && fin.values[2] == "Pearl" && fin.value == 0);
+    CHECK(g->rows[at + 1].label == "DECALS");
+    CHECK(g->rows[at + 2].kind == RowKind::kSection && g->rows[at + 2].label == "PLAYER 2 CAR PAINT");
+    const std::uint32_t ids[6] = {286, 293, 287, 288, 289, 291};   // (293: P2 COLOUR, the ready colours)
+    for (int k = 0; k < 6; ++k) CHECK(g->rows[at + 3 + std::size_t(k)].id == ids[k]);
+    CHECK(g->rows[at + 5].label == "P2 PAINT RED" && g->rows[at + 5].disabled && g->rows[at + 5].swatch == 0x1E5AD2);
+    CHECK(g->rows[at + 8].label == "P2 DECALS" && g->rows[at + 8].value == 1);
+    Settings e;
+    CHECK(apply_edit(e, Edit{285, 2, 0, false}) && e.paint_finish == 2);
+    CHECK(apply_edit(e, Edit{286, 1, 0, false}) && e.p2_car_paint == 1);
+    CHECK(apply_edit(e, Edit{287, 17, 0, false}) && e.p2_paint_red == 255);
+    CHECK(apply_edit(e, Edit{289, 0, 0, false}) && e.p2_paint_blue == 0);
+    CHECK(apply_edit(e, Edit{291, 0, 0, false}) && !e.p2_car_decals);
+    const Settings back = from_ini(to_ini(e));
+    CHECK(back.paint_finish == 2 && back.p2_car_paint == 1 && back.p2_paint_red == 255 && back.p2_paint_blue == 0 && !back.p2_car_decals);
+    CHECK(from_ini("paint_finish = 3\n").paint_finish == 0);
+    // every word of the new rows has its translation
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"})
+        for (const std::string& m : untranslated(c, code))
+            if (m.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") != std::string::npos && m != "Metallic" &&
+                (m.rfind("P2 ", 0) == 0 || m.find("PAINT") != std::string::npos || m.find("FINISH") != std::string::npos ||
+                 m.find("aint") != std::string::npos || m.find("Gloss") != std::string::npos || m.find("Pearl") != std::string::npos)) {
+                std::printf("  %s lacks: %s\n", code, m.c_str());
+                CHECK(false);
+            }
+}
+
+TEST(night_rows) {
+    // night (remaster-features §17 / §18): 1.3.0 holds TIME OF DAY, MOON and AMBIENT OCCLUSION back (night still being
+    // finished; AO draws noise lines): only SURFACE DETAIL (372) shows in GRAPHICS > LIGHTING. The ids, the edits and the
+    // ini keys stay, so the rows come back unchanged
+    Settings s;
+    CHECK(s.time_of_day == 0 && s.moon && !s.surface_detail && !s.ambient_occlusion);
+    Content c = build_content(s, Env{true});
+    const Row* surf = nullptr;
+    bool held = false;
+    for (const Tab& t : c.tabs)
+        for (std::size_t k = 0; k < t.rows.size(); ++k) {
+            const Row& r = t.rows[k];
+            if (r.label == "TIME OF DAY" || r.label == "MOON" || r.label == "AMBIENT OCCLUSION") held = true;
+            if (r.label == "SURFACE DETAIL") { surf = &r; CHECK(t.label == "GRAPHICS" && k > 1 && t.rows[k - 1].label == "LIGHTING"); }
+        }
+    CHECK(!held && surf);
+    if (!surf) return;
+    CHECK(surf->id == 372 && surf->value == 0);
+    Settings e;
+    CHECK(apply_edit(e, Edit{370, 1, 0, false}) && e.time_of_day == 1);
+    CHECK(apply_edit(e, Edit{371, 0, 0, false}) && !e.moon);
+    CHECK(apply_edit(e, Edit{surf->id, 1, 0, false}) && e.surface_detail);
+    CHECK(apply_edit(e, Edit{373, 1, 0, false}) && e.ambient_occlusion);
+    const Settings back = from_ini(to_ini(e));
+    CHECK(back.time_of_day == 1 && !back.moon && back.surface_detail && back.ambient_occlusion);
+    CHECK(from_ini("time_of_day = 2\n").time_of_day == 0);   // out of range: the default
+    const Settings low = with_preset(e, Preset::kLow);
+    CHECK(low.time_of_day == 1 && low.surface_detail && low.ambient_occlusion);   // the presets leave them
+}
+
+TEST(sun_shadow_row) {
+    // sunshadow (remaster-features §19): GRAPHICS > LIGHTING's last row, SUN SHADOWS Off / On (id 390, ini `sun_shadows`), off by
+    // default; the PS2 and Low presets turn it off, the others leave it; translated in every language
+    Settings s;
+    CHECK(!s.sun_shadows);
+    Content c = build_content(s, Env{true});
+    const Row* row = nullptr;
+    for (const Tab& t : c.tabs)
+        for (std::size_t k = 0; k < t.rows.size(); ++k)
+            if (t.rows[k].label == "SUN SHADOWS") {
+                row = &t.rows[k];
+                CHECK(t.label == "GRAPHICS" && k + 1 == t.rows.size() && t.rows[k - 1].label == "SURFACE DETAIL");   // (1.3.0: AO held back)
+            }
+    CHECK(row != nullptr);
+    if (!row) return;
+    CHECK(row->id == 390 && row->kind == RowKind::kToggle && row->value == 0);
+    Settings e;
+    CHECK(apply_edit(e, Edit{row->id, 1, 0, false}) && e.sun_shadows);
+    CHECK(from_ini(to_ini(e)).sun_shadows);
+    CHECK(!from_ini(to_ini(s)).sun_shadows);
+    CHECK(!with_preset(e, Preset::kPs2).sun_shadows && !with_preset(e, Preset::kLow).sun_shadows);
+    CHECK(with_preset(e, Preset::kMedium).sun_shadows && with_preset(e, Preset::kHigh).sun_shadows && with_preset(e, Preset::kUltra).sun_shadows);
+    CHECK(matching_preset(Settings{}) == Preset::kHigh);   // the defaults are still the High preset
+    CHECK(matching_preset(e) == Preset::kHigh);            // (High leaves the row)
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"}) {
+        Content t = build_content(e, Env{true});
+        translate(t, code);
+        for (const Tab& tab : t.tabs)
+            for (const Row& r : tab.rows)
+                if (r.id == 390) CHECK(r.label != "SUN SHADOWS" && r.description.find("cast by the sun") == std::string::npos &&
+                                       r.description.find("Sharper") == std::string::npos && r.description.find("bridges") == std::string::npos);
+    }
+}
+
+TEST(row_ids_unique) {
+    // Every row, action and section id on the page is unique, across every configuration of the host's sections (three
+    // collisions on 2026-11-19: CAR PAINT / GARAGE CAMERA at 280, night's first rows at 350-351 on the CONTROLS host ids).
+    // Within one page no id may appear twice; and no row of the page's own (built without the host sections) may sit on
+    // an id page.h reserves for the host's rows and actions.
+    std::vector<Content> pages;
+    Env base{true};
+    base.music = true;
+    base.portable.shown = true;   // portable mode (1.3.0): PORTABLE MODE (405)
+    base.language_import = true;
+    base.languages = {{"FR", "Fran\xC3\xA7" "ais (French)"}};
+    base.dj_voices = {{"FR", "F", 1, 0, -1}, {"GE", "G", 0, 1, -1}, {"IT", "I", 1, 0, 5}, {"SP", "S", 1, 1, -1},   // 1.3.0
+                      {"FR", "F", 1, 0, -1, true}, {"GE", "G", 0, 1, -1, true}, {"IT", "I", 1, 0, 5, true}, {"SP", "S", 1, 1, -1, true}};
+    base.profile = 1;
+    base.next_profile = 2;
+    Settings s;
+    s.hd_pack_dir = "/packs/SLUS-21050";
+    s.music_folder = "/music";
+    s.car_paint = 1;
+    s.time_of_day = 1;
+    const Content own = build_content(s, base);
+    pages.push_back(own);
+    for (std::size_t player = 0; player < 3; ++player)
+        for (std::size_t device = 0; device < 2; ++device) {
+            Env e = base;
+            e.controls.on = true;
+            e.controls.gyro = true;
+            e.controls.player = player;
+            e.controls.device = device;
+            e.controls.status = "PLAYER 1 CROSS: B";
+            e.controls.actions = {{"CROSS", "ENTER, Z", "Driving: accelerate."}, {"CIRCLE", "X, H", ""},
+                                  {"PHOTO: MOTION BLUR", "J", "", kActionCtlPhotoFirst}};   // photoblur: the second block
+            pages.push_back(build_content(s, e));
+        }
+    for (const Content& c : pages) {
+        std::map<std::uint32_t, std::string> seen;
+        for (const Tab& t : c.tabs)
+            for (const Row& r : t.rows) {
+                const auto [it, fresh] = seen.emplace(r.id, t.label + " > " + r.label);
+                if (!fresh) std::printf("  id %u twice: %s and %s > %s\n", r.id, it->second.c_str(), t.label.c_str(), r.label.c_str());
+                CHECK(fresh);
+            }
+    }
+    const std::uint32_t reserved[][2] = {{kActionExportSave, kActionTuneOverlay}, {kRowCtlPlayer, kRowCtlLayout},
+                                          {kRowLanguage, kActionImportLanguages}, {kActionDjFirst, kActionDjLast},
+                                          {kActionTrainingFirst, kActionTrainingLast}};
+    for (const Tab& t : own.tabs)
+        for (const Row& r : t.rows) {
+            if (r.kind == RowKind::kSection || r.id == kRowLanguage || r.id == kActionImportLanguages || (r.id >= kActionExportSave && r.id <= kActionTuneOverlay) ||
+                (r.id >= kActionDjFirst && r.id <= kActionDjLast) || (r.id >= kActionTrainingFirst && r.id <= kActionTrainingLast))
+                continue;   // (the page builds these host rows itself)
+            for (const auto& range : reserved) {
+                const bool clash = r.id >= range[0] && r.id <= range[1];
+                if (clash) std::printf("  %s > %s (id %u) on a host id (%u..%u)\n", t.label.c_str(), r.label.c_str(), r.id, range[0], range[1]);
+                CHECK(!clash);
+            }
+        }
+}
+
+TEST(dj_voice_rows) {
+    // 1.3.0 VOICES (INTERFACE, after LANGUAGE): Language by default, English keeps the US DJ; kept in the ini. The
+    // launcher's import rows: one per language it lists, by its fixed id, Import / Cancel / Remove by state
+    const auto find = [](const Content& c, std::uint32_t id) -> const Row* {
+        for (const Tab& t : c.tabs)
+            for (const Row& r : t.rows)
+                if (r.id == id) return &r;
+        return nullptr;
+    };
+    Settings s;
+    CHECK(s.voices == 0);
+    {
+        const Content none = build_content(s, Env{true});   // nothing imported, no language chosen: no row
+        CHECK(!find(none, kRowDjVoice));
+    }
+    Env env{true};
+    env.languages = {{"GE", "Deutsch (German)"}};
+    const Content c = build_content(s, env);
+    const Row* r = find(c, kRowDjVoice);
+    CHECK(r && r->label == "VOICES" && r->kind == RowKind::kChoice && r->values.size() == 2 && r->values[0] == "Language" &&
+          r->values[1] == "English" && r->value == 0);
+    CHECK(!find(c, kActionDjFirst + 1));   // the in-game page: no import rows
+    Settings x;
+    CHECK(apply_edit(x, Edit{kRowDjVoice, 1, 0, false}) && x.voices == 1);
+    CHECK(from_ini(to_ini(x)).voices == 1 && from_ini(to_ini(Settings{})).voices == 0);
+    CHECK(from_ini("voices = 7\n").voices != 7);
+    env.language_import = true;
+    env.dj_voices = {{"GE", "Deutsch (German)", 352722944, 0, -1}, {"IT", "Italiano (Italian)", 0, 330457088, -1}, {"SP", "Espa\xC3\xB1" "ol (Spanish)", 349601792, 0, 37}};
+    env.dj_status = "Import cancelled: nothing was kept.";
+    const Content l = build_content(s, env);
+    const Row* ge = find(l, kActionDjFirst + 1);
+    const Row* it = find(l, kActionDjFirst + 2);
+    const Row* sp = find(l, kActionDjFirst + 3);
+    CHECK(!find(l, kActionDjFirst));   // French: neither on the disc nor imported
+    CHECK(ge && ge->label == "DJ VOICE: Deutsch (German)" && ge->values[0] == "Import (336 MB)" && !ge->disabled &&
+          ge->description.find("Needs 336 MB") != std::string::npos && ge->description.find("nothing was kept") != std::string::npos);
+    CHECK(it && it->values[0] == "Remove (315 MB)");
+    CHECK(sp && sp->values[0] == "Cancel (37 %)");
+    // the race training videos' rows: their own ids after the DJ's
+    env.dj_voices.push_back({"GE", "Deutsch (German)", 135668524, 0, -1, true});
+    const Content tv = build_content(s, env);
+    const Row* tge = find(tv, kActionTrainingFirst + 1);
+    CHECK(tge && tge->label == "TRAINING VIDEOS: Deutsch (German)" && tge->values[0] == "Import (129 MB)" &&
+          tge->description.find("English pictures") != std::string::npos);
+    CHECK(find(tv, kActionDjFirst + 1) && find(tv, kActionDjFirst + 1)->label == "DJ VOICE: Deutsch (German)");
+    // translated: the labels' and values' patterns keep the names and numbers
+    Content t = l;
+    translate(t, "GE");
+    const Row* gde = find(t, kActionDjFirst + 1);
+    CHECK(gde && gde->label == "DJ-STIMME: Deutsch (German)" && gde->values[0] == "Importieren (336 MB)");
+}
+
 TEST(analog_triggers_row) {
     // 1.0.1 ANALOG TRIGGERS (INTERFACE, after CAR SERIES): on by default, a live toggle, kept in the ini
     Settings s;
@@ -2162,4 +2580,617 @@ TEST(analog_triggers_row) {
     CHECK(!from_ini(to_ini(x)).analog_pedals && from_ini(to_ini(Settings{})).analog_pedals);
 }
 
+// padpaint (review): a `{}` entry is looked up by its pattern and the argument put in after, whatever the argument says
+TEST(translations_cover_the_save_notices) {
+    // saveflow: the save bubble's lines (live.cpp show_save_bubble: save_store.h ProfileCard's texts, one per " - " part)
+    // and the launcher's Set aside strings, in each language; the composed ones translate as a whole
+    static const char* const kWords[] = {
+        "Set aside file {}?", "The game can't play profile-{}.sav.", "Why: {}.",
+        "It is renamed in the save folder (kept, not deleted) and the file starts empty: the game makes a new profile at its first save.",
+        "Quit the game first if it is running.", "Set aside", "Set aside as {}.", "The game starts this file fresh.",
+        "Cannot set it aside: {}", "Can't be played: damaged or unreadable", "Set aside file {} and start fresh...",
+        "Renames profile-{}.sav in the save folder (kept, not deleted) so that the game starts this file empty.", "Asks first.",
+        "SAVED", "SAVE FAILED", "YOUR LAST SAVE IS KEPT", "RETRYING", "SAVED AGAIN TO PROFILE {}", "NOT SAVED", "CAN'T READ {}",
+        "PROGRESS WON'T BE SAVED THIS SESSION", "THE LAUNCHER'S SAVES PAGE CAN SET IT ASIDE", "{} CHANGED OUTSIDE THE GAME",
+        "SAVED TO {}", "A SAVE WAS IMPORTED: RESTART THE GAME TO PLAY IT", "SAVE WARNING",
+        "ANOTHER GAME ON THIS COMPUTER USES THIS SAVE FOLDER", "PLAY ONE AT A TIME",
+        "Progress from {} was saved beside it, because the file changed while the game was running.", "Use it", "Leave it",
+        "Makes it this file's save; the current one is kept as a backup (.bak and backups).",
+        "Hides this line; the file stays in the save folder.", "Use the progress from {}?", "It replaces profile-{}.sav.",
+        "The current one is kept as profile-{}.sav.bak and in backups.", "Now using the progress from {}.", "Cannot use it: {}",
+    };
+    for (const i18n::Table& t : i18n::kTables)
+        for (const char* w : kWords) {
+            bool found = false;
+            for (std::size_t k = 0; k < t.count && !found; ++k) found = std::strcmp(t.entries[k].en, w) == 0 && t.entries[k].text[0] != 0;
+            if (!found) std::printf("  %s lacks: %s\n", t.code, w);
+            CHECK(found);
+        }
+    using b3settings::translate_text;
+    CHECK(translate_text("SAVED", "FR") == "SAUVEGARD\xC3\x89");
+    CHECK(translate_text("CAN'T READ PROFILE-1.SAV", "GE") == "PROFILE-1.SAV IST NICHT LESBAR");
+    CHECK(translate_text("PROFILE-2.SAV CHANGED OUTSIDE THE GAME", "SW") == "PROFILE-2.SAV \xC3\x84NDRADES UTANF\xC3\x96R SPELET");
+    CHECK(translate_text("SAVED TO PROFILE-1-UNSAVED-20261120-101500.SAV", "IT") == "SALVATO IN PROFILE-1-UNSAVED-20261120-101500.SAV");
+    CHECK(translate_text("SAVED AGAIN TO PROFILE 2", "DU") == "WEER OPGESLAGEN IN PROFIEL 2");
+    CHECK(translate_text("Set aside file 3?", "SP") == "\xC2\xBF" "Apartar el archivo 3?");
+    const std::string modal = translate_text("The game can't play profile-1.sav. Why: the game's save is damaged (its checksum does not match). "
+                                             "Quit the game first if it is running.", "FR");
+    CHECK(modal == "Le jeu ne peut pas lire profile-1.sav. Raison : the game's save is damaged (its checksum does not match). "
+                   "Quitter d'abord le jeu s'il est lanc\xC3\xA9.");
+}
+
+TEST(translate_format_pattern_then_argument) {
+    using b3settings::translate_format;
+    CHECK(translate_format("(NOT SAVED: {})", "disk full", "FR") == "(NON ENREGISTR\xC3\x89 : disk full)");
+    // a reason with sentences, or reading as another entry's text, stays the argument
+    CHECK(translate_format("(NOT SAVED: {})", "Off. On", "FR") == "(NON ENREGISTR\xC3\x89 : Off. On)");
+    CHECK(translate_format("{} DEG", "5", "GE") == "5 GRAD" && translate_format("{} DEG", "0", "SW") == "0 GRADER");
+    CHECK(translate_format("{} DEG", "5", "") == "5 DEG" && translate_format("(NOT SAVED: {})", "x", "") == "(NOT SAVED: x)");
+    CHECK(translate_format("{} DEG", "5", "XX") == "5 DEG");   // no table: English
+}
+
+// ---- settingsui (2026-11-20): the page tidied up ----
+
+// Every row, action and section id on a page is used once (the 280 / 290 / 350 collisions: an edit sent to the wrong
+// row): the fullest game page (a card, a controller with its gyro, a status, a pack, music, mods, a host tab) and the
+// launcher's
+// portable mode (1.3.0): PORTABLE MODE on GAME > STARTING AND LOADING only when the host offers it (never in the launcher's
+// copy of the game's tabs: its LAUNCHER tab has the row), its value the request when one is pending, the launcher's and
+// the game's words, every reason translated; its edit is the host's (apply_edit leaves it)
+TEST(portable_mode_row) {
+    const auto find = [](const Content& c) -> const Row* {
+        for (const Tab& t : c.tabs)
+            for (const Row& r : t.rows)
+                if (r.id == kRowPortable) return &r;
+        return nullptr;
+    };
+    Settings s;
+    Env e{true};
+    CHECK(find(build_content(s, e)) == nullptr);   // not shown: no row
+    e.portable.shown = true;
+    const Content c = build_content(s, e);
+    const Row* r = find(c);
+    CHECK(r && r->kind == RowKind::kToggle && r->value == 0 && !r->disabled && r->label == "PORTABLE MODE");
+    bool on_game_tab = false;
+    for (const Tab& t : c.tabs)
+        if (t.label == "GAME")
+            for (const Row& row : t.rows) on_game_tab = on_game_tab || row.id == kRowPortable;
+    CHECK(on_game_tab);
+    e.portable.request = 1;   // asked of the launcher: shown on
+    r = find(build_content(s, e));
+    CHECK(r && r->value == 1 && r->description.find("at its next start") != std::string::npos);
+    e.portable.on = true;
+    e.portable.request = 0;
+    r = find(build_content(s, e));
+    CHECK(r && r->value == 0);
+    e.launcher = true;   // the launcher's settings: its LAUNCHER tab has the row instead
+    CHECK(find(build_content(s, e)) == nullptr);
+    Env::Portable p;
+    p.on = true;
+    p.request = 0;
+    const Row l = portable_row(p, true);
+    CHECK(l.value == 1 && l.description.find("moves your data now") != std::string::npos);
+    p.disabled = "The game is running: close it first.";
+    CHECK(portable_row(p, true).disabled);
+    CHECK(!apply_edit(s, Edit{kRowPortable, 1, 0, false}));
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"})   // the game's notices (save bubble segments)
+        for (const char* w : {"THE LAUNCHER IS MOVING YOUR DATA", "QUIT AND START AGAIN WHEN IT IS DONE",
+                              "THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "SAVES AND SETTINGS WON'T BE KEPT",
+                              "Your data folder cannot be written (a write-protected drive?): settings and saves will not be kept."})
+            CHECK(translate_text(w, code) != w);
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"})
+        for (const char* why : {"The install folder cannot be written by you: move the game to a folder of your own to use portable mode.",
+                                "The game is running: close it first.",
+                                "A data folder was given when the launcher was started (--pref), so this does not apply.",
+                                "B3PORT_USER_DIR is set to a data folder of your choice, so this does not apply.",
+                                "The launcher's own folder is not known."})
+            for (const bool launcher : {false, true}) {
+                Env::Portable q;
+                q.disabled = why;
+                Content one;
+                one.tabs.push_back(Tab{"GAME", {portable_row(q, launcher)}});
+                const std::vector<std::string> missing = untranslated(one, code);
+                for (const std::string& m : missing) std::printf("  %s lacks: %s\n", code, m.c_str());
+                CHECK(missing.empty());
+            }
+}
+
+// portable mode (1.3.0): HD pack and music folders inside the program's folder are written as "<install>/..." and read
+// back against it (a USB stick on another drive letter); a folder outside stays absolute
+TEST(folders_inside_the_install_kept_relative) {
+    namespace fs = std::filesystem;
+    const fs::path install = b3io::exe_dir();
+    CHECK(!install.empty());
+    if (install.empty()) return;
+    Settings s;
+    s.hd_pack_dir = b3io::u8string(install / "packs" / "SLUS-21050");
+    s.music_folder = "/music/mine";
+    const fs::path file = fs::path("build") / "test_settings.install_relative.ini";
+    CHECK(save_file(file.string(), s));
+    std::ifstream f(file);
+    std::stringstream text;
+    text << f.rdbuf();
+    CHECK(text.str().find("hd_pack_dir = <install>/packs/SLUS-21050") != std::string::npos);
+    CHECK(text.str().find("music_folder = /music/mine") != std::string::npos);
+    Settings back;
+    CHECK(load_file(file.string(), back));
+    CHECK(back.hd_pack_dir == s.hd_pack_dir && back.music_folder == "/music/mine");
+    Settings other = from_ini(text.str());   // the same file beside the program on another drive
+    paths_from_install(other, "/run/media/other/B3");
+    CHECK(fs::path(other.hd_pack_dir) == fs::path("/run/media/other/B3/packs/SLUS-21050") && other.music_folder == "/music/mine");
+    Settings in = s;
+    paths_to_install(in, install);
+    CHECK(in.hd_pack_dir == "<install>/packs/SLUS-21050" && in.music_folder == "/music/mine");
+    std::error_code ec;
+    fs::remove(file, ec);
+}
+
+TEST(row_ids_unique_full_pages) {
+    Env e{true};
+    e.hd_pack_loaded = true;
+    e.music = true;
+    e.language_import = true;
+    e.languages = {{"FR", "Francais"}};
+    e.profile = 1;
+    e.profile_used = {true, false, false, false, false};
+    e.save_status = "EXPORTED";
+    e.controls.on = true;
+    e.controls.actions = {{"CROSS", "A", ""}, {"CIRCLE", "B", ""}, {"PHOTO: MOTION BLUR", "J", "", kActionCtlPhotoFirst},
+                           {"TIME OF DAY PER RACE", "T", "", kActionCtlRaceTime}};   // photoblur's block (todrace: 413)
+    e.controls.status = "PLAYER 1 CROSS: A";
+    e.controls.gyro = true;
+    e.controls.gyro_recentre_labels = {"NONE", "L3"};
+    Row msec, mrow;
+    msec.id = kSectionModBase;
+    msec.kind = RowKind::kSection;
+    msec.label = "A MOD";
+    mrow.id = kModRowBase;
+    mrow.kind = RowKind::kToggle;
+    mrow.label = "A MOD ROW";
+    e.mod_rows = {msec, mrow};
+    Tab dev{"DEVELOPER", {}};
+    Row tune;
+    tune.id = kRowTuneFirst;
+    tune.label = "A VALUE";
+    dev.rows.push_back(tune);
+    e.extra_tabs = {dev};
+    Settings s;
+    s.hd_pack_dir = "/hd";
+    s.music_folder = "/music";
+    s.car_paint = 1;
+    s.p2_car_paint = 1;
+    s.time_of_day = 1;
+    for (std::size_t device : {0u, 1u})
+        for (std::size_t player : {0u, 1u, 2u}) {
+            e.controls.device = device;
+            e.controls.player = player;
+            const std::vector<std::uint32_t> dup = duplicate_ids(build_content(s, e));
+            for (std::uint32_t id : dup) std::printf("  duplicate id %u (0x%X)\n", id, id);
+            CHECK(dup.empty());
+        }
+    Env l;   // the launcher's
+    l.launcher = true;
+    l.hd_pack = true;
+    l.language_import = true;
+    {
+        const std::vector<std::uint32_t> dup = duplicate_ids(build_content(s, l));
+        for (std::uint32_t id : dup) std::printf("  launcher: duplicate id %u (0x%X)\n", id, id);
+        CHECK(dup.empty());
+    }
+    // and the check finds one
+    Content twice = build_content(s, l);
+    twice.tabs[0].rows.push_back(twice.tabs[1].rows[0]);
+    CHECK(duplicate_ids(twice).size() == 1);
+}
+
+// The tabs and their sections, in order (the game's page with a card; the launcher's: link rows in place of the
+// controls, the music folder and the HD pack)
+TEST(settingsui_tabs_and_sections) {
+    Env e{true};
+    e.music = true;
+    e.profile = 1;
+    e.profile_used = {true, false, false, false, false};
+    e.controls.on = true;
+    e.controls.device = 1;
+    e.controls.gyro = true;
+    e.controls.actions = {{"CROSS", "A", ""}};
+    const Content c = build_content(Settings{}, e);
+    std::vector<std::string> tabs;
+    for (const Tab& t : c.tabs) tabs.push_back(t.label);
+    CHECK((tabs == std::vector<std::string>{"DISPLAY", "GRAPHICS", "EFFECTS", "CAR", "CONTROLS", "AUDIO", "GAME", "SAVES", "MODS"}));
+    const auto sections = [](const Tab& t) {
+        std::vector<std::string> o;
+        for (const Row& r : t.rows)
+            if (r.kind == RowKind::kSection) o.push_back(r.label);
+        return o;
+    };
+    CHECK((sections(c.tabs[0]) == std::vector<std::string>{"WINDOW", "LAYOUT", "CAMERA", "SMOOTHNESS"}));
+    CHECK((sections(c.tabs[1]) == std::vector<std::string>{"IMAGE", "TEXTURES", "WORLD", "LIGHTING"}));
+    CHECK(c.tabs[1].rows[0].label == "QUALITY PRESET");   // the first row of the tab it changes
+    CHECK((sections(c.tabs[2]) == std::vector<std::string>{"POST", "CRASHES"}));
+    CHECK((sections(c.tabs[3]) == std::vector<std::string>{"CAR PAINT", "PLAYER 2 CAR PAINT", "CAR LOOK", "GARAGE"}));
+    CHECK((sections(c.tabs[4]) == std::vector<std::string>{"FEEDBACK", "DRIVING", "BINDINGS", "GYRO"}));
+    CHECK((sections(c.tabs[5]) == std::vector<std::string>{"MUSIC"}));
+    CHECK(c.tabs[5].rows[0].label == "VOLUMES AND DJ" && c.tabs[5].rows[0].disabled);
+    CHECK((sections(c.tabs[6]) == std::vector<std::string>{"INTERFACE", "LANGUAGE AND UNITS", "MODES", "ACCESSIBILITY", "STARTING AND LOADING"}));
+    CHECK((sections(c.tabs[8]) == std::vector<std::string>{"DEVELOPER"}));
+    // each tab's first row is selectable, or a section heading followed by one
+    for (const Tab& t : c.tabs) CHECK(!t.rows.empty() && (t.rows[0].kind != RowKind::kSection || t.rows.size() > 1));
+    // the launcher's: no SAVES (its own page), the controls / music / HD pack rows open its pages
+    Env l;
+    l.launcher = true;
+    const Content lc = build_content(Settings{}, l);
+    tabs.clear();
+    for (const Tab& t : lc.tabs) tabs.push_back(t.label);
+    CHECK((tabs == std::vector<std::string>{"DISPLAY", "GRAPHICS", "EFFECTS", "CAR", "CONTROLS", "AUDIO", "GAME", "MODS"}));
+    int links = 0;
+    for (const Tab& t : lc.tabs)
+        for (const Row& r : t.rows) {
+            if (r.id == kActionOpenControllers) links += t.label == "CONTROLS" && !r.disabled ? 1 : 100;
+            if (r.id == kActionOpenMusic) links += t.label == "AUDIO" && !r.disabled ? 1 : 100;
+            if (r.id == kActionOpenHdPage) links += t.label == "GRAPHICS" && !r.disabled ? 1 : 100;
+            CHECK(r.id != kActionChooseHdPack && r.id != kActionChooseMusic && r.id != kRowCtlPlayer);
+            Settings x;
+            if (r.kind == RowKind::kAction) CHECK(!apply_edit(x, Edit{r.id, 0, 0, true}));
+        }
+    CHECK(links == 3);
+    // every word of both pages in every language (the new tabs, sections, rows and the prompt bar's words)
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"})
+        for (const Content* x : {&c, &lc}) {
+            Content y = *x;
+            y.prompt_device = Content::PromptDevice::kMouse;
+            for (const std::string& m : untranslated(y, code))
+                if (m.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") != std::string::npos && m != "A" && m != "MODS" &&
+                    m != "Francais") {
+                    std::printf("  %s lacks: %s\n", code, m.c_str());
+                    CHECK(false);
+                }
+        }
+}
+
+// COLOUR / P2 COLOUR: the ready colours (each on the sliders' steps); Custom listed only while the colour is none of
+// them; a choice sets the three values and turns the custom paint on
+TEST(paint_preset_rows) {
+    Settings s;   // the default paint (195, 30, 30) is no preset
+    const Content c = build_content(s, Env{true});
+    const Tab* car = holding(c, "COLOUR");
+    CHECK(car && car->label == "CAR");
+    if (!car) return;
+    const std::size_t at = row_at(*car, "COLOUR");
+    const Row& p = car->rows[at];
+    CHECK(p.id == 292 && car->rows[at - 1].label == "CAR PAINT" && car->rows[at + 1].label == "PAINT RED");
+    CHECK(p.values.size() == 11 && p.values.back() == "Custom" && p.value == 10 && !p.disabled && p.swatch == 0xC31E1E);
+    Settings x = s;
+    CHECK(apply_edit(x, Edit{292, 4, 0, false}) && x.car_paint == 1 && x.paint_red == 30 && x.paint_green == 90 && x.paint_blue == 225);
+    const Content c2 = build_content(x, Env{true});
+    const Tab* car2 = holding(c2, "COLOUR");
+    const Row& p2 = car2->rows[row_at(*car2, "COLOUR")];
+    CHECK(p2.values.size() == 10 && p2.value == 4 && p2.values[4] == "Blue");   // a preset: no Custom value
+    CHECK(car2->rows[row_at(*car2, "PAINT BLUE")].level_text == "225" && !car2->rows[row_at(*car2, "PAINT BLUE")].disabled);
+    CHECK(apply_edit(x, Edit{292, 10, 0, false}) && x.paint_blue == 225);   // Custom (out of the presets): as it is
+    // player 2's
+    Settings y;
+    CHECK(apply_edit(y, Edit{293, 9, 0, false}) && y.p2_car_paint == 1 && y.p2_paint_red == 15 && y.car_paint == 0);
+    // the values survive the ini (they are the RGB keys: no new key)
+    CHECK(from_ini(to_ini(y)) == y && to_ini(y).find("preset = ") == std::string::npos);
+}
+
+// FRAME RATE LIMIT shows an ini value the page does not offer as itself (90 written by hand was shown as Unlimited)
+TEST(frame_cap_value_of_its_own) {
+    Settings s;
+    s.frame_cap = 90;
+    const Content c = build_content(s, Env{true});
+    const Tab* d = holding(c, "FRAME RATE LIMIT");
+    CHECK(d && d->label == "DISPLAY");
+    if (!d) return;
+    const Row& r = d->rows[row_at(*d, "FRAME RATE LIMIT")];
+    CHECK(r.values.size() == 8 && r.values[r.value] == "90" && r.values[0] == "Unlimited" && r.values[2] == "60" && r.values[4] == "120");
+    Settings x = s;
+    CHECK(apply_edit(x, Edit{r.id, r.value, 0, false}) && x.frame_cap == 90);   // the same value: unchanged
+    CHECK(apply_edit(x, Edit{r.id, r.value + 1, 0, false}) && x.frame_cap == 120);
+    Settings y;   // the page's own values: as before
+    const Content cy = build_content(y, Env{true});
+    const Tab* dy = holding(cy, "FRAME RATE LIMIT");
+    CHECK(dy->rows[row_at(*dy, "FRAME RATE LIMIT")].values.size() == 7);
+}
+
+// Left / right on an action row (a binding: remove / add) act once per press, never on the hold repeat
+TEST(menu_action_rows_take_one_press_each) {
+    Content c;
+    Tab t{"T", {}};
+    Row a;
+    a.id = kActionCtlFirst;
+    a.kind = RowKind::kAction;
+    a.label = "CROSS";
+    a.values = {"A"};
+    t.rows.push_back(a);
+    Row ch;
+    ch.id = 7;
+    ch.kind = RowKind::kChoice;
+    ch.label = "CHOICE";
+    ch.values = {"0", "1", "2", "3", "4", "5"};
+    t.rows.push_back(ch);
+    c.tabs.push_back(t);
+    Menu m;
+    m.open();
+    m.update(c, Input{});
+    Input left;
+    left.left = true;
+    left.seconds = 0.1f;
+    int removes = 0;
+    for (int k = 0; k < 40; ++k)   // four seconds held
+        for (const Edit& e : m.update(c, left).edits) removes += e.id == kActionCtlFirst && e.direction == -1;
+    CHECK(removes == 1);
+    m.update(c, Input{});
+    for (const Edit& e : m.update(c, left).edits) removes += e.id == kActionCtlFirst && e.direction == -1;
+    CHECK(removes == 2);   // a new press: one more
+    // a value row still repeats
+    Input down;
+    down.down = true;
+    m.update(c, Input{});
+    m.update(c, down);
+    m.update(c, Input{});
+    Input right;
+    right.right = true;
+    right.seconds = 0.1f;
+    int steps = 0;
+    for (int k = 0; k < 10; ++k) steps += int(m.update(c, right).edits.size());
+    CHECK(steps >= 4);
+}
+
+// After a rebind took an input, that input (still held) does not act on the page until it is let go
+TEST(menu_hold_until_released) {
+    const Content c = build_content(Settings{}, Env{true});
+    Menu m;
+    m.open(1);
+    m.update(c, Input{});
+    Input held;
+    held.confirm = true;
+    held.right = true;
+    held.down = true;
+    m.hold_until_released();
+    const std::size_t focus = m.focus();
+    for (int k = 0; k < 30; ++k) CHECK(m.update(c, held).edits.empty());
+    CHECK(m.focus() == focus);
+    m.update(c, Input{});
+    Input right;
+    right.right = true;
+    CHECK(m.update(c, right).edits.size() == 1);   // released, then pressed: acts
+}
+
+// A tab coming or going (SAVES, DEVELOPER) starts the per-tab memory again and keeps the page on the tab it showed
+TEST(menu_tab_memory_follows_the_tab_list) {
+    Env e{true};
+    Content a = build_content(Settings{}, e);
+    Menu m;
+    m.open(6);   // GAME
+    m.update(a, Input{});
+    CHECK(a.tabs[m.tab()].label == "GAME");
+    e.profile = 1;
+    e.profile_used = {true, false, false, false, false};
+    Tab dev{"DEVELOPER", {}};
+    Row r;
+    r.id = kRowTuneFirst;
+    r.label = "X";
+    dev.rows.push_back(r);
+    e.extra_tabs = {dev};
+    const Content b = build_content(Settings{}, e);
+    m.update(b, Input{});
+    CHECK(b.tabs[m.tab()].label == "GAME");
+    Input next;
+    next.next_tab = true;
+    m.update(b, next);
+    CHECK(b.tabs[m.tab()].label == "SAVES");
+}
+
+// The prompt bar: glyphs for the controller or keyboard (the binding rows' own words), words for the mouse
+TEST(menu_prompt_bar) {
+    Env e{true};
+    e.controls.on = true;
+    e.controls.actions = {{"CROSS", "A", ""}};
+    Content c = build_content(Settings{}, e);
+    Menu m;
+    m.open(4);   // CONTROLS
+    m.update(c, Input{});
+    const auto images = [&](const std::vector<Item>& items) {
+        std::vector<std::string> o;
+        for (const Item& i : items)
+            if (i.kind == ItemKind::kImage && i.text.rfind(kGlyphPrefix, 0) == 0) o.push_back(i.text.substr(std::strlen(kGlyphPrefix)));
+        return o;
+    };
+    std::vector<Item> items = m.items("", "", nullptr);
+    std::vector<std::string> g = images(items);
+    // RUMBLE (a choice) focused: move, change, the sections (four on this tab), close
+    CHECK((g == std::vector<std::string>{"dpad-ud", "dpad-lr", "section-up", "section-down", "triangle"}));
+    CHECK(text_item(items, "CHANGE") && text_item(items, "SECTION") && text_item(items, "CLOSE AND SAVE"));
+    // a binding row: rebind, add, remove, default
+    Input down;
+    down.down = true;
+    for (int k = 0; k < 40 && c.tabs[4].rows[m.focus()].id != kActionCtlFirst; ++k) {
+        m.update(c, down);
+        m.update(c, Input{});
+    }
+    CHECK(c.tabs[4].rows[m.focus()].id == kActionCtlFirst);
+    g = images(m.items("", "", nullptr));
+    CHECK((g == std::vector<std::string>{"dpad-ud", "cross", "dpad-r", "dpad-l", "square", "triangle"}));
+    // the mouse: words only
+    c.prompt_device = Content::PromptDevice::kMouse;
+    m.update(c, Input{});
+    items = m.items("", "", nullptr);
+    CHECK(images(items).empty() && text_item(items, "CLICK") && text_item(items, "RIGHT CLICK"));
+    // German: the words translated, still inside the bar (75 % at the least, or a prompt left out)
+    Content de = build_content(Settings{}, e);
+    translate(de, "GE");
+    m.update(de, Input{});
+    items = m.items("", "", nullptr);
+    CHECK(text_item(items, "SCHLIESSEN UND SPEICHERN") != nullptr);
+    for (const Item& i : items)
+        if (i.y >= 400 && i.y < 430 && (i.kind == ItemKind::kText || i.kind == ItemKind::kImage)) CHECK(i.x >= 32 && i.x + i.w <= 608.5f);
+    // every language: when the bar is too narrow the least needed prompts go first (the section jump before CHANGE); a
+    // binding row keeps REMOVE and DEFAULT, and CLOSE stays
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"}) {
+        Content t = build_content(Settings{}, e);
+        translate(t, code);
+        Menu tm;
+        tm.open(4);
+        tm.update(t, Input{});
+        g = images(tm.items("", "", nullptr));
+        const auto has = [&](const char* n) { return std::find(g.begin(), g.end(), n) != g.end(); };
+        CHECK(has("triangle") && (has("section-up") ? has("dpad-lr") && has("dpad-ud") : true));
+        for (int k = 0; k < 40 && t.tabs[4].rows[tm.focus()].id != kActionCtlFirst; ++k) {
+            tm.update(t, down);
+            tm.update(t, Input{});
+        }
+        g = images(tm.items("", "", nullptr));
+        if (!(has("dpad-l") && has("square") && has("triangle"))) std::printf("  %s: the binding row's bar lost REMOVE or DEFAULT\n", code);
+        CHECK(has("dpad-l") && has("square") && has("triangle"));
+        for (const Item& i : tm.items("", "", nullptr))
+            if (i.y >= 400 && i.y < 430 && (i.kind == ItemKind::kText || i.kind == ItemKind::kImage)) CHECK(i.x >= 32 && i.x + i.w <= 608.5f);
+    }
+}
+
+// settingsui: each tab as wide as its label (the measure's) needs: wider labels get wider tabs, the bar is filled, the
+// pointer hits the tab drawn there, and the labels keep their full size while they fit
+TEST(menu_tabs_sized_to_their_labels) {
+    Env e{true};
+    e.music = true;
+    e.profile = 1;
+    Content c = build_content(Settings{}, e);
+    translate(c, "GE");
+    Menu m;
+    m.open(0);
+    m.update(c, Input{});
+    const Measure measure = [](std::string_view s, float h, std::uint8_t) { return float(s.size()) * h * 0.45f; };
+    std::vector<const Item*> labels;
+    const std::vector<Item> items = m.items("", "", measure);
+    for (const Item& i : items)
+        if (i.kind == ItemKind::kText && i.y < 80 && i.y > 50)
+            for (const Tab& t : c.tabs)
+                if (i.text == t.label) labels.push_back(&i);
+    CHECK(labels.size() == c.tabs.size());
+    if (labels.size() != c.tabs.size()) return;
+    float left = 1e9f, right = 0;
+    for (std::size_t k = 0; k < labels.size(); ++k) {
+        left = std::min(left, labels[k]->x);
+        right = std::max(right, labels[k]->x + labels[k]->w);
+        if (k) CHECK(labels[k]->x > labels[k - 1]->x);
+        CHECK(labels[k]->h >= (24.0f - 9.0f) * 0.75f - 0.01f);   // no label below the shrink floor
+    }
+    CHECK(left < 100 && right > 540);   // the bar filled (between the L1 / R1 prompts)
+    // the longest label's tab is the widest
+    std::size_t longest = 0, widest = 0;
+    for (std::size_t k = 0; k < labels.size(); ++k) {
+        if (c.tabs[k].label.size() > c.tabs[longest].label.size()) longest = k;
+        if (labels[k]->w > labels[widest]->w) widest = k;
+    }
+    CHECK(longest == widest);
+    // a click in the middle of the last tab's label picks it
+    Input click;
+    click.pointer = std::array<float, 2>{labels.back()->x + labels.back()->w * 0.5f, labels.back()->y + labels.back()->h * 0.5f};
+    click.pointer_moved = true;
+    click.click = true;
+    m.update(c, click);
+    CHECK(m.tab() == c.tabs.size() - 1);
+}
+
+// settingsui: the player's own names are not translated: the HD pack's and the music folder's names on the page
+TEST(folder_names_not_translated) {
+    Env e{true};
+    e.music = true;
+    Settings s;
+    s.hd_pack_dir = "/packs/Paint Pack";   // "Paint {}" is a table pattern
+    s.music_folder = "/music/gold";        // "gold" a table word
+    Content c = build_content(s, e);
+    translate(c, "GE");
+    bool hd = false, music = false;
+    for (const Tab& t : c.tabs)
+        for (const Row& r : t.rows) {
+            if (r.id == kActionChooseHdPack) hd = r.values.size() == 1 && r.values[0] == "Paint Pack";
+            if (r.id == kActionChooseMusic) music = r.values.size() == 1 && r.values[0] == "gold";
+        }
+    CHECK(hd && music);
+    CHECK(translate_text("gold", "GE") == "Gold" && translate_text("Paint Pack", "GE") != "Paint Pack");   // (what they would have read)
+}
+
+// The launcher and the game both write pc_settings.ini: each writes only the keys it changed
+TEST(ini_merge_keeps_the_other_programs_changes) {
+    Settings base;
+    Settings mine = base, disk = base;
+    mine.vsync = !base.vsync;          // this program's change
+    mine.music_folder = "/mine";
+    disk.fov = 100;                    // the other program's
+    disk.language = "GE";
+    disk.vsync = base.vsync;           // (it did not touch vsync)
+    const Settings m = merge_changes(base, mine, disk);
+    CHECK(m.vsync == mine.vsync && m.music_folder == "/mine" && m.fov == 100 && m.language == "GE");
+    // both changed one key: this program's wins (it writes last)
+    disk.vsync = mine.vsync;
+    mine.fov = 110;
+    CHECK(merge_changes(base, mine, disk).fov == 110);
+    CHECK(merge_changes(base, base, disk) == disk);   // nothing changed here: the file as it is
+}
+
+// merge_changes covers every field: Settings has as many fields as the ini has keys (a field the ini does not hold
+// needs adding to both), and each key, changed by the other program only, is taken from the file, and changed here
+// only, kept. A new field outside the key table and not handled in merge_changes fails here.
+namespace {
+struct AnyField { template <class U> constexpr operator U() const; };   // (unevaluated only)
+template <class T, class... A> constexpr std::size_t field_count() {
+    if constexpr (requires { T{A{}..., AnyField{}}; }) return field_count<T, A..., AnyField>();
+    else return sizeof...(A);
+}
+}  // namespace
+
+TEST(ini_merge_covers_every_field) {
+    const Settings base;
+    std::vector<std::string> keys;
+    {
+        const std::string ini = to_ini(base);
+        std::size_t at = 0;
+        while (at < ini.size()) {
+            std::size_t nl = ini.find('\n', at);
+            if (nl == std::string::npos) nl = ini.size();
+            const std::string line = ini.substr(at, nl - at);
+            at = nl + 1;
+            const std::size_t eq = line.find(" = ");
+            if (line.empty() || line[0] == '#' || eq == std::string::npos || line.compare(0, eq, "version") == 0) continue;
+            keys.push_back(line.substr(0, eq));
+        }
+    }
+    constexpr std::size_t fields = field_count<Settings>();
+    if (fields != keys.size()) std::printf("  Settings has %zu fields, the ini %zu keys\n", fields, keys.size());
+    CHECK(fields == keys.size());
+    const char* const tries[] = {"true", "false", "0", "1", "2", "3", "4", "5", "8", "-1", "50", "60", "90", "100", "110", "120",
+                                 "125", "150", "200", "nearest", "bilinear", "trilinear", "anisotropic", "/elsewhere", "GE"};
+    for (const std::string& k : keys) {
+        Settings disk = base;
+        for (const char* v : tries) {
+            disk = from_ini(k + " = " + v + "\n");
+            if (!(disk == base)) break;
+        }
+        if (disk == base) { std::printf("  %s: no value tried changes it\n", k.c_str()); CHECK(false); continue; }
+        const bool taken = merge_changes(base, base, disk) == disk;   // the other program's change
+        const bool kept = merge_changes(base, disk, base) == disk;    // this program's
+        if (!taken || !kept) std::printf("  %s: merge_changes %s\n", k.c_str(), taken ? "drops this program's change" : "ignores the file's change");
+        CHECK(taken && kept);
+    }
+}
+
 TEST_MAIN("b3settings (settings1)")
+
+// photoblur: a CONTROLS action row with an id of its own (the photo shortcuts' block 410-419) keeps it; the rows without
+// one stay positional from kActionCtlFirst, the explicit rows not counted
+TEST(controls_action_rows_with_their_own_ids) {
+    Env env{true};
+    env.controls.on = true;
+    env.controls.player = 2;
+    env.controls.actions = {{"A", "1", "", 0}, {"PHOTO: MOTION BLUR", "J", "", kActionCtlPhotoFirst}, {"B", "2", "", 0},
+                            {"PHOTO: SLOWER SHUTTER", "L", "", kActionCtlPhotoFirst + 2}};
+    const Content c = build_content(Settings{}, env);
+    std::map<std::string, std::uint32_t> id;
+    for (const Tab& t : c.tabs)
+        for (const Row& r : t.rows) id[r.label] = r.id;
+    CHECK(id["A"] == kActionCtlFirst && id["B"] == kActionCtlFirst + 1);
+    CHECK(id["PHOTO: MOTION BLUR"] == kActionCtlPhotoFirst && id["PHOTO: SLOWER SHUTTER"] == kActionCtlPhotoFirst + 2);
+    CHECK(is_ctl_action(kActionCtlPhotoFirst + 9) && !is_ctl_action(kActionCtlPhotoLast + 1) && !is_ctl_action(kActionCtlResetAll));
+}

@@ -53,6 +53,8 @@ struct Vehicle {
     std::uint32_t data = 0;      // guest address of its CB3VehicleData (model identity, see Capture::models)
     VehicleKind kind = VehicleKind::kRaceCar;
     std::uint8_t paint = 0;      // EssentialParams +0x59 (palette index)
+    std::int8_t player = -1;     // carpaint: a local player's race car (CB3PlayerCar::Construct: +0x1914 = 0, +0x27C0 = the
+                                 // player, 0 / 1), else -1 (AI, network cars, traffic)
     std::uint8_t lit = 0;        // +0x58 & 0xFC (light bits)
     Mat34 main;                  // EssentialParams +0x00 (wheels and payload use it)
     Mat34 body;                  // the body / panels' matrix: tilt rotations (+0x44..+0x50) x main
@@ -116,6 +118,12 @@ struct Vehicle {
     // split2 (§29.6): since / gone for player 2's view of a split screen (its own 275 m radius, Vehicle::cull2); a
     // fading-out copy removed within one view's radius only has the other view's gone at -1 (hidden there)
     float since2 = -1.0f, gone2 = -1.0f;
+    // photoblur (photo mode's motion blur, photomode.h PhotoMotion): renderer only, set by LiveFeed as each tick is kept --
+    // the vehicle's world velocity (m/s, of `main`'s position) over the last ticks in which it moved. While nothing in the
+    // world moves (the game paused) it is held, so a paused race keeps the motion it had when it stopped. Not compared,
+    // not captured; `motion_known` false: not seen moving yet (the first tick, after a jump)
+    float motion[3] = {0, 0, 0};
+    bool motion_known = false;
     // cam1 (docs/native-renderer.md §26): race cars, RenderRaceCars 0x199A20's first test: the view's own car (+0x1914 == 0,
     // +0x27C0 == the view) is left out while its camera manager's IsPlayerVisible is false (flags +0xB80 bit 4 / 5: the
     // look-back camera holds bit 4) [C draft calls and offsets from the asm]. Game state, so applied with or without V.
@@ -588,11 +596,16 @@ struct Tick {
     std::shared_ptr<const HostFonts> host_fonts;         // mac5: the game's 2D fonts (null: none captured)
     bool host_hold = false;                              // autosave1: the display holds the previous tick's picture (hud.h kHostHoldBase)
     std::uint8_t skip_hint = 0;                          // mac5: the video skip hint's opacity (hud.h kHostSkipBase; 0 hidden)
+    HostRaceTime race_time;                              // todrace: the race's DAY / NIGHT and the track page's label (hud.h)
     std::shared_ptr<const b3live::MenuRecord> menu;      // mac5: the game's menus on screen, for the mouse (null: none captured)
     std::shared_ptr<const b3mod::OverlayList> mod_overlay;   // sdk2b: the code mods' 2D (codemod.h 'HMO1'; null: none captured)
     // menu1 (§22): the front end's car (CB3World::RenderFrontEnd's, FECAR events): its guest address, 0 none; the
     // vehicle itself is in `vehicles` (a race car; drawn with the camera above, viewport 1)
     std::uint32_t fe_car = 0;
+    std::int8_t fe_player = -1;  // padpaint: whose car it is on the car select page (0 / 1; -1 another page: player 1's)
+    // garagecam1 (garagecam.h): the live view's turn of the car page's camera round the car at this tick (yaw, pitch;
+    // radians), 0 0 without the player's input (the game's camera as it is)
+    float fe_orbit[2] = {0.0f, 0.0f};
     LapState lap;                // ghost1: view 0's lap (Time Attack ghosts)
     ScoreState score;            // speedrun1: view 0's event timing (the speedrun timer)
     Tick() { for (int i = 0; i < 17; ++i) slot_unit[i] = slot_kind[i] = env_unit[i] = -1; for (auto& b : backdrops) b = -1; }

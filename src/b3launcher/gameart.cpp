@@ -235,6 +235,21 @@ std::u16string to_u16(std::string_view s) {
     return out;
 }
 
+PixelBox visible_box(const ArtImage& im, int margin, int threshold) {
+    int x0 = im.w, y0 = im.h, x1 = -1, y1 = -1;
+    if (im.w > 0 && im.h > 0 && im.rgba.size() >= std::size_t(im.w) * std::size_t(im.h) * 4)
+        for (int y = 0; y < im.h; ++y)
+            for (int x = 0; x < im.w; ++x)
+                if (im.rgba[(std::size_t(y) * std::size_t(im.w) + std::size_t(x)) * 4 + 3] > threshold) {
+                    x0 = std::min(x0, x);
+                    x1 = std::max(x1, x);
+                    y0 = std::min(y0, y);
+                    y1 = std::max(y1, y);
+                }
+    if (x1 < 0) return {0, 0, std::max(im.w, 0), std::max(im.h, 0)};
+    return {std::max(0, x0 - margin), std::max(0, y0 - margin), std::min(im.w, x1 + 1 + margin), std::min(im.h, y1 + 1 + margin)};
+}
+
 const ArtImage* GameArt::image(const std::string& name) const {
     const auto it = images.find(name);
     return it == images.end() ? nullptr : &it->second;

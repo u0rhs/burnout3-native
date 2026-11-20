@@ -7,6 +7,7 @@
 // the camera; the game is paused already, so nothing in the simulation moves. With photo mode never entered, nothing
 // here runs: the frames are the same as before it.
 //
+// photoblur: R3 counts as the motion blur's mode button only for a short, clean click (photomode.h r3_solo_).
 // Entering: P on the keyboard, or L3 + R3 together on a gamepad (the game's pad report carries neither: no pad
 // binding), while the race's pause menu is up (native_play tells us: b3r_set_paused, from the pause page's Update) and
 // the PC SETTINGS page is closed. A crash, Impact Time or a Takedown cam is reached the same way: pause there first.
@@ -27,6 +28,9 @@
 // alone: the player's car (the GPU's autofocus at the car's middle on screen; the centre while the car is behind the
 // camera or off screen) or the screen centre. The setting stays for the rest of the run (photo mode entered again
 // keeps it). Renderer only: the frame is blurred, nothing else; a screenshot (F12) includes it.
+//
+// Motion blur (photoblur, 1.3.0; PhotoMotion below, b3gfx FrameParams::Motion): J or R3 alone the mode (Off, Tracking,
+// Panning, Static), K / L or R3 + D-pad left / right the shutter (while R3 is held the D-pad does not move the focus).
 //
 // Threads: key() comes from the window thread (SDL events) or the game thread (scripted keys, b3r_pad_key); pad()
 // and handle() from the window thread; advance() / camera() from the render thread; set_game_paused() and
@@ -75,10 +79,11 @@ struct PhotoPad {
     bool south = false, east = false, west = false, north = false, l1 = false, r1 = false, target = false, toggle = false;
     bool up = false, down = false, left = false, right = false, start = false, back = false;
     bool slow = false, blur_less = false, blur_more = false;
+    bool motion = false, shutter_faster = false, shutter_slower = false;   // photoblur: R3 alone; R3 + D-pad left / right
     bool connected = false;
     bool any_button() const {
         return south || east || west || north || l1 || r1 || target || toggle || up || down || left || right || start || back || slow ||
-               blur_less || blur_more || lt > 0.25f || rt > 0.25f;
+               blur_less || blur_more || motion || shutter_faster || shutter_slower || lt > 0.25f || rt > 0.25f;
     }
 };
 
@@ -104,6 +109,34 @@ struct PhotoDof {
     b3gfx::FrameParams::Dof params(const Camera& cam, const float* car, const float* view_proj = nullptr, int* subject = nullptr) const;
     // the help box's status ("DOF OFF", "DOF 4   FOCUS CAR", "DOF 2   FOCUS CENTRE X1.41"); subject 0: by the target
     std::string status(int subject) const;
+};
+
+// photoblur (1.3.0, a player's request: motion blur while the car is moving): the motion blur's pure parts (tests:
+// test_photomode; b3gfx FrameParams::Motion). Off until a mode is chosen (J, or R3 alone on a gamepad, cycles Off,
+// Tracking, Panning, Static); the shutter (K faster / L slower, or R3 + D-pad left / right) 1/500 .. 1/15 s, 1/60 at
+// first. The streak is the speed x the shutter: a slow car barely blurs, as in a real photo. The subject is the player's
+// car. Tracking: the camera travels with the subject (near things streak most, the far skyline stays sharp; the car-to-
+// car look). Panning: the camera stands and turns to follow the subject (the background streaks about equally; the
+// trackside look). Static: the camera does not move (the background sharp, the cars streak). The cars move with the
+// velocity they had when the game was paused (Vehicle::motion), the subject's relative motion is zero in Tracking and
+// Panning, so it stays sharp while the other cars streak by their speed relative to it. The setting stays for the run,
+// as the depth of field's does. Renderer only: the frame is blurred, nothing else; a screenshot (F12) includes it.
+struct PhotoMotion {
+    enum Mode : int { kOff, kTracking, kPanning, kStatic, kModes };
+    static constexpr int kShutters = 6;
+    int mode = kOff;
+    int shutter = 3;                       // 1/500, 1/250, 1/125, 1/60, 1/30, 1/15 s
+    bool on() const { return mode != kOff; }
+    int denominator() const;               // 500 .. 15
+    float seconds() const { return 1.0f / float(denominator()); }
+    void next_mode() { mode = (mode + 1) % kModes; }
+    void step_shutter(int dir);            // -1 faster (less blur), +1 slower; clamped
+    static const char* mode_name(int mode);   // "OFF", "TRACKING", "PANNING", "STATIC"
+    std::string status() const;            // "MOTION OFF", "MOTION PANNING 1/60"
+    // The frame's parameters from camera `cam` (its position `eye` = cam.m.r[3]) and the frame's vehicles (`subject`: the
+    // player's car's id; up to FrameParams::Motion::kBoxes boxes, the subject first, then the nearest drawn cars within
+    // 300 m). Off: `on` false. Panning without the subject in front of the camera: as Static.
+    b3gfx::FrameParams::Motion params(const Camera& cam, const std::vector<Vehicle>& cars, std::uint32_t subject) const;
 };
 
 // The free camera's pure parts (tests: test_photomode)
@@ -149,8 +182,9 @@ public:
     bool key(std::uint16_t scancode, bool down, bool repeat = false, unsigned mods = 0);
     // window thread: one SDL event (keys, the mouse while on). True when taken.
     bool handle(const SDL_Event& e);
-    // window thread, once per frame: the gamepads (L3 + R3 enters / leaves; the camera's controls while on)
-    void pad(const PhotoPad& p);
+    // window thread, once per frame: the gamepads (L3 + R3 enters / leaves; the camera's controls while on). `now_s`: the
+    // time in seconds (tests; < 0: the steady clock), for the motion button's press length
+    void pad(const PhotoPad& p, double now_s = -1);
     // rebind2: the keys of photo mode's actions (the PortAction::Photo* ones, and PhotoMode's own key to enter and
     // leave); the defaults are the keys of the text above. Any thread; a change applies from the next key or step. The
     // controls strip (photohud.h) shows them: keys_ is made from the bindings (photo_keys_from).
@@ -184,6 +218,10 @@ public:
     void dof(const Camera& cam, const float* car, const float* view_proj, b3gfx::FrameParams::Dof& out);
     bool dof_at(std::uint32_t poll, const Camera& cam, const float* car, const float* view_proj, b3gfx::FrameParams::Dof& out) const;
     PhotoDof dof_state() const;
+    // photoblur: the motion blur of the window's photo frame / of the game-time shot at `poll`, as dof() / dof_at()
+    void motion(const Camera& cam, const std::vector<Vehicle>& cars, b3gfx::FrameParams::Motion& out) const;
+    bool motion_at(std::uint32_t poll, const Camera& cam, const std::vector<Vehicle>& cars, b3gfx::FrameParams::Motion& out) const;
+    PhotoMotion motion_state() const;
 
     // render thread: the photo UI (photohud.h: the readouts at the top right, the controls strip at the bottom), as
     // H / Y has it set; never part of a screenshot (drawn after it). `device` / `hud_size` are the window's button
@@ -193,7 +231,8 @@ public:
     const PhotoKeys& keys() const { return keys_; }
     // the controls as plain text for the keyboard or the pad (logs, tests), with the field of view in degrees and the
     // depth of field's status (`subject` as PhotoDof::params gives it)
-    static std::vector<std::string> help_lines(bool pad_prompts, int fov_deg, const PhotoDof& dof = PhotoDof{}, int subject = 0);
+    static std::vector<std::string> help_lines(bool pad_prompts, int fov_deg, const PhotoDof& dof = PhotoDof{}, int subject = 0,
+                                               const PhotoMotion& motion = PhotoMotion{});
 
 private:
     PhotoMode() = default;
@@ -211,7 +250,14 @@ private:
     bool pad_latch_ = false;     // the pad button that left photo mode is still held
     bool pad_both_ = true;       // the toggle chord (L3 + R3) was down at the last pad() (an edge enters / leaves)
     bool l3_solo_ = false;       // the target button (L3) is held and the toggle chord has not been pressed with it (released: the focus target)
+    bool r3_solo_ = false;       // photoblur: the motion button (R3) likewise (released alone: the next mode) -- a click:
+                                 // released within kClickS, the right stick inside kClickStick the whole time (R3 is
+                                 // the look stick's own button: turning the camera never changes the mode)
+    double r3_since_ = 0;        // when it went down (seconds)
+    static constexpr double kClickS = 0.3;
+    static constexpr float kClickStick = 0.3f;
     PhotoDof dof_;               // the window's depth of field (key(), pad(), advance())
+    PhotoMotion motion_;         // photoblur: the window's motion blur (key(), pad())
     int subject_ = 0;            // what it last focused on (dof()), for the help box
     PhotoPad pad_, pad_prev_;
     std::array<bool, 512> held_{};
@@ -237,6 +283,7 @@ private:
         std::array<bool, 512> held{};
         PhotoCam cam;
         PhotoDof dof;
+        PhotoMotion motion;   // photoblur
     } replay_;
     PhotoHud hud_;   // render thread
 };

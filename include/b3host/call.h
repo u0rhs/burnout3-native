@@ -332,7 +332,10 @@ inline D from_image(std::uint64_t b) {
     if constexpr (is_float_like<D>) return std::bit_cast<D>(static_cast<std::uint32_t>(b));
     else if constexpr (std::is_same_v<D, double>) return std::bit_cast<double>(b);
     else if constexpr (is_gp<D>::value || is_gfn<D>::value) { D p; p.raw = static_cast<gaddr>(b); return p; }
-    else if constexpr (std::is_pointer_v<D>) return static_cast<D>(guest_to_host_checked(static_cast<gaddr>(b), 1));
+    // modsec: the whole pointee must lie in one window (its size when the type is complete; a mod's b3.call or set_arg
+    // gives any value here), not only its first byte
+    else if constexpr (std::is_pointer_v<D>)
+        return static_cast<D>(guest_to_host_checked(static_cast<gaddr>(b), deref_size<std::remove_cv_t<std::remove_pointer_t<D>>>()));
     else if constexpr (std::is_enum_v<D>) return static_cast<D>(from_image<std::underlying_type_t<D>>(b));
     else if constexpr (std::is_same_v<D, bool>) return (b & 0xFFu) != 0;   // masked to the low byte [C §2, §4]
     else if constexpr (std::is_integral_v<D>) return static_cast<D>(b);    // truncation = the callee's andi/extend
@@ -395,7 +398,8 @@ inline R convert_result(const CallResult& r) {
     using D = bare<R>;
     if constexpr (std::is_void_v<D>) return;
     else if constexpr (std::is_reference_v<R>) {   // a reference result is the object's address in v0
-        auto* p = static_cast<std::remove_reference_t<R>*>(guest_to_host_checked(static_cast<gaddr>(r.v0.w[0]), 1));
+        auto* p = static_cast<std::remove_reference_t<R>*>(
+            guest_to_host_checked(static_cast<gaddr>(r.v0.w[0]), deref_size<std::remove_cv_t<std::remove_reference_t<R>>>()));
         if (!p) fatal("b3host: a guest function returned a null reference");
         return *p;
     }

@@ -69,7 +69,7 @@
 // Replays: native_play records each folder's modes as the replay option "music_modes.<folder>" (one digit per song
 // in scan order, modes_digits()) and a replay played back uses them (seed_modes()) and never writes the file.
 //
-// Settings: PC SETTINGS > INTERFACE > MUSIC (b3r_music: the folder and the mode; b3r_music_volume: CUSTOM MUSIC VOLUME);
+// Settings: PC SETTINGS > AUDIO > MUSIC (b3r_music: the folder and the mode; b3r_music_volume: CUSTOM MUSIC VOLUME);
 // B3NATIVE_MUSIC_DIR / B3NATIVE_MUSIC_MODE (0 / 1 / 2) / B3NATIVE_MUSIC_VOLUME (0..200) override them (tests).
 // B3NATIVE_MUSIC_LOG=1 logs the game's own popup texts too, and the music stream's gain (the stream's volume, the
 // category's gain) whenever it changes, for the game's own songs and the custom ones.
@@ -88,6 +88,7 @@
 #define B3NATIVE_CUSTOM_SOUNDTRACK_H
 
 #include "custom_music.h"
+#include "b3port/fileio.h"   // fsrobust
 #include "hook_table.h"
 #include "platform.h"
 #include "save_store.h"
@@ -156,7 +157,7 @@ public:
     static constexpr std::size_t kRowUnits = 40;
     static_assert(3 * kRowUnits + 2 + 1 <= 128 && kRowUnits < kRingSlot / 2, "a row's three lines fit the page's buffer");
 
-    // Another music app is playing (PC SETTINGS > INTERFACE > MUSIC > OTHER MUSIC APPS): the game's music category (13) is
+    // Another music app is playing (PC SETTINGS > AUDIO > MUSIC > OTHER MUSIC APPS): the game's music category (13) is
     // silent, whatever the playlist mode (EA Trax, custom or mixed); the radio's own state, song changes and the
     // player's setting are untouched, so the music is back as it was when the other app stops. Set once per VBlank by
     // native_play from the latched track (a replay: the recorded one). Host audio only; guest RAM keeps its values.
@@ -397,7 +398,7 @@ inline int CustomSoundtrack::mode(std::string* folder) const {
     if (config_) m = config_(buf, int(sizeof buf - 1));
     if (folder) *folder = buf;
     if (const char* e = std::getenv("B3NATIVE_MUSIC_MODE"); e && e[0] >= '0' && e[0] <= '2' && !e[1]) m = e[0] - '0';
-    if (const char* e = std::getenv("B3NATIVE_MUSIC_DIR"); e && *e && folder) *folder = e;
+    if (const auto e = b3io::getenv("B3NATIVE_MUSIC_DIR"); e && folder) *folder = *e;   // fsrobust: UTF-8
     return (m >= kEaTrax && m <= kMixed) ? m : kEaTrax;
 }
 
@@ -407,6 +408,7 @@ inline bool CustomSoundtrack::refresh(const std::string& folder) {
     tracks_.clear();
     found_ = 0;
     if (playing_ >= 0) playing_ = -2;   // still playing, but no longer an index of tracks_
+    if (current_ >= 0) current_ = kSkip;   // robust2: nor is the radio's custom song (it ends at once, the game goes on)
     if (folder.empty()) return false;
     const auto t0 = std::chrono::steady_clock::now();
     std::string why;
@@ -818,6 +820,7 @@ inline void CustomSoundtrack::prepare(const b3host::CallArgs& a, b3host::CallRes
         const std::uint32_t at = a.gpr[3].w[0];   // the start sample (a resume: the position we answered)
         std::string why = "not a song of the music folder now";
         p->player_.close();
+        if (p->current_ >= int(p->tracks_.size())) p->current_ = kSkip;   // robust2: never past the list (a folder change)
         if (p->current_ >= 0 && !p->player_.start(p->tracks_[std::size_t(p->current_)], at, &why)) p->player_.close();
         p->virtual_ = stream;
         p->playing_ = p->current_;

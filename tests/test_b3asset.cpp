@@ -1,6 +1,10 @@
 // b3asset decoders (docs/native-renderer.md §10): GS memory addressing, raster upload replay and CLUTs, the VIF
 // interpreter, strips, PNG; plus real-data checks against the game install when B3_GAME_DIR is defined (Makefile GAME).
 #include <cstring>
+#if defined(__linux__) || defined(__APPLE__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 #include <filesystem>
 
 #include "b3asset/coronashade.h"
@@ -514,6 +518,68 @@ TEST(sun_flare_game_arithmetic) {
 #ifdef B3_GAME_DIR
 // GAMEDATA.BGD of every route: the directory and each stage's pickups and ramps parse inside the file; the race2 junction
 // (US/C3_V1 stage 6, a reported spot) holds one type-0 ramp; GLOBAL.TXD has the ramp and pickup textures.
+// modsec: a modded car file's offsets point anywhere. The bytes sit at the very end of a readable page with an
+// unreadable page after it, so a read past the file's end faults instead of reading the heap.
+#if defined(__linux__) || defined(__APPLE__)
+struct GuardedBytes {
+    std::uint8_t* base = nullptr;
+    std::size_t map = 0;
+    Bytes b;
+    explicit GuardedBytes(const std::vector<std::uint8_t>& v) {
+        const std::size_t pg = std::size_t(sysconf(_SC_PAGESIZE));
+        const std::size_t data = (v.size() + pg - 1) / pg * pg;
+        map = data + pg;
+        void* m = mmap(nullptr, map, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        base = static_cast<std::uint8_t*>(m);
+        mprotect(base + data, pg, PROT_NONE);
+        std::uint8_t* at = base + data - v.size();
+        if (!v.empty()) std::memcpy(at, v.data(), v.size());
+        b = Bytes{at, v.size()};
+    }
+    ~GuardedBytes() { munmap(base, map); }
+};
+void put32(std::vector<std::uint8_t>& v, std::size_t at, std::uint32_t x) { std::memcpy(v.data() + at, &x, 4); }
+TEST(car_reader_checks_file_offsets) {
+    GsMemory gs;
+    Model m;
+    std::string why;
+    auto bad = [&](const std::vector<std::uint8_t>& v, CarOptions o, const char* part) {
+        GuardedBytes g(v);
+        const bool ok = !read_car(g.b, o, gs, m, &why) && why.find(part) != std::string::npos;
+        if (!ok) std::printf("    (got: %s)\n", why.c_str());
+        return ok;
+    };
+    std::vector<std::uint8_t> v(0x10, 0);
+    put32(v, 0, 0x17);
+    CHECK(bad(v, {}, "too short"));   // npanel / nwheel and the LOD table past the end
+    v.assign(0x200, 0);
+    put32(v, 0, 0x17);
+    put32(v, 0x60, 0x1F0);   // the texture's header runs past the end
+    CarOptions tex;
+    tex.texture = true;
+    CHECK(bad(v, tex, "car texture outside the file"));
+    put32(v, 0x60, 0);
+    put32(v, 0x4C, 0x100);   // LOD 0 block
+    put32(v, 0x100, 0xFC);   // list 0 at 0x1FC: its count bytes and entries offset past the end
+    CHECK(bad(v, {}, "car list outside the file"));
+    put32(v, 0x100, 0x80);   // list 0 at 0x180: one entry at 0x1F8, 16 bytes past the end
+    v[0x180] = 1;
+    put32(v, 0x184, 0x78);
+    CHECK(bad(v, {}, "car list entry outside the file"));
+}
+TEST(gif_transfer_stays_in_the_file) {   // a PACKED A+D tag whose loop runs past the end of the file
+    std::vector<std::uint8_t> v(32, 0);
+    const std::uint64_t tag = 4 /*nloop*/ | std::uint64_t(1) << 60 /*nreg 1*/;
+    const std::uint64_t regs = 0xE;
+    std::memcpy(v.data(), &tag, 8);
+    std::memcpy(v.data() + 8, &regs, 8);
+    GuardedBytes g(v);
+    GsMemory gs;
+    run_gif(g.b, 0, 100, gs);   // (qwc larger than the file: stops at its end)
+    CHECK(true);
+}
+#endif
+
 TEST(real_gamedata_all_routes) {
     int routes = 0, stages = 0, ramps = 0, pickups = 0;
     for (const auto& area : std::filesystem::directory_iterator(std::string(B3_GAME_DIR) + "/TRACKS")) {

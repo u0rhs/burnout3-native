@@ -44,6 +44,10 @@ bool watch_extra(std::uint32_t address, void (*fn)(std::uint32_t address, const 
 // mac5: the video skip hint's opacity (0..255, 0 hidden; tools/native/movie_skip.h SkipHintFade), from the game thread;
 // the next poll's record carries it to the renderer (src/b3replay/hud.h kHostSkipBase) when it changed.
 void set_skip_hint(std::uint8_t opacity);
+// todrace (tools/native/race_time.h): the race's DAY / NIGHT choice (0 Default, 1 Day, 2 Night: what the race's frames
+// draw) and the track page's label (its choice, its opacity 0..255), from the game thread; the next poll's record carries
+// them to the renderer (src/b3replay/hud.h kHostRaceTimeBase) when they changed. Nothing is published before the first call.
+void set_race_time(std::uint8_t race, std::uint8_t label_choice, std::uint8_t label_opacity);
 // autosave1 (tools/native/save_screens.h): `probe` is asked at each poll whether the display holds the previous picture (the
 // AUTOSAVE page is up and SAVE SCREENS is Hide); the poll's record carries it to the renderer (src/b3replay/hud.h
 // kHostHoldBase) when it changed. Called from the game thread (null: never).

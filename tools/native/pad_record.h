@@ -19,6 +19,7 @@
 #define B3NATIVE_PAD_RECORD_H
 
 #include "b3mod/codemod.h"   // sdk2b: the "set" lines
+#include "b3port/fileio.h"   // fsrobust: UTF-8 paths (the run log folder under the user profile)
 
 #include <array>
 #include <cstdint>
@@ -36,7 +37,7 @@ class PadRecorder {
 public:
     ~PadRecorder() { close(0); }
     bool open(const std::string& path) {
-        f_ = std::fopen(path.c_str(), "w");
+        f_ = b3io::fopen(b3io::u8path(path), "w");
         if (!f_) return false;
         std::fprintf(f_, "B3PADREC 1\n");
         return true;
@@ -90,7 +91,7 @@ public:
     // false: no file, or not a recording (the reason in error())
     bool load(const std::string& path, const PadReport& neutral) {
         cur_ = neutral;
-        std::FILE* f = std::fopen(path.c_str(), "r");
+        std::FILE* f = b3io::fopen(b3io::u8path(path), "r");
         if (!f) { error_ = "cannot read " + path; return false; }
         char line[256];
         bool header = false;

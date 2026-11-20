@@ -1,7 +1,7 @@
 # Known issues
 
 Problems we know about in the current build. If you hit one anyway, a bug report still helps: press **F10** in the
-game (or **Make a bug report** on the launcher's Play page) right after it happens and attach the zip to a
+game (or **Bug report...** on the launcher's Play page) right after it happens and attach the zip to a
 [GitHub issue](https://github.com/u0rhs/burnout3-native/issues/new/choose). Your user name is taken out of the folder paths in the zip, and it holds no
 game data.
 

@@ -3,7 +3,7 @@
 // small "SKIP" prompt in the bottom right corner with the button that skips it on the device in use: the PlayStation
 // Cross, the Xbox A, the Nintendo B (the bottom face button, which the pad maps to Cross) or the keyboard's Enter key
 // cap. Its opacity comes from the game (Tick::skip_hint, the 'HSK1' record: faded in game time); PC SETTINGS >
-// INTERFACE > VIDEO SKIP HINT turns it off. Drawn only.
+// GAME > INTERFACE > VIDEO SKIP HINT turns it off. Drawn only.
 //
 // The game's fonts have no button glyphs and none of its textures is decoded during the boot movies, so the hint is
 // our own picture: shapes (discs, rounded boxes, a monoline stroke font for its few letters; glyphdraw.h, the pad's

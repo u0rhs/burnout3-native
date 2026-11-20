@@ -48,6 +48,187 @@ TEST(mpeg2_rejects_a_picture_before_a_sequence_header) {
     CHECK(r.error.find("before a sequence header") != std::string::npos);
 }
 
+// ---- crafted streams (review fixes 2026-11-19): a stream writer for tiny 4:2:0 frame pictures ----
+struct BitW {
+    std::vector<std::uint8_t> d;
+    int nbit = 0;   // bits used in d.back() (0: start a new byte)
+    void put(std::uint32_t v, int k) {
+        for (int i = k - 1; i >= 0; --i) {
+            if (nbit == 0) d.push_back(0);
+            d.back() = std::uint8_t(d.back() | (((v >> i) & 1u) << (7 - nbit)));
+            nbit = (nbit + 1) & 7;
+        }
+    }
+    void bits(const char* s) { for (; *s; ++s) put(std::uint32_t(*s - '0'), 1); }
+    void align() { nbit = 0; }
+    void sc(int code) { align(); d.push_back(0); d.push_back(0); d.push_back(1); d.push_back(std::uint8_t(code)); }
+};
+void seq(BitW& w, int width, int height) {
+    w.sc(0xB3);
+    w.put(std::uint32_t(width), 12); w.put(std::uint32_t(height), 12);
+    w.put(1, 4); w.put(3, 4); w.put(1000, 18); w.put(1, 1); w.put(100, 10); w.put(0, 1);
+    w.put(0, 1); w.put(0, 1);   // default matrices
+    w.sc(0xB5);
+    w.put(1, 4); w.put(0x48, 8); w.put(1, 1); w.put(1, 2); w.put(0, 2); w.put(0, 2);   // 4:2:0, no size extension
+    w.put(0, 12); w.put(1, 1); w.put(0, 8); w.put(1, 1); w.put(0, 7);
+}
+// picture header + picture coding extension; f: forward / backward, horizontal / vertical f_code
+void pic(BitW& w, int type, const int (&f)[4]) {
+    w.sc(0x00);
+    w.put(0, 10); w.put(std::uint32_t(type), 3); w.put(0xFFFF, 16);
+    if (type >= 2) w.put(7, 4);
+    if (type == 3) w.put(7, 4);
+    w.put(0, 1);
+    w.sc(0xB5);
+    w.put(8, 4);
+    for (int i = 0; i < 4; ++i) w.put(std::uint32_t(f[i]), 4);
+    w.put(0, 2); w.put(3, 2); w.put(0, 1); w.put(1, 1); w.put(0, 1); w.put(0, 1); w.put(0, 1); w.put(0, 1);
+    w.put(0, 1); w.put(1, 1); w.put(1, 1); w.put(0, 1);
+}
+void slice(BitW& w, int row) { w.sc(1 + row); w.put(4, 5); w.put(0, 1); }
+// an intra macroblock: DC differences 0, every block empty
+void intra_mb(BitW& w, const char* inc) {
+    w.bits(inc); w.bits("1");
+    for (int k = 0; k < 4; ++k) w.bits("100" "10");
+    for (int k = 0; k < 2; ++k) w.bits("00" "10");
+}
+// an I picture of mbw x mbh macroblocks, one slice a row
+void i_picture(BitW& w, int mbw, int mbh) {
+    pic(w, 1, {15, 15, 15, 15});
+    for (int r = 0; r < mbh; ++r) {
+        slice(w, r);
+        for (int c = 0; c < mbw; ++c) intra_mb(w, "1");
+    }
+}
+constexpr int kF1[4] = {1, 1, 15, 15};
+
+TEST(mpeg2_crafted_stream_decodes) {   // the writer itself: two grey I pictures
+    BitW w;
+    seq(w, 32, 16);
+    i_picture(w, 2, 1);
+    i_picture(w, 2, 1);
+    w.sc(0xB7);
+    const Run r = decode(w.d, w.d.size());
+    CHECK(r.error.empty());
+    CHECK(r.pics.size() == 2);
+    if (r.pics.size() == 2) CHECK(r.pics[0].width == 32 && r.pics[0].display_w == 32 && r.pics[0].y[0] == 128);
+}
+
+TEST(mpeg2_skipped_macroblocks_past_the_picture_are_rejected_before_any_store) {
+    // a P picture whose second macroblock address increment skips past the last macroblock (directly, and through
+    // macroblock_escape): an error, and nothing written outside the frame (the skipped ones are checked first; an
+    // ASan build of this test showed the out-of-bounds store before the fix)
+    for (const char* inc : {"011", "00000001000" "1"}) {
+        BitW w;
+        seq(w, 16, 16);
+        i_picture(w, 1, 1);
+        pic(w, 2, kF1);
+        slice(w, 0);
+        w.bits("1" "001" "1" "1");   // MB 0: MC not coded, vector (0, 0)
+        w.bits(inc); w.bits("001" "1" "1");
+        w.sc(0xB7);
+        const Run r = decode(w.d, w.d.size());
+        CHECK(r.error.find("macroblock past the picture") != std::string::npos);
+    }
+    {   // many escapes: refused once the increment passes the picture, not summed on
+        BitW w;
+        seq(w, 16, 16);
+        i_picture(w, 1, 1);
+        pic(w, 2, kF1);
+        slice(w, 0);
+        w.bits("1" "001" "1" "1");
+        for (int i = 0; i < 2000; ++i) w.bits("00000001000");
+        w.bits("1");
+        w.sc(0xB7);
+        const Run r = decode(w.d, 333);
+        CHECK(r.error.find("macroblock past the picture") != std::string::npos);
+    }
+}
+
+TEST(mpeg2_a_size_change_emits_the_held_picture_at_its_own_size) {
+    // 16x16, then a new sequence header at 48x32: the held 16x16 picture comes out as 16x16 (it used to take the new
+    // size and to_rgba read past its planes), the new one at 48x32
+    BitW w;
+    seq(w, 16, 16);
+    i_picture(w, 1, 1);
+    seq(w, 48, 32);
+    i_picture(w, 3, 2);
+    w.sc(0xB7);
+    for (std::size_t chunk : {w.d.size(), std::size_t(7)}) {
+        const Run r = decode(w.d, chunk);
+        CHECK(r.error.empty());
+        CHECK(r.pics.size() == 2);
+        if (r.pics.size() != 2) continue;
+        const auto& a = r.pics[0];
+        const auto& b = r.pics[1];
+        CHECK(a.width == 16 && a.height == 16 && a.display_w == 16 && a.display_h == 16 && a.y.size() == 256);
+        CHECK(b.width == 48 && b.height == 32 && b.display_w == 48 && b.display_h == 32 && b.y.size() == 48 * 32);
+        std::vector<std::uint8_t> rgba;
+        b3native::Mpeg2Decoder::to_rgba(a, rgba);
+        CHECK(rgba.size() == 16 * 16 * 4);
+    }
+    {   // a P picture right after the change has no reference of its size: an error, no mixed-size prediction
+        BitW v;
+        seq(v, 16, 16);
+        i_picture(v, 1, 1);
+        seq(v, 32, 16);
+        pic(v, 2, kF1);
+        slice(v, 0);
+        v.bits("1" "001" "1" "1" "1" "001" "1" "1");
+        v.sc(0xB7);
+        const Run r = decode(v.d, v.d.size());
+        CHECK(r.pics.size() == 1 && r.pics[0].width == 16 && r.pics[0].display_w == 16);
+        CHECK(r.error.find("without a reference") != std::string::npos);
+    }
+}
+
+TEST(mpeg2_to_rgba_reads_only_what_the_planes_hold) {
+    b3native::Mpeg2Picture p;
+    p.width = 16; p.height = 16; p.display_w = 64; p.display_h = 40;   // a display size past the coded one
+    p.y.assign(256, 235); p.cb.assign(64, 128); p.cr.assign(64, 128);
+    std::vector<std::uint8_t> rgba;
+    b3native::Mpeg2Decoder::to_rgba(p, rgba);
+    CHECK(rgba.size() == std::size_t(64) * 40 * 4);
+    CHECK(rgba[0] > 200 && rgba[(std::size_t(39) * 64 + 63) * 4] == 0);
+    p.y.resize(10);   // planes shorter than the coded size: nothing read, all 0
+    b3native::Mpeg2Decoder::to_rgba(p, rgba);
+    CHECK(rgba.size() == std::size_t(64) * 40 * 4 && rgba[0] == 0);
+}
+
+TEST(mpeg2_invalid_f_code_is_rejected) {
+    {   // f_code 0 in the picture coding extension (it made the residual size -1: a 4-billion-bit read)
+        BitW w;
+        seq(w, 16, 16);
+        i_picture(w, 1, 1);
+        pic(w, 2, {0, 1, 15, 15});
+        slice(w, 0);
+        w.bits("1" "001" "010" "1");   // a non-zero motion code
+        w.sc(0xB7);
+        const Run r = decode(w.d, w.d.size());
+        CHECK(r.error.find("invalid f_code 0") != std::string::npos);
+    }
+    {   // reserved 10..14
+        BitW w;
+        seq(w, 16, 16);
+        i_picture(w, 1, 1);
+        pic(w, 2, {12, 1, 15, 15});
+        w.sc(0xB7);
+        const Run r = decode(w.d, w.d.size());
+        CHECK(r.error.find("invalid f_code 12") != std::string::npos);
+    }
+    {   // a vector in a direction marked unused (15)
+        BitW w;
+        seq(w, 16, 16);
+        i_picture(w, 1, 1);
+        pic(w, 2, {15, 15, 15, 15});
+        slice(w, 0);
+        w.bits("1" "001" "010" "1");
+        w.sc(0xB7);
+        const Run r = decode(w.d, w.d.size());
+        CHECK(r.error.find("motion vector with f_code 15") != std::string::npos);
+    }
+}
+
 TEST(mpeg2_csc_matches_the_ipu_formula) {
     // one 16x16 picture: Y 16..235 ramp, Cb / Cr extremes; to_rgba against the IPU's terms written out here
     b3native::Mpeg2Picture p;

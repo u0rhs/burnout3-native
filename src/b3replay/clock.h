@@ -101,6 +101,22 @@ struct DisplayClockT {
     std::size_t lag_seen = 0;      // last tick whose lag was taken
     std::deque<double> lags;       // recent arrival lags, ms
     bool have_stamps(const Feed& f, std::size_t i) const { return i > f.first() && f.sched_ns(i) != 0 && f.sched_ns(i - 1) != 0; }
+    // split2p (a report: split screen choppy at 150-200 FPS): the stamp tick i is shown by. A game frame of N ticks (split
+    // screen for the whole race, a player's crash: N = 2) latches its N polls back to back and then waits N VBlanks, so its
+    // ticks came with one stamp and the next frame's N ticks a whole frame later. Shown by those stamps, x reached the newest
+    // tick half way through each frame, stood still there for a tick and then jumped (30 steps a second). A tick latched less
+    // than half a VBlank after the one before is one frame's later tick: it is shown one VBlank after it (at most 3 ticks
+    // back to the frame's first). 1-tick frames are unchanged (their stamps are a VBlank apart).
+    static constexpr double kVblankNs = 1e9 / 59.94;   // native_play's pacing (NTSC)
+    std::uint64_t vstamp(const Feed& f, std::size_t i) const {
+        const std::uint64_t s = f.sched_ns(i);
+        if (s == 0) return 0;
+        std::size_t j = i;
+        while (j > f.first() && i - j < 3 && f.sched_ns(j - 1) != 0 &&
+               double(f.sched_ns(j)) - double(f.sched_ns(j - 1)) < 0.5 * kVblankNs)
+            --j;
+        return std::max<std::uint64_t>(s, f.sched_ns(j) + std::uint64_t(double(i - j) * kVblankNs));
+    }
     double step_sched(const Feed& f, double floor_ms, double fallback_delay, std::uint64_t now, double lead = 0) {
         const std::size_t latest = f.last();
         if (!have_stamps(f, latest)) { sched_on = false; sched_age_ms = -1; return step(f, fallback_delay, now); }
@@ -108,8 +124,12 @@ struct DisplayClockT {
         bool fresh = false;
         for (std::size_t k = lag_seen + 1; k <= latest; ++k)
             if (f.sched_ns(k) != 0) {
-                lags.push_back((double(f.arrival_ns(k)) - double(f.sched_ns(k))) * 1e-6);
-                if (lags.size() > 120) lags.pop_front();
+                // split2p: against the stamp the tick is shown by; a frame's later tick is there long before (not counted)
+                const double lag = (double(f.arrival_ns(k)) - double(vstamp(f, k))) * 1e-6;
+                if (lag >= 0 || vstamp(f, k) == f.sched_ns(k)) {
+                    lags.push_back(lag);
+                    if (lags.size() > 120) lags.pop_front();
+                }
                 fresh = true;
             }
         lag_seen = latest;
@@ -127,11 +147,11 @@ struct DisplayClockT {
         std::size_t k = latest;
         while (k > f.first() && latest - k < 30 && f.sched_ns(k - 1) != 0) --k;
         if (latest > k) {
-            const double span = (double(f.sched_ns(latest)) - double(f.sched_ns(k))) * 1e-9;
+            const double span = (double(vstamp(f, latest)) - double(vstamp(f, k))) * 1e-9;
             if (span > 0) rate = std::clamp(double(latest - k) / span, 15.0, 120.0);
         }
         // the stamps are steady (the pacer's deadlines), so the clock is the target itself, clamped to the ticks there are
-        x = double(latest) - 1.0 + lead + ((double(now) - double(f.sched_ns(latest))) * 1e-9 - margin_ms * 1e-3) * rate;
+        x = double(latest) - 1.0 + lead + ((double(now) - double(vstamp(f, latest))) * 1e-9 - margin_ms * 1e-3) * rate;
         last_ns = now;
         init = false;   // a switch back to step() starts from its own target
         sched_on = true;

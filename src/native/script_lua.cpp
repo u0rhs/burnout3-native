@@ -78,6 +78,15 @@
 #include "../third_party/lua-5.4.9/src/lbaselib.c"
 #include "../third_party/lua-5.4.9/src/lcorolib.c"
 #include "../third_party/lua-5.4.9/src/lmathlib.c"
+// modsec: the pattern matcher's error checks also ask whether the running script is past its time limit (script_mods.cpp
+// b3_script_c_tick): its steps run no Lua instruction, so the count hook never sees a pattern that backtracks for
+// minutes. Every l_unlikely in lstrlib.c guards an error raised in the state at hand (match()'s "pattern too complex"
+// at each step), so a true there stops the call with an error in the right state. The vendored file is not changed.
+bool b3_script_c_tick();
+#undef l_unlikely
+#define l_unlikely(x) luai_unlikely((x) || b3_script_c_tick())
 #include "../third_party/lua-5.4.9/src/lstrlib.c"
+#undef l_unlikely
+#define l_unlikely(x) luai_unlikely(x)
 #include "../third_party/lua-5.4.9/src/ltablib.c"
 #include "../third_party/lua-5.4.9/src/lutf8lib.c"

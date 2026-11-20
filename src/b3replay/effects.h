@@ -17,6 +17,8 @@
 #include <cstdint>
 #include <future>
 #include <map>
+#include <set>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -72,12 +74,22 @@ class Effects {
 public:
     // GLOBAL.TXD textures ("blobbyshadow", the trails' "fxskid"); call after the device's resources were cleared.
     bool load(b3gfx::Device& dev, const std::string& game, std::string* why);
-    void clear();   // forget GPU ids (Device::clear_resources released them)
+    // split screen: player 2's effects from player 1's loaded GLOBAL.TXD (its bytes, the shared blobbyshadow texture);
+    // the other effect textures it loads by name as it draws them. False: `from` has none loaded.
+    bool load_shared(b3gfx::Device& dev, const Effects& from);
+    void clear();   // forget GPU ids (Device::clear_resources released them; the draws also drop them on their own when
+                    // the device's resource_epoch moved on since the load, so stale ids never name another owner's buffer)
     // Appends the effects stage's draws (DrawItem::effect) for frame `f`.
     // `fades` (traffic-popin, optional): per vehicle, the screen-door fade its car is drawn with; its shadow's alpha follows
     void draw(b3gfx::Device& dev, const std::vector<Vehicle>& vehicles, const FrameEffects& fx, std::vector<b3gfx::DrawItem>& out,
               EffectStats* stats = nullptr, const std::vector<float>* fades = nullptr);
     b3gfx::TextureId texture(b3gfx::Device& dev, const std::string& name);   // GLOBAL.TXD by name, once
+    // perf4 (warmcache.h): the names texture() loaded in this run (and those an earlier run saved), and their textures loaded
+    // now (with the route) instead of at their first draw
+    static std::set<std::string> warm_names();
+    static void add_warm_names(const std::set<std::string>& names);
+    static void drop_warm_name(const std::string& name);   // a saved name that no longer loads
+    void preload(b3gfx::Device& dev);
     // fe2 (§24): RenderFrontEndShadow's strip as an effects-stage draw (the state of RenderShadows' strips).
     void draw_frontend_shadow(b3gfx::Device& dev, const Vehicle::Shadow& s, std::vector<b3gfx::DrawItem>& out);
     bool particles = true;        // fx2: scrapes / sparks / popcorn / particles (View::show_particles: --no-particles, K)
@@ -108,9 +120,17 @@ public:
     // Returns the fill's alpha byte (0: none drawn).
     int draw_explosion_flash(b3gfx::Device& dev, const FrameEffects& fx, const PostIn& post, bool crashed, const Camera& cam, float aspect,
                              bool reduce, std::vector<b3gfx::DrawItem>& out);
+    // Night mode (remaster-features §17; drawn only, off by default): a headlight pool on the ground ahead of each race car and
+    // traffic car (not wrecks), from the shadow's inputs (the ground normal and distance under the car, its box): a quad
+    // from the front of the box out to `shape[1]` metres, lifted 4 cm off that plane and faded out as the car leaves the
+    // ground; `colour` the lamps' RGB (0..1); `fades` as draw's. One DrawItem::night_light draw (none without vehicles).
+    void draw_headlights(b3gfx::Device& dev, const std::vector<Vehicle>& vehicles, const float shape[4], const float colour[3],
+                         std::vector<b3gfx::DrawItem>& out, const std::vector<float>* fades = nullptr);
 
 private:
     void push_shadows(b3gfx::Device& dev, std::vector<b3gfx::DrawItem>& out);   // verts_ / idx_ as one draw
+    unsigned epoch_ = 0;   // Device::resource_epoch at the load / last clear
+    void sync(b3gfx::Device& dev);
     struct Trail { b3gfx::BufferId vb = b3gfx::kNone, ib = b3gfx::kNone; std::vector<b3gfx::Vertex> verts; std::vector<std::uint32_t> idx; };
     Trail trail_[5];
     std::vector<std::uint8_t> txd_;
@@ -145,7 +165,10 @@ private:
     b3gfx::BufferId particle_ident_ = b3gfx::kNone;   // 0, 1, 2 ...: the index buffer the flat (expanded) vertices are drawn with, grown only
     std::size_t particle_ident_n_ = 0;
     std::vector<b3gfx::Vertex> particle_flat_;
-    b3asset::ParticleVu particle_vu_;
+    // split2p (a Windows crash in a split-screen race: Vu1::run on the particle worker): on the heap, shared with the running
+    // build. Split screen swaps the two views' Effects every frame (View::swap_view2); a worker given &member saw the other
+    // view's VU at that address, or its program pointer moved out mid-swap (null). The object now moves with its future.
+    std::shared_ptr<b3asset::ParticleVu> particle_vu_ = std::make_shared<b3asset::ParticleVu>();
     std::shared_ptr<const std::vector<std::uint8_t>> particle_prog_;
     struct ParticleKey {
         std::shared_ptr<const ParticleArrayState> arrays[24];
@@ -168,6 +191,7 @@ private:
     std::vector<PDraw> particle_draws_;
     int particle_prims_ = 0;
     Trail flash_;                 // the explosion flash's quad
+    Trail headlight_;             // night mode's headlight pools
 };
 
 }  // namespace b3replay

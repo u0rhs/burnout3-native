@@ -8,9 +8,19 @@
 #include <zlib.h>
 
 #include <algorithm>
+#include <functional>
+#include <cstdio>
 #include <fstream>
 #include <map>
 #include <set>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace b3mod {
 
@@ -29,6 +39,54 @@ bool read_at(std::ifstream& f, std::uint64_t at, void* dst, std::size_t n) {
     f.seekg(static_cast<std::streamoff>(at));
     f.read(static_cast<char*>(dst), static_cast<std::streamsize>(n));
     return f && static_cast<std::size_t>(f.gcount()) == n;
+}
+
+// modsec: a link (symlink_status; on Windows also a reparse point tagged as a symbolic link or a mount point -- a
+// junction is one, which std::filesystem may report as a plain folder). Other reparse points (OneDrive and other cloud
+// placeholders, deduplicated files) are the files and folders themselves: removed as such.
+bool is_link(const fs::path& p) {
+    std::error_code ec;
+    if (fs::is_symlink(fs::symlink_status(p, ec))) return true;
+#ifdef _WIN32
+    const DWORD a = GetFileAttributesW(p.wstring().c_str());
+    if (a == INVALID_FILE_ATTRIBUTES || !(a & FILE_ATTRIBUTE_REPARSE_POINT)) return false;
+    WIN32_FIND_DATAW d{};
+    const HANDLE h = FindFirstFileW(p.wstring().c_str(), &d);   // (dwReserved0: the reparse tag)
+    if (h == INVALID_HANDLE_VALUE) return true;   // a reparse point whose tag cannot be read: not followed
+    FindClose(h);
+    return d.dwReserved0 == IO_REPARSE_TAG_SYMLINK || d.dwReserved0 == IO_REPARSE_TAG_MOUNT_POINT;
+#else
+    return false;
+#endif
+}
+bool remove_link(const fs::path& p) {
+#ifdef _WIN32
+    const DWORD a = GetFileAttributesW(p.wstring().c_str());
+    if (a == INVALID_FILE_ATTRIBUTES) return true;
+    if (a & FILE_ATTRIBUTE_READONLY) SetFileAttributesW(p.wstring().c_str(), a & ~DWORD(FILE_ATTRIBUTE_READONLY));
+    // a junction or a directory link: RemoveDirectory removes the link, not the folder it names
+    return (a & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryW(p.wstring().c_str()) != 0 : DeleteFileW(p.wstring().c_str()) != 0;
+#else
+    std::error_code ec;
+    return fs::remove(p, ec) && !ec;
+#endif
+}
+bool remove_tree_at(const fs::path& p, int depth) {
+    std::error_code ec;
+    const fs::file_status st = fs::symlink_status(p, ec);
+    if (st.type() == fs::file_type::not_found) return true;
+    if (ec) return false;
+    if (is_link(p)) return remove_link(p);
+    bool ok = true;
+    if (fs::is_directory(st)) {
+        if (depth > 256) return false;
+        std::vector<fs::path> inside;
+        for (fs::directory_iterator it(p, ec), end; !ec && it != end; it.increment(ec)) inside.push_back(it->path());
+        if (ec) return false;
+        for (const fs::path& q : inside) ok = remove_tree_at(q, depth + 1) && ok;
+    }
+    fs::remove(p, ec);
+    return ok && !ec;
 }
 
 std::string lower_ascii(std::string s) {
@@ -57,6 +115,8 @@ std::string normal_name(std::string s) {
 }
 
 }  // namespace
+
+bool remove_tree(const fs::path& p) { return remove_tree_at(p, 0); }
 
 bool ZipEntry::link() const {
     const unsigned host = made_by >> 8;
@@ -220,35 +280,78 @@ std::string unsafe_entry_name(const std::string& raw) {
     return {};
 }
 
-InstallResult install_archive(const fs::path& archive, const fs::path& mods_root, const InstallOptions& opt) {
-    InstallResult r;
+namespace {
+
+// One file or folder of what is installed: an archive's entry or a file of a folder (files packs: item 11)
+struct Item {
+    std::string name;   // as stored ('/' or '\\' between folders; a folder may end with '/')
+    bool dir = false;
+    std::uint64_t usize = 0;
+    std::function<bool(std::uint64_t limit, const std::function<bool(const std::uint8_t*, std::size_t)>& sink, std::string* why)> read;
+};
+
+// The disc's own top folders (a pack of game files has them at its top): the US disc's [C a disc folder's listing]
+bool game_top(const std::string& lower) {
+    static const std::set<std::string> k = {"cnf", "data", "iop", "netgui", "nfsunder", "ovid", "pveh", "sound", "tracks"};
+    return k.count(lower) != 0;
+}
+
+// an id from a pack's name: a-z 0-9 . _ -, the rest as '-', not taken by an installed mod nor a folder there
+std::string files_mod_id(const std::string& name, const fs::path& mods_root) {
+    const std::vector<Mod> installed = discover(mods_root);
+    std::string id;
+    for (const char c0 : name) {
+        const char c = (c0 >= 'A' && c0 <= 'Z') ? char(c0 - 'A' + 'a') : c0;
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-';
+        if (ok) id += c;
+        else if (!id.empty() && id.back() != '-') id += '-';
+    }
+    while (!id.empty() && (id.back() == '-' || id.back() == '.')) id.pop_back();
+    while (!id.empty() && (id.front() == '-' || id.front() == '.')) id.erase(0, 1);
+    if (id.size() > 56) id.resize(56);
+    while (!id.empty() && (id.back() == '-' || id.back() == '.')) id.pop_back();
+    if (id.empty()) id = "files";
+    std::string out = id;
+    auto taken = [&](const std::string& c) {
+        std::error_code ec;
+        return find_mod(installed, c) != nullptr || fs::exists(mods_root / path_from_utf8(c), ec) ||
+               fs::exists(mods_root / path_from_utf8(".install-" + c), ec);
+    };
+    for (int n = 2; taken(out) && n < 10000; ++n) out = id + "-" + std::to_string(n);
+    return out;
+}
+
+std::string ini_text_value(const std::string& s) {   // a name or text for a plain ini value: no comment marks, no quotes, one line
+    std::string o;
+    for (const char c : s) o += (c == '#' || c == ';' || c == '"' || c == '\n' || c == '\r' || (unsigned char)(c) < 0x20) ? ' ' : c;
+    while (!o.empty() && o.back() == ' ') o.pop_back();
+    while (!o.empty() && o.front() == ' ') o.erase(0, 1);
+    return o;
+}
+
+InstallResult install_items(std::vector<Item>& items, const std::string& source, const fs::path& mods_root, const InstallOptions& opt, InstallResult r) {
     auto refuse = [&r](std::string w) {
         r.errors.push_back(std::move(w));
         return r;
     };
-    ZipReader zip;
     std::string why;
-    if (!zip.open(archive, &why)) return refuse(why);
-    if (zip.entries().size() > opt.max_entries)
-        return refuse(std::to_string(zip.entries().size()) + " entries: more than " + std::to_string(opt.max_entries));
+    if (items.size() > opt.max_entries)
+        return refuse(std::to_string(items.size()) + " entries: more than " + std::to_string(opt.max_entries));
     // every entry checked before anything is written
-    std::vector<const ZipEntry*> keep;
+    std::vector<const Item*> keep;
     std::map<std::string, std::string> files_ci;   // lower case name -> as stored (files)
     std::set<std::string> dirs_ci;                 // lower case folders, given or implied
     std::uint64_t total = 0;
-    for (const ZipEntry& e : zip.entries()) {
+    for (const Item& e : items) {
         const std::string n = normal_name(e.name);
         if (n == "__MACOSX" || n.rfind("__MACOSX/", 0) == 0) continue;   // macOS Finder's resource forks
         if (const std::string bad = unsafe_entry_name(e.name); !bad.empty()) { r.errors.push_back(e.name + ": " + bad); continue; }
-        if (e.link()) { r.errors.push_back(e.name + ": a link (not allowed in a mod)"); continue; }
-        if (e.flags & 1u) { r.errors.push_back(e.name + ": encrypted (not supported)"); continue; }
-        if (e.method != 0 && e.method != 8) { r.errors.push_back(e.name + ": compression method " + std::to_string(e.method) + " (only stored and deflate)"); continue; }
         if (e.usize > opt.max_entry) { r.errors.push_back(e.name + ": " + std::to_string(e.usize) + " bytes, over the limit of " + std::to_string(opt.max_entry)); continue; }
         total += e.usize;
         const std::string l = lower_ascii(n);
         for (std::size_t s = l.find('/'); s != std::string::npos; s = l.find('/', s + 1)) dirs_ci.insert(l.substr(0, s));
-        if (e.dir()) { dirs_ci.insert(l); keep.push_back(&e); continue; }
-        if (!files_ci.emplace(l, n).second) { r.errors.push_back(n + ": twice in the archive (names that differ only in case are one file on Windows and macOS)"); continue; }
+        if (e.dir) { dirs_ci.insert(l); keep.push_back(&e); continue; }
+        if (!files_ci.emplace(l, n).second) { r.errors.push_back(n + ": twice in the " + source + " (names that differ only in case are one file on Windows and macOS)"); continue; }
         keep.push_back(&e);
     }
     for (const auto& [l, n] : files_ci)
@@ -257,35 +360,85 @@ InstallResult install_archive(const fs::path& archive, const fs::path& mods_root
     if (!r.errors.empty()) return r;
     // the manifest: at the top, or in the one top folder
     std::string prefix;
-    const ZipEntry* ini = nullptr;
-    for (const ZipEntry* e : keep)
-        if (!e->dir() && lower_ascii(normal_name(e->name)) == "mod.ini") ini = e;
-    if (!ini) {
-        std::set<std::string> tops;
-        for (const ZipEntry* e : keep) {
-            const std::string n = normal_name(e->name);
-            tops.insert(lower_ascii(n.substr(0, n.find('/'))));
-        }
-        if (tops.size() == 1)
-            for (const ZipEntry* e : keep) {
-                const std::string n = normal_name(e->name);
-                const std::size_t s = n.find('/');
-                if (!e->dir() && s != std::string::npos && n.find('/', s + 1) == std::string::npos && lower_ascii(n.substr(s + 1)) == "mod.ini") {
-                    ini = e;
-                    prefix = n.substr(0, s + 1);
-                }
-            }
+    const Item* ini = nullptr;
+    for (const Item* e : keep)
+        if (!e->dir && lower_ascii(normal_name(e->name)) == "mod.ini") ini = e;
+    std::set<std::string> tops;   // lower case first components
+    for (const Item* e : keep) {
+        const std::string n = normal_name(e->name);
+        tops.insert(lower_ascii(n.substr(0, n.find('/'))));
     }
-    if (!ini) return refuse("no mod.ini at the top of the archive (or in its one top folder): not a mod");
-    std::vector<std::uint8_t> text;
-    if (!zip.read_all(*ini, 1 << 20, text, &why)) return refuse(why);
-    ParsedManifest pm = parse_manifest(std::string_view(reinterpret_cast<const char*>(text.data()), text.size()));
-    r.id = pm.m.id;
-    r.version = pm.m.version;
-    r.name = pm.m.name;
-    r.warnings = pm.warnings;
-    for (const std::string& e : pm.errors) r.errors.push_back("mod.ini: " + e);
-    if (!r.errors.empty()) return r;
+    if (!ini && tops.size() == 1)
+        for (const Item* e : keep) {
+            const std::string n = normal_name(e->name);
+            const std::size_t s = n.find('/');
+            if (!e->dir && s != std::string::npos && n.find('/', s + 1) == std::string::npos && lower_ascii(n.substr(s + 1)) == "mod.ini") {
+                ini = e;
+                prefix = n.substr(0, s + 1);
+            }
+        }
+    // item 11: no mod.ini, but the game's own folders at the top (or in the one top folder): a pack of replacement files,
+    // installed as a data-only mod with a mod.ini made here (once the user said so: InstallOptions::files_mod_name)
+    bool files_pack = false;
+    if (!ini) {
+        auto layout = [&](const std::string& pre) {   // the folders and files right below pre: game folders, loose files only
+            bool any_game = false;
+            for (const Item* e : keep) {
+                std::string n = normal_name(e->name);
+                if (!pre.empty() && lower_ascii(n) + "/" == lower_ascii(pre)) continue;   // the wrapper folder's own entry
+                if (lower_ascii(n.substr(0, pre.size())) != lower_ascii(pre)) return false;
+                n = n.substr(pre.size());
+                if (n.empty()) continue;
+                const std::size_t s = n.find('/');
+                const bool folder = s != std::string::npos || e->dir;
+                const std::string top = lower_ascii(n.substr(0, s));
+                if (!folder) continue;   // a loose file (a readme): kept beside the data, not served to the game
+                if (!game_top(top)) return false;
+                any_game = true;
+            }
+            return any_game;
+        };
+        if (layout("")) files_pack = true;
+        else if (tops.size() == 1 && !game_top(*tops.begin())) {
+            const Item* first = keep.empty() ? nullptr : keep.front();
+            const std::string n = first ? normal_name(first->name) : std::string();
+            const std::string pre = n.substr(0, n.find('/')) + "/";
+            if (layout(pre)) {
+                files_pack = true;
+                prefix = pre;
+            }
+        }
+        r.files_pack = files_pack;
+        if (!files_pack)
+            return refuse("no mod.ini at the top of the " + source + " (or in its one top folder), and no game folders (DATA, PVEH, TRACKS, SOUND, OVID ...) to install as files: not a mod");
+        if (opt.files_mod_name.empty())
+            return refuse("no mod.ini: the " + source + " holds the game's own folders, so it can be installed as a file-replacement mod");
+    }
+    std::string made_ini;   // files pack: the mod.ini written for it
+    if (ini) {
+        std::vector<std::uint8_t> text;
+        if (!ini->read(1 << 20, [&text](const std::uint8_t* p, std::size_t k) { text.insert(text.end(), p, p + k); return true; }, &why)) return refuse(why);
+        ParsedManifest pm = parse_manifest(std::string_view(reinterpret_cast<const char*>(text.data()), text.size()));
+        r.id = pm.m.id;
+        r.version = pm.m.version;
+        r.name = pm.m.name;
+        r.warnings = pm.warnings;
+        for (const std::string& e : pm.errors) r.errors.push_back("mod.ini: " + e);
+        if (!r.errors.empty()) return r;
+    } else {
+        std::error_code e0;
+        r.name = ini_text_value(opt.files_mod_name);
+        if (r.name.empty()) r.name = "Files";
+        r.id = files_mod_id(r.name, mods_root);
+        r.version = "1";
+        made_ini = "# Made when it was installed: the " + source + " had no mod.ini, only the game's own folders.\n"
+                   "# A file-replacement mod: its data folder's files replace the game's files of the same names.\n"
+                   "[mod]\nid = " + r.id + "\nname = " + r.name + "\nversion = 1\napi = 1\n"
+                   "description = Game files installed without a mod.ini.\n"
+                   "[files]\nroot = data\n";
+        const ParsedManifest pm = parse_manifest(made_ini);
+        if (!pm.errors.empty()) return refuse("the mod.ini made for it: " + pm.errors.front());
+    }
     // where it goes
     std::error_code ec;
     fs::create_directories(mods_root, ec);
@@ -301,16 +454,29 @@ InstallResult install_archive(const fs::path& archive, const fs::path& mods_root
         return refuse("the mods folder has a folder named " + r.id + " that is not this mod: move it away first");
     // unpack into a hidden folder, then swap it in
     const fs::path tmp = mods_root / path_from_utf8(".install-" + r.id);
-    fs::remove_all(tmp, ec);
+    // modsec (review): a folder that could not be removed is said (in the result's notes and the log), never ignored
+    auto cleanup = [&r](const fs::path& p) {
+        if (remove_tree(p)) return true;
+        const std::string line = "could not remove all of " + path_utf8(p) + " (a file in it open?): delete it by hand";
+        r.warnings.push_back(line);
+        std::printf("b3mod: install %s: %s\n", r.id.c_str(), line.c_str());
+        std::fflush(stdout);
+        return false;
+    };
+    if (!cleanup(tmp)) return refuse("cannot clear " + path_utf8(tmp) + " left by an earlier install: delete it, then install again");
     fs::create_directories(tmp, ec);
     if (ec) return refuse("cannot make " + path_utf8(tmp) + ": " + ec.message());
-    for (const ZipEntry* e : keep) {
+    // (the one top folder by its name in any case: "My Mod/" and "my mod/" are one folder, as the check above took them)
+    const std::string prefix_ci = lower_ascii(prefix);
+    for (const Item* e : keep) {
         std::string n = normal_name(e->name);
-        if (n.size() < prefix.size() || n.compare(0, prefix.size(), prefix) != 0) continue;
+        if (n.size() < prefix.size() || lower_ascii(n.substr(0, prefix.size())) != prefix_ci) continue;
         n = n.substr(prefix.size());
         if (n.empty()) continue;
+        // a files pack: its game folders under data/ (the mod's files root), a loose file beside it
+        if (files_pack && (e->dir || n.find('/') != std::string::npos)) n = "data/" + n;
         const fs::path dst = tmp / path_from_utf8(n);
-        if (e->dir()) {
+        if (e->dir) {
             fs::create_directories(dst, ec);
             if (ec) { r.errors.push_back("cannot make " + n + ": " + ec.message()); break; }
             continue;
@@ -318,7 +484,7 @@ InstallResult install_archive(const fs::path& archive, const fs::path& mods_root
         fs::create_directories(dst.parent_path(), ec);
         std::ofstream out(dst, std::ios::binary | std::ios::trunc);
         if (!out) { r.errors.push_back("cannot write " + n); break; }
-        const bool ok = zip.read(*e, opt.max_entry, [&out](const std::uint8_t* p, std::size_t k) {
+        const bool ok = e->read(opt.max_entry, [&out](const std::uint8_t* p, std::size_t k) {
             out.write(reinterpret_cast<const char*>(p), static_cast<std::streamsize>(k));
             return bool(out);
         }, &why);
@@ -327,17 +493,21 @@ InstallResult install_archive(const fs::path& archive, const fs::path& mods_root
         ++r.files;
         r.bytes += e->usize;
     }
+    if (r.errors.empty() && !made_ini.empty()) {
+        std::ofstream out(tmp / kManifestName, std::ios::binary | std::ios::trunc);
+        if (!(out << made_ini) || (out.close(), !out)) r.errors.push_back("cannot write mod.ini");
+    }
     if (!r.errors.empty()) {
-        fs::remove_all(tmp, ec);
+        cleanup(tmp);
         return r;
     }
     fs::path parked;
     if (old) {
         parked = mods_root / path_from_utf8(".remove-" + r.id);
-        fs::remove_all(parked, ec);
+        cleanup(parked);
         fs::rename(old->dir, parked, ec);
         if (ec) {
-            fs::remove_all(tmp, ec);
+            cleanup(tmp);
             return refuse("cannot move the installed " + r.id + " aside (a file in it open?): " + ec.message());
         }
     }
@@ -345,16 +515,105 @@ InstallResult install_archive(const fs::path& archive, const fs::path& mods_root
     if (ec) {
         const std::string m = ec.message();
         if (old) fs::rename(parked, old->dir, ec);
-        fs::remove_all(tmp, ec);
+        cleanup(tmp);
         return refuse("cannot move the new mod into place: " + m);
     }
     if (old) {
-        fs::remove_all(parked, ec);
+        cleanup(parked);
         r.replaced = true;
     }
     r.dir = target;
     r.ok = true;
     return r;
+}
+
+}  // namespace
+
+InstallResult install_archive(const fs::path& archive, const fs::path& mods_root, const InstallOptions& opt) {
+    InstallResult r;
+    ZipReader zip;
+    std::string why;
+    if (!zip.open(archive, &why)) {
+        r.errors.push_back(why);
+        return r;
+    }
+    std::vector<Item> items;
+    for (const ZipEntry& e : zip.entries()) {
+        const std::string n = normal_name(e.name);
+        if (n == "__MACOSX" || n.rfind("__MACOSX/", 0) == 0) continue;
+        if (e.link()) { r.errors.push_back(e.name + ": a link (not allowed in a mod)"); continue; }
+        if (e.flags & 1u) { r.errors.push_back(e.name + ": encrypted (not supported)"); continue; }
+        if (e.method != 0 && e.method != 8) { r.errors.push_back(e.name + ": compression method " + std::to_string(e.method) + " (only stored and deflate)"); continue; }
+        Item it;
+        it.name = e.name;
+        it.dir = e.dir();
+        it.usize = e.usize;
+        const ZipEntry* ep = &e;
+        it.read = [&zip, ep](std::uint64_t limit, const std::function<bool(const std::uint8_t*, std::size_t)>& sink, std::string* w) {
+            return zip.read(*ep, limit, [&sink](const std::uint8_t* p, std::size_t k) { return sink(p, k); }, w);
+        };
+        items.push_back(std::move(it));
+    }
+    if (zip.entries().size() > opt.max_entries)
+        r.errors.insert(r.errors.begin(), std::to_string(zip.entries().size()) + " entries: more than " + std::to_string(opt.max_entries));
+    if (!r.errors.empty()) return r;
+    return install_items(items, "archive", mods_root, opt, std::move(r));
+}
+
+InstallResult install_folder(const fs::path& dir, const fs::path& mods_root, const InstallOptions& opt) {
+    InstallResult r;
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) {
+        r.errors.push_back(path_utf8(dir) + " is not a folder");
+        return r;
+    }
+    std::error_code e2;
+    const fs::path mr = fs::weakly_canonical(mods_root, e2), d = fs::weakly_canonical(dir, e2);
+    if (!mr.empty() && (d == mr || std::mismatch(mr.begin(), mr.end(), d.begin(), d.end()).first == mr.end())) {
+        r.errors.push_back(path_utf8(dir) + " is inside the mods folder: it is installed already (Look again finds it)");
+        return r;
+    }
+    std::vector<Item> items;
+    for (fs::recursive_directory_iterator it(dir, fs::directory_options::none, ec), end; it != end; it.increment(ec)) {
+        if (ec) break;
+        if (items.size() > opt.max_entries) break;
+        const fs::path p = it->path();
+        std::string rel = path_utf8(p.lexically_relative(dir));
+        std::replace(rel.begin(), rel.end(), '\\', '/');
+        if (is_link(p)) {   // a link, a junction: never followed, never copied
+            r.errors.push_back(rel + ": a link (not allowed in a mod)");
+            if (it->is_directory(e2)) it.disable_recursion_pending();
+            continue;
+        }
+        Item item;
+        item.dir = it->is_directory(e2);
+        item.name = rel + (item.dir ? "/" : "");
+        if (!item.dir) {
+            if (!it->is_regular_file(e2)) { r.errors.push_back(rel + ": not a plain file"); continue; }
+            item.usize = it->file_size(e2);
+            item.read = [p](std::uint64_t limit, const std::function<bool(const std::uint8_t*, std::size_t)>& sink, std::string* w) {
+                std::ifstream f(p, std::ios::binary);
+                if (!f) { if (w) *w = "cannot read " + path_utf8(p); return false; }
+                std::vector<char> buf(1 << 16);
+                std::uint64_t got = 0;
+                while (f) {
+                    f.read(buf.data(), std::streamsize(buf.size()));
+                    const std::size_t k = std::size_t(f.gcount());
+                    if (!k) break;
+                    got += k;
+                    if (got > limit) { if (w) *w = path_utf8(p) + ": over the limit"; return false; }
+                    if (!sink(reinterpret_cast<const std::uint8_t*>(buf.data()), k)) return false;
+                }
+                if (f.bad()) { if (w) *w = "cannot read " + path_utf8(p); return false; }
+                return true;
+            };
+        }
+        items.push_back(std::move(item));
+    }
+    if (ec) r.errors.push_back("cannot list " + path_utf8(dir) + ": " + ec.message());
+    if (items.size() > opt.max_entries) r.errors.push_back("more than " + std::to_string(opt.max_entries) + " entries");
+    if (!r.errors.empty()) return r;
+    return install_items(items, "folder", mods_root, opt, std::move(r));
 }
 
 }  // namespace b3mod

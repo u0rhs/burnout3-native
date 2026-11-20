@@ -5,7 +5,11 @@ copies the game's files, turns textures into PNG and back, string tables and the
 and back, sounds and music into WAV and back, exports cars and routes as glTF 2.0 or OBJ models and imports the edited
 glTF back, makes and applies
 `b3patch` deltas, and packs and checks mods. It reads your own disc (a folder of its files or the image itself) and writes only the output paths you give
-it.
+it, never over one of its inputs: a command whose output names an input file is refused, nothing written. On Windows the
+paths may have any characters (the command line is read as UTF-8 and every path opened from it; the console shows the
+messages as UTF-8 for the run, its code page put back at the end). `pack` writes the
+archive as `<out>.part` and puts it in place when complete: a pack that fails leaves no partial archive, and an older
+one of that name as it was.
 
 Build: `make modtool` (Linux, macOS) gives `build/b3modtool`; the Windows build (`tools/render/build_win.sh`, also run
 by `tools/native/build_win.sh RENDER=1`) gives `b3modtool.exe`. Code: `tools/modding/b3modtool.cpp` (the commands),
@@ -279,7 +283,7 @@ $ b3modtool audio import ~/Games/Burnout3/SOUND/FE.AWD work/fe work/FE.AWD
 audio import: 51 WAVs for 51 items: 50 unchanged (the original PS-ADPCM kept), 1 re-encoded (1 with a new length); 55974 frames kept, 885 encoded -> work/FE.AWD (922112 bytes)
 ```
 
-For your own music in place of the EA Trax songs no file needs changing: PC SETTINGS > INTERFACE > MUSIC plays a folder
+For your own music in place of the EA Trax songs no file needs changing: PC SETTINGS > AUDIO > MUSIC plays a folder
 of your MP3 / FLAC / Ogg / WAV files.
 
 ### car list / export

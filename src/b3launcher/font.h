@@ -16,6 +16,13 @@ namespace b3launcher {
 
 struct GameFont;
 
+// settingsui: text that is the player's own (a profile's name, a folder or file name, a song title, a mod's own words):
+// drawn and measured as it is, never looked up in the translation tables. verbatim() marks it (a leading U+0001); the
+// mark is dropped when it is drawn, and wrap / elide keep it on the lines they return.
+constexpr char kVerbatim = '\x01';
+inline std::string verbatim(std::string_view s) { return std::string(1, kVerbatim) + std::string(s); }
+inline bool is_verbatim(std::string_view s) { return !s.empty() && s.front() == kVerbatim; }
+
 // The font files tried (regular, bold), the first that exists wins: $B3LAUNCHER_FONT / $B3LAUNCHER_FONT_BOLD, then the
 // system's (Segoe UI, Arial, Noto Sans, DejaVu Sans, Liberation Sans, ...).
 std::vector<std::pair<std::string, std::string>> font_candidates();
@@ -46,7 +53,13 @@ public:
     void set_language(std::string code) { language_ = std::move(code); }
     const std::string& language() const { return language_; }
     // `s` in the language (as draw would show it), for a caller that changes it first (capitals)
-    std::string translated(std::string_view s) const { return language_.empty() ? std::string(s) : tr(s); }
+    std::string translated(std::string_view s) const {
+        if (is_verbatim(s)) return std::string(s.substr(1));
+        return language_.empty() ? std::string(s) : tr(s);
+    }
+
+    // settingsui: every text drawn from now on, as drawn (after its translation), appended to `into` (nullptr: off)
+    void record_into(std::vector<std::string>* into) { record_ = into; }
 
     float width(std::string_view s, float size, bool bold = false);
     float line_height(float size) const { return size * 1.32f; }
@@ -75,6 +88,8 @@ private:
     };
     bool translating() const { return !raw_ && !language_.empty(); }
     std::string tr(std::string_view s) const;
+
+    std::vector<std::string>* record_ = nullptr;
 
     const GameFont* menu_ = nullptr;
     const GameFont* head_ = nullptr;

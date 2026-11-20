@@ -153,6 +153,9 @@ bool decode_vehicle(const Image& im, std::uint32_t ep, std::uint32_t vp, std::ui
     }
     v.lit = im.u8(ep + 0x58) & 0xFC;
     v.paint = im.u8(ep + 0x59);
+    if (kind == VehicleKind::kRaceCar && im.has(id + 0x1914, 4) && im.has(id + 0x27C0, 4) && im.u32(id + 0x1914) == 0 &&
+        im.u32(id + 0x27C0) < 2)
+        v.player = std::int8_t(im.u32(id + 0x27C0));   // carpaint
     v.frustum = std::int8_t(im.u8(ep + 0x5B));
     v.radius = im.f32(v.data + 0x14);
     for (int k = 0; k < 9 && im.has(ep + 0x5C + 4 * std::uint32_t(k), 4); ++k) { v.sh[k] = im.f32(ep + 0x5C + 4 * std::uint32_t(k)); v.sh_count = k + 1; }
@@ -1457,6 +1460,7 @@ void Capture::decode(const Image& im, Tick& t) {
     t.host_fonts = host_fonts_last = host_fonts_decode(im, host_fonts_last);   // mac5: PC SETTINGS text
     t.host_hold = host_hold_decode(im);                                         // autosave1: the display holds
     t.skip_hint = host_skip_hint_decode(im);                                    // mac5: the video skip hint
+    t.race_time = host_race_time_decode(im);                                    // todrace: DAY / NIGHT per race
     t.menu = menu_last = host_menu_decode(im, menu_last);                       // mac5: the menus, for the mouse
     {   // sdk2b: the code mods' overlay (include/b3mod/codemod.h), when its serial changed
         std::uint8_t head[16];
@@ -1492,7 +1496,11 @@ void Capture::decode(const Image& im, Tick& t) {
             if (ram(raster) && im.read(raster + 0xA8, name, 32)) model_raster[v.data] = name;
             t.vehicles.push_back(v);
         }
-        if (ok) t.fe_car = car;
+        if (ok) {
+            t.fe_car = car;
+            const std::uint32_t who = t.hud->fe_cars.back().player;   // padpaint
+            t.fe_player = who == 1 || who == 2 ? std::int8_t(who - 1) : std::int8_t(-1);
+        }
     }
 }
 

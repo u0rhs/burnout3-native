@@ -1,6 +1,7 @@
 // save_tool -- the port's save files from the command line (save1, remaster-features §8; src/native/save_store.h):
 //
-//   save_tool info <file or folder>                 what a .sav / .psu / .max / .ps2 card / folder card holds
+//   save_tool info <file or folder>                 what a .sav / .psu / .max / .ps2 card / folder card holds (and
+//                                                   whether the game's own check takes its save: saveflow)
 //   save_tool import <from> [--saves DIR] [--slot N] the Burnout 3 save in <from> becomes profile N's .sav (old: .bak)
 //   save_tool export <to.sav> [--saves DIR] [--slot N] profile N (its .sav, or an older profile-N folder) as a .sav
 //   save_tool stats [<file or folder>]              the game's own stats in a save and the local achievements from
@@ -10,6 +11,7 @@
 // --saves defaults to $B3NATIVE_SAVES_ROOT, else the folder chosen in the launcher (chosen_saves_root), else the user's
 // folder (default_saves_root); --slot to active-slot.txt's.
 #include "save_stats.h"
+#include "b3port/fileio.h"   // fsrobust
 #include "save_store.h"
 
 #include <chrono>
@@ -45,7 +47,7 @@ int main(int argc, char** argv) {
     if (argc < 2) return usage();
     const std::string cmd = argv[1];
     fs::path saves;
-    if (const char* e = std::getenv("B3NATIVE_SAVES_ROOT"); e && *e) saves = e;
+    if (const auto e = b3io::getenv("B3NATIVE_SAVES_ROOT")) saves = *e;   // fsrobust: UTF-8
     else if (const fs::path c = chosen_saves_root(user_data_dir()); !c.empty()) saves = c;   // 1.1: the launcher's choice
     else saves = default_saves_root();
     int slot = 0;
@@ -67,7 +69,11 @@ int main(int argc, char** argv) {
         auto d = read_any(arg, &err);
         if (!d) { std::fprintf(stderr, "save_tool: %s\n", err.c_str()); return 1; }
         print(*d);
-        std::printf("%s\n", game_save(*d) ? "a Burnout 3 save" : "no Burnout 3 save");
+        const auto game = game_save(*d);
+        std::string why;   // saveflow: the game's own load check (save_formats.h game_save_intact)
+        if (!game) std::printf("no Burnout 3 save\n");
+        else if (game_save_intact(*game, &why)) std::printf("a Burnout 3 save (intact: the game loads it)\n");
+        else std::printf("a Burnout 3 save, DAMAGED: %s (the game would call it corrupt)\n", why.c_str());
         return 0;
     }
     if (cmd == "music" && !arg.empty()) {   // eatrax1: the save's song fields (each must be a disc song: 0..43, or 0xFF)

@@ -26,7 +26,7 @@ public:
     b3host::gaddr b3_vptr; /* decomp2host T13: MWCC vptr */ void vfunc_8();
     void vfunc_C();
     void vfunc_10();
-    void vfunc_14();
+    int vfunc_14();   /* decomp2host T47: GetLobbyStatus (slot 0x14) returns the lobby status in v0 */
     void vfunc_18();
     void vfunc_1C();
     void vfunc_20();
@@ -115,7 +115,7 @@ int CGtLobbyPS2DirtySock::ForAllGamesFound(b3host::gfn<bool(char *, int, int, in
         if (((GameCB)p0)(g->field_4, g->field_0, vals[0], vals[1], vals[2], g->field_1BC, g->field_11C, g->field_48, vals[3], vals[4], vals[5], vals[6], vals[7], fl, p1) == 0)
             return 2;
     }
-    vfunc_14();
+    return vfunc_14();   /* decomp2host T47: retail returns slot 0x14's v0 (GetLobbyStatus) */
 }
 
 }  // namespace b3gen_GtLobbyDirtySock_00339480

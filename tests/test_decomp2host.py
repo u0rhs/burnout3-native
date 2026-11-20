@@ -1230,6 +1230,57 @@ _check("T47 the RECORDS car icons at retail's offset and anchor",
        and "32.0f), CGtV2d(0.0f, 0.5f) /* decomp2host T47" in _mine and "D_004C9E88.v, col, tex, CGtV2d(0.0f, 0.0f), CGtV2d(1.0f, 1.0f)" in _mine
        and "mgr->field_10" in _mine and "32.0f), CGtV2d(0.0f, 0.0f), mgr->field_10" in _mine
        and d.t47_draft_fixes("void f() {}\n") == ("void f() {}\n", 0) and _stopped, (_n, _t))
+# genret T47: ForAllGames returns slot 0x14's v0 (the unit's declaration before the marker made int, the call returned);
+# a reward switch's fall-off path gets a defined value and the one-time note
+_src = ("class CGtLobbyPS2DirtySock {\npublic:\n    b3host::gaddr b3_vptr; void vfunc_10();\n    void vfunc_14();\n};\n"
+        "// 0x00339830\nint CGtLobbyPS2DirtySock::ForAllGames(int p0)\n{\n    for (;;) {\n        if (p0)\n            return 2;\n"
+        "    }\n    vfunc_14();\n}\n")
+_t, _n = d.t47_draft_fixes(_src)
+_check("T47 ForAllGames returns vfunc_14 (GetLobbyStatus)",
+       _n == 2 and "    int vfunc_14();   /* decomp2host T47" in _t and "\n    return vfunc_14();   /* decomp2host T47" in _t
+       and "void vfunc_10();" in _t and _t.index("int vfunc_14") < _t.index("// 0x00339830"), _t)
+# genret T47: the declaration fix is scoped to the class (another placeholder class's `void vfunc_14();` stays) and a unit
+# holding both lobby functions fixes the declaration once
+_src = ("struct Other {\n    b3host::gaddr b3_vptr; void vfunc_14();\n};\n"
+        "class CGtLobbyPS2DirtySock {\npublic:\n    b3host::gaddr b3_vptr; void vfunc_10();\n    void vfunc_14();\n};\n"
+        "// 0x00339480\nint CGtLobbyPS2DirtySock::ForAllGamesFound(int p0)\n{\n    if (p0)\n        return 1;\n    vfunc_14();\n}\n"
+        "// 0x00339830\nint CGtLobbyPS2DirtySock::ForAllGames(int p0)\n{\n    if (p0)\n        return 2;\n    vfunc_14();\n}\n")
+_t, _n = d.t47_draft_fixes(_src)
+_check("T47 vfunc_14's declaration: scoped to its class, fixed once for both functions",
+       _n == 3 and _t.count("int vfunc_14();") == 1 and "struct Other {\n    b3host::gaddr b3_vptr; void vfunc_14();" in _t
+       and _t.count("return vfunc_14();") == 2, _t)
+# genret T47: a marked function dropped from the unit (only its marker comment left, T5) is skipped, not fixed in the
+# next function
+_src = ("// 0x003F64D0\n// [C] cases 0-3\n/* decomp2host T5: helper dropped */\n\n// 0x003F6590\nvoid C::Construct()\n{\n"
+        "    return func_00271A00(&D_0051BA44, r0);\n    }\n}\n")
+_check("T47 a dropped marked function is skipped", d.t47_draft_fixes(_src) == (_src, 0), d.t47_draft_fixes(_src))
+# genret T47: every replacement carries `decomp2host T47` (what t47_check_applied looks for); an entry whose function
+# was generated but no unit carries its fix stops the generation; an entry outside the selection is not looked for
+_marked = all("decomp2host T47" in fx[1] for fxs in d.T47_DRAFT_FIXES.values() for fx in fxs)
+import tempfile
+with tempfile.TemporaryDirectory() as _td:
+    with open(os.path.join(_td, "a.cpp"), "w") as _f:
+        _f.write("// 0x003A4A80\nvoid f()\n{\n    x = 1;   /* decomp2host T47: y */\n}\n")
+    with open(os.path.join(_td, "b.cpp"), "w") as _f:
+        _f.write("// 0x00339830\nint g()\n{\n    vfunc_14();\n}\n")
+    _ok_sel = _ok_out = True
+    try:
+        d.t47_check_applied(_td, ["a", "b"], {0x003A4A80, 0x00100000})
+    except BaseException:
+        _ok_sel = False
+    _stopped = False
+    try:
+        d.t47_check_applied(_td, ["a", "b"], {0x003A4A80, 0x00339830})
+    except BaseException:
+        _stopped = True
+_check("T47 an entry applied in no unit stops the generation", _marked and _ok_sel and _stopped,
+       (_marked, _ok_sel, _stopped))
+_src = ("// 0x003F66F0\nstatic inline b3host::ps2_ulong h(S * self)\n{\n    switch (self->field_10) {\n    case 0:\n"
+        "        return 0;\n    case 1:\n        return 0x8000000001ULL;\n    }\n}\n")
+_t, _n = d.t47_draft_fixes(_src)
+_check("T47 func_003F66F0's helper: a defined return on the fall-off path, noted",
+       _n == 1 and _t.endswith("    }\n    b3host::draft_fall_off(\"0x003F66F0 status: field_10 neither 0 nor 1\"); "
+                                "/* decomp2host T47: retail leaves the caller's v0 here (b .L003F6754, 0x3F6718) */ return 0;\n}\n"), _t)
 
 print("%d cases, %d failures" % (len(CASES), fails))
 sys.exit(1 if fails else 0)

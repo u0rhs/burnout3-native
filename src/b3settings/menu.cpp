@@ -34,14 +34,33 @@ constexpr float kScrollX = 590.0f, kScrollW = 14.0f;      // the scroll bar: arr
 constexpr float kDescY = kListY + kRowH * float(kVisible) + 10.0f, kDescH = 52.0f;
 constexpr float kFooterY = kDescY + kDescH + 10.0f, kFooterH = 22.0f;
 constexpr float kToggleW = 40.0f, kButtonW = 128.0f;
+constexpr float kSwatchW = 22.0f;                         // padpaint: a row's colour swatch
 
 struct Box {
     float x = 0, y = 0, w = 0, h = 0;
     bool in(float px, float py) const { return px >= x && px < x + w && py >= y && py < y + h; }
 };
-Box tab_box(std::size_t k, std::size_t n) {
+Box tab_box(std::size_t k, std::size_t n, const std::vector<float>& edges) {
+    if (edges.size() == n + 1 && k < n) return {edges[k], kTabY, edges[k + 1] - edges[k], kTabH};   // settingsui
     const float w = (kTabX1 - kTabX0) / float(std::max<std::size_t>(n, 1));
     return {kTabX0 + w * float(k), kTabY, w, kTabH};
+}
+// settingsui: the tabs' edges for their labels' widths: each label and its margin, and what is left over shared out
+// equally; when they need more than the bar, the labels' parts shrink in proportion (the text then shrinks to fit,
+// to 75 % at the least: measured with the game's font, nine tabs keep German and French above that)
+std::vector<float> tab_edges(const std::vector<float>& label_w) {
+    const std::size_t n = label_w.size();
+    std::vector<float> e{kTabX0};
+    if (n == 0) return e;
+    constexpr float kMargin = 12.0f;
+    float need = 0;
+    for (float w : label_w) need += w;
+    const float room = kTabX1 - kTabX0, spare = room - need - kMargin * float(n);
+    const float k = spare >= 0 || need <= 0 ? 1.0f : std::max(0.0f, room - kMargin * float(n)) / need;
+    const float extra = spare > 0 ? spare / float(n) : 0.0f;
+    for (float w : label_w) e.push_back(e.back() + w * k + kMargin + extra);
+    e.back() = kTabX1;   // (rounding)
+    return e;
 }
 Box prompt_box(bool right) { return {right ? kTabX1 + 8.0f : kFrameX0, kTabY, kPromptW, kTabH}; }
 Box row_box(std::size_t slot) { return {kListX0, kListY + kRowH * float(slot), kListX1 - kListX0, kRowH}; }
@@ -65,6 +84,7 @@ std::size_t value_count(const Row& r) {
 // ---- input (§2)
 
 bool Menu::Repeat::step(bool now, float seconds, bool block, bool fast) {
+    fresh = false;
     if (!now) {
         held = blocked = false;
         return false;
@@ -78,6 +98,7 @@ bool Menu::Repeat::step(bool now, float seconds, bool block, bool fast) {
         held = true;
         time = 0;
         next = kRepeatDelay;
+        fresh = true;
         return true;
     }
     time += seconds;
@@ -89,6 +110,12 @@ bool Menu::Repeat::step(bool now, float seconds, bool block, bool fast) {
 }
 
 float fallback_measure(std::string_view text, float height, std::uint8_t flags) {
+    if (flags & kGlyph) {   // settingsui: a button glyph: the shoulders and Start / Select wider than a face button
+        if (text == "l1" || text == "r1" || text == "l2" || text == "r2") return height * 1.6f;
+        if (text == "start" || text == "select") return height * 1.5f;
+        if (text == "dpad-ud" || text == "dpad-lr" || text == "dpad-l" || text == "dpad-r") return height;
+        return height;
+    }
     float em = 0;
     for (unsigned char c : text) {
         if (c == ' ') em += 0.34f;
@@ -105,6 +132,12 @@ float fallback_measure(std::string_view text, float height, std::uint8_t flags) 
 
 void Menu::set_clock(float seconds) { clock_ = std::fmod(std::max(seconds, 0.0f), 3600.0f); }
 
+void Menu::hold_until_released() {
+    was_confirm_ = was_back_ = was_previous_ = was_next_ = was_reset_ = true;
+    for (Repeat* r : {&up_, &down_, &left_, &right_, &section_up_, &section_down_}) r->blocked = true;
+    dragging_ = false;
+}
+
 void Menu::open(std::size_t tab) {
     tab_ = tab;
     focus_ = scroll_ = 0;
@@ -112,6 +145,7 @@ void Menu::open(std::size_t tab) {
     focus_known_ = false;
     memory_.clear();
     remembered_.clear();
+    tab_labels_.clear();
     // a button held as the page opens (the press that opened it) acts only after it is released
     was_confirm_ = was_back_ = was_previous_ = was_next_ = was_reset_ = true;
     up_ = down_ = left_ = right_ = section_up_ = section_down_ = Repeat{};
@@ -302,7 +336,7 @@ void Menu::handle_pointer(const Input& in, Frame& out) {
     }
     if (click) {
         for (std::size_t k = 0; k < content_.tabs.size(); ++k)
-            if (tab_box(k, content_.tabs.size()).in(px, py)) {
+            if (tab_box(k, content_.tabs.size(), tab_edges_).in(px, py)) {
                 switch_tab(k);
                 return;
             }
@@ -367,6 +401,21 @@ Frame Menu::update(const Content& content, const Input& in) {
     clock_ = std::fmod(clock_ + dt, 3600.0f);
     open_time_ = std::min(open_time_ + dt, 60.0f);
     tab_time_ = std::min(tab_time_ + dt, 60.0f);
+    {   // settingsui: the tab list changed shape (a tab came or went: SAVES, DEVELOPER): the memory is per index, so it
+        // starts again, and the page stays on the tab it showed when that tab is still there
+        std::vector<std::string> labels;
+        for (const Tab& t : content_.tabs) labels.push_back(t.label);
+        if (labels != tab_labels_) {
+            if (!tab_labels_.empty()) {
+                const std::string was = tab_ < tab_labels_.size() ? tab_labels_[tab_] : std::string();
+                for (std::size_t k = 0; k < labels.size(); ++k)
+                    if (labels[k] == was) tab_ = k;
+                memory_.clear();
+                remembered_.clear();
+            }
+            tab_labels_ = std::move(labels);
+        }
+    }
     if (tab_ >= content_.tabs.size()) tab_ = 0;
     if (memory_.size() < content_.tabs.size()) {
         memory_.resize(content_.tabs.size(), 0);
@@ -433,11 +482,13 @@ Frame Menu::update(const Content& content, const Input& in) {
                 }
         if (sec_up) section_step(-1);
         if (sec_down) section_step(1);
-        if (left) change(-1, out);
-        if (right) change(1, out);
+        // settingsui: an action row (a binding: right adds, left removes) acts once per press, never on the hold repeat
+        const bool action_row = focus_ < rows->size() && (*rows)[focus_].kind == RowKind::kAction;
+        if (left && (!action_row || left_.fresh)) change(-1, out);
+        if (right && (!action_row || right_.fresh)) change(1, out);
         if (confirm) activate(out);
         if (reset && focus_ < (*rows).size() && (*rows)[focus_].kind == RowKind::kAction && !(*rows)[focus_].disabled &&
-            (*rows)[focus_].id >= kActionCtlFirst && (*rows)[focus_].id <= kActionCtlLast)
+            is_ctl_action((*rows)[focus_].id))
             out.edits.push_back(Edit{(*rows)[focus_].id, 0, 2, true});
     }
     handle_pointer(in, out);
@@ -511,7 +562,11 @@ struct Builder {
     // A text in its box (the renderer clips it there), shrunk to fit when it is wider (down to 75 %).
     void text(std::string_view s, float x, float y, float w, float h, std::uint32_t c, std::uint8_t flags) {
         if (s.empty() || w <= 0) return;
-        if (s.size() > 1024) s = s.substr(0, 1024);
+        if (s.size() > 1024) {   // settingsui: cut at a character's start (UTF-8)
+            std::size_t n = 1024;
+            while (n > 0 && (static_cast<unsigned char>(s[n]) & 0xC0) == 0x80) --n;
+            s = s.substr(0, n);
+        }
         float size = h;
         const float slant = (flags & kTextSizeMask) == kItalic ? kItalicSlant * h : 0.0f;
         const float tw = width(s, h, flags) + slant;
@@ -587,6 +642,12 @@ std::vector<Item> Menu::items(const std::string& fonts, const std::string& art, 
     const std::size_t ntabs = content_.tabs.size();
     {
         const float y = kTabY;
+        {   // settingsui: each tab as wide as its label needs
+            std::vector<float> lw;
+            for (const Tab& t : content_.tabs)
+                lw.push_back(b.width(t.label, kTabH - 9, kItalic) + kItalicSlant * (kTabH - 9));
+            tab_edges_ = tab_edges(lw);
+        }
         for (int side = 0; side < 2; ++side) {
             const Box p = prompt_box(side == 1);
             const bool can = side == 0 ? tab_ > 0 : tab_ + 1 < ntabs;
@@ -595,7 +656,7 @@ std::vector<Item> Menu::items(const std::string& fonts, const std::string& art, 
             b.image(side == 0 ? kImagePromptL1 : kImagePromptR1, p.x + 3, y + 4, p.w - 6, kTabH - 8, can ? kText : kTextDim);
         }
         for (std::size_t k = 0; k < ntabs; ++k) {
-            const Box t = tab_box(k, ntabs);
+            const Box t = tab_box(k, ntabs, tab_edges_);
             const bool on = k == tab_;
             b.rect(t.x + 2, y, t.w - 4, kTabH, on ? kTabOn : kTabIdle, kRectSlant | kRectShade);
             if (on) b.rect(t.x + 2, y + kTabH - 3, t.w - 6, 3, kAccent, kRectSlant);
@@ -633,7 +694,13 @@ std::vector<Item> Menu::items(const std::string& fonts, const std::string& art, 
             b.rect(x0, y + 1, 9, kRowH - 2, kAccent, kRectSlant);
         }
         const std::uint32_t label = r.disabled ? kTextDim : focused ? kText : kTextSoft;
-        b.text(r.label, kLabelX + shift, y + 4, kCtrlX0 - kLabelX - 12, 15, label, kItalic);
+        b.text(r.label, kLabelX + shift, y + 4, kCtrlX0 - kLabelX - 12 - (r.swatch >= 0 ? kSwatchW + 6 : 0.0f), 15, label, kItalic);
+        if (r.swatch >= 0) {   // padpaint: the colour the row makes, a box left of the control (rows in a column join up)
+            const float sx = kCtrlX0 + shift - kSwatchW - 6;
+            const std::uint32_t c = rgba(int(r.swatch >> 16 & 0xFF), int(r.swatch >> 8 & 0xFF), int(r.swatch & 0xFF), r.disabled ? 110 : 255);
+            b.rect(sx - 1, y, kSwatchW + 2, kRowH, rgba(255, 255, 255, r.disabled ? 40 : 90));
+            b.rect(sx, y + 1, kSwatchW, kRowH - 2, c);
+        }
         const float cx0 = kCtrlX0 + shift, cx1 = kCtrlX1 + shift;
         const float bx0 = kBarX0 + shift, bx1 = kBarX1 + shift;
         const std::uint32_t value_c = r.disabled ? kTextDim : kText;
@@ -721,12 +788,85 @@ std::vector<Item> Menu::items(const std::string& fonts, const std::string& art, 
         }
     }
 
-    // the footer: what the buttons do; Back closes and saves
+    // settingsui: the prompt bar: what the buttons do, each with its glyph (the host draws them for the controller or
+    // the keyboard in use; the mouse: its own words); Back closes and saves, at the right
     {
         const float y = kFooterY;
         b.rect(kFrameX0, y, kFrameX1 - kFrameX0, kFooterH, rgba(8, 18, 46, 220));
-        b.text(content_.footer_keys, kFrameX0 + 12, y + 5, 380, 12, kTextSoft, kTextSmall);
-        b.text(content_.footer_back, kFrameX1 - 212, y + 5, 200, 12, kAccent, kTextSmall | kAlignRight);
+        const Content::Words& w = content_.words;
+        // rank: the order prompts are left out in when the bar is too narrow, lowest first (kKeep: never)
+        constexpr int kKeep = 9;
+        struct Prompt { std::vector<const char*> glyphs; std::string key, word; int rank = kKeep; };
+        std::vector<Prompt> left;
+        Prompt right;
+        const Row* row = rows && focus_known_ && focus_ < n ? &(*rows)[focus_] : nullptr;
+        if (content_.prompt_device == Content::PromptDevice::kMouse) {
+            left = {{{}, w.click, w.choose, kKeep}, {{}, w.wheel, w.scroll, 1}};
+            right = {{}, w.right_click, w.close_short};
+        } else {
+            const bool binding = row && row->kind == RowKind::kAction && !row->disabled && is_ctl_action(row->id);
+            std::size_t sections = 0;
+            if (rows)
+                for (const Row& r : *rows) sections += r.kind == RowKind::kSection ? 1 : 0;
+            left.push_back({{"dpad-ud"}, {}, w.move, 1});
+            if (binding) {
+                left.push_back({{"cross"}, {}, w.rebind, 3});
+                left.push_back({{"dpad-r"}, {}, w.add, 2});
+                left.push_back({{"dpad-l"}, {}, w.remove, kKeep});   // REMOVE and DEFAULT stay
+                left.push_back({{"square"}, {}, w.reset, kKeep});
+            } else {
+                if (row && (row->kind == RowKind::kChoice || row->kind == RowKind::kSlider) && !row->disabled) left.push_back({{"dpad-lr"}, {}, w.change, 3});
+                if (row && (row->kind == RowKind::kToggle || row->kind == RowKind::kAction) && !row->disabled) left.push_back({{"cross"}, {}, w.choose, 3});
+                if (sections > 1) left.push_back({{"section-up", "section-down"}, {}, w.section, 0});
+            }
+            right = {{"triangle"}, {}, w.close};
+        }
+        // laid out at one scale: smaller (down to 75 %) when the words are long, then the least needed prompts left out
+        // (the section jump, then MOVE, ...; a binding row keeps REMOVE and DEFAULT), the rest in their order
+        const float gh0 = 14, th0 = 12, x0 = kFrameX0 + 12, x1 = kFrameX1 - 12;
+        const auto prompt_w = [&](const Prompt& p, float k) {
+            float pw = 0;
+            for (const char* g : p.glyphs) pw += b.width(g, gh0 * k, kGlyph) + 2 * k;
+            if (!p.key.empty()) pw += b.width(p.key, th0 * k, kTextSmall) + 5 * k;
+            if (!p.glyphs.empty()) pw += 3 * k;
+            return pw + b.width(p.word, th0 * k, kTextSmall);
+        };
+        const auto total_w = [&](float k) {
+            float t = prompt_w(right, k) + 24 * k;
+            for (const Prompt& p : left) t += prompt_w(p, k) + 14 * k;
+            return t;
+        };
+        float k = 1.0f;
+        while (k > 0.75f && total_w(k) > x1 - x0) k -= 0.05f;
+        while (total_w(k) > x1 - x0) {
+            auto drop = left.end();
+            for (auto it = left.begin(); it != left.end(); ++it)
+                if (it->rank < kKeep && (drop == left.end() || it->rank < drop->rank)) drop = it;
+            if (drop == left.end()) break;
+            left.erase(drop);
+        }
+        const auto draw = [&](const Prompt& p, float x, std::uint32_t word_c) {
+            const float gh = gh0 * k, th = th0 * k;
+            for (const char* g : p.glyphs) {
+                const float gw = b.width(g, gh, kGlyph);
+                b.image((std::string(kGlyphPrefix) + g).c_str(), x, y + (kFooterH - gh) * 0.5f, gw, gh, kText);
+                x += gw + 2 * k;
+            }
+            if (!p.glyphs.empty()) x += 3 * k;
+            if (!p.key.empty()) {
+                const float kw = b.width(p.key, th, kTextSmall);
+                b.text(p.key, x, y + (kFooterH - th) * 0.5f, kw + 1, th, kText, kTextSmall);
+                x += kw + 5 * k;
+            }
+            const float ww = b.width(p.word, th, kTextSmall);
+            b.text(p.word, x, y + (kFooterH - th) * 0.5f, ww + 1, th, word_c, kTextSmall);
+        };
+        float x = x0;
+        for (const Prompt& p : left) {
+            draw(p, x, kTextSoft);
+            x += prompt_w(p, k) + 14 * k;
+        }
+        draw(right, x1 - prompt_w(right, k), kAccent);
     }
 
     // a popup over the page

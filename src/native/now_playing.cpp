@@ -1,6 +1,7 @@
 // now_playing.cpp -- the system-independent parts of src/native/now_playing.h: the text forms, the file reader, the
 // poller and the popup's decisions. The system readers: now_playing_win.cpp (Windows), now_playing_mpris.cpp (Linux).
 #include "now_playing.h"
+#include "b3port/fileio.h"   // fsrobust: UTF-8 paths
 
 #include <algorithm>
 #include <cctype>
@@ -59,7 +60,7 @@ public:
     explicit FileProvider(std::string path) : path_(std::move(path)) {}
     const char* name() const override { return "file"; }
     bool read(Track& out, std::string* why) override {
-        std::ifstream f(path_, std::ios::binary);
+        std::ifstream f(b3io::u8path(path_), std::ios::binary);
         if (!f) {
             if (why) *why = "cannot read " + path_;
             return false;

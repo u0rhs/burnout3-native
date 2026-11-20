@@ -260,7 +260,10 @@ void centred_text(Canvas& c, std::string_view s, float cx, float cy, float max_w
         w = glyph::text_width(s, cap, t);
     }
     std::vector<Line> l;
-    glyph::text(s, cx - 0.5f * w, cy - 0.5f * cap, cap, t, l);
+    // promptround: one letter centred on its strokes' weight (the Xbox B's stem made it look off to the left in its
+    // ring with its box centred); a longer label (LS, RB, a key's name) on its box
+    const float x0 = s.size() == 1 ? cx - glyph::text_mass_x(s, cap, t) : cx - 0.5f * w;
+    glyph::text(s, x0, cy - 0.5f * cap, cap, t, l);
     c.strokes(l, t, rgba);
 }
 
@@ -345,6 +348,13 @@ bool face(PadButton b) { return b == PadButton::kCross || b == PadButton::kCircl
 bool shoulder(PadButton b) { return b == PadButton::kL1 || b == PadButton::kR1 || b == PadButton::kL2 || b == PadButton::kR2; }
 bool wide(PadButton b) { return b == PadButton::kStart || b == PadButton::kSelect; }
 
+// paint_base draws round_base for these, the disc's radius in box `b`
+bool round_button(PromptDevice d, PadButton pb) {
+    return d != PromptDevice::kKeyboard && !shoulder(pb) && !(wide(pb) && (d == PromptDevice::kGeneric || d == PromptDevice::kPlayStationModern));
+}
+
+float round_radius(const Box& b) { return std::min(9.4f * b.u, 0.5f * std::min(b.w, b.h) - 0.6f * b.u); }
+
 void paint_base(Canvas& c, const Box& b, PromptDevice d, PadButton pb) {
     if (d == PromptDevice::kKeyboard) { key_base(c, b); return; }
     if (shoulder(pb)) { pill_base(c, b, pb == PadButton::kL2 || pb == PadButton::kR2 ? 2.6f : 6.5f); return; }
@@ -356,11 +366,14 @@ void paint_base(Canvas& c, const Box& b, PromptDevice d, PadButton pb) {
         c.box_outline(b.cx(), b.cy(), hx, hy, hy, std::max(1.0f, 1.5f * u), kWhite);
         return;
     }
-    round_base(c, b.cx(), b.cy(), b.u, 0.5f * std::min(b.w, b.h) - 0.6f * b.u);
+    round_base(c, b.cx(), b.cy(), b.u, round_radius(b));
 }
 
 void paint_symbol(Canvas& c, const Box& b, PromptDevice d, PadButton pb, const PromptKeys& keys) {
-    const float u = b.u, cx = b.cx(), cy = b.cy();
+    // promptround: a round button's symbol shrinks with its disc (paint_base: the disc at most fills the box's short
+    // side; a face button bound to a shoulder picture's 35 x 15 box -- Impact Time's R1 as the Xbox A -- had its full
+    // size letter over the smaller ring's edge)
+    const float u = round_button(d, pb) ? b.u * std::min(1.0f, round_radius(b) / (9.4f * b.u)) : b.u, cx = b.cx(), cy = b.cy();
     if (d == PromptDevice::kKeyboard) {
         key_label(c, b, keys.scancode[std::size_t(pb)], (wide(pb) || shoulder(pb) ? 7.5f : 8.0f) * u);
         return;
@@ -542,6 +555,7 @@ void PromptAtlas::build(PromptDevice d, const PromptKeys& keys, int window_h) {
             if (want[i].kind % 2 == 0) paint_base(c, box, d, d == PromptDevice::kKeyboard ? b : keys.shown(b));
             else paint_symbol(c, box, d, d == PromptDevice::kKeyboard ? b : keys.shown(b), keys);   // remap1: the bound position's symbol
             cells_[std::size_t(want[i].kind)] = r;
+            round_[std::size_t(b)] = round_button(d, d == PromptDevice::kKeyboard ? b : keys.shown(b));
         }
         c.store(rgba_.data(), w_, p.x, p.y);
         if (want[i].kind >= 0) {   // the cell's ink
@@ -600,6 +614,40 @@ int shoulder_picture(std::string_view n) {
     return -1;
 }
 
+// promptround: a round button's six vertices `v` (one quad, its UVs over atlas cell `r`) scaled about their centre along
+// the quad's edges so an atlas pixel is as wide on screen as it is high (`unit_aspect`: an x unit's width over a y
+// unit's height): the height kept unless the disc (its base's ink, `ink`) would then be wider than the quad. The
+// cells are painted square-pixelled, but the quads are the game's pictures' (a shoulder pill's 35 x 15 cell over
+// Impact Time's 38 x 17 picture, the 640 x 448 2D's units 7 % taller than wide), which made the disc an upright oval
+void keep_round(HudVertex* v, const PromptAtlas& atlas, const PromptAtlas::Rect& r, const PromptAtlas::Rect& ink, float unit_aspect) {
+    const float cu = r.u1 - r.u0, cv = r.v1 - r.v0;
+    if (!(cu != 0 && cv != 0 && unit_aspect > 0)) return;
+    // each vertex's corner of the cell (0 / 1 each way), the corners' positions
+    float n[6][2];
+    const HudVertex* at[2][2] = {{nullptr, nullptr}, {nullptr, nullptr}};
+    for (int k = 0; k < 6; ++k) {
+        n[k][0] = std::round((v[k].u - r.u0) / cu);
+        n[k][1] = std::round((v[k].v - r.v0) / cv);
+        at[int(n[k][0]) & 1][int(n[k][1]) & 1] = &v[k];
+    }
+    if (!at[0][0] || !at[1][0] || !at[0][1]) return;
+    const float ax = at[1][0]->x - at[0][0]->x, ay = at[1][0]->y - at[0][0]->y;   // the cell's u edge, v edge
+    const float bx = at[0][1]->x - at[0][0]->x, by = at[0][1]->y - at[0][0]->y;
+    const float cx = at[0][0]->x + 0.5f * (ax + bx), cy = at[0][0]->y + 0.5f * (ay + by);
+    // on screen (in y units) per atlas pixel along each edge
+    const float la = std::hypot(ax * unit_aspect, ay), lb = std::hypot(bx * unit_aspect, by);
+    const float pw = std::fabs(cu) * float(atlas.width()), ph = std::fabs(cv) * float(atlas.height());
+    const float iw = std::fabs(ink.u1 - ink.u0) * float(atlas.width());
+    if (!(la > 0 && lb > 0 && pw > 0 && ph > 0)) return;
+    const float sa = la / pw, sb = lb / ph, s = iw > 0 ? std::min(sb, la / iw) : std::min(sa, sb);
+    const float fa = s / sa, fb = s / sb;
+    for (int k = 0; k < 6; ++k) {
+        const float a = (n[k][0] - 0.5f) * fa, b = (n[k][1] - 0.5f) * fb;
+        v[k].x = cx + a * ax + b * bx;
+        v[k].y = cy + a * ay + b * by;
+    }
+}
+
 }  // namespace
 
 int prompt_piece_button(std::string_view tex_name, int tex_w, int tex_h, const std::vector<HudVertex>& tri, std::size_t piece) {
@@ -638,7 +686,7 @@ int prompt_piece_button(std::string_view tex_name, int tex_w, int tex_h, const s
 bool prompt_texture(std::string_view n) { return n == "Buttons" || n == "dpad" || shoulder_picture(n) >= 0; }
 
 bool prompt_substitute(std::string_view tex_name, int tex_w, int tex_h, const std::vector<HudVertex>& tri, const PromptAtlas& atlas,
-                       std::vector<HudVertex>& out) {
+                       std::vector<HudVertex>& out, float unit_aspect) {
     if (!prompts_substituted(atlas.device(), atlas.keys()) || atlas.width() <= 0 || tri.empty() || tri.size() % 6 != 0) return false;
     if (tex_w <= 0 || tex_h <= 0) return false;
     bool all_start = true, moved = false;   // remap1: the PlayStation's own pictures stay but for buttons the bindings moved
@@ -705,6 +753,8 @@ bool prompt_substitute(std::string_view tex_name, int tex_w, int tex_h, const st
                     v.v = r.v0 + std::round(nv) * (r.v1 - r.v0);
                     res.push_back(v);
                 }
+                if (atlas.round(PadButton(shoulder)))
+                    keep_round(&res[res.size() - 6], atlas, r, atlas.ink(PadButton(shoulder), GlyphLayer::kBase), unit_aspect);
             }
             continue;
         }
@@ -724,6 +774,8 @@ bool prompt_substitute(std::string_view tex_name, int tex_w, int tex_h, const st
             v.y = cy + (v.y - cy) * hit->grow;
             res.push_back(v);
         }
+        const int rb = hit->button == -3 ? shoulder : hit->button;   // the button the cell shows (the arms: none)
+        if (rb >= 0 && atlas.round(PadButton(rb))) keep_round(&res[res.size() - 6], atlas, r, atlas.ink(PadButton(rb), GlyphLayer::kBase), unit_aspect);
     }
     if (atlas.device() == PromptDevice::kPlayStation && !moved) return false;
     if (atlas.device() == PromptDevice::kPlayStationModern && !all_start && !moved) return false;

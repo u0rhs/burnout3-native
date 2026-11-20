@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <set>
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
@@ -298,9 +299,26 @@ float Text::head(std::string_view s, float x, float y, float size, SDL_FColor c,
     return measure_only ? width(s, size, true) : draw(s, x, y, size, c, true);
 }
 
-std::string Text::tr(std::string_view s) const { return b3settings::translate_text(std::string(s), language_); }
+// settingsui: B3LAUNCHER_UNTRANSLATED=1 prints each text drawn in a language that its table leaves as it is (once
+// each, to stderr): the list a translator needs. Names, paths and numbers are among them by nature.
+std::string Text::tr(std::string_view s) const {
+    std::string t = b3settings::translate_text(std::string(s), language_);
+    static const bool log = [] {
+        const char* e = std::getenv("B3LAUNCHER_UNTRANSLATED");
+        return e && e[0] == '1';
+    }();
+    if (log && t == s && s.find_first_of("abcdefghijklmnopqrstuvwxyz") != std::string_view::npos) {
+        static std::set<std::string> told;
+        if (told.insert(std::string(s)).second) std::fprintf(stderr, "[untranslated %s] %s\n", language_.c_str(), std::string(s).c_str());
+    }
+    return t;
+}
 
 float Text::width(std::string_view s, float size, bool bold) {
+    if (is_verbatim(s)) {   // settingsui: the player's own text, as it is
+        Raw raw(*this);
+        return width(s.substr(1), size, bold);
+    }
     if (translating()) {
         const std::string t = tr(s);
         Raw raw(*this);
@@ -321,11 +339,16 @@ float Text::width(std::string_view s, float size, bool bold) {
 }
 
 float Text::draw(std::string_view s, float x, float y, float size, SDL_FColor c, bool bold) {
+    if (is_verbatim(s)) {   // settingsui: the player's own text, as it is
+        Raw raw(*this);
+        return draw(s.substr(1), x, y, size, c, bold);
+    }
     if (translating()) {
         const std::string t = tr(s);
         Raw raw(*this);
         return draw(t, x, y, size, c, bold);
     }
+    if (record_) record_->emplace_back(s);   // settingsui: the text as drawn (the verbatim check)
     Baked* b = baked(size, bold);
     const float lh = line_height(size);
     if (!b) {   // SDL's debug font
@@ -389,10 +412,14 @@ float Text::draw(std::string_view s, float x, float y, float size, SDL_FColor c,
 }
 
 std::vector<std::string> Text::wrap(std::string_view s, float size, float max_w, bool bold) {
-    if (translating()) {   // the whole text translated, then wrapped (its lines are drawn as they are)
-        const std::string t = tr(s);
+    // the whole text translated, then wrapped; its lines are drawn as they are (settingsui: marked verbatim, so a line
+    // is not looked up again; the player's own text likewise)
+    if (is_verbatim(s) || translating()) {
+        const std::string t = is_verbatim(s) ? std::string(s.substr(1)) : tr(s);
         Raw raw(*this);
-        return wrap(t, size, max_w, bold);
+        std::vector<std::string> lines = wrap(t, size, max_w, bold);
+        for (std::string& l : lines) l = verbatim(l);
+        return lines;
     }
     std::vector<std::string> lines;
     std::size_t at = 0;
@@ -446,6 +473,10 @@ std::vector<std::string> Text::wrap(std::string_view s, float size, float max_w,
 }
 
 std::string Text::elide(std::string_view s, float size, float max_w, bool bold) {
+    if (is_verbatim(s)) {   // settingsui: the player's own text, as it is (and still marked)
+        Raw raw(*this);
+        return verbatim(elide(s.substr(1), size, max_w, bold));
+    }
     if (translating()) {
         const std::string t = tr(s);
         Raw raw(*this);

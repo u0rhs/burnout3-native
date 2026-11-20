@@ -26,7 +26,7 @@ the game runs and the final values written back into the defaults. Presentation 
 
 ## The panel
 
-PC SETTINGS > INTERFACE > DEVELOPER MODS must be on (the panel does not exist otherwise). Then, in a race, paused or in
+PC SETTINGS > MODS > DEVELOPER MODS must be on (the panel does not exist otherwise). Then, in a race, paused or in
 photo mode:
 
 | Input | Does |

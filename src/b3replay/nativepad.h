@@ -55,7 +55,8 @@ public:
     // Scripted input (tests, b3r_pad_key): as a key event on the window.
     // padlayout (checks only): with B3NATIVE_TEST_PAD=xbox|ps|switch|generic a scripted pad of that SDL type is player 1's
     // (tools/native/race_check.sh SCENARIO=padlayout). Its inputs are script codes kTestPadCode + an SDL_GamepadButton
-    // (0..20), + 32 / 33 the left / right trigger fully pressed, + 34 the right stick up; the pad goes through the
+    // (0..20), + 32 / 33 the left / right trigger fully pressed, + 34 / 35 / 36 / 37 the right stick up / left / right /
+    // down (garagecam1: 35-37); the pad goes through the
     // player's bindings (its layout for the type, in the game's context) as a window pad does. Without the variable
     // these codes are ignored.
     static constexpr std::uint16_t kTestPadCode = 1024;
@@ -63,6 +64,9 @@ public:
     // devnav1: PageUp (bit 0) / PageDown (bit 1) held on the keyboard (the window's or a script's): the PC SETTINGS
     // page's previous / next section. No pad button: the game never sees them.
     int page_keys() const { return page_keys_.load(); }
+    // settingsui: player 1's right stick pushed up (1) / down (2): the PC SETTINGS page's previous / next section on any
+    // controller layout (the PS2 report's L2 / R2 carry nothing in the menus on the Xbox layout)
+    int section_stick() const { return section_stick_.load(); }
     // mac4 (b3r_pad_context): the key map's context, from the game thread (driving: the race simulation runs)
     void set_driving(bool on);
 
@@ -159,6 +163,11 @@ public:
     // (the newest poll handed to the renderer + 1, PhotoMode::game_poll), and taken by the render thread: those up to
     // `upto` (an offscreen shot of poll N shows the key's state at N), in order
     std::vector<std::uint32_t> take_hd_presses(std::uint32_t upto = 0xFFFFFFFFu);
+    // todrace (tools/native/race_time.h): native_play says each VBlank whether a track page (Single Event's, Multiplayer's) is up
+    // (b3r_race_time_page); while it is, the TIME OF DAY action's key and chord (PortAction::RaceTime) are taken from the
+    // game's input (the game sees none of them) and each press is counted for native_play (b3r_race_time_presses)
+    void set_race_time_page(bool up) { race_page_.store(up); }
+    int take_race_time_presses() { return race_presses_.exchange(0); }
     // The first key bound to a port action as a label ("F9"; "-" when none): for the texts that name it
     std::string port_key_text(b3native::input::PortAction a) const;
     // Ctrl / GUI held, and that modifier is not itself bound to anything: a window shortcut, not a game key
@@ -174,6 +183,9 @@ public:
     // the rest still do. type(): scripted text (b3r_pad_text).
     void set_text_mode(bool on) { text_mode_.store(on); }
     bool text_mode() const { return text_mode_.load(); }
+    // settingsui: a key that types while the game's keyboard is up (a letter, a digit, Enter ...: not a shortcut then);
+    // the window's shortcuts check it first (a shortcut rebound to a letter does not fire while a name is typed)
+    bool typing(std::uint16_t scancode, unsigned sdl_mod) const;
     void sync_text_input(SDL_Window* w);   // window thread, once per frame: SDL's text input follows the mode
     void type(const char* utf8);
     int take_text(char* out, int max);
@@ -198,7 +210,8 @@ private:
     b3native::input::BoostLatch boost2_;  // pad2: player 2's BOOST Toggle (under mu_)
     std::vector<SDL_Gamepad*> open_;
     std::atomic<bool> enabled_{false}, quit_{false}, focused_{true}, hold_unfocused_{true}, boost_toggle_{false};
-    std::atomic<int> page_keys_{0};   // devnav1: PageUp (1) / PageDown (2) held
+    std::atomic<int> page_keys_{0};
+    std::atomic<int> section_stick_{0};   // settingsui   // devnav1: PageUp (1) / PageDown (2) held
     b3native::input::BoostLatch boost_;   // (under mu_)
     b3native::input::RestartMacro restart_;   // speedrun1 (under mu_)
     bool restart_pending_ = false, combo_prev_ = false;   // (under mu_)
@@ -210,6 +223,11 @@ private:
     std::uint64_t port_pad_prev_ = 0;                   // (under mu_) the gamepad port actions held at the last poll
     std::atomic<std::uint64_t> port_pad_edges_{0};
     std::vector<std::uint32_t> hd_presses_;   // hdkey (under mu_)
+    std::atomic<bool> race_page_{false};      // todrace
+    std::atomic<int> race_presses_{0};
+    b3native::input::PageChord race_chord_;   // todrace: the chord's withholding, kept until released (under mu_)
+    bool race_keys_safe_ = true, race_pad_safe_ = true;   // todrace: the bindings take nothing the pages read (under mu_)
+    void race_time_press(const char* by);
     std::atomic<std::uint64_t> taken_{0};
     PromptDeviceTracker tracker_;   // mac5 (under mu_)
     std::array<SDL_JoystickID, 2> active_pad_{};   // padlayout: each player's last used pad (under mu_)
@@ -221,6 +239,8 @@ private:
     void pad_used(SDL_JoystickID id);              // (mu_ held)
     bool keyboard_used_ = false;
     std::atomic<bool> text_mode_{false};   // mac5
+    bool composing_ = false;     // settingsui: an input method's composition is open (its Enter commits it, not Done)
+    double committed_at_ = -1;   // ... and when one was last committed (the Enter that did it may come just after)
     bool text_started_ = false;            // (window thread)
     std::vector<char> text_;               // (under mu_)
     float wheel_acc_ = 0;                  // (window thread)

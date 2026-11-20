@@ -79,6 +79,9 @@ Bytes with_entry(const ShortcutsFile& f, const NewShortcut& s);
 // The same program: quotes and surrounding spaces ignored; on Windows also case and / against \ (`fold`)
 bool same_exe(std::string_view a, std::string_view b, bool fold);
 bool fold_paths();   // true on Windows
+// robust2: macOS App Translocation: an app opened from where it was downloaded (not moved to Applications) runs from a
+// read-only random copy (/private/var/folders/.../AppTranslocation/<id>/d/...), a path that is gone the next start
+bool translocated(std::string_view exe_path);
 const Shortcut* find_by_exe(const ShortcutsFile& f, std::string_view exe, bool fold);
 // An existing entry's id: its "appid" field, else (an older file) the one Steam computes from its Exe and name
 std::uint32_t entry_appid(const Shortcut& e);

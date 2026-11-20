@@ -229,7 +229,7 @@ TEST(strokes_as_the_full_search) {
             ++compared;
         }
     }
-    CHECK(compared == 12);
+    CHECK(compared == 15);   // (photoblur: five lines, the motion blur's keys the fifth)
 }
 
 // devnav1: the help box kept between changes (Notice::picture_kept: one changed line redrawn in its rows) is the whole
@@ -349,7 +349,8 @@ TEST(pad_combo_and_the_exit_latch) {
 
 TEST(help_lines) {
     const auto k = PhotoMode::help_lines(false, 55);
-    CHECK(k.size() == 4);
+    CHECK(k.size() == 5);
+    CHECK(k[4].find("MOTION BLUR J") != std::string::npos && k[4].find("K/L") != std::string::npos);
     CHECK(k[0] == "PHOTO MODE   FOV 55   DOF OFF");
     CHECK(k[1].find("WASD") != std::string::npos);
     CHECK(k[3].find("DEPTH OF FIELD F") != std::string::npos);
@@ -761,3 +762,189 @@ TEST(photo_ui_readout_pictures_change_with_the_values) {
 }  // namespace
 
 TEST_MAIN("photo mode (src/b3replay/photomode.h)")
+
+// ---- photoblur: the motion blur (PhotoMotion, b3gfx FrameParams::Motion) ----
+
+TEST(motion_blur_modes_and_shutter) {
+    b3replay::PhotoMotion m;
+    CHECK(!m.on() && m.denominator() == 60 && m.status() == "MOTION OFF");   // off, 1/60 s ready
+    m.next_mode();
+    CHECK(m.mode == b3replay::PhotoMotion::kTracking && m.status() == "MOTION TRACKING 1/60");
+    m.next_mode();
+    CHECK(m.status() == "MOTION PANNING 1/60");
+    m.next_mode();
+    CHECK(m.status() == "MOTION STATIC 1/60");
+    m.next_mode();
+    CHECK(!m.on());
+    for (int i = 0; i < 9; ++i) m.step_shutter(+1);
+    CHECK(m.denominator() == 15);   // the slowest, clamped
+    for (int i = 0; i < 9; ++i) m.step_shutter(-1);
+    CHECK(m.denominator() == 500);
+    CHECK_NEAR(m.seconds(), 0.002, 1e-7);
+    CHECK(std::string(b3replay::PhotoMotion::mode_name(2)) == "PANNING");
+    // the help's first line shows it while on
+    m.mode = b3replay::PhotoMotion::kPanning;
+    CHECK(PhotoMode::help_lines(false, 60, PhotoDof{}, 0, m)[0] == "PHOTO MODE   FOV 60   DOF OFF   MOTION PANNING 1/500");
+}
+
+namespace {
+b3replay::Vehicle test_car(std::uint32_t id, b3replay::VehicleKind kind, float x, float z, float vx, float vz) {
+    b3replay::Vehicle v;
+    v.id = id;
+    v.kind = kind;
+    v.main.r[3][0] = x;
+    v.main.r[3][2] = z;
+    v.shadow.sup[0] = 1; v.shadow.sup[1] = 1.2f; v.shadow.sup[2] = 2;
+    v.shadow.inf[0] = -1; v.shadow.inf[1] = -0.1f; v.shadow.inf[2] = -2;
+    v.shadow.dist = 0.3f;
+    v.motion[0] = vx;
+    v.motion[2] = vz;
+    v.motion_known = true;
+    return v;
+}
+}  // namespace
+
+TEST(motion_blur_parameters) {
+    using b3replay::PhotoMotion;
+    using b3replay::VehicleKind;
+    const float pos[3] = {0, 0, 0}, at[3] = {0, 0, 1};
+    const Camera g = game_camera(pos, at);
+    std::vector<b3replay::Vehicle> cars;
+    cars.push_back(test_car(1, VehicleKind::kTraffic, 5, 20, 0, -10));   // drawn traffic
+    cars.push_back(test_car(b3replay::kPlayerRaceCar, VehicleKind::kRaceCar, 0, 10, 20, 0));   // the subject
+    b3replay::Vehicle hidden = test_car(2, VehicleKind::kTraffic, 0, 5, 0, 0);
+    hidden.cull = b3replay::Vehicle::kOutside;   // not drawn: no box
+    cars.push_back(hidden);
+    PhotoMotion m;
+    CHECK(!m.params(g, cars, b3replay::kPlayerRaceCar).on);   // off: nothing
+    m.mode = PhotoMotion::kTracking;   // 1/60 s: +-1/120 s
+    b3gfx::FrameParams::Motion p = m.params(g, cars, b3replay::kPlayerRaceCar);
+    CHECK(p.on && p.boxes == 2);
+    CHECK_NEAR(p.cam[0], 20.0 / 120.0, 1e-6);   // the camera travels with the subject
+    CHECK_NEAR(p.box[0].move[0], 20.0 / 120.0, 1e-6);   // the subject first: relative motion 0
+    CHECK_NEAR(p.box[1].move[2], -10.0 / 120.0, 1e-6);
+    // the box: the shadow box a little larger, its floor 5 cm over the road (0.3 m under the car's origin)
+    CHECK_NEAR(p.box[0].lo[0], -1.15, 1e-6);
+    CHECK_NEAR(p.box[0].hi[2], 2.15, 1e-6);
+    CHECK_NEAR(p.box[0].lo[1], -0.25, 1e-6);
+    // to_local: the car's position is its box's origin
+    const float* r0 = p.box[0].to_local[2];
+    CHECK_NEAR(r0[0] * 0 + r0[1] * 0 + r0[2] * 10 + r0[3], 0.0, 1e-5);
+    CHECK_NEAR(p.box[1].to_local[0][0] * 5 + p.box[1].to_local[0][3], 0.0, 1e-5);
+    // Static: the camera stands, the cars keep their motion
+    m.mode = PhotoMotion::kStatic;
+    p = m.params(g, cars, b3replay::kPlayerRaceCar);
+    CHECK(p.cam[0] == 0 && p.cam[1] == 0 && p.cam[2] == 0 && p.rot_p[0] == 1 && p.rot_p[4] == 1);
+    CHECK_NEAR(p.box[0].move[0], 20.0 / 120.0, 1e-6);
+    // Panning (1/15 s): the camera stands and turns; at +T/2 the subject's middle seen turned back is where it was
+    m.mode = PhotoMotion::kPanning;
+    m.shutter = 5;
+    p = m.params(g, cars, b3replay::kPlayerRaceCar);
+    CHECK(p.cam[0] == 0 && p.cam[2] == 0);
+    const float mid[3] = {0, 0.5f * (-0.25f + 1.35f), 10}, half = 0.5f / 15.0f;
+    for (const float sgn : {-1.0f, 1.0f}) {
+        const float* R = sgn > 0 ? p.rot_p : p.rot_m;
+        const float q[3] = {mid[0] + sgn * 20 * half, mid[1], mid[2]};
+        const float t[3] = {R[0] * q[0] + R[1] * q[1] + R[2] * q[2], R[3] * q[0] + R[4] * q[1] + R[5] * q[2], R[6] * q[0] + R[7] * q[1] + R[8] * q[2]};
+        const float lt = std::sqrt(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]), lm = std::sqrt(mid[0] * mid[0] + mid[1] * mid[1] + mid[2] * mid[2]);
+        for (int k = 0; k < 3; ++k) CHECK_NEAR(t[k] / lt, mid[k] / lm, 1e-5);
+    }
+    // eight boxes at most, the subject first, then the nearest
+    for (int i = 0; i < 12; ++i) cars.push_back(test_car(100 + i, VehicleKind::kRaceCar, 0, 30.0f + 10.0f * float(i), 0, 30));
+    p = m.params(g, cars, b3replay::kPlayerRaceCar);
+    CHECK(p.boxes == b3gfx::FrameParams::Motion::kBoxes);
+    CHECK_NEAR(p.box[0].to_local[2][3], -10.0, 1e-5);   // the subject (z 10)
+    CHECK_NEAR(p.box[1].to_local[0][3], -5.0, 1e-5);    // the traffic car at (5, 20): the nearest other
+    // a car not seen moving yet does not move
+    cars[1].motion_known = false;
+    m.mode = PhotoMotion::kTracking;
+    p = m.params(g, cars, b3replay::kPlayerRaceCar);
+    CHECK(p.cam[0] == 0 && p.box[0].move[0] == 0);
+}
+
+TEST(motion_blur_controls) {
+    PhotoMode& m = PhotoMode::instance();
+    const float pos[3] = {0, 2, 0}, at[3] = {0, 0, 1};
+    const Camera g = game_camera(pos, at);
+    const std::vector<b3replay::Vehicle> cars;
+    b3gfx::FrameParams::Motion out;
+    m.set_game_paused(true);
+    m.set_scene(true);
+    CHECK(!m.key(SDL_SCANCODE_J, true));   // photo mode off: J is the game's
+    m.key(SDL_SCANCODE_J, false);
+    CHECK(!m.motion_state().on());
+    CHECK(m.key(SDL_SCANCODE_P, true));
+    m.key(SDL_SCANCODE_P, false);
+    m.advance(1.0f / 60.0f, g);
+    m.motion(g, cars, out);
+    CHECK(!out.on);   // off by default
+    CHECK(m.key(SDL_SCANCODE_J, true));
+    m.key(SDL_SCANCODE_J, false);
+    CHECK(m.key(SDL_SCANCODE_L, true));   // slower: 1/30
+    m.key(SDL_SCANCODE_L, false);
+    m.motion(g, cars, out);
+    CHECK(out.on && m.motion_state().mode == b3replay::PhotoMotion::kTracking && m.motion_state().denominator() == 30);
+    CHECK(m.key(SDL_SCANCODE_K, true));
+    m.key(SDL_SCANCODE_K, false);
+    CHECK(m.motion_state().denominator() == 60);
+    // the pad: R3 alone, a short click, the next mode; held long or with the stick moved (it is the look stick's button)
+    // nothing; R3 + D-pad right the shutter, not the mode, and not the focus
+    PhotoPad p;
+    m.pad(p, 10.0);
+    p.motion = true;
+    m.pad(p, 10.0);
+    p = PhotoPad{};
+    m.pad(p, 10.5);   // held half a second
+    CHECK(m.motion_state().mode == b3replay::PhotoMotion::kTracking);
+    p.motion = true;
+    m.pad(p, 11.0);
+    p.rx = 0.6f;      // the camera turned meanwhile
+    m.pad(p, 11.05);
+    p = PhotoPad{};
+    m.pad(p, 11.1);
+    CHECK(m.motion_state().mode == b3replay::PhotoMotion::kTracking);
+    p.motion = true;
+    p.rx = 0.1f;      // a stick resting a little off centre is fine
+    m.pad(p, 12.0);
+    p = PhotoPad{};
+    m.pad(p, 12.15);
+    CHECK(m.motion_state().mode == b3replay::PhotoMotion::kPanning);
+    const float stops = m.dof_state().stops;
+    p.motion = true;
+    m.pad(p);
+    p.right = p.shutter_slower = true;
+    m.pad(p);
+    for (int i = 0; i < 30; ++i) m.advance(1.0f / 60.0f, g);
+    p = PhotoPad{};
+    m.pad(p);
+    CHECK(m.motion_state().mode == b3replay::PhotoMotion::kPanning && m.motion_state().denominator() == 30);
+    CHECK(m.dof_state().stops == stops);
+    // R3 with L3 (the photo mode chord) leaves without a mode change
+    p.motion = true;
+    m.pad(p);
+    p.target = p.toggle = true;
+    m.pad(p);
+    CHECK(!m.active());
+    p = PhotoPad{};
+    m.pad(p);
+    CHECK(m.motion_state().mode == b3replay::PhotoMotion::kPanning);
+    out = b3gfx::FrameParams::Motion{};
+    m.motion(g, cars, out);
+    CHECK(!out.on);   // photo mode closed: nothing
+    // the setting stays for the next entry; leave it off for the other tests
+    CHECK(m.key(SDL_SCANCODE_P, true));
+    m.key(SDL_SCANCODE_P, false);
+    for (int i = 0; i < 2; ++i) { m.key(SDL_SCANCODE_J, true); m.key(SDL_SCANCODE_J, false); }
+    CHECK(!m.motion_state().on());
+    m.key(SDL_SCANCODE_ESCAPE, true);
+    m.key(SDL_SCANCODE_ESCAPE, false);
+    m.set_game_paused(false);
+    // the strip shows the keys and the pad's R3 + D-pad
+    const auto kb = b3replay::PhotoHud::strip_labels(b3replay::PromptDevice::kKeyboard, b3replay::PhotoKeys{});
+    for (const char* k : {"J", "K", "L"}) CHECK(std::find(kb.begin(), kb.end(), k) != kb.end());
+    const b3replay::PhotoKeys def = b3replay::photo_keys_from(b3native::input::default_port());
+    CHECK(def.pad_shutter_dpad && def.motion == SDL_SCANCODE_J);
+    b3native::input::PortControls b = b3native::input::default_port();
+    b.pad[std::size_t(b3native::input::PortAction::PhotoShutterSlower)] = {b3native::input::PadInput::North};
+    CHECK(!b3replay::photo_keys_from(b).pad_shutter_dpad);
+}

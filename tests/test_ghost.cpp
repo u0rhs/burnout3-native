@@ -3,6 +3,7 @@
 #include "test.h"
 
 #include "ghost.h"
+#include "records.h"
 
 #include <chrono>
 #include <cmath>
@@ -267,5 +268,42 @@ TEST(recorder_test_lap) {
 }
 
 }  // namespace
+
+// media1 (records.h): a replay playing writes no record; the folder is read as given
+TEST(records_replay_playback) {
+    records::Run play;
+    play.playback = true;
+    CHECK(!records::writes("ghosts", play));
+    CHECK(records::folder("ghosts", play) == "ghosts");   // the player's own ghost is still shown
+    const records::Run own;
+    CHECK(records::writes("ghosts", own));
+    CHECK(!records::writes("", own));
+    CHECK(records::folder("ghosts", own) == "ghosts");
+}
+
+// media1 (records.h): a gameplay-changing mod set reads and writes its own folder; the plain game's lists only its own
+// files, so it never sees that set's ghosts
+TEST(records_gameplay_mods_apart) {
+    const fs::path dir = fs::temp_directory_path() / ("b3ghost-records-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(dir);
+    records::Run mod;
+    mod.gameplay_set = "0123456789abcdef";
+    const std::string folder = records::folder(dir.string(), mod);
+    CHECK(fs::path(folder) == dir / "modded-0123456789abcdef");
+    CHECK(records::writes(dir.string(), mod));
+    CHECK(records::folder("", mod).empty());
+    const Lap l = make_lap(50, 20);
+    CHECK(save((fs::path(folder) / file_name(l.track, l.car)).string(), l));
+    Lap got;
+    CHECK(!best_for_track(dir.string(), l.track, got));   // the plain game: none
+    CHECK(best_for_track(folder, l.track, got));          // the set: its lap
+    CHECK(got.time == 50);
+    records::Run play = mod;
+    play.playback = true;
+    CHECK(!records::writes(dir.string(), play));
+    CHECK(records::folder(dir.string(), play) == folder);   // a replay with that set shows that set's ghost
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
 
 TEST_MAIN("Time Attack ghosts (src/b3replay/ghost.h)")

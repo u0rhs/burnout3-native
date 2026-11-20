@@ -1,4 +1,4 @@
-// splitlayout1: the 2-player split screen's layout choice (PC SETTINGS > CAMERA > SPLIT SCREEN; docs/pc-settings.md
+// splitlayout1: the 2-player split screen's layout choice (PC SETTINGS > DISPLAY > LAYOUT > SPLIT SCREEN; docs/pc-settings.md
 // §7.11, docs/native-renderer.md §29.7). Pure maths, no renderer state: the views' rectangles, each view's projection
 // (its view window) and the placement of each player's 2D (HUD) inside its own view. View::split_frame uses it.
 //

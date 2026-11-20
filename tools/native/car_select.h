@@ -1,5 +1,5 @@
 // car_select.h -- carsel1 (2026-11-13; LB / RB change the car series): the car pages native_play's CAR SERIES ON L1 / R1 applies to (src/native/input_keys.h ShoulderSeries; PC
-// SETTINGS > INTERFACE > CONTROLLER, opt-in). Read only: the game's current menu page, compared with two page objects.
+// SETTINGS > CAR > GARAGE, opt-in). Read only: the game's current menu page, compared with two page objects.
 //
 // What the game does on these pages [C: the generated units' code, the ELF's vtables and its __sinit func_004D7150]:
 // - The car select (SINGLE EVENT, WORLD TOUR, MULTIPLAYER: G1 / G2 SELECT CAR) is the CB3CarSelectPage object

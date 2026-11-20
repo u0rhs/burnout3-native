@@ -22,7 +22,7 @@
 // replay ("now_playing" setting op) and a replay plays the recorded songs instead of reading the system, so a replay
 // shows the same popups on the same frames.
 //
-// Settings: PC SETTINGS > INTERFACE > MUSIC > OTHER MUSIC APPS (ini `other_music_apps` 0-1, default 0; b3r_other_music_apps).
+// Settings: PC SETTINGS > AUDIO > MUSIC > OTHER MUSIC APPS (ini `other_music_apps` 0-1, default 0; b3r_other_music_apps).
 // B3NATIVE_NOW_PLAYING=0/1 overrides it, B3NATIVE_NOW_PLAYING_FILE=<file> reads key=value lines from a file instead of
 // the system (tests, scripts), B3NATIVE_NOW_PLAYING_AT=<VBlank> reads nothing before that VBlank (tests: a popup on a
 // known frame), B3NATIVE_NOW_PLAYING_OFF=1 does not install the wrapper.
@@ -32,6 +32,7 @@
 #include "custom_music.h"
 #include "hook_table.h"
 #include "now_playing.h"
+#include "b3port/fileio.h"   // fsrobust
 #include "platform.h"
 
 #include <cstdint>
@@ -51,7 +52,7 @@ public:
     const b3nowplaying::Track& latch(bool on, std::uint64_t vblank, bool hold = false) {
         if (on && !poller_) {
             poller_ = std::make_unique<b3nowplaying::Poller>([](std::string* why) -> std::unique_ptr<b3nowplaying::Provider> {
-                if (const char* f = std::getenv("B3NATIVE_NOW_PLAYING_FILE"); f && *f) return b3nowplaying::file_provider(f);
+                if (const auto f = b3io::getenv("B3NATIVE_NOW_PLAYING_FILE")) return b3nowplaying::file_provider(*f);
                 return b3nowplaying::system_provider(why);
             });
             std::printf("now_playing: VBlank %llu: reading other music apps (%s)\n", static_cast<unsigned long long>(vblank),

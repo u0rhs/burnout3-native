@@ -1,5 +1,7 @@
 // settings1: values, presets, ini, HSET (include/b3settings/settings.h).
 #include "b3settings/settings.h"
+#include "b3port/fileio.h"
+#include "b3port/user_dir.h"   // portable mode: folders inside the install kept relative to it
 
 #include <cctype>
 #include <algorithm>
@@ -39,10 +41,11 @@ const Key kKeys[] = {
     {"lead", nullptr, &Settings::lead, -1, 100},
     {"frames_in_flight", nullptr, &Settings::frames_in_flight, -1, 3},
     {"msaa", nullptr, &Settings::msaa, 1, 8},
-    {"render_scale", nullptr, &Settings::render_scale, 50, 100},     // effects2
+    {"render_scale", nullptr, &Settings::render_scale, 50, 200},     // effects2; perf4: above 100 supersampled
     {"upscaling", nullptr, &Settings::upscaling, 0, 1},              // 1.1
     {"dither", &Settings::dither, nullptr, 0, 0},
     {"hd_textures", &Settings::hd_textures, nullptr, 0, 0},
+    {"xbox_textures", &Settings::xbox_textures, nullptr, 0, 0},   // xboximport
     {"car_detail_highest", &Settings::car_detail_highest, nullptr, 0, 0},
     {"car_reflections", nullptr, &Settings::car_reflections, 0, 2},   // reflect1
     {"shadows", &Settings::shadows, nullptr, 0, 0},
@@ -65,6 +68,22 @@ const Key kKeys[] = {
     {"fov_correction", &Settings::fov_correction, nullptr, 0, 0},
     {"camera_distance", nullptr, &Settings::camera_distance, 90, 150},   // 1.1 (chase camera, drawn only)
     {"camera_height", nullptr, &Settings::camera_height, 0, 100},
+    {"car_paint", nullptr, &Settings::car_paint, 0, 1},                   // carpaint (drawn only)
+    {"paint_red", nullptr, &Settings::paint_red, 0, 255},
+    {"paint_green", nullptr, &Settings::paint_green, 0, 255},
+    {"paint_blue", nullptr, &Settings::paint_blue, 0, 255},
+    {"car_decals", &Settings::car_decals, nullptr, 0, 0},
+    {"p2_car_paint", nullptr, &Settings::p2_car_paint, 0, 1},             // padpaint (drawn only)
+    {"p2_paint_red", nullptr, &Settings::p2_paint_red, 0, 255},
+    {"p2_paint_green", nullptr, &Settings::p2_paint_green, 0, 255},
+    {"p2_paint_blue", nullptr, &Settings::p2_paint_blue, 0, 255},
+    {"p2_car_decals", &Settings::p2_car_decals, nullptr, 0, 0},
+    {"paint_finish", nullptr, &Settings::paint_finish, 0, 2},
+    {"time_of_day", nullptr, &Settings::time_of_day, 0, 1},               // night (drawn only)
+    {"moon", &Settings::moon, nullptr, 0, 0},
+    {"surface_detail", &Settings::surface_detail, nullptr, 0, 0},
+    {"ambient_occlusion", &Settings::ambient_occlusion, nullptr, 0, 0},
+    {"sun_shadows", &Settings::sun_shadows, nullptr, 0, 0},                // sunshadow (drawn only)
     {"fps_view", nullptr, &Settings::fps_view, 0, 3},                     // fpsoverlay2
     {"fps_corner", nullptr, &Settings::fps_corner, 0, 3},
     {"skip_hint", &Settings::skip_hint, nullptr, 0, 0},
@@ -91,8 +110,10 @@ const Key kKeys[] = {
     {"adaptive_triggers", nullptr, &Settings::adaptive_triggers, 0, 1},   // pad1 (DualSense adaptive triggers)
     {"adaptive_triggers_strength", nullptr, &Settings::adaptive_triggers_strength, 10, 100},
     {"series_shoulders", nullptr, &Settings::series_shoulders, 0, 1},     // carsel1 (car series on L1 / R1)
+    {"garage_camera", &Settings::garage_camera, nullptr, 0, 0},           // garagecam1 (the car pages' view round the car)
     {"record_replays", nullptr, &Settings::record_replays, 0, 1},         // replay1 (replay files)
     {"developer_mods", nullptr, &Settings::developer_mods, 0, 1},         // tune4 (the tuning console)
+    {"voices", nullptr, &Settings::voices, 0, 1},                         // 1.3.0 VOICES (0 the language's, 1 English)
 };
 
 const char* const kFilterNames[] = {"point", "bilinear", "trilinear", "aniso2", "aniso4", "aniso8", "aniso16"};
@@ -170,6 +191,7 @@ Settings with_preset(Settings s, Preset p) {
         s.filter = Filter::kBilinear;
         s.post_pc = false;
         s.whole_track = false;
+        s.sun_shadows = false;   // sunshadow: a remaster feature (the other presets leave the row as it is)
         break;
     case Preset::kLow:      // weak GPUs: no AA, no full-screen passes
         s.msaa = 1;
@@ -183,6 +205,7 @@ Settings with_preset(Settings s, Preset p) {
         s.render_scale = 75;         // effects2: the 3D picture at 75 % of the window
         s.sparks = kLevelLow;        // effects2: a quarter of the sparks and of the crash debris
         s.popcorn = kLevelLow;
+        s.sun_shadows = false;       // sunshadow: the extra pass is for faster cards
         break;
     case Preset::kMedium:
         s.msaa = 2;
@@ -310,27 +333,50 @@ Settings from_ini(std::string_view text, std::vector<std::string>* warnings) {
 }
 
 bool load_file(const std::string& path, Settings& s, std::string* why) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(b3io::u8path(path), std::ios::binary);   // fsrobust: UTF-8 path (Windows: opened wide)
     if (!f) { if (why) *why = "no file " + path; return false; }
     std::stringstream ss;
     ss << f.rdbuf();
     std::vector<std::string> w;
     s = from_ini(ss.str(), &w);
+    paths_from_install(s, b3io::exe_dir());
     if (why && !w.empty()) *why = w.front();
     return true;
 }
 
+void paths_to_install(Settings& s, const std::filesystem::path& install) {
+    s.hd_pack_dir = b3io::install_relative(s.hd_pack_dir, install);
+    s.music_folder = b3io::install_relative(s.music_folder, install);
+}
+void paths_from_install(Settings& s, const std::filesystem::path& install) {
+    s.hd_pack_dir = b3io::install_resolved(s.hd_pack_dir, install);
+    s.music_folder = b3io::install_resolved(s.music_folder, install);
+}
+
 bool save_file(const std::string& path, const Settings& s, std::string* why) {
-    const std::string tmp = path + ".tmp";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f) { if (why) *why = "cannot write " + tmp; return false; }
-        f << to_ini(s);
-        if (!f) { if (why) *why = "write failed " + tmp; return false; }
+    Settings out = s;
+    paths_to_install(out, b3io::exe_dir());
+    return b3io::replace_file(b3io::u8path(path), to_ini(out), why);   // fsrobust: path.tmp, flushed, then one replace
+}
+
+Settings merge_changes(const Settings& base, const Settings& mine, const Settings& disk) {
+    Settings out = mine;
+    for (const Key& k : kKeys) {
+        if (k.flag && mine.*(k.flag) == base.*(k.flag)) out.*(k.flag) = disk.*(k.flag);
+        if (k.num && mine.*(k.num) == base.*(k.num)) out.*(k.num) = disk.*(k.num);
     }
-    std::remove(path.c_str());   // Windows: rename does not replace
-    if (std::rename(tmp.c_str(), path.c_str()) != 0) { if (why) *why = "cannot rename to " + path; return false; }
-    return true;
+    if (mine.filter == base.filter) out.filter = disk.filter;
+    if (mine.hd_pack_dir == base.hd_pack_dir) out.hd_pack_dir = disk.hd_pack_dir;
+    if (mine.music_folder == base.music_folder) out.music_folder = disk.music_folder;
+    if (mine.language == base.language) out.language = disk.language;
+    return out;
+}
+
+bool save_merged(const std::string& path, const Settings& base, Settings& mine, std::string* why) {
+    Settings disk = base;
+    load_file(path, disk);   // no file: nothing else wrote it
+    mine = merge_changes(base, mine, disk);
+    return save_file(path, mine, why);
 }
 
 std::vector<std::uint8_t> hset_encode(const Settings& s, std::uint32_t serial) {

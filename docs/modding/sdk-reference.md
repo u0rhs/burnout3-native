@@ -62,10 +62,17 @@ window run, a library the user has not allowed (below).
 The Mods page shows each code mod's result at the last start (`<user data>/mods-state.ini`).
 
 **Trust.** A code mod is a program: nothing stops a library from calling the operating system. The API's limits are
-there for correctness and determinism, not security. The launcher asks the user once per library (its SHA-256, kept in
-`<user data>/mods-trusted.ini`) when the mod is turned on or the game started; a new version of the library is asked
-about again. A window run refuses a library that was not allowed. Offscreen runs (the port's checks, scripts naming
-`--mods`) are not asked. Install code mods only from people you trust, preferably with their source.
+there for correctness and determinism, not security. The launcher asks the user once per mod and set of files when the
+mod is turned on or the game started: the permission, kept in `<user data>/mods-trusted.ini`, is for the mod's id and
+one SHA-256 over every library file in the mod's folder (any `.dll`, `.so`, `.so.<n>` or `.dylib`, in any subfolder,
+and the library `[code]` names), so a new version that changes the main library or only a library it loads is asked
+about again. A window run refuses a mod whose id and set were not allowed, and the game hashes the set again right
+before it loads the library (on Windows the files are held against writes from that hash to the load), so a file
+changed after the check is refused too. On Linux and macOS a short window stays between that last hash and `dlopen`
+(loading through `/proc/self/fd` would break the library's `$ORIGIN` lookup of the libraries beside it); only a
+program already able to write the mod's folder could use it. Offscreen runs (`--offscreen`: the port's own checks and test scripts naming
+`--mods`) are not asked: that is test-only behaviour, the launcher never starts the game offscreen. Install code mods
+only from people you trust, preferably with their source.
 
 **The mod hash** covers every library `[code]` names (`code <system> <path> <size> <fnv>` lines in the mod hash,
 [mod-format.md](mod-format.md)), so the set hash in logs, pad recordings and replays changes when a library does.
@@ -179,7 +186,7 @@ Where the values live and when they change:
 
 | Member | Does |
 |---|---|
-| `uint32_t texture(self, w, h, rgba)` | a texture from `w` x `h` straight-alpha RGBA pixels, rows top first, up to 1024 x 1024; its id (0: refused) |
+| `uint32_t texture(self, w, h, rgba)` | a texture from `w` x `h` straight-alpha RGBA pixels, rows top first, up to 1024 x 1024; its id (0: refused). A mod may have 64 textures, 16 MB of pixels in all (one log line, then 0); a mod that does not load has its textures dropped |
 | `void quad(self, x, y, w, h, rgba, texture)` | a rectangle filled with `rgba`, or the texture tinted by it (`texture` 0: none) |
 | `void text(self, x, y, size, rgba, utf8)` | text from its top left corner, letters `size` high, in the port's stroke font: A-Z, 0-9, space and `+ - / . : ;` (lower case is drawn as upper case) |
 

@@ -192,7 +192,8 @@ std::optional<CardSaveDirectory> read_folder(const fs::path& dir, std::optional<
         if (error) *error = "cannot list " + dir.string();
         return std::nullopt;
     }
-    for (const fs::directory_entry& e : it) {
+    for (const fs::directory_iterator end; !ec && it != end; it.increment(ec)) {   // fsrobust: never throws
+        const fs::directory_entry& e = *it;
         std::error_code fec;
         if (!e.is_regular_file(fec) || fec) continue;
         const std::string on_disk = e.path().filename().string();
@@ -207,6 +208,10 @@ std::optional<CardSaveDirectory> read_folder(const fs::path& dir, std::optional<
         f.content = std::move(*bytes);
         f.created = f.modified = card_timestamp_from_unix(mtime(e.path(), fixed));
         d.files.push_back(std::move(f));
+    }
+    if (ec) {   // a folder error part way: not a save with files missing
+        if (error) *error = "cannot list " + dir.string() + ": " + ec.message();
+        return std::nullopt;
     }
     std::sort(d.files.begin(), d.files.end(), [](const CardFile& a, const CardFile& b) {
         const bool ia = is_icon_sys(a.name), ib = is_icon_sys(b.name);

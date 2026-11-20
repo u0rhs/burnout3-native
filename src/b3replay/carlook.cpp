@@ -1,5 +1,6 @@
 // carlook.cpp -- see carlook.h (reflect2).
 #include "carlook.h"
+#include "b3port/fileio.h"   // fsrobust: UTF-8 paths
 
 #include <algorithm>
 #include <cmath>
@@ -105,7 +106,7 @@ std::string ini_path() { std::lock_guard<std::mutex> l(g_mu); return g_dir.empty
 std::string values_path() { std::lock_guard<std::mutex> l(g_mu); return g_dir.empty() ? std::string() : g_dir + "/car_look_values.txt"; }
 
 bool load_file(const std::string& path, std::string* why) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(b3io::u8path(path), std::ios::binary);
     if (!f) { if (why) *why = "cannot read " + path; return false; }
     std::stringstream ss;
     ss << f.rdbuf();
@@ -133,10 +134,7 @@ void load_user(const std::string& dir) {
 
 bool save_file(const std::string& path, std::string* why) {
     if (path.empty()) { if (why) *why = "no user data folder"; return false; }
-    std::ofstream f(path, std::ios::binary | std::ios::trunc);
-    if (!f) { if (why) *why = "cannot write " + path; return false; }
-    f << to_ini(current());
-    return bool(f);
+    return b3io::replace_file(b3io::u8path(path), to_ini(current()), why);
 }
 
 std::string code_block(const b3gfx::CarLook& l, bool all) {

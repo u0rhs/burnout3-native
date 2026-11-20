@@ -39,6 +39,28 @@ bool set_language(const std::string& disc, const std::string& code);
 // 1.1: the code of the language whose GLOBAL table the game reads (set_language, and no mod's GLOBALUS.BIN over it);
 // empty: the disc's own (or a mod's) text
 std::string language_text();
+// 1.3.0 (b3asset/language.h dj_*): the DJ's voice in `code`'s language (FR / GE / IT / SP), from `dj_root` (that
+// language's imported banks, the disc's layout: <preferences>/languages/DJ/<code>). While set, resolve() gives each
+// English DJ bank (TRACKS/E_DJ*.RWS, TRACKS/*/*/E_DJRACE.RWS) as the language's (<L>_...) when dj_root has it and its
+// header matches the English bank's (b3asset::language::dj_matches); else the English bank, said once per bank. A
+// mod's file for that path still wins. Empty code / root, or a language without a DJ of its own: the English DJ (the
+// default). False when nothing would be redirected (no such language, or no banks in dj_root).
+bool set_dj_voice(const std::string& dj_root, const std::string& code);
+std::string dj_voice();   // the DJ's language set ("GE"), "" for the English DJ
+// 1.3.0: the imported languages' folder (<preferences>/languages). The race training's localized pictures
+// (OVID/TRC_<FRA|GER|ITA|SPA>.M2V, TRD_...: the game names them only when tools/native/training_voice.h picks a
+// language's training movie) are its VIDEO/<code>/OVID files when imported, else the US disc's English pictures
+// (OVID/TRC_ENG.M2V / TRD_ENG.M2V: the same length; the narration is in MOVIE.RWS). Said once per file.
+void set_languages_root(const std::string& root);
+// Replays (1.3.0): the run's DJ banks, decided at once ("<count>:<FNV-1a 64 of the redirected English banks' keys>";
+// empty: the English DJ), and whether the imported training pictures are used (a run recorded with the English ones
+// plays them: use_training_pictures(false)); training_pictures(code): that language's pictures are imported and read.
+std::string dj_banks(const std::string& disc);   // `disc`: the game folder or image (UTF-8)
+void use_training_pictures(bool imported);
+bool training_pictures(const std::string& code);
+// B3_DJ_LOG=1 (checks): each DJ bank opened (English or a language's) and OVID/MOVIE.RWS (the training narration) is traced: every line (segment) the stream
+// source seeks to, with the VBlank, and how many of its bytes were read before the next seek or the close
+// ("dj: VBlank <v>: <bank> line <k> (<n> bytes) starts", "dj: <bank> line <k>: <r> of <n> bytes read").
 
 // One disc file open for reads at any offset.
 struct File {

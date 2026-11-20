@@ -15,7 +15,8 @@
 //     stored / deflate, ZIP64 archives, entries over InstallOptions::max_entry bytes (or whose data runs past the size
 //     their header gives), more than max_total bytes or max_entries entries in all, a CRC that does not match;
 //   - two entries whose names differ only in case (they would be one file on Windows and macOS);
-//   - no mod.ini at the top (or in the one top folder), or one with errors (parse_manifest);
+//   - no mod.ini at the top (or in the one top folder), or one with errors (parse_manifest); without a mod.ini, a pack
+//     of the game's own folders is installed as a file-replacement mod only with InstallOptions::files_mod_name;
 //   - a mod with the same id already installed, unless InstallOptions::replace (then its folder is replaced, whatever
 //     its name); a folder named <id> that holds something else.
 //
@@ -72,6 +73,11 @@ struct InstallOptions {
     std::uint64_t max_entry = 2ull << 30;          // bytes in one file (2 GB)
     std::uint64_t max_total = 16ull << 30;         // bytes in all (16 GB)
     std::size_t max_entries = 100000;
+    // item 11: no mod.ini, but the game's own folders at the top (DATA, PVEH, TRACKS, SOUND, OVID, ..., any case; or in
+    // the one top folder): installed as a file-replacement mod named so (the id made from it, unique), its game folders
+    // under data/ and a mod.ini written for it (api 1, [files] root = data: no code, no script). Empty: refused with
+    // InstallResult::files_pack set, so the caller can ask first.
+    std::string files_mod_name;
 };
 struct InstallResult {
     bool ok = false;
@@ -83,8 +89,16 @@ struct InstallResult {
     bool exists = false;                           // refused because the id is installed (offer "Replace")
     std::vector<std::string> errors;               // why it was refused (not ok)
     std::vector<std::string> warnings;             // the manifest's notes
+    bool files_pack = false;                       // no mod.ini, the game's folders: InstallOptions::files_mod_name installs it
 };
 InstallResult install_archive(const fs::path& archive, const fs::path& mods_root, const InstallOptions& opt = {});
+// The same from a folder (its files copied, the folder left as it is): mod.ini at its top or in its one top folder,
+// or a files pack; a link or junction inside it refuses it; a folder inside the mods folder is refused.
+InstallResult install_folder(const fs::path& dir, const fs::path& mods_root, const InstallOptions& opt = {});
+// Removes `p` and what is inside it without following links: a symbolic link or a Windows reparse point (a junction, a
+// directory link) anywhere in the tree is removed as the link itself, never the folder or file it points to. True when
+// nothing is left (or nothing was there). install_archive's Replace removes the old mod's folder with it.
+bool remove_tree(const fs::path& p);
 
 }  // namespace b3mod
 

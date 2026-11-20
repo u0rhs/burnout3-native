@@ -381,6 +381,8 @@ TEST(refused_packages_change_nothing) {
         {"not our package", {{"something/a.txt", "a"}}, false},
         {"reserved name", {f("a.txt", "a"), f("previous-version/native_play", "x")}, false},
         {"reserved name 2", {f("a.txt", "a"), f(".update-staging/x", "x")}, false},
+        {"reserved name 3 (portable data)", {f("a.txt", "a"), f("appdata/native/pc_settings.ini", "x")}, false},
+        {"reserved name 4 (portable data)", {f("a.txt", "a"), f("appdata.moved-20261120-120000/native/x", "x")}, false},
         {"case twins", {f("a.txt", "a"), f("A.txt", "b")}, false},
         {"file and folder", {f("a", "a"), f("a/b.txt", "b")}, false},
         {"device name", {f("a.txt", "a"), f("nul.txt", "x")}, false},
@@ -474,6 +476,36 @@ TEST(roll_back_and_redo) {
     CHECK(snapshot(root) == v120);
     CHECK(previous_version(root) == "1.1.0");
     CHECK(!leftovers(root));
+}
+
+// portable mode (1.3.0): <install>/appdata (the player's settings, saves, mods ...) byte for byte through an update,
+// its roll back and the leftovers' cleaning
+TEST(update_and_roll_back_keep_the_portable_data) {
+    const fs::path root = old_install("t7p");
+    write(root / "appdata" / "native" / "pc_settings.ini", "vsync = 1\n");
+    write(root / "appdata" / "native" / "saves" / "profile-1.sav", std::string("SAVE\0\1\2", 7));
+    write(root / "appdata" / "native" / "native_play", "not the program: a file of the player's with a package's name");
+    write(root / "appdata" / "native" / "mods" / "my-mod" / "mod.ini", "id = my-mod\n");
+    write(root / "appdata.moved-20261120-101010" / "native" / "launcher.ini", "old\n");
+    const auto data = snapshot(root / "appdata");
+    const auto old = snapshot(root / "appdata.moved-20261120-101010");
+    Result r = install(tgz("p7p.tar.gz", release("1.2.0")), root);
+    CHECK(r.ok);
+    CHECK(read(root / "native_play") == "play 1.2.0");
+    CHECK(snapshot(root / "appdata") == data);
+    CHECK(snapshot(root / "appdata.moved-20261120-101010") == old);
+    CHECK(!fs::exists(root / "previous-version" / "appdata"));
+    r = roll_back(root);
+    CHECK(r.ok);
+    CHECK(read(root / "native_play") == "play 1.1.0");
+    CHECK(snapshot(root / "appdata") == data);
+    CHECK(snapshot(root / "appdata.moved-20261120-101010") == old);
+    clean_leftovers(root);
+    CHECK(snapshot(root / "appdata") == data);
+    // a package with appdata/ in it is refused and changes nothing
+    const auto before = snapshot(root);
+    CHECK(!install(tgz("p7q.tar.gz", {f("native_play", "x"), f("appdata/native/saves/profile-1.sav", "theirs")}), root).ok);
+    CHECK(snapshot(root) == before);
 }
 
 TEST(clean_leftovers_removes_and_undoes) {
@@ -639,5 +671,31 @@ TEST(windows_the_running_program_can_be_renamed) {
     }
 }
 #endif
+
+// robust2: the installed version and a folder the update cannot be written to, found before any download
+TEST(installed_version_and_install_blocker) {
+    const fs::path root = old_install("blocker");
+    CHECK(installed_version(root) == "1.1.0");
+    CHECK(installed_version(kRoot / "nothing-here").empty());
+    {   // macOS: Contents/MacOS's VERSION.txt is in Contents/Resources
+        const fs::path app = kRoot / "mac" / "Burnout 3.app" / "Contents";
+        fs::remove_all(kRoot / "mac");
+        write(app / "Resources" / "VERSION.txt", "Burnout 3 native port 1.2.1+1a2b3c4d\n");
+        fs::create_directories(app / "MacOS");
+        CHECK(installed_version(app / "MacOS") == "1.2.1+1a2b3c4d");
+    }
+    CHECK(install_blocker(root, false, false).empty());
+    CHECK(!fs::exists(root / ".update-write-test"));
+    CHECK(install_blocker(root, true, false).find("AppImage") != std::string::npos);
+    CHECK(install_blocker(root, false, true).find("Flatpak") != std::string::npos);
+    CHECK(!install_blocker(kRoot / "nothing-here", false, false).empty());
+#ifndef _WIN32
+    if (::geteuid() != 0) {   // a folder this user cannot write (/opt as a player has it)
+        fs::permissions(root, fs::perms(0555));
+        CHECK(install_blocker(root, false, false).find("cannot be written") != std::string::npos);
+        fs::permissions(root, fs::perms(0755));
+    }
+#endif
+}
 
 TEST_MAIN("test_launcher_installer: the updater's install step (packages, swap, previous-version, roll back)")

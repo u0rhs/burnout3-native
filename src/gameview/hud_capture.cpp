@@ -78,6 +78,9 @@ enum Kind : std::uint32_t { kEvBegin = 1, kEvState = 2, kEvTexture = 3, kEvResum
 // RwCamera}; at the next poll the car is grabbed as a race car (b3scene_grab_vehicle + [0x18E0, 0x19A0)).
 constexpr std::uint32_t kRenderFrontEnd = 0x00275EF0U;
 constexpr std::uint32_t kWorldCars = 0x00522660U + 0x12AD28U;
+// padpaint: the car select page (tools/native/car_select.h kCarSelectPage: its player at +0x18) and the menus' current
+// page word (tools/native/fast_load.h kMenuCurrentPage)
+constexpr std::uint32_t kCarSelectPage = 0x01E94EF0U, kMenuCurrentPage = 0x01E90430U;
 // The World Tour globe: CB3Globe2dObject::_Render 0x3B2EE0 (an object callback, hooked below) draws through B3Im3d's
 // own VIF packets between Gt2d Suspend / Resume, so its triangles never reach Gt2d's buffer [L draft]. Recorded for a
 // native globe (not drawn yet): a GLOBE event {object, data block [$a1, +0x18) (position, latitude / longitude u16,
@@ -351,7 +354,14 @@ void observe(std::uint32_t pc, const std::uint32_t* arg, const b3gv::Memory& m) 
     }
     if (pc == kRenderFrontEnd) {
         const std::uint32_t idx = a1, car = idx < 6 ? m.u32(kWorldCars + 4U * idx) : 0U;
-        const std::uint32_t w[4] = {idx, car, m.u32(0x00665EC0U + 0x90U + 0x58U), 0U};
+        // padpaint: w[3] whose car it is: 1 + the car select page's player while that page is the current one, else 0.
+        // The player is the page's word +0x18 (D_01E94F08): the car select flow writes 0, or the multiplayer turn's
+        // field_30 % 2 [C func_00310200 / func_0030ED90], and Update 0x318A80 passes it to the input manager as the
+        // port. 0 and 1 are taken exactly; any other value is "not known" (0: the car takes player 1's paint)
+        const std::uint32_t page = m.u32(kMenuCurrentPage) & 0x01FFFFFFU;
+        const std::uint32_t seat = page == kCarSelectPage ? m.u32(kCarSelectPage + 0x18U) : ~0U;
+        const std::uint32_t who = seat == 0U ? 1U : seat == 1U ? 2U : 0U;
+        const std::uint32_t w[4] = {idx, car, m.u32(0x00665EC0U + 0x90U + 0x58U), who};
         event(h, kEvFeCar, reinterpret_cast<const std::uint8_t*>(w), sizeof w);
         if (ram(car, 0x27D0) && std::find(h.fe_cars.begin(), h.fe_cars.end(), car) == h.fe_cars.end()) h.fe_cars.push_back(car);
         ++h.fe_car_calls;

@@ -2,7 +2,9 @@
 //
 //   1. SHA256SUMS and SHA256SUMS.sig from the release (small files, at most 64 KB each)
 //   2. the signature: SHA256SUMS signed by the release key in the update namespace (sign.h, update_key.h), else stop
-//   3. this system's package (update.h package_asset) must be listed there; downloaded (at most 2 GB)
+//   3. this system's package (update.h package_asset) must be listed there, and the version in its name (signed, unlike
+//      the API's tag) must be the tag's and newer than the installed one (no downgrade to an old signed release);
+//      downloaded (at most 2 GB)
 //   4. its SHA-256 must be the listed one, else stop (nothing written)
 //   5. written to `dir`/<its name> (a ".part" file renamed when complete)
 // Installing it is installer.h's (Windows, Linux) or the player's (macOS: the dmg opened). Every request goes through
@@ -17,7 +19,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace b3launcher::oneclick {
 
@@ -36,9 +40,13 @@ struct Result {
 };
 // The release key as update_key.h gives it; false when there is none (one-click updates off) or it is not a key
 bool release_key(std::array<std::uint8_t, 32>& key);
-// Steps 1-5 for release `r` on platform `p`
-Result fetch_package(const update::Release& r, update::Platform p, const std::array<std::uint8_t, 32>& key, const Fetch& fetch,
-                     const fs::path& dir, const OnStep& on_step = {});
+// The version a release package's name carries: "burnout3-native-1.2.2-1a2b3c4d-win64.zip" (package_*.sh: the version
+// with '+' made '-', the commit after it, maybe "-dirty") -> 1.2.2. nullopt: not a package name, or no version in it.
+std::optional<update::Version> package_version(std::string_view name);
+// Steps 1-5 for release `r` on platform `p`; `installed`: the installed version (its VERSION.txt, else the running
+// build's): a package that is not newer is refused
+Result fetch_package(const update::Release& r, update::Platform p, std::string_view installed, const std::array<std::uint8_t, 32>& key,
+                     const Fetch& fetch, const fs::path& dir, const OnStep& on_step = {});
 
 }  // namespace b3launcher::oneclick
 

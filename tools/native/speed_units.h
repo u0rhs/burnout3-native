@@ -1,5 +1,5 @@
 // speed_units.h -- the speed units setting of native_play (units1, 2026-11-14): the game's speeds and distances in
-// miles (the US game's) or kilometres, SETTINGS > INTERFACE > SPEED UNITS.
+// miles (the US game's) or kilometres, SETTINGS > GAME > LANGUAGE AND UNITS > SPEED UNITS.
 //
 // How the game chooses [C decomp, every reader of D_004E2918 in gen/native]: the word at 0x004E2918 is the game's
 // language. func_00133190 sets 1 at the boot (and func_0021B770 sets 1 again), the only value the US disc ever has;
@@ -91,7 +91,7 @@ public:
         if (const char* e = std::getenv("B3NATIVE_SPEED_UNITS"); e && (e[0] == '0' || e[0] == '1') && !e[1]) env_ = e[0] - '0';
         const char* l = std::getenv("B3NATIVE_SPEED_LOG");
         vblank_ = l && *l && std::strcmp(l, "0") != 0 ? vblank : nullptr;
-        std::printf("speed_units: the game's speeds and distances follow SETTINGS > INTERFACE > SPEED UNITS%s\n",
+        std::printf("speed_units: the game's speeds and distances follow SETTINGS > GAME > LANGUAGE AND UNITS > SPEED UNITS%s\n",
                     env_ < 0 ? "" : env_ ? " (B3NATIVE_SPEED_UNITS=1: KM/H)" : " (B3NATIVE_SPEED_UNITS=0: MPH)");
         return true;
     }

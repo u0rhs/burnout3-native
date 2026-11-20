@@ -12,8 +12,11 @@
 #include "script_mods.h"
 #include "test.h"
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <thread>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -31,9 +34,19 @@ namespace sa = b3native::script_addr;
 
 namespace {
 
-constexpr gaddr kA = 0x00100000u, kB = 0x00100010u;
+constexpr gaddr kA = 0x00100000u, kB = 0x00100010u, kF = 0x00100020u, kS = 0x00100030u;
+int gen_slow(int ms) {   // a game function that takes its time (a track load, a VBlank wait while unfocused)
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    return ms;
+}
 int gen_a(int x) { return x * 3; }
 int gen_b(int x) { return x + 100; }
+int g_fatal_halfway = 0;
+int gen_fatal(int x) {   // a game function that stops with the host's fatal error halfway
+    ++g_fatal_halfway;
+    if (x) b3host::fatal("test: the game's function failed");
+    return 0;
+}
 // stand-ins at the addresses the script events wrap: OnTakeDown counts at score +0x68, as the game's does
 int finish(int car, int state) { return car + state; }
 int crash(int car) { return car; }
@@ -49,6 +62,8 @@ std::atomic<std::uint64_t> g_nested{0};
 const NativeOverride kRows[] = {
     {kA, &traced_entry<kA, &native_entry<&gen_a>>, 4, &g_on, &g_nested},
     {kB, &traced_entry<kB, &native_entry<&gen_b>>, 4, &g_on, &g_nested},
+    {kF, &traced_entry<kF, &native_entry<&gen_fatal>>, 4, &g_on, &g_nested},
+    {kS, &traced_entry<kS, &native_entry<&gen_slow>>, 4, &g_on, &g_nested},
     {sa::kSetFinished, &traced_entry<sa::kSetFinished, &native_entry<&finish>>, 4, &g_on, &g_nested},
     {sa::kStartCrashing, &traced_entry<sa::kStartCrashing, &native_entry<&crash>>, 4, &g_on, &g_nested},
     {sa::kOnTakeDown, &traced_entry<sa::kOnTakeDown, &native_entry<&takedown>>, 4, &g_on, &g_nested},
@@ -56,6 +71,8 @@ const NativeOverride kRows[] = {
 const TableEntry kEntries[] = {
     {kA, "leaf_a", "game:matched", 'i'},
     {kB, "leaf_b", "game:matched", 'i'},
+    {kF, "leaf_fatal", "game:matched", 'i'},
+    {kS, "leaf_slow", "game:matched", 'i'},
     {sa::kSetFinished, "SetFinished", "game:matched", 'i'},
     {sa::kStartCrashing, "StartCrashing", "game:matched", 'i'},
     {sa::kOnTakeDown, "OnTakeDown", "game:matched", 'i'},
@@ -68,6 +85,7 @@ fs::path write_mod(const std::string& id, const std::string& main, const std::ve
     fs::remove_all(dir);
     fs::create_directories(dir / "scripts");
     std::ofstream(dir / "scripts" / "main.lua", std::ios::binary) << main;
+    std::ofstream(dir / "mod.ini", std::ios::binary) << "[mod]\nid = " << id << "\nversion = 1\napi = 3\n[script]\nmain = scripts/main.lua\n";
     for (const auto& [rel, text] : more) {
         fs::create_directories((dir / rel).parent_path());
         std::ofstream(dir / rel, std::ios::binary) << text;
@@ -81,6 +99,7 @@ struct Fixture {   // guest RAM (a NativeBackend), a private hook table, a fresh
     HookTable table;
     GuestArena arena;
     std::vector<std::string> log;
+    std::set<std::uint32_t> textures;   // the renderer's live mod textures
     std::uint64_t vb = 0;
     std::unique_ptr<CodeMods> mods;
     Fixture() {
@@ -89,14 +108,17 @@ struct Fixture {   // guest RAM (a NativeBackend), a private hook table, a fresh
         CodeMods::Host h;
         h.port_version = "test";
         h.vblank = [this] { return vb; };
-        h.disc_size = [](const std::string& p) -> std::int64_t { return p == "DATA/TEST.BIN" ? 3 : -1; };
+        h.disc_size = [](const std::string& p) -> std::int64_t { return p == "DATA/TEST.BIN" ? 3 : p == "DATA/FATAL.BIN" ? 4 : -1; };
         h.disc_read = [](const std::string& p, std::uint64_t off, void* dst, std::uint64_t n) -> std::int64_t {
+            if (p == "DATA/FATAL.BIN") b3host::fatal("test: the disc read failed");   // a host fatal inside a binding
             if (p != "DATA/TEST.BIN" || off > 3) return -1;
             const std::uint64_t k = std::min<std::uint64_t>(n, 3 - off);
             std::memcpy(dst, "abc" + off, k);
             return std::int64_t(k);
         };
         h.log = [this](const std::string& l) { log.push_back(l); };
+        h.texture = [this](std::uint32_t id, std::uint32_t, std::uint32_t, const std::uint8_t*) { textures.insert(id); };
+        h.texture_free = [this](std::uint32_t id) { textures.erase(id); };
         mods = std::make_unique<CodeMods>(table, arena, h);
     }
     ~Fixture() {
@@ -110,6 +132,20 @@ struct Fixture {   // guest RAM (a NativeBackend), a private hook table, a fresh
         c.dir = fs::absolute(fs::path(B3_SCRIPTMODS_DIR) / id);
         c.main_file = "scripts/main.lua";
         c.gameplay = gameplay;
+        return c;
+    }
+    // modsec: unsafe = yes with [script] calls
+    // (ini: its mod.ini says so too: an unsafe script takes its rights from the mod.ini it hashed)
+    b3native::ScriptConfig unsafe_config(const std::string& id, std::vector<std::uint32_t> calls, bool ini = true) {
+        b3native::ScriptConfig c = config(id);
+        c.unsafe = true;
+        c.calls = std::move(calls);
+        if (ini) {
+            std::string list;
+            for (std::uint32_t a : c.calls) list += (list.empty() ? "" : ", ") + std::to_string(a);
+            std::ofstream(c.dir / "mod.ini", std::ios::binary) << "[mod]\nid = " << id << "\nversion = 1\napi = 3\n[script]\nmain = scripts/main.lua\n"
+                                                              << "gameplay = yes\nunsafe = yes\n" << (list.empty() ? "" : "calls = " + list + "\n");
+        }
         return c;
     }
     CodeMods::Candidate candidate(const b3native::ScriptConfig& c) {
@@ -272,7 +308,8 @@ TEST(budget_stops_a_runaway_script_and_the_game_goes_on) {
             end
         end)
     )";
-    CHECK(f.load("runaway", main));
+    write_mod("runaway", main);
+    CHECK(f.load_config(f.unsafe_config("runaway", {})));   // (set_result: unsafe)
     CHECK(call(f.table, kB, 3) == 104);   // the wrap: the game's 103, + 1
     f.vblank();
     f.vblank();
@@ -291,6 +328,173 @@ TEST(budget_stops_a_runaway_script_and_the_game_goes_on) {
     CHECK(g.load_config(c));
     g.vblank();
     CHECK(g.logged("it ran past 20000 Lua instructions in one VBlank"));
+}
+
+TEST(time_in_c_library_calls_is_limited) {   // modsec: what the instruction budget does not count
+    {   // string.rep: "" at once for an empty result, an error for one larger than the script's memory
+        Fixture f;
+        const std::string main = R"(
+            b3.on_vblank(function()
+                assert(string.rep("", math.maxinteger) == "" and ("x"):rep(0) == "" and ("ab"):rep(3, "-") == "ab-ab-ab")
+                assert(string.rep("", math.maxinteger, "") == "")
+                local ok, e = pcall(string.rep, "x", 1 << 40)
+                assert(not ok and e:find("more than the script's memory"), e)
+                ok, e = pcall(string.rep, "", math.maxinteger, "y")
+                assert(not ok, "a separator makes it huge")
+                b3.log("rep ok")
+            end)
+        )";
+        CHECK(f.load("rep", main));
+        f.vblank();
+        CHECK(f.logged("mod rep: rep ok"));
+        if (!f.logged("rep ok")) f.dump();
+    }
+    {   // a pattern that backtracks for ages (no Lua instruction runs inside the matcher): stopped by the time limit
+        Fixture f;
+        write_mod("backtrack", R"(
+            b3.on_vblank(function(vb)
+                if vb == 2 then
+                    local s = string.rep("a", 3000)
+                    local ok = pcall(string.find, s, string.rep("a-", 30) .. "b")
+                    b3.log("pcall returned", ok)
+                    while true do end
+                end
+                b3.log("tick", vb)
+            end)
+        )");
+        b3native::ScriptConfig c = f.config("backtrack");
+        c.time_limit_ms = 50;
+        c.budget = 50000000;   // the most a mod may give: the time limit, not the budget, stops it
+        CHECK(f.load_config(c));
+        f.vblank();
+        const auto t0 = std::chrono::steady_clock::now();
+        f.vblank();
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        CHECK(ms < 5000);
+        CHECK(f.logged("mod backtrack: error: the script was stopped at VBlank 2: it ran for more than 50 ms in one VBlank (its time limit"));
+        CHECK(!f.logged("pcall returned"));   // the matcher's error, then every instruction: no pcall goes on
+        f.vblank();
+        CHECK(f.lines("mod backtrack: tick 3").empty());
+        if (!f.logged("its time limit")) f.dump();
+    }
+}
+
+TEST(the_clock_is_the_scripts_own_time) {   // review
+    {   // the game's own time inside call:next() and b3.call is not the script's
+        Fixture f;
+        write_mod("slow", R"(
+            b3.hook.wrap(0x00100030, function(call) call:next() b3.log("next returned") end)
+            b3.on_vblank(function() b3.call(0x00100030, 150) b3.log("call returned") end)
+        )");
+        b3native::ScriptConfig c = f.unsafe_config("slow", {kS});
+        c.time_limit_ms = 50;
+        CHECK(f.load_config(c));
+        CHECK(call(f.table, kS, 150) == 150);   // the game's call, 150 ms, through the wrap
+        f.vblank();                              // the script's call, 150 ms (its limit is 50)
+        f.vblank();
+        CHECK(f.lines("mod slow: next returned").size() == 3 && f.lines("mod slow: call returned").size() == 2);
+        CHECK(!f.logged("time limit"));
+        if (f.logged("time limit")) f.dump();
+    }
+    {   // a script's time is its own: B's slow hook, reached from A's b3.call, is charged to B
+        Fixture f;
+        write_mod("hook-b", R"(
+            local s = string.rep("a", 2500)
+            b3.hook.wrap(0x00100010, function(call)
+                for i = 1, 40 do s:find("a-b") end   -- pattern steps: no Lua instruction runs in them
+                call:next()
+                b3.log("b done")
+            end)
+        )");
+        write_mod("caller-a", R"(
+            b3.on_vblank(function() b3.call(0x00100010, 1) b3.log("a done") end)
+        )");
+        b3native::ScriptConfig a = f.unsafe_config("caller-a", {kB});
+        a.time_limit_ms = 20;   // A has little time of its own; B's hook takes far longer
+        b3native::ScriptConfig b = f.config("hook-b");
+        b.time_limit_ms = 20000;
+        const auto r = f.mods->load({f.candidate(b), f.candidate(a)}, false);
+        CHECK(r.size() == 2 && r[0].loaded && r[1].loaded);
+        f.vblank();
+        CHECK(f.logged("mod hook-b: b done") && f.logged("mod caller-a: a done"));
+        CHECK(!f.logged("time limit"));
+        if (!f.logged("a done")) f.dump();
+    }
+}
+
+TEST(a_host_fatal_in_any_binding_is_not_the_scripts_to_catch) {   // review: not only b3.call
+    Fixture f;
+    CHECK(f.load("fatal-data", R"(
+        b3.on_vblank(function()
+            local ok = pcall(b3.data.read, "disc:DATA/FATAL.BIN")
+            b3.log("pcall returned", ok)
+        end)
+    )"));
+    bool threw = false;
+    try {
+        f.vblank();
+    } catch (const HostError& e) {
+        threw = std::string(e.what()).find("the disc read failed") != std::string::npos;
+    }
+    CHECK(threw && !f.logged("pcall returned"));
+    CHECK(f.logged("mod fatal-data: error: the script was stopped at VBlank 1: a fatal error in the game's code it called"));
+}
+
+TEST(an_unsafe_script_takes_its_rights_from_the_hashed_mod_ini) {   // review
+    Fixture f;
+    write_mod("hashed-ini", "b3.on_vblank(function() local ok = pcall(b3.call, 0x00100010, 1) b3.log('call', ok) end)\n");
+    // the loader was told unsafe (mod.ini as parsed before), the mod.ini read and hashed at load says nothing of it
+    b3native::ScriptConfig c = f.unsafe_config("hashed-ini", {kB}, false);
+    CHECK(f.load_config(c));
+    f.vblank();
+    CHECK(f.logged("mod hashed-ini: call false"));
+    Fixture g;   // a mod.ini whose script is another one than the loader was told: not loaded
+    write_mod("other-main", "b3.log('x')\n");
+    b3native::ScriptConfig d = g.unsafe_config("other-main", {});
+    std::ofstream(d.dir / "mod.ini", std::ios::binary) << "[mod]\nid = other-main\nversion = 1\napi = 3\n[script]\nmain = scripts/other.lua\ngameplay = yes\nunsafe = yes\n";
+    CHECK(!g.load_config(d) && g.logged("its mod.ini changed after it was read"));
+}
+
+TEST(textures_are_capped_per_mod_and_freed_with_it) {   // modsec
+    Fixture f;
+    const std::string main = R"(
+        local small = string.rep("\255", 4 * 4 * 4)
+        local made = 0
+        for i = 1, 70 do
+            local ok, id = pcall(b3.draw.texture, 4, 4, small)
+            if ok then made = made + 1 end
+        end
+        b3.log("small made", made)
+        b3.on_vblank(function(vb)
+            if vb == 1 then error("stop here") end
+        end)
+    )";
+    CHECK(f.load("tex", main));
+    CHECK(f.logged("mod tex: small made " + std::to_string(CodeMods::kModTextures)));
+    CHECK(f.logged("mod tex: texture refused: a mod may have 64 textures"));
+    CHECK(f.textures.size() == CodeMods::kModTextures);
+    f.vblank();   // the script stops: its textures go with it
+    CHECK(f.logged("stop here") && f.textures.empty());
+    // the bytes: four 1024 x 1024 pictures (16 MB) fit, a fifth does not
+    Fixture g;
+    const std::string big = R"(
+        local px = string.rep("\0", 1024 * 1024 * 4)
+        local made = 0
+        for i = 1, 5 do
+            local ok = pcall(b3.draw.texture, 1024, 1024, px)
+            if ok then made = made + 1 end
+        end
+        b3.log("big made", made)
+    )";
+    write_mod("texbig", big);
+    b3native::ScriptConfig c = g.config("texbig");
+    c.memory = std::uint64_t(256) << 20;
+    CHECK(g.load_config(c));
+    CHECK(g.logged("mod texbig: big made 4") && g.textures.size() == 4);
+    // a mod that does not load: the textures it made in its main chunk are dropped
+    Fixture h;
+    CHECK(!h.load("texfail", "b3.draw.texture(1, 1, '\\0\\0\\0\\0')\nerror('no')\n"));
+    CHECK(h.textures.empty());
 }
 
 TEST(memory_cap_stops_a_script) {
@@ -369,7 +573,8 @@ TEST(api_bindings_on_synthetic_memory) {
             b3.draw.text(5, 6, 12, b3.rgba(0, 255, 0, 128), "SPEED 1")
         end)
     )";
-    CHECK(f.load("api", main));
+    write_mod("api", main);
+    CHECK(f.load_config(f.unsafe_config("api", {kA, kB, 0x00100040u})));
     CHECK(f.logged("native_play: mods: api: script loaded (1 replaced, 0 wrapped, 2 settings"));
     CHECK(call(f.table, kA, 4) == 40);
     f.vblank();
@@ -411,6 +616,152 @@ TEST(gameplay_no_refuses_writes) {
     std::uint32_t v = 0;
     copy_from_guest(&v, 0x00200000, 4);
     CHECK(v == 7);
+}
+
+TEST(writes_and_calls_need_unsafe_and_the_calls_list) {   // modsec
+    Fixture f;
+    const std::string main = R"(
+        b3.hook.wrap(0x00100010, function(call)   -- the safe API: watching a call, its float result
+            if not pcall(call.set_arg, call, 1, 9) then b3.log("set_arg refused") end
+            call:next()
+            if not pcall(call.set_result, call, 5) then b3.log("set_result refused") end
+            call:set_fresult(1.5)
+        end)
+        b3.on_vblank(function(vb)
+            assert(b3.unsafe == false and b3.gameplay == true)
+            assert(b3.mem.read("u32", 0x00200000) == 7)
+            local ok, e = pcall(b3.call, 0x00100010, 1)
+            if not ok then b3.log("call refused:", e) end
+            ok, e = pcall(b3.mem.write_bytes, 0x00200000, "x")
+            if not ok then b3.log("write_bytes refused:", e) end
+            b3.mem.write("u8", 0x00200000, 1)   -- refused: an error, the script stops
+        end)
+    )";
+    put32(0x00200000, 7);
+    CHECK(f.load("safe", main));
+    CHECK(call(f.table, kB, 2) == 102);   // review: without unsafe a hook cannot change an argument or the result
+    CHECK(f.logged("mod safe: set_arg refused") && f.logged("mod safe: set_result refused"));
+    f.vblank();
+    CHECK(f.logged("mod safe: call refused:") && f.logged("b3.call: refused: only a script whose mod.ini says unsafe = yes"));
+    CHECK(f.logged("mod safe: write_bytes refused:"));
+    CHECK(f.logged("b3.mem.write: refused: only a script whose mod.ini says unsafe = yes"));
+    std::uint32_t v = 0;
+    copy_from_guest(&v, 0x00200000, 4);
+    CHECK(v == 7);
+    {
+        Fixture r;   // and cannot replace a function
+        CHECK(!r.load("safe-replace", "b3.hook.replace(0x00100000, function() end)"));
+        CHECK(r.logged("b3.hook.replace: refused: only a script whose mod.ini says unsafe = yes"));
+    }
+    // unsafe = yes: writes, and calls only to [script] calls
+    Fixture g;
+    write_mod("uns", R"(
+        b3.on_vblank(function()
+            assert(b3.unsafe == true)
+            assert(b3.mem.write("u32", 0x00600040, 9))
+            assert(b3.call(0x00100010, 1) == 101)
+            local ok, e = pcall(b3.call, 0x00100000, 1)
+            assert(not ok and e:find("not in %[script%] calls"), e)
+            b3.log("unsafe ok")
+        end)
+    )");
+    CHECK(g.load_config(g.unsafe_config("uns", {kB})));
+    g.vblank();
+    CHECK(g.logged("mod uns: unsafe ok"));
+    if (!g.logged("unsafe ok")) g.dump();
+    copy_from_guest(&v, 0x00600040, 4);
+    CHECK(v == 9);
+}
+
+TEST(an_unsafe_script_runs_the_bytes_it_was_allowed_as) {   // modsec
+    const std::string ini = "[mod]\nid = snap\nversion = 1\napi = 3\n[script]\nmain = scripts/main.lua\ngameplay = yes\nunsafe = yes\n";
+    const std::string main = "b3.on_vblank(function() b3.log('part says', require('part').word) end)\n";
+    auto make = [&] {
+        const fs::path dir = write_mod("snap", main, {{"scripts/part.lua", "return { word = 'one' }"}, {"data/big.bin", "not hashed"}});
+        std::ofstream(dir / "mod.ini", std::ios::binary) << ini;
+        return dir;
+    };
+    const fs::path dir = make();
+    const auto parsed = b3mod::parse_manifest(ini);
+    CHECK(parsed.errors.empty() && parsed.m.script.unsafe && b3mod::needs_trust(parsed.m.code, parsed.m.script));
+    std::vector<b3mod::TrustFile> files;
+    CHECK(b3mod::trust_files(dir, parsed.m.code, parsed.m.script, files));
+    std::vector<std::string> names;
+    for (const auto& x : files) names.push_back(x.rel);
+    CHECK((names == std::vector<std::string>{"mod.ini", "scripts/main.lua", "scripts/part.lua"}));   // data/ is not code
+    const std::string allowed = b3mod::trust_digest(files);
+    {   // the set changed after the check: refused
+        Fixture f;
+        b3native::ScriptConfig c = f.unsafe_config("snap", {}, false);
+        c.trust_digest = std::string(64, '0');
+        CHECK(!f.load_config(c));
+        CHECK(f.logged("its files changed after they were checked"));
+    }
+    Fixture f;
+    b3native::ScriptConfig c = f.unsafe_config("snap", {}, false);
+    c.trust_digest = allowed;
+    CHECK(f.load_config(c));
+    // a file swapped after the load: what runs is still what was hashed
+    std::ofstream(dir / "scripts" / "part.lua", std::ios::binary) << "return { word = 'two' }";
+    f.vblank();
+    CHECK(f.logged("mod snap: part says one"));
+    CHECK(b3mod::trust_digest(dir, parsed.m.code, parsed.m.script) != allowed);   // (the launcher would ask again)
+    // the manifest's lines
+    auto parse = [](const std::string& t) { return b3mod::parse_manifest(t); };
+    const auto calls = parse("[mod]\nid = s\nversion = 1\napi = 3\n[script]\nmain = s/m.lua\ngameplay = yes\nunsafe = yes\ncalls = 0x00151780, 0x001519F0 1442800\n");
+    CHECK(calls.errors.empty() && (calls.m.script.calls == std::vector<std::uint32_t>{0x00151780u, 0x001519F0u, 1442800u}));
+    CHECK(!parse("[mod]\nid = s\nversion = 1\napi = 3\n[script]\nmain = s/m.lua\ngameplay = no\nunsafe = yes\n").errors.empty());
+    CHECK(!parse("[mod]\nid = s\nversion = 1\napi = 3\n[script]\nmain = s/m.lua\ngameplay = yes\nunsafe = maybe\n").errors.empty());
+    CHECK(!parse("[mod]\nid = s\nversion = 1\napi = 3\n[script]\nmain = s/m.lua\ngameplay = yes\nunsafe = yes\ncalls = 0x1G\n").errors.empty());
+    CHECK(!parse("[mod]\nid = s\nversion = 1\napi = 3\n[script]\nmain = s/m.lua\ngameplay = yes\nunsafe = yes\ncalls = 0x100000000\n").errors.empty());
+    const auto stray = parse("[mod]\nid = s\nversion = 1\napi = 3\n[script]\nmain = s/m.lua\ngameplay = yes\ncalls = 0x00151780\n");
+    CHECK(stray.errors.empty() && !stray.warnings.empty() && !b3mod::needs_trust(stray.m.code, stray.m.script));
+}
+
+TEST(a_fatal_error_in_the_game_is_not_the_scripts_to_catch) {   // modsec
+    {   // b3.call: the script's pcall does not see it; the script stops and the fatal goes on to the host
+        Fixture f;
+        write_mod("fatal-call", R"(
+            b3.on_vblank(function()
+                local ok, e = pcall(b3.call, 0x00100020, 1)
+                b3.log("pcall returned", ok, e)
+                for i = 1, 10 do b3.log("still running", i) end
+            end)
+        )");
+        CHECK(f.load_config(f.unsafe_config("fatal-call", {kF})));
+        bool threw = false;
+        try {
+            f.vblank();
+        } catch (const HostError& e) {
+            threw = std::string(e.what()).find("the game's function failed") != std::string::npos;
+        }
+        CHECK(threw);
+        CHECK(!f.logged("pcall returned") && !f.logged("still running"));
+        CHECK(f.logged("mod fatal-call: error: the script was stopped at VBlank 1: a fatal error in the game's code it called"));
+        f.vblank();   // stopped: nothing more runs
+        CHECK(!f.logged("still running"));
+    }
+    {   // call:next in a hook: the same; the game's call through the hook ends in the fatal, the hook passes later calls
+        Fixture f;
+        write_mod("fatal-next", R"(
+            b3.hook.wrap(0x00100020, function(call)
+                local ok = pcall(call.next, call)
+                b3.log("next returned", ok)
+            end)
+        )");
+        CHECK(f.load_config(f.config("fatal-next")));
+        bool threw = false;
+        try {
+            call(f.table, kF, 1);
+        } catch (const HostError&) {
+            threw = true;
+        }
+        CHECK(threw && !f.logged("next returned"));
+        CHECK(f.logged("a fatal error in the game's code it called"));
+        const int before = g_fatal_halfway;
+        CHECK(call(f.table, kF, 0) == 0 && g_fatal_halfway == before + 1);   // passed straight to the game's function
+        CHECK(!f.logged("next returned"));
+    }
 }
 
 TEST(errors_stop_the_script_and_hooks_pass_through) {

@@ -67,11 +67,14 @@ inline GamepadState gamepad_state(SDL_Gamepad* g) {
 }
 
 // rebind2: Ctrl or GUI (Cmd) held is a window shortcut, unless that modifier is itself bound to something in the pad's
-// map (then it is a game key, and the keys pressed with it reach the game too)
-inline bool shortcut_modifiers(const KeyPad& pad, unsigned mod) {
+// map (then it is a game key, and the keys pressed with it reach the game too). robust2: or in `other`'s, the other
+// keyboard player's map: player 2's Ctrl held must not make player 1's keys window shortcuts.
+inline bool shortcut_modifiers(const KeyPad& pad, unsigned mod, const KeyPad* other = nullptr) {
     const auto bound = [&](std::uint16_t a, std::uint16_t b) {
-        for (const KeyBinding& k : pad.map())
-            if (k.scancode == a || k.scancode == b) return true;
+        for (const KeyPad* p : {&pad, other})
+            if (p)
+                for (const KeyBinding& k : p->map())
+                    if (k.scancode == a || k.scancode == b) return true;
         return false;
     };
     if ((mod & SDL_KMOD_CTRL) && !bound(SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL)) return true;
@@ -82,13 +85,14 @@ inline bool shortcut_modifiers(const KeyPad& pad, unsigned mod) {
 // Returns true if the event was a key / focus event the pad used. Key repeats are ignored; keys with Ctrl / Cmd held
 // are left to the window (shortcuts), as is Alt+Enter (fullscreen). F11 is a key like any other (rebind2: the window's
 // FULLSCREEN key is a port action, input_bindings.h, and may be any key).
-inline bool handle_sdl_event(KeyPad& pad, const SDL_Event& e) {
+// `other`: the other keyboard player's pad (its bound modifiers are game keys too; shortcut_modifiers).
+inline bool handle_sdl_event(KeyPad& pad, const SDL_Event& e, const KeyPad* other = nullptr) {
     switch (e.type) {
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP: {
         const bool down = e.type == SDL_EVENT_KEY_DOWN;
         if (down && e.key.repeat) return true;
-        if (down && shortcut_modifiers(pad, e.key.mod)) return false;
+        if (down && shortcut_modifiers(pad, e.key.mod, other)) return false;
         if (e.key.scancode == SDL_SCANCODE_RETURN && (e.key.mod & SDL_KMOD_ALT)) return false;   // Alt + Enter: fullscreen
         pad.key(static_cast<std::uint16_t>(e.key.scancode), down);
         return true;

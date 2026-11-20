@@ -28,7 +28,7 @@ const char* ds2_name(Ds2 c) {
 }
 
 const std::vector<KeyBinding>& default_key_map() {
-    // docs/mac.md §5 (mac4, the user's layout 2026-11-08): WASD / arrows drive (W / Up accelerate, S / Down brake, A / D
+    // docs/mac.md §5 (mac4, the default layout since 2026-11-08): WASD / arrows drive (W / Up accelerate, S / Down brake, A / D
     // and Left / Right steer) and navigate menus; Space boost (menus: confirm); Enter confirm; Escape start / pause;
     // Backspace back. The rest by the game's controls (input_keys.h); Z / X kept from the earlier keyboard layout.
     using C = KeyCtx;

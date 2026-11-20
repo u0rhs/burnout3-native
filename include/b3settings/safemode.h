@@ -44,6 +44,17 @@ StartDecision start_run(const RunState& previous, bool force_safe);
 // The state a clean end writes
 inline RunState clean_end() { return RunState{}; }
 
+// hostfix: the guest RAM guards in safe mode. Safe mode asked for (START IN SAFE MODE: --safe-mode, B3_SAFE_MODE=1)
+// starts with them off. The automatic one (kSafeModeAfter unclean runs) keeps them on, unless the previous run's log
+// shows a "guest memory overrun" (the crash report's line, or that run's own guards-off line for this reason: a series
+// of overrun crashes keeps them off). The reason NativeBackend logs ("guest RAM guards: off (<reason>)"); empty: on.
+// (B3_GUEST_GUARDS=0 turns them off in any run: the backend reads it.)
+constexpr const char* kGuardsOffAsked = "safe mode";
+constexpr const char* kGuardsOffOverrun = "safe mode after a guest memory overrun";
+std::string safe_mode_guards_off(const StartDecision& d, bool last_run_overrun);
+// true when the run log at `path` (UTF-8) shows a guest memory overrun (see above); a missing file: false
+bool log_shows_guard_overrun(const std::string& path);
+
 // The user's settings lowered for a safe start (display and quality only)
 Settings safe_settings(Settings s);
 

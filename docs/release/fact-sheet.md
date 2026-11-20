@@ -60,7 +60,7 @@ races ~760 fps. Other machines will differ; these are not quoted as a headline f
 - ✅ Quality presets: PS2 original, Low, Medium, High, Ultra.
 - ✅ Photo mode: free camera, HUD off, screenshots, also mid-crash; **depth of field** (focus on the car or the
   centre, six strengths, in the screenshots too).
-- ✅ Split-screen layout: the game's own top / bottom (the default) or side by side (SETTINGS > CAMERA > SPLIT SCREEN),
+- ✅ Split-screen layout: the game's own top / bottom (the default) or side by side (SETTINGS > DISPLAY > LAYOUT > SPLIT SCREEN),
   each view at its own shape with no stretching, each player's HUD, messages and markers inside its view; presentation
   only (splitlayout1: offscreen shots at 16:9 and 21:9 in the 2-player tour; top / bottom byte for byte as before;
   golden). Side by side was in the PS2 code but never switched on.
@@ -84,7 +84,7 @@ races ~760 fps. Other machines will differ; these are not quoted as a headline f
 - ✅ **Car showroom**: every car on your disc (67) in 3D on a turntable, with the game's own names; drawn with the
   HD textures the game would use (the player's pack + mods' `[textures]` packs; showhd1: a test pack and a mod pack
   recolour the car in the launcher check, HD off gives the original pixels).
-- ✅ **Skip the launcher**: "Start the game directly next time" on the Play page (= SETTINGS > INTERFACE > OPEN THE
+- ✅ **Skip the launcher**: "Start the game directly next time" on the Play page (= SETTINGS > GAME > STARTING AND LOADING > OPEN THE
   LAUNCHER AT START off); Shift / a pad's Back held, `--launcher`, missing game data or a bad last run bring the
   launcher back (launchskip1; Shift on Windows / macOS still to try on a real machine).
 - ✅ **Update check**: once a day the launcher asks GitHub Releases for the latest release and shows a newer one with a
@@ -95,7 +95,7 @@ races ~760 fps. Other machines will differ; these are not quoted as a headline f
 ### Controls and accessibility
 - ✅ Keyboard, mouse in the menus, any SDL gamepad; typing on the profile-name screen.
 - ✅ Button prompts that match your device (PlayStation, Xbox, Nintendo, generic, keyboard) and follow the last one used.
-- ✅ Speed units: MPH (the US game's, the default) or KM/H (SETTINGS > INTERFACE > SPEED UNITS) on the speedometer,
+- ✅ Speed units: MPH (the US game's, the default) or KM/H (SETTINGS > GAME > LANGUAGE AND UNITS > SPEED UNITS) on the speedometer,
   distance messages, score list, records and stats, with the game's own PAL words; text only (units1: KM/H race
   shot, the speed in m/s equal on every VBlank and the numbers 1.61 times the MPH run's, guest RAM different only in
   HUD text, draw packets and clock-derived audio stamps; golden byte-identical at MPH).
@@ -108,10 +108,10 @@ races ~760 fps. Other machines will differ; these are not quoted as a headline f
   Not yet felt with a real pad.
 - ✅ Accessibility: reduced screen flashes, colour-blind HUD filters (deuteranopia, protanopia, tritanopia), boost
   toggle ⚙️ or hold (the default).
-- ✅ HUD size: the race HUD at 100 / 115 / 130 / 150 % (SETTINGS > INTERFACE > ACCESSIBILITY), each part grown from
+- ✅ HUD size: the race HUD at 100 / 115 / 130 / 150 % (SETTINGS > GAME > ACCESSIBILITY), each part grown from
   its own anchor, kept on screen and apart from the others; menus stay at 100 %; 100 % is the game's picture byte for
   byte (textsize1: offscreen shots at 4:3, 16:9 and 21:9; golden). Not yet looked at in a window.
-- ✅ Remapping per player (1 and 2), keyboard and gamepad: in PC SETTINGS > INTERFACE > CONTROLS and the launcher's
+- ✅ Remapping per player (1 and 2), keyboard and gamepad: in PC SETTINGS > CONTROLS > BINDINGS and the launcher's
   Controllers page; conflicts offer swap / clear / keep both; prompts follow the bindings; defaults identical to the
   original mapping (every key and 200,000 random pad states tested); replays unaffected by later rebinding (remap1).
 - ✅ Car series on LB / RB ⚙️ (opt-in): on the car select and YOUR GARAGE, L1 / R1 change the series exactly as left /

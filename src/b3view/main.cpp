@@ -258,6 +258,7 @@ int run_offscreen(const Args& a) {
     const char* how = "";
     auto dev = b3gfx::create_headless(opt, &err, &hidden, &how);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
+    b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
     std::printf("headless device: %s (%s, video driver %s)\n", dev->driver_name(), how, SDL_GetCurrentVideoDriver());
     b3asset::Model model;
     std::string kind;
@@ -336,6 +337,7 @@ int main(int argc, char** argv) {
     std::string err;
     auto dev = b3gfx::Device::create(win, opt, &err);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
+    b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
 
     b3view::LoadOptions lo{a.lod, a.palette, a.track_lod, a.first, a.exclusive};
     b3view::Scene scene;

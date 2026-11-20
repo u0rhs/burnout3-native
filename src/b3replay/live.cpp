@@ -1,19 +1,25 @@
 #include "live.h"
 #include "b3gfx/perf.h"   // perf3
+#include "b3gfx/frames_auto.h"   // perf4
 #include "b3port/app_icon.h"   // the built-in window icon
+#include "b3port/user_dir.h"   // portable mode: the user data folder
 #include "clock.h"
 #include "fastforward.h"   // fastload1: FAST LOADING's display rule
 #include "nativeaudio.h"   // play1
 #include "nativepad.h"   // play1
 #include "pcpage.h"     // mac5: PC SETTINGS
 #include "photomode.h"  // photo mode
+#include "garagecam.h"  // garagecam1: the car pages' view round the car
 #include "ghost.h"      // ghost1: Time Attack ghosts
+#include "records.h"    // media1: where ghosts and best times go
 #include "speedrun.h"   // speedrun1: the speedrun timer
 #include "speedrunpanel.h"
 #include "menumouse.h"  // mac5: the mouse in the game's menus
 #include "carlook.h"
 #include "carlookpanel.h"
 #include "tuneconsole.h"   // tune4: the tuning console's F9 overlay
+#include "warmcache.h"     // perf4: the warm-up list
+#include "racetime.h"      // todrace: the track page's DAY / NIGHT label
 
 #include <SDL3/SDL.h>
 
@@ -30,10 +36,11 @@
 #include <filesystem>
 #include <future>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <thread>
 
-#include "b3asset/hdpack.h"   // loadlag1: an HD pack keeps the route load on the render thread
+#include "b3asset/hdpack.h"   // hd_report after a route load
 #include "b3asset/png.h"
 #include "fpspanel.h"
 #include "skiphint.h"
@@ -151,6 +158,7 @@ struct LiveScene {
         const std::string route = p.route;
         view.clear(dev);
         std::string why;
+        view.load_race_time = feed.empty() ? 0 : feed.at(feed.last()).race_time.race;   // todrace: the race's own choice
         if (!view.load_prepared(dev, std::move(p), &why)) {
             std::fprintf(stderr, "[b3live] %s: %s\n", route.c_str(), why.c_str());
             view.clear(dev);
@@ -164,9 +172,15 @@ struct LiveScene {
             std::printf("[b3live] route %s from the game's STATIC.DAT header at poll %u, loaded in %.0f ms (decode %.0f ms on a worker, "
                         "%.0f ms on this thread)%s\n", route.c_str(), poll, ms, prep_ms, double(t2 - t1) / 1e6, feed.segment().active ? "" : " (before the race)");
         else
-            std::printf("[b3live] route %s from the game's STATIC.DAT header at poll %u, loaded in %.0f ms%s\n", route.c_str(), poll, ms,
-                        feed.segment().active ? "" : " (before the race)");
+            std::printf("[b3live] route %s from the game's STATIC.DAT header at poll %u, loaded in %.0f ms (decode %.0f ms, GPU half %.0f ms)%s\n",
+                        route.c_str(), poll, ms, prep_ms, double(t2 - t1) / 1e6, feed.segment().active ? "" : " (before the race)");
         std::fflush(stdout);
+        b3asset::hd_report();   // hdgpu: the HD pack's work so far (nothing without a pack)
+        if (b3asset::hd_textures()) {   // hdgpu: the replacements on the GPU now (the pairs the HD TEXTURES key switches)
+            const b3gfx::Device::HdOriginals o = dev.hd_originals();
+            std::fprintf(stderr, "hd pack: on the GPU %zu replacements, %.1f MB (their originals %.1f MB)\n", o.textures,
+                         double(o.hd_bytes) / 1048576.0, double(o.bytes) / 1048576.0);
+        }
         return true;
     }
     void preload(b3gfx::Device& dev) {
@@ -191,8 +205,8 @@ struct LiveScene {
         const std::string route = route_by_header(o.game, t);
         if (route.empty()) return;
         if (route != view.route) {
-            // (an HD pack: on this thread, as before -- its lookups and its prefetch are not made for two threads)
-            if (async_routes && !b3asset::hd_textures()) {
+            // (an HD pack too, hdgpu: HdTextures takes the worker's decodes and this thread's own, one at a time)
+            if (async_routes) {
                 want_route = route;
                 want_poll = t.poll;
                 if (!prep_job.valid()) start_route();
@@ -244,6 +258,7 @@ struct LiveScene {
         const std::uint64_t t0 = b3live::now_ns();
         view.clear(dev);
         std::string why;
+        view.load_race_time = feed.empty() ? 0 : feed.at(feed.last()).race_time.race;   // todrace: the race's own choice
         if (!view.load_track(dev, route, &why)) {
             std::fprintf(stderr, "[b3live] %s: %s\n", route.c_str(), why.c_str());
             view.clear(dev);
@@ -324,6 +339,15 @@ struct LiveScene {
             while (lo > feed.first() && feed.at(lo - 1).fe_car) --lo;
             while (hi < feed.last() && feed.at(hi + 1).fe_car) ++hi;
             f = frame_at(SegTicks(feed, lo, hi), i, x - double(i), true);
+            // garagecam1 (garagecam.h): the player's turn of the view round the car, between this tick's and the next's
+            float o[2];
+            orbit_lerp(t.fe_orbit, (i < hi ? feed.at(i + 1) : t).fe_orbit, float(x - double(i)), o);
+            if (o[0] != 0.0f || o[1] != 0.0f)
+                for (const Vehicle& v : f.vehicles) {
+                    float pivot[3];
+                    if (v.id == f.fe_car && orbit_pivot(f.cam, v.main, pivot)) orbit_camera(f.cam, pivot, o[0], o[1]);
+                    if (v.id == f.fe_car) break;
+                }
             return true;
         }
         f = Frame{};
@@ -344,6 +368,15 @@ struct LiveScene {
     // lap state, read from the tick); a completed lap better than the file of its track + car replaces it; the best lap
     // of the loaded route (any car whose file the disc has) is the one view.ghost draws. GHOST off: nothing (no files,
     // no draws). B3_GHOST_TEST_LAP=<seconds> (tests): a lap's first seconds count as a lap.
+    // media1 (records.h): this run's records -- a replay playing writes none; a gameplay-changing mod set its own folder
+    records::Run records_run() const {
+        records::Run r;
+        r.playback = o.replay_playback;
+        if (o.gameplay_set) r.gameplay_set = o.gameplay_set();
+        return r;
+    }
+    std::string ghost_folder() const { return records::folder(o.ghost_dir, records_run()); }
+    std::string speedrun_folder() const { return records::folder(o.speedrun_dir, records_run()); }
     ghost::Recorder ghost_rec{[] { const char* e = std::getenv("B3_GHOST_TEST_LAP"); return e ? float(std::atof(e)) : 0.0f; }()};
     ghost::Lap ghost_best;
     std::string ghost_track;       // the route the loaded best lap is for ("" none)
@@ -358,7 +391,7 @@ struct LiveScene {
         ghost_track = track;
         ghost_best = ghost::Lap{};
         std::string path;
-        if (track.empty() || !ghost::best_for_track(o.ghost_dir, track, ghost_best, &path)) return;
+        if (track.empty() || !ghost::best_for_track(ghost_folder(), track, ghost_best, &path)) return;
         for (std::size_t k = 0; k < view.cars.size(); ++k)
             if (ghost::slug(ghost::last_two(view.cars[k].path), false) == ghost::slug(ghost_best.car, false)) { view.ghost_file = int(k); break; }
         if (view.ghost_file < 0) {
@@ -373,7 +406,13 @@ struct LiveScene {
     void ghost_completed(ghost::Lap& lap) {
         ++ghost_laps;
         lap.track = ghost_track;
-        const std::string path = (std::filesystem::path(o.ghost_dir) / ghost::file_name(lap.track, lap.car)).string();
+        const std::string path = (std::filesystem::path(ghost_folder()) / ghost::file_name(lap.track, lap.car)).string();
+        if (!records::writes(o.ghost_dir, records_run())) {   // media1: a replay's lap is not the player's
+            std::printf("[b3ghost] lap %llu completed on %s with %s: %.3f s%s: a replay is playing: not saved\n",
+                        static_cast<unsigned long long>(ghost_laps), lap.track.c_str(), lap.car.c_str(), double(lap.time), lap.test ? " (a test lap)" : "");
+            std::fflush(stdout);
+            return;
+        }
         ghost::Lap old;
         const bool have_old = ghost::load(path, old);
         const bool better = !have_old || (old.test && !lap.test) || (old.test == lap.test && lap.time < old.time);
@@ -480,7 +519,7 @@ struct LiveScene {
         speedrun::Best b;
         b.key = speedrun::event_key(m, track, car, laps);
         if (!o.speedrun_dir.empty()) {
-            const std::string path = (std::filesystem::path(o.speedrun_dir) / name).string();
+            const std::string path = (std::filesystem::path(speedrun_folder()) / name).string();
             std::string why;
             speedrun::Best f;
             if (speedrun::load(path, f, &why) && f.key == b.key) {
@@ -509,7 +548,11 @@ struct LiveScene {
         if (!better) return;
         std::printf("[speedrun] a new best for %s\n", b.key.c_str());
         if (o.speedrun_dir.empty()) return;
-        const std::string path = (std::filesystem::path(o.speedrun_dir) / speedrun::file_name(r.mode, r.track, r.car, r.laps)).string();
+        if (!records::writes(o.speedrun_dir, records_run())) {   // media1: a replay's time is not the player's
+            std::printf("[speedrun] a replay is playing: not saved\n");
+            return;
+        }
+        const std::string path = (std::filesystem::path(speedrun_folder()) / speedrun::file_name(r.mode, r.track, r.car, r.laps)).string();
         std::string why;
         if (speedrun::save(path, b, &why)) std::printf("[speedrun] saved to %s\n", path.c_str());
         else std::fprintf(stderr, "[speedrun] %s\n", why.c_str());
@@ -596,6 +639,18 @@ struct LiveScene {
         return nullptr;
     }
 };
+
+// todrace (racetime.h): the track page's DAY / NIGHT label for the record `rt`: the device in use, the TIME OF DAY action's
+// first key and gamepad input, the PC SETTINGS language; what Default gives is the view's TIME OF DAY ($B3_NIGHT too)
+std::shared_ptr<const HostUi> race_time_ui(RaceTimeLabel& label, const LiveScene& ls, PcPage& page, const HostRaceTime& rt) {
+    if (ls.feed.empty()) return nullptr;
+    const b3native::input::Controls c = NativePad::instance().controls();
+    constexpr std::size_t a = std::size_t(b3native::input::PortAction::RaceTime);
+    const std::uint16_t key = c.port.keys[a].empty() ? 0 : c.port.keys[a].front();
+    const b3native::input::PadInput pad = c.port.pad[a].empty() ? b3native::input::PadInput::None : c.port.pad[a].front();
+    return label.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures, rt.label_choice, rt.label_opacity,
+                    ls.view.night.on, ls.view.prompt_device, key, pad, page.ui_language());
+}
 
 using DisplayClock = DisplayClockT<LiveFeed>;
 double pct(std::vector<double> v, double p);   // below
@@ -746,15 +801,19 @@ double display_x(DisplayClock& c, const LiveFeed& f, const LiveOptions& o, doubl
 
 // lat1: --latency-log <csv>: per drawn frame (race and front end) and per scripted input event, host steady-clock times
 // for latency analysis. Kept in memory, written when the loop ends.
-//   F,<t_loop>,<t_clock>,<newest poll>,<its arrival>,<shown poll>,<shown frac x1e6>,<next poll>,<t_done>,<latch age us>
+//   F,<t_loop>,<t_clock>,<newest poll>,<its arrival>,<shown poll>,<shown frac x1e6>,<next poll>,<t_done>,<latch age us>,
+//     <cam xyz>,<view 2 cam xyz>,<player 1 car xyz>,<player 2 car xyz> (split2p: the drawn positions; none: 0)
 //   I,<event>,<feed poll>,<t_sent>,<scancode>,<down>
 //   T,<poll>,<pushed>,<stamp>,<drained>          every tick received: the hook's hand-over, its latch stamp, the drain
+//     ,<ticks per frame>,<cam xyz>,<view 2 cam xyz>,<player 1 car xyz>,<player 2 car xyz> (split2p: the tick's own; none: 0)
 // t_loop: the frame's loop start (events, drain); t_clock: the display clock's sample; t_done: offscreen: the read-back
 // finished (GPU done); window: the present was submitted.
 struct LatencyLog {
-    struct Row { std::uint64_t loop, clock, newest_ns, done; std::uint32_t newest, shown, next; std::int32_t frac, age_us; float cam[3]; };
+    // split2p: + player 2's drawn camera (split frames; else 0) and the two local players' drawn car positions (absent: 0)
+    struct Row { std::uint64_t loop, clock, newest_ns, done; std::uint32_t newest, shown, next; std::int32_t frac, age_us; float cam[3], cam2[3], car[2][3]; };
     std::vector<Row> rows;
-    struct TickRow { std::uint32_t poll; std::uint64_t pushed, stamp, drained; };
+    // split2p: + the tick's ticks per frame (CB3Game +0x2DA84), its cameras (view 2's: split ticks) and the two players' cars
+    struct TickRow { std::uint32_t poll; std::uint64_t pushed, stamp, drained; int tpf; float cam[3], cam2[3], car[2][3]; };
     std::vector<TickRow> ticks;
     std::uint64_t seen_total = 0;
     void drained(const LiveFeed& f, std::uint64_t now) {   // after each drain: the ticks it added
@@ -763,7 +822,15 @@ struct LatencyLog {
         seen_total = f.ticks_total;
         const std::size_t n = std::size_t(std::min<std::uint64_t>(got, f.last() - f.first() + 1));
         for (std::size_t i = f.last() + 1 - n; i <= f.last(); ++i) {
-            ticks.push_back({f.at(i).poll, f.arrival_ns(i), f.sched_ns(i), now});
+            {
+                const Tick& t = f.at(i);
+                TickRow tr{t.poll, f.arrival_ns(i), f.sched_ns(i), now, t.ticks_per_frame, {}, {}, {}};
+                if (t.cam.valid) std::memcpy(tr.cam, t.cam.m.r[3], sizeof tr.cam);
+                if (t.split && t.view2.valid) std::memcpy(tr.cam2, t.view2.cam.m.r[3], sizeof tr.cam2);
+                for (const Vehicle& v : t.vehicles)
+                    if (v.kind == VehicleKind::kRaceCar && (v.player == 0 || v.player == 1)) std::memcpy(tr.car[v.player], v.main.r[3], sizeof tr.car[0]);
+                ticks.push_back(tr);
+            }
             // one tick of extrapolation against the tick that then came (the lead's prediction error): the camera position
             // and the first race car's, in a race with the camera moving that tick (no cut, no 2-tick hold)
             if (i < f.first() + 2) continue;
@@ -796,9 +863,13 @@ struct LatencyLog {
         // an extrapolated frame (alpha > 1) shows tick i + 1 fully plus the extrapolated part
         const bool ex = fr.alpha > 1.0f && i < f.last();
         const std::uint32_t shown = ex ? f.at(i + 1).poll : f.at(i).poll, next = ex ? shown : i < f.last() ? f.at(i + 1).poll : f.at(i).poll;
-        rows.push_back({loop, clock, f.arrival_ns(f.last()), done, f.at(f.last()).poll, shown, next,
-                        std::int32_t(double(ex ? fr.alpha - 1.0f : fr.alpha) * 1e6), std::int32_t(std::clamp(c.latch_age_ms(f, double(i) + double(fr.alpha), done) * 1e3, -1e9, 1e9)),
-                        {fr.cam.m.r[3][0], fr.cam.m.r[3][1], fr.cam.m.r[3][2]}});   // perf1: the drawn camera (motion per frame)
+        Row r{loop, clock, f.arrival_ns(f.last()), done, f.at(f.last()).poll, shown, next,
+              std::int32_t(double(ex ? fr.alpha - 1.0f : fr.alpha) * 1e6), std::int32_t(std::clamp(c.latch_age_ms(f, double(i) + double(fr.alpha), done) * 1e3, -1e9, 1e9)),
+              {fr.cam.m.r[3][0], fr.cam.m.r[3][1], fr.cam.m.r[3][2]}, {}, {}};   // perf1: the drawn camera (motion per frame)
+        if (fr.split) std::memcpy(r.cam2, fr.cam2.m.r[3], sizeof r.cam2);   // split2p
+        for (const Vehicle& v : fr.vehicles)
+            if (v.kind == VehicleKind::kRaceCar && (v.player == 0 || v.player == 1)) std::memcpy(r.car[v.player], v.main.r[3], sizeof r.car[0]);
+        rows.push_back(r);
     }
     void write(const LiveOptions& o, const char* present, int fif) const {
         if (!on()) return;
@@ -807,12 +878,16 @@ struct LatencyLog {
         std::fprintf(out, "# b3lat-render 1 mode=%s margin_ms=%.2f delay=%.2f present=%s frames_in_flight=%d bench=%dx%d\n", o.latency.c_str(),
                      o.margin_ms, o.delay, present, fif, o.bench_w, o.bench_h);
         for (const Row& r : rows)
-            std::fprintf(out, "F,%llu,%llu,%u,%llu,%u,%d,%u,%llu,%d,%.4f,%.4f,%.4f\n", static_cast<unsigned long long>(r.loop), static_cast<unsigned long long>(r.clock),
-                         r.newest, static_cast<unsigned long long>(r.newest_ns), r.shown, r.frac, r.next, static_cast<unsigned long long>(r.done), r.age_us,
-                         double(r.cam[0]), double(r.cam[1]), double(r.cam[2]));
+            std::fprintf(out, "F,%llu,%llu,%u,%llu,%u,%d,%u,%llu,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n", static_cast<unsigned long long>(r.loop),
+                         static_cast<unsigned long long>(r.clock), r.newest, static_cast<unsigned long long>(r.newest_ns), r.shown, r.frac, r.next,
+                         static_cast<unsigned long long>(r.done), r.age_us, double(r.cam[0]), double(r.cam[1]), double(r.cam[2]), double(r.cam2[0]),
+                         double(r.cam2[1]), double(r.cam2[2]), double(r.car[0][0]), double(r.car[0][1]), double(r.car[0][2]), double(r.car[1][0]),
+                         double(r.car[1][1]), double(r.car[1][2]));
         for (const TickRow& t : ticks)
-            std::fprintf(out, "T,%u,%llu,%llu,%llu\n", t.poll, static_cast<unsigned long long>(t.pushed), static_cast<unsigned long long>(t.stamp),
-                         static_cast<unsigned long long>(t.drained));
+            std::fprintf(out, "T,%u,%llu,%llu,%llu,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n", t.poll,
+                         static_cast<unsigned long long>(t.pushed), static_cast<unsigned long long>(t.stamp), static_cast<unsigned long long>(t.drained),
+                         t.tpf, double(t.cam[0]), double(t.cam[1]), double(t.cam[2]), double(t.cam2[0]), double(t.cam2[1]), double(t.cam2[2]),
+                         double(t.car[0][0]), double(t.car[0][1]), double(t.car[0][2]), double(t.car[1][0]), double(t.car[1][1]), double(t.car[1][2]));
         std::fclose(out);
         std::printf("[b3live] latency log: %zu frames -> %s\n", rows.size(), path.c_str());
         if (!cam_err.empty() && !car_err.empty())
@@ -870,7 +945,7 @@ double pct(std::vector<double> v, double p) {
 
 // hdkey: a notice line in the stroke font's letters (A-Z, 0-9, a few marks: glyphdraw.h): a translation's accented
 // capitals as their base letters (UTF-8 Latin-1: É -> E, Ä -> A, ß -> SS), apostrophes left out
-std::string notice_letters(const std::string& s) {
+std::string notice_letters(const std::string& s, bool keep_apostrophes = false) {
     static const char* const kBase[64] = {   // U+00C0 .. U+00FF
         "A", "A", "A", "A", "A", "A", "AE", "C", "E", "E", "E", "E", "I", "I", "I", "I", "D", "N", "O", "O", "O", "O", "O", "x",
         "O", "U", "U", "U", "U", "Y", "TH", "SS", "A", "A", "A", "A", "A", "A", "AE", "C", "E", "E", "E", "E", "I", "I", "I", "I",
@@ -882,9 +957,21 @@ std::string notice_letters(const std::string& s) {
             const unsigned char d = static_cast<unsigned char>(s[i + 1]);
             if (d >= 0x80 && d <= 0xBF) { out += kBase[d - 0x80]; ++i; continue; }
         }
-        if (c != '\'' && c < 0x80) out += char(std::toupper(c));   // (other UTF-8: left out)
+        if ((c != '\'' || keep_apostrophes) && c < 0x80) out += char(std::toupper(c));   // (other UTF-8: left out)
     }
     return out;
+}
+
+// saveflow (2026-11-20): a save's status (pcpage.cpp save_alert: save_store.h ProfileCard's texts) as the small bubble
+// in the window's top right corner: one row, a part per " - " piece, the first the heading (SAVED, SAVE FAILED, NOT
+// SAVED, SAVE WARNING), each in the player's language where the port has it (b3settings/i18n.h; a file name stays as it is). Saved: green,
+// two seconds; a warning amber, a save not written red, six; then the one-second fade.
+void show_save_bubble(Notice& bubble, const std::string& alert, const std::string& language) {
+    std::vector<std::string> lines;
+    const Notice::Tone tone = Notice::save_bubble_lines(alert, lines);
+    if (!language.empty())
+        for (std::string& l : lines) l = notice_letters(b3settings::translate_text(l, language), true);
+    bubble.show_bubble(std::move(lines), tone, tone == Notice::Tone::kOk ? 2.0f : 6.0f);
 }
 
 // 1.2 HD TEXTURES key (hdkey, issue #7): the HD pack's replacements or the original textures, at once -- the renderer
@@ -895,7 +982,7 @@ std::string notice_letters(const std::string& s) {
 std::vector<std::string> hd_key(b3gfx::Device& dev, const b3settings::Settings& s, const std::string& language, const std::string& by) {
     const auto tr = [&](const char* t) { return notice_letters(b3settings::translate_text(t, language)); };
     if (!b3asset::hd_switchable()) {
-        const bool off = !s.hd_pack_dir.empty() && !s.hd_textures;
+        const bool off = (!s.hd_pack_dir.empty() || !b3asset::hd_xbox_folder().empty()) && !s.hd_textures;   // (xboximport: or an import)
         std::printf("[b3hd] HD TEXTURES key (%s): no HD texture pack in this run%s\n", by.c_str(),
                     off ? " (a folder is chosen; HD TEXTURES is off in the settings)" : "");
         std::fflush(stdout);
@@ -961,6 +1048,31 @@ struct WindowStats {
     }
 };
 
+// perf4 (warmcache.h): the warm-up list's file: $B3_WARM_CACHE, else (the window) warm_cache.txt beside the settings file
+static std::string warm_path(const LiveOptions& o, bool window) {
+    if (const auto e = b3io::getenv("B3_WARM_CACHE")) return *e;
+    if (!window || o.settings_path.empty()) return {};
+    return b3io::u8string(b3io::u8path(o.settings_path).parent_path() / "warm_cache.txt");
+}
+static void warm_start(b3gfx::Device& dev, const std::string& path) {
+    warm::Cache c;
+    if (!warm::load(path, c)) return;
+    dev.warm_overlay_keys(std::vector<int>(c.overlay.begin(), c.overlay.end()));
+    Effects::add_warm_names(c.textures);
+    std::printf("[b3live] warm-up list: %zu 2D pipelines, %zu effect textures\n", c.overlay.size(), c.textures.size());
+}
+// what this run made (the saved keys it made at the start, and the names it loaded or kept: Effects::preload drops a name
+// that no longer loads), not the union with every earlier run's; written when it differs from the file
+static void warm_end(const b3gfx::Device& dev, const std::string& path) {
+    if (path.empty()) return;
+    warm::Cache was, c;
+    warm::load(path, was);
+    for (int k : dev.overlay_keys()) c.overlay.insert(k);
+    c.textures = Effects::warm_names();
+    c = warm::from_text(warm::to_text(c));   // (the caps)
+    if (c.overlay != was.overlay || c.textures != was.textures) warm::save(path, c);
+}
+
 int run_live_offscreen(const LiveOptions& o) {
     b3gfx::Options opt;
     opt.msaa = o.msaa;
@@ -972,8 +1084,11 @@ int run_live_offscreen(const LiveOptions& o) {
     SDL_Window* hidden = nullptr;   // Metal: b3gfx::create_headless (render5)
     auto dev = b3gfx::create_headless(opt, &err, &hidden);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
+    b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
     std::printf("[b3live] offscreen: feed %s, driver %s, %zu shots, bench %dx%d\n", o.name.c_str(), dev->driver_name(), o.shots.size(),
                 o.bench_w, o.bench_h);
+    const std::string warm_file = warm_path(o, false);   // perf4 (offscreen: only with $B3_WARM_CACHE)
+    warm_start(*dev, warm_file);
     std::fflush(stdout);
     if (o.bench_w > 0 && b3perf::init_from_env()) {
         char inf[160];
@@ -1018,15 +1133,17 @@ int run_live_offscreen(const LiveOptions& o) {
     blend.ms = lat_mode == Latency::kLow && o.lead > 0 ? o.blend_ms : 0.0;   // perf1
     std::vector<double> sched_age;   // lat1: latch -> read-back done of the bench's race frames (ms)
     PcPage& pc_page = PcPage::instance();   // mac5
-    if (o.settings) pc_page.settings() = *o.settings;
+    if (o.settings) pc_page.load_settings(*o.settings);
     NativePad::instance().set_boost_toggle(pc_page.settings().boost_mode == 1);   // accessibility: BOOST Toggle (opt-in)
     NativePad::instance().set_instant_restart(pc_page.settings().instant_restart == 1);   // speedrun1 (opt-in, input-injecting)
     NativePad::instance().set_series_shoulders(pc_page.settings().series_shoulders == 1);   // carsel1 (opt-in, input-changing)
+    GarageCam::instance().set_enabled(pc_page.settings().garage_camera);   // garagecam1 (drawn only)
     NativePad::instance().set_rumble(pc_page.settings().rumble == 1, pc_page.settings().rumble_strength, pc_page.settings().rumble_triggers);   // rumble1
     NativePad::instance().set_analog_pedals(pc_page.settings().analog_pedals);   // 1.0.1
     NativePad::instance().set_adaptive_triggers(pc_page.settings().adaptive_triggers == 1, pc_page.settings().adaptive_triggers_strength);   // pad1
     std::uint64_t pc_page_ns = 0;
     SkipHint skip_hint;   // mac5
+    RaceTimeLabel race_label;   // todrace
     SpeedrunPanel speedrun_panel;   // speedrun1
     // hdkey: a script's HD TEXTURES key switches at the poll it was stamped with (NativePad::take_hd_presses), so a shot
     // of poll N shows the textures, and the key's notice, as the window would at N (the notice's age in game time)
@@ -1111,6 +1228,23 @@ int run_live_offscreen(const LiveOptions& o) {
                     }
             }
         }
+        // night mode (diagnostics, remaster-features §17): B3_NIGHT_MOONSCAN=1 prints, as each race tick arrives, the angle
+        // between the game camera's view axis and the moon (View::post_frame's direction) when it is under 35 degrees
+        if (static const bool scan = std::getenv("B3_NIGHT_MOONSCAN") != nullptr; scan && ls.ready() && !ls.feed.empty() && ls.view.sky.has_enviro) {
+            static std::size_t scanned = 0;
+            const std::size_t li = ls.feed.last();
+            Frame pf;
+            if (li != scanned && ls.frame(double(li), true, pf) && !pf.vehicles.empty()) {
+                scanned = li;
+                float m[3];
+                moon_direction(ls.view.sky.enviro.to_sun, m);
+                const float* at = pf.cam.m.r[2];
+                const float al = std::sqrt(at[0] * at[0] + at[1] * at[1] + at[2] * at[2]);
+                const float c = al > 0 ? (at[0] * m[0] + at[1] * m[1] + at[2] * m[2]) / al : -1.0f;
+                const float deg = std::acos(std::clamp(c, -1.0f, 1.0f)) * 57.29578f;
+                if (deg < 35.0f) std::printf("[moonscan] poll %u moon %.1f deg off the view axis\n", ls.feed.at(li).poll, double(deg));
+            }
+        }
         // mac5 (remaster-features §3): the button prompts' device (BUTTON PROMPTS, else the pad's last used; offscreen
         // shots: B3_PROMPT_DEVICE) and the key caps
         ls.view.prompt_device = prompt_resolve(pc_page.settings().button_prompts, NativePad::instance().device());
@@ -1128,6 +1262,7 @@ int run_live_offscreen(const LiveOptions& o) {
                 NativePad::instance().set_boost_toggle(pc_page.settings().boost_mode == 1);
                 NativePad::instance().set_instant_restart(pc_page.settings().instant_restart == 1);
                 NativePad::instance().set_series_shoulders(pc_page.settings().series_shoulders == 1);
+                GarageCam::instance().set_enabled(pc_page.settings().garage_camera);   // garagecam1
                 NativePad::instance().set_rumble(pc_page.settings().rumble == 1, pc_page.settings().rumble_strength, pc_page.settings().rumble_triggers);
                 NativePad::instance().set_analog_pedals(pc_page.settings().analog_pedals);   // 1.0.1
                 NativePad::instance().set_adaptive_triggers(pc_page.settings().adaptive_triggers == 1, pc_page.settings().adaptive_triggers_strength);
@@ -1153,6 +1288,7 @@ int run_live_offscreen(const LiveOptions& o) {
                 MenuTargets mt;
                 if (laid && ls.view.hud_pieces_frame == laid)
                     mt = menu_targets_of(*laid, ls.view.hud_draw_pieces, tk.menu.get(), ls.feed.models().hud.textures);
+                mt.car = laid && tk.fe_car != 0 && GarageCam::instance().enabled();   // garagecam1: a drag turns the view
                 if (std::getenv("B3_MENU_MOUSE_TRACE")) {
                     std::printf("[b3mouse] poll %u: %zu rows, %zu prompts, menu %d, text %d\n", tk.poll, mt.rows.size(), mt.prompts.size(),
                                 mt.menu ? 1 : 0, mt.text_entry ? 1 : 0);
@@ -1181,6 +1317,7 @@ int run_live_offscreen(const LiveOptions& o) {
             PhotoMode& photo = PhotoMode::instance();
             const std::size_t li = ls.feed.last();
             photo.set_scene(ls.ready() && li >= ls.feed.segment().first && !pc_page.active());
+            GarageCam::instance().set_blocked(pc_page.active() || photo.active());   // garagecam1: the stick is the page's then
             std::uint32_t to = ls.feed.at(li).poll;
             for (const std::size_t k : shot_order)
                 if (!shot_done[k]) { to = std::min(to, o.shots[k].first); break; }
@@ -1268,6 +1405,16 @@ int run_live_offscreen(const LiveOptions& o) {
                 if (fp.dof.on)
                     std::printf("[b3photo] shot poll %u: depth of field, blur radius %.3f of the height, autofocus at (%.3f, %.3f) x %.2f\n", poll,
                                 double(fp.dof.radius), double(fp.dof.point[0]), double(fp.dof.point[1]), double(fp.dof.focus_scale));
+                if (PhotoMode::instance().motion_at(poll, photo_cam, f.vehicles, fp.motion) && fp.motion.on) {   // photoblur: off unless turned on
+                    std::printf("[b3photo] shot poll %u: motion blur, %d boxes, camera offset (%.3f, %.3f, %.3f) m", poll, fp.motion.boxes,
+                                double(fp.motion.cam[0]), double(fp.motion.cam[1]), double(fp.motion.cam[2]));
+                    for (int k = 0; k < fp.motion.boxes; ++k)
+                        std::printf("%s box %d move (%.3f, %.3f, %.3f) lo (%.2f, %.2f, %.2f) hi (%.2f, %.2f, %.2f)", k ? ";" : ":", k,
+                                    double(fp.motion.box[k].move[0]), double(fp.motion.box[k].move[1]), double(fp.motion.box[k].move[2]),
+                                    double(fp.motion.box[k].lo[0]), double(fp.motion.box[k].lo[1]), double(fp.motion.box[k].lo[2]),
+                                    double(fp.motion.box[k].hi[0]), double(fp.motion.box[k].hi[1]), double(fp.motion.box[k].hi[2]));
+                    std::printf("\n");
+                }
                 std::printf("[b3photo] shot poll %u: the free camera at (%.2f, %.2f, %.2f), field of view %.1f degrees\n", poll,
                             double(photo_cam.m.r[3][0]), double(photo_cam.m.r[3][1]), double(photo_cam.m.r[3][2]),
                             2.0 * std::atan(double(photo_cam.half_h)) * 180.0 / 3.14159265358979);
@@ -1315,6 +1462,15 @@ int run_live_offscreen(const LiveOptions& o) {
                                      o.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w);
                 std::printf("[b3live] shot poll %u: PC SETTINGS page drawn\n", poll);
             }
+            // todrace (racetime.h): the track page's DAY / NIGHT label of the shot's tick (its opacity the game's, in game time)
+            if (idx >= 0 && !photo_shot && !pc_page.active() && ls.feed.at(std::size_t(idx)).race_time.label_opacity) {
+                const HostRaceTime& rt = ls.feed.at(std::size_t(idx)).race_time;
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, race_time_ui(race_label, ls, pc_page, rt), o.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w);
+                std::printf("[b3live] shot poll %u: time of day label drawn (%s, opacity %u, %s)\n", poll,
+                            race_time_text(rt.label_choice, ls.view.night.on, "").c_str(), unsigned(rt.label_opacity),
+                            prompt_device_name(ls.view.prompt_device));
+            }
             // mac5: the video skip hint at the shot's tick (its opacity is the game's, in game time)
             if (idx >= 0 && !photo_shot && ls.feed.at(std::size_t(idx)).skip_hint && pc_page.settings().skip_hint) {
                 const float op = float(ls.feed.at(std::size_t(idx)).skip_hint) / 255.0f;
@@ -1359,10 +1515,61 @@ int run_live_offscreen(const LiveOptions& o) {
                 std::printf("[b3live] shot poll %u: draw or write failed\n", poll);
                 continue;
             }
+            // surface (diagnostics, docs/remaster-features.md §18): B3_SURFACE_ABTIME=N redraws this shot's frame N times in each
+            // of four forms (surface off, relief + sheen, ambient occlusion, all), interleaved so the machine's load drifts
+            // equally over them, and prints the median draw + read-back time of each. The picture written above is unchanged.
+            if (static const int abn = [] { const char* e = std::getenv("B3_SURFACE_ABTIME"); return e ? std::atoi(e) : 0; }(); abn > 0 && !split_shot) {
+                b3gfx::FrameParams::Surface on = fp.surface;
+                if (on.relief <= 0) on.relief = 3.0f;
+                if (on.sheen <= 0) on.sheen = 0.35f;
+                if (on.ao <= 0) on.ao = 0.8f;
+                std::vector<double> ms[4];
+                std::vector<std::uint8_t> scratch;
+                for (int r = 0; r < abn; ++r)
+                    for (int k = 0; k < 4; ++k) {
+                        b3gfx::FrameParams afp = fp;
+                        afp.surface = b3gfx::FrameParams::Surface{};
+                        afp.surface.ao_radius = on.ao_radius;
+                        if (k == 1 || k == 3) { afp.surface.relief = on.relief; afp.surface.sheen = on.sheen; }
+                        if (k == 2 || k == 3) afp.surface.ao = on.ao;
+                        const auto t0 = std::chrono::steady_clock::now();
+                        dev->draw_offscreen(w, h, afp, items, scratch);
+                        ms[k].push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+                    }
+                double med[4];
+                for (int k = 0; k < 4; ++k) { std::sort(ms[k].begin(), ms[k].end()); med[k] = ms[k][ms[k].size() / 2]; }
+                std::printf("[b3live] surface abtime poll %u %dx%d x%d: median ms off %.2f, relief+sheen %.2f (+%.2f), ao %.2f (+%.2f), all %.2f (+%.2f)\n",
+                            poll, w, h, abn, med[0], med[1], med[1] - med[0], med[2], med[2] - med[0], med[3], med[3] - med[0]);
+            }
+            // night mode (diagnostics, docs/remaster-features.md §17): B3_NIGHT_ABTIME=N redraws a night shot's frame N times
+            // with the night stage off (the same items: the pools are skipped by day), on without the projected beams and
+            // the tunnel fade (nightlights §17.2: Night::spot off, so no depth pre-pass; with the beams on the item list has
+            // no pools either), and on as set, interleaved, and prints the median draw + read-back time of each. The
+            // picture written above is unchanged.
+            if (static const int nbn = [] { const char* e = std::getenv("B3_NIGHT_ABTIME"); return e ? std::atoi(e) : 0; }(); nbn > 0 && fp.night.on && !split_shot) {
+                std::vector<double> ms[3];
+                std::vector<std::uint8_t> scratch;
+                for (int r = 0; r < nbn; ++r)
+                    for (int k = 0; k < 3; ++k) {
+                        b3gfx::FrameParams afp = fp;
+                        afp.night.on = k > 0;
+                        if (k == 1) { afp.night.spot = false; afp.night.enclosed = 0; }
+                        const auto t0 = std::chrono::steady_clock::now();
+                        dev->draw_offscreen(w, h, afp, items, scratch);
+                        ms[k].push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+                    }
+                double med[3];
+                for (int k = 0; k < 3; ++k) { std::sort(ms[k].begin(), ms[k].end()); med[k] = ms[k][ms[k].size() / 2]; }
+                std::printf("[b3live] night abtime poll %u %dx%d x%d: median ms day %.2f, night %.2f (+%.2f, %+.1f%%), night without beams %.2f; "
+                            "the beams +%.2f (%d lamps)\n", poll, w, h, nbn, med[0], med[2], med[2] - med[0],
+                            100.0 * (med[2] - med[0]) / std::max(med[0], 1e-6), med[1], med[2] - med[1], fp.night.spot ? fp.night.lamps : 0);
+            }
             ++shots_written;
             std::printf("[b3live] shot poll %u (+%.2f): tick %ld, %s, route %s, %zu draws, %zu vehicles -> %s\n", poll, double(alpha), idx,
                         race ? (split_shot ? "race, split screen" : photo_shot ? "race (photo mode)" : "race") : "front end", ls.view.route.c_str(),
                         items.size(), f.vehicles.size(), path);
+            if (race && fp.night.on)   // night mode (§17; todrace: the track page's choice or TIME OF DAY)
+                std::printf("[b3live] shot poll %u: drawn at night (%s)\n", poll, f.race_time ? "the race's own choice" : "TIME OF DAY");
             // tunenav1: the F9 overlay as a script left it (live_<poll>_<alpha>_tune.png), and B3TUNE_OVERLAY_SHOTS' views of
             // it (live_<poll>_<alpha>_tune<k>.png), each over this shot's picture; after the shot, which stays without it, and
             // each with the bloom's kept picture started again (as the HUD size variants below: a draw carries into the next)
@@ -1557,6 +1764,7 @@ int run_live_offscreen(const LiveOptions& o) {
     }
     WindowStats::print_decode(ls.feed);   // perf
     lat_log.write(o, "offscreen", 0);
+    warm_end(*dev, warm_file);   // perf4
     std::fflush(stdout);
     dev.reset();
     if (hidden) SDL_DestroyWindow(hidden);
@@ -1653,13 +1861,23 @@ int run_live_window(const LiveOptions& o) {
     opt.driver = o.driver;
     opt.present = o.vsync ? b3gfx::PresentMode::kVsync : b3gfx::PresentMode::kUncapped;
     const Latency lat_mode = latency_mode(o);
-    // lat1: the low-latency modes keep the GPU's frame queue short and wait for the swapchain before sampling the clock
-    if (lat_mode != Latency::kSmooth) opt.frames_in_flight = o.frames_in_flight;
+    // lat1: the low-latency modes keep the GPU's frame queue short and wait for the swapchain before sampling the clock.
+    // perf4: Auto (frames_in_flight < 0, the default) starts at 1 and adapts (FramesAuto below) when the latency mode is the
+    // default too; a chosen Low / Newest keeps 1 (the player asked for the least delay); B3_FIF_AUTO=0 keeps 1.
+    const bool fif_auto = lat_mode != Latency::kSmooth && o.frames_in_flight < 0 && o.latency_auto &&
+                          !(std::getenv("B3_FIF_AUTO") && std::getenv("B3_FIF_AUTO")[0] == '0');
+    if (lat_mode != Latency::kSmooth) opt.frames_in_flight = o.frames_in_flight < 0 ? 1 : o.frames_in_flight;
     std::string err;
     auto dev = b3gfx::Device::create(win, opt, &err);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
-    std::printf("[b3live] window: feed %s, driver %s, MSAA %dx, present %s, %d frames in flight, latency %s\n", o.name.c_str(), dev->driver_name(),
-                dev->msaa(), dev->present_mode_name(), dev->frames_in_flight(), o.latency.c_str());
+    b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
+    std::printf("[b3live] window: feed %s, driver %s, MSAA %dx, present %s, %d frames in flight%s, latency %s\n", o.name.c_str(), dev->driver_name(),
+                dev->msaa(), dev->present_mode_name(), dev->frames_in_flight(), fif_auto ? " (auto)" : "", o.latency.c_str());
+    b3gfx::FramesAuto fif;   // perf4
+    fif.set_current(dev->frames_in_flight());
+    float fif_refresh = -1.0f;   // perf4: the display's refresh rate Auto aims for (< 0: read it)
+    const std::string warm_file = warm_path(o, true);   // perf4: the pipelines and effect textures an earlier run used
+    warm_start(*dev, warm_file);
     // test builds: the system in the run log (bug reports: the same lines as their system-info.txt)
     const std::string gpu_desc = b3port::gpu_description(static_cast<SDL_GPUDevice*>(dev->sdl_gpu_device()));
     if (o.native_pad) {
@@ -1679,6 +1897,7 @@ int run_live_window(const LiveOptions& o) {
     MotionBlend blend;   // perf1: low mode's correction blend
     blend.ms = lat_mode == Latency::kLow && o.lead > 0 ? o.blend_ms : 0.0;
     ls.view.effects.async_sparks = true;   // perf1: a crash's spark build on a worker, not in the frame
+    ls.view.async_paint = true;            // padpaint: a car's paint map made on a worker, not in the frame
     bool running = true, interpolate = true, game_cull = false, fog = o.fog, specular = o.specular;
     // settings1: our PC settings (--settings at start, then each HSET record the game publishes when they change)
     double max_fps = o.max_fps;
@@ -1701,6 +1920,10 @@ int run_live_window(const LiveOptions& o) {
     // effects2: BATTERY SAVER (opt-in): while SDL reports the PC on battery the settings in effect are b3settings::on_battery's
     // copy (60 fps, sparks and debris at most Medium); the power state is read every couple of seconds
     b3settings::Settings cur_settings;
+    // robust2: FULLSCREEN applies when the setting changes, not on every apply (any other setting's change, a new HSET
+    // record): F11 / Alt+Enter's choice stays until the setting itself is changed. The start's value (--fullscreen or
+    // the setting) is the first one's.
+    int fullscreen_applied = -1;   // the FULLSCREEN setting last applied; -1: none yet
     bool battery_now = false;
     std::uint64_t battery_checked_ns = 0;
     auto apply_settings = [&](const b3settings::Settings& stored) {
@@ -1713,6 +1936,7 @@ int run_live_window(const LiveOptions& o) {
         NativePad::instance().set_boost_toggle(s.boost_mode == 1);    // accessibility: BOOST Toggle (opt-in, input-changing)
         NativePad::instance().set_instant_restart(s.instant_restart == 1);   // speedrun1: INSTANT RESTART (opt-in, input-injecting)
         NativePad::instance().set_series_shoulders(s.series_shoulders == 1);   // carsel1: CAR SERIES ON L1 / R1 (opt-in, input-changing)
+        GarageCam::instance().set_enabled(s.garage_camera);   // garagecam1: GARAGE CAMERA (drawn only)
         NativePad::instance().set_rumble(s.rumble == 1, s.rumble_strength, s.rumble_triggers);   // rumble1 (opt-in, game-visible)
         NativePad::instance().set_analog_pedals(s.analog_pedals);   // 1.0.1
         NativePad::instance().set_adaptive_triggers(s.adaptive_triggers == 1, s.adaptive_triggers_strength);   // pad1 (presentation only)
@@ -1726,15 +1950,19 @@ int run_live_window(const LiveOptions& o) {
         skip_hint_setting = s.skip_hint;   // mac5
         prompts_setting = s.button_prompts;
         dev->set_dither(o.dither > 0.0f || s.dither ? 1.0f : 0.0f);   // perf1: DITHER
-        dev->set_render_scale(float(std::clamp(s.render_scale, 50, 100)) / 100.0f);   // effects2: RENDER SCALE
+        dev->set_render_scale(float(std::clamp(s.render_scale, 50, 200)) / 100.0f);   // effects2: RENDER SCALE (perf4: up to 200)
         dev->set_sharp_upscale(s.upscaling != 0);   // 1.1 UPSCALING
-        const bool full = (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN) != 0;
-        if (full != (s.fullscreen || o.fullscreen)) SDL_SetWindowFullscreen(win, s.fullscreen || o.fullscreen);
+        const bool want_full = fullscreen_applied < 0 ? (s.fullscreen || o.fullscreen) : s.fullscreen;
+        if (fullscreen_applied < 0 || int(s.fullscreen) != fullscreen_applied) {
+            const bool full = (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN) != 0;
+            if (full != want_full) SDL_SetWindowFullscreen(win, want_full);
+            fullscreen_applied = int(s.fullscreen);
+        }
     };
     if (o.settings) apply_settings(*o.settings);
     // mac5: the PC SETTINGS page (pcpage.h) starts from the settings loaded at start and saves to the same file
     PcPage& pc_page = PcPage::instance();
-    if (o.settings) pc_page.settings() = *o.settings;
+    if (o.settings) pc_page.load_settings(*o.settings);
     std::uint64_t pc_page_ns = 0;
     // tunenav1: the tuning console's favourites and recently changed values, kept beside the settings
     TuneConsole::instance().set_user_dir(o.settings_path.empty() ? std::string() : std::filesystem::path(o.settings_path).parent_path().string());
@@ -1756,6 +1984,10 @@ int run_live_window(const LiveOptions& o) {
     double report_after = [] { const char* e = std::getenv("B3_REPORT_AFTER"); return e && *e ? std::atof(e) : -1.0; }();
     const std::uint64_t report_t0 = b3live::now_ns();
     std::vector<std::thread> shot_writers;
+    // F12's results: written by a writer thread, shown here once done (the banner says what happened, not what was meant)
+    struct ShotResult { std::string name; std::atomic<int> state{0}; };   // 0 writing, 1 saved, 2 failed
+    std::vector<std::shared_ptr<ShotResult>> shot_results;
+    std::vector<std::string> shot_names;   // the paths handed out this session (two shots in one second get -2, -3 ...)
     // play1: with --native-pad the window is the native game's pad (nativepad.h): keys and gamepads go to the game,
     // the viewer's keys need Ctrl, and closing the window asks the game to end (native_play), the window going once
     // the feed has ended (or after 15 s).
@@ -1771,9 +2003,12 @@ int run_live_window(const LiveOptions& o) {
     std::uint64_t photo_ns = 0;
     FpsPanel fps_panel;   // gsoff1: the FPS COUNTER setting or --fps-counter
     SkipHint skip_hint;   // mac5: the video skip hint (native_play)
+    RaceTimeLabel race_label;   // todrace: the track page's DAY / NIGHT label (native_play)
     SpeedrunPanel speedrun_panel;   // speedrun1: the speedrun timer
     Notice notice;        // mac5: safe mode's banner
     std::uint64_t notice_ns = 0;
+    Notice save_bubble;   // saveflow: the save notices (show_save_bubble), apart from the banner
+    std::uint64_t save_bubble_ns = 0;
     if (o.safe_mode) {
         std::vector<std::string> lines = o.safe_forced ? std::vector<std::string>{"SAFE MODE", "STARTED WITH LOW SETTINGS AS ASKED",
                                                                                   "CHANGE THEM IN SETTINGS AT ANY TIME"}
@@ -1782,6 +2017,16 @@ int run_live_window(const LiveOptions& o) {
         if (o.mods_safe_off > 0)   // modkit1b: and without mods (native_play)
             lines.push_back(o.mods_safe_off == 1 ? "YOUR MOD IS OFF FOR THIS RUN" : "YOUR " + std::to_string(o.mods_safe_off) + " MODS ARE OFF FOR THIS RUN");
         notice.show(lines, 12.0f);
+    }
+    if (!o.settings_path.empty()) {   // portable mode (1.3.0): a write-protected stick: said once at the start (saves will fail)
+        const b3io::UserDirChoice in_use = b3io::user_dir_choice();
+        std::error_code dec;
+        if (in_use.kind == b3io::UserDirKind::kPortable && std::filesystem::is_directory(in_use.dir, dec) && !b3io::dir_writable(in_use.dir)) {
+            const std::string alert = "SAVE WARNING - THE PORTABLE DATA FOLDER CAN'T BE WRITTEN - SAVES AND SETTINGS WON'T BE KEPT";
+            std::printf("[b3live] notice: %s\n", alert.c_str());
+            show_save_bubble(save_bubble, alert, pc_page.ui_language());
+            save_bubble_ns = 0;
+        }
     }
     RaceStartLog race_log;
     FpsView fps_logged = FpsView::kOff;
@@ -1795,13 +2040,20 @@ int run_live_window(const LiveOptions& o) {
                       dev->frames_in_flight(), gpu_desc.c_str());
         b3perf::set_info(inf);
     }
+    float refresh_hz = -1.0f;        // the window's display's refresh rate (0: unknown; -1: to be read)
+    std::uint64_t pace_next_ns = 0;  // the frame cap's next deadline
+    // robust2: frames the device did not show (minimised / hidden window, or a device that stopped drawing)
+    std::uint64_t no_frame_n = 0, no_frame_since = 0;
+    bool no_frame_told = false;
     while (running) {
         const std::uint64_t top_ns = b3live::now_ns();
         if (lat_mode != Latency::kSmooth && !close_deadline) dev->wait_swapchain();   // lat1: the frame starts when it can be shown
         const std::uint64_t loop_ns = b3live::now_ns();
+        if (o.native_audio) NativeAudio::instance().poll(loop_ns);   // robust2: no device yet / lost: tried again
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {   // rebind2: the window's shortcuts, whatever keys they are on
+            // rebind2: the window's shortcuts, whatever keys they are on (settingsui: not a key that types a name meanwhile)
+            if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && !npad.typing(std::uint16_t(e.key.scancode), e.key.mod)) {
                 using b3native::input::PortAction;
                 const std::uint64_t pm = npad.port_mask(std::uint16_t(e.key.scancode), e.key.mod);   // (0 during a rebind)
                 if (pm >> int(PortAction::Screenshot) & 1) shot_pending = true;   // mac5
@@ -1814,7 +2066,14 @@ int run_live_window(const LiveOptions& o) {
                 if (pm >> int(PortAction::FpsView) & 1) fps_view = fps_view_next(fps_view);   // fpsoverlay2 (logged below)
                 if (pm >> int(PortAction::HdTextures) & 1) notice.show(hd_key(*dev, pc_page.settings(), pc_page.ui_language(), "key"), 1.5f);   // hdkey
             }
-            if (e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) SDL_ResetKeyboard();   // a modifier left held by an OS shortcut (macOS screenshots) is let go
+            // robust2: the display's refresh rate read again (the frame cap's pacing) when the window moves to another
+            // display or a display's mode changes
+            if (e.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED || e.type == SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED ||
+                e.type == SDL_EVENT_DISPLAY_ADDED || e.type == SDL_EVENT_DISPLAY_REMOVED || e.type == SDL_EVENT_DISPLAY_MOVED)
+                refresh_hz = -1.0f;
+            if (o.native_audio) NativeAudio::instance().event(&e);   // robust2: a playback device added / removed
+            if (e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) SDL_ResetKeyboard();
+            if (e.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED || e.type == SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED) fif_refresh = -1.0f;   // perf4   // a modifier left held by an OS shortcut (macOS screenshots) is let go
             if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
                 if (npad.enabled()) {   // play1: the native game ends; the window follows its feed
                     if (!close_deadline) {
@@ -1831,6 +2090,7 @@ int run_live_window(const LiveOptions& o) {
             else if (npad.enabled() && !pc_page.active() && CarLookPanel::instance().handle(e)) {}   // reflect2: the CAR LOOK panel
             else if (npad.enabled() && !pc_page.active() && TuneConsole::instance().handle(e)) {}   // tune4: F9, the overlay's keys
             else if (npad.enabled() && !pc_page.active() && e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat &&
+                     !npad.typing(std::uint16_t(e.key.scancode), e.key.mod) &&
                      (npad.port_mask(std::uint16_t(e.key.scancode), e.key.mod) >> int(b3native::input::PortAction::TuneOverlay) & 1)) {
                 // the overlay key with no overlay in this run: say why instead of nothing (the console is installed at the start)
                 if (pc_page.settings().developer_mods != 0)
@@ -1984,6 +2244,7 @@ int run_live_window(const LiveOptions& o) {
             if (photo_on && drawn && !f.split && photo.camera(f.cam, pcam)) {   // photo mode: the scene from the free camera
                 ls.photo_frame(*dev, f, pcam, float(w) / float(h > 0 ? h : 1), fog, specular, fp, items);
                 photo.dof(pcam, ls.player_car(f), fp.view_proj, fp.dof);   // photo2: the depth of field (off unless turned on)
+                photo.motion(pcam, f.vehicles, fp.motion);   // photoblur: the motion blur (off unless turned on)
                 photo_drawn = true;
             } else if (drawn && f.split) {   // gsoff1 (§29): the 2-player split screen, two views
                 const float a = float(w) / float(h > 0 ? h : 1);
@@ -2005,6 +2266,7 @@ int run_live_window(const LiveOptions& o) {
             }
         }
         if (npad.enabled()) photo.set_scene(drawn && !f.split && f.cam.valid && !pc_page.active());   // photo mode: a race picture
+        GarageCam::instance().set_blocked(pc_page.active() || photo.active());   // garagecam1: the stick is the page's / photo mode's then
         bool frontend = false;
         if (!drawn && ls.feed.state() == LiveFeed::State::kSynced && !ls.feed.empty()) {
             // menu1 (§22): front end, loading screens, results after the race view: the 2D of the tick the display
@@ -2022,6 +2284,7 @@ int run_live_window(const LiveOptions& o) {
                 if ((drawn || frontend) && f.hud && ls.view.hud_pieces_frame == f.hud && !ls.feed.empty()) {
                     const auto& rec = ls.feed.at(std::min<std::size_t>(f.tick, ls.feed.last())).menu;
                     mt = menu_targets_of(*f.hud, ls.view.hud_draw_pieces, rec.get(), ls.feed.models().hud.textures);
+                    mt.car = frontend && f.fe_car != 0 && GarageCam::instance().enabled();   // garagecam1: a drag turns the view
                 }
                 mm.frame(mt, pc_page.active(), now_s);
             }
@@ -2061,6 +2324,14 @@ int run_live_window(const LiveOptions& o) {
             ls.view.host_ui_list(*dev, pc_page.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures),
                                  float(w) / float(h > 0 ? h : 1), items, h, w);
         }
+        // todrace (racetime.h): the track page's DAY / NIGHT label of the tick on screen
+        if (!pc_page.active() && !photo_drawn && !ls.feed.empty()) {
+            const std::size_t ti = drawn || frontend ? std::min<std::size_t>(f.tick, ls.feed.last()) : ls.feed.last();
+            if (const HostRaceTime& rt = ls.feed.at(ti).race_time; rt.label_opacity) {
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, race_time_ui(race_label, ls, pc_page, rt), float(w) / float(h > 0 ? h : 1), items, h, w);
+            }
+        }
         // mac5: the video skip hint of the tick on screen (its opacity from the game), with the device in use
         if (skip_hint_setting && !pc_page.active() && !photo_drawn && !ls.feed.empty()) {
             const std::size_t ti = drawn || frontend ? std::min<std::size_t>(f.tick, ls.feed.last()) : ls.feed.last();
@@ -2077,6 +2348,11 @@ int run_live_window(const LiveOptions& o) {
                 notice_ns = now;
                 notice.draw_list(*dev, w, h, ndt, items);
             }
+            if (save_bubble.visible()) {   // saveflow: the save notices' bubble
+                const float bdt = save_bubble_ns ? float(double(now - save_bubble_ns) * 1e-9) : 0.0f;
+                save_bubble_ns = now;
+                save_bubble.draw_list(*dev, w, h, bdt, items);
+            }
             if (!pc_page.active()) TuneConsole::instance().draw_list(*dev, w, h, items);   // tune4: the F9 overlay
             if (!pc_page.active()) CarLookPanel::instance().draw_list(*dev, w, h, items);   // reflect2
         };
@@ -2090,7 +2366,7 @@ int run_live_window(const LiveOptions& o) {
             report_pending = false;
             if (!report_job.valid()) {
                 b3port::BugReportInput in;
-                if (char* pref = SDL_GetPrefPath("b3port", "native")) { in.pref = std::filesystem::path(pref); SDL_free(pref); }
+                in.pref = b3io::user_dir();   // portable mode: b3port/user_dir.h
                 const char* desk = SDL_GetUserFolder(SDL_FOLDER_DESKTOP);
                 const char* docs = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
                 in.out_dir = b3port::report_folder({desk ? std::filesystem::path(desk) : std::filesystem::path(),
@@ -2113,12 +2389,20 @@ int run_live_window(const LiveOptions& o) {
             else notice.show({"BUG REPORT FAILED", r.error}, 8.0f);
             notice_ns = 0;
         }
+        if (const std::string alert = pc_page.save_alert(); !alert.empty()) {   // fsrobust: a save that could not be written
+            std::printf("[b3live] notice: %s\n", alert.c_str());
+            std::fflush(stdout);
+            show_save_bubble(save_bubble, alert, pc_page.ui_language());   // saveflow: a small bubble in the corner
+            save_bubble_ns = 0;
+        }
         if (shot_pending && w > 0 && h > 0) {   // mac5: F12, the frame as shown at the window's size, written on a thread
             shot_pending = false;
             std::vector<std::uint8_t> px;
+            dev->screenshot_begin();   // the shot's kept bloom from the window's; its targets released after
             const bool ok = drawn && f.split ? dev->draw_views_offscreen(w, h, views, sfp, items, px) : dev->draw_offscreen(w, h, fp, items, px);
+            dev->screenshot_end();
             std::string dir;
-            if (char* pref = SDL_GetPrefPath("b3port", "native")) { dir = std::string(pref) + "screenshots"; SDL_free(pref); }
+            if (const std::string pref = b3io::user_dir_slash(); !pref.empty()) dir = pref + "screenshots";   // portable mode
             if (ok && !dir.empty()) {
                 std::error_code ec;
                 std::filesystem::create_directories(dir, ec);
@@ -2126,19 +2410,33 @@ int run_live_window(const LiveOptions& o) {
                 char stamp[32] = "shot";
                 if (const std::tm* tm = std::localtime(&t)) std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", tm);
                 std::string path = dir + "/Burnout3-" + stamp + ".png";
-                for (int n = 2; std::filesystem::exists(path, ec) && n < 100; ++n) path = dir + "/Burnout3-" + stamp + "-" + std::to_string(n) + ".png";
+                const auto taken = [&](const std::string& p) {
+                    return std::filesystem::exists(p, ec) || std::find(shot_names.begin(), shot_names.end(), p) != shot_names.end();
+                };
+                for (int n = 2; taken(path) && n < 1000; ++n) path = dir + "/Burnout3-" + stamp + "-" + std::to_string(n) + ".png";
+                shot_names.push_back(path);
+                if (shot_names.size() > 64) shot_names.erase(shot_names.begin());   // older ones are on disk by now
                 const int sw = w, sh = h;
-                shot_writers.emplace_back([path, sw, sh, px = std::move(px)] {
+                auto res = std::make_shared<ShotResult>();
+                res->name = std::filesystem::path(path).filename().string();
+                shot_results.push_back(res);
+                shot_writers.emplace_back([path, sw, sh, res, px = std::move(px)] {
                     const bool wrote = b3asset::write_png_rgba(path, sw, sh, px.data());
                     std::printf("[b3live] screenshot %s %s\n", wrote ? "saved to" : "NOT written:", path.c_str());
                     std::fflush(stdout);
+                    res->state.store(wrote ? 1 : 2);
                 });
-                notice.show({"SCREENSHOT SAVED", std::filesystem::path(path).filename().string()}, 1.5f);
-                notice_ns = 0;
             } else {
                 notice.show({"SCREENSHOT FAILED"}, 1.5f);
                 notice_ns = 0;
             }
+        }
+        for (auto it = shot_results.begin(); it != shot_results.end();) {   // F12's writes that finished
+            const int st = (*it)->state.load();
+            if (st == 0) { ++it; continue; }
+            notice.show({st == 1 ? "SCREENSHOT SAVED" : "SCREENSHOT FAILED", (*it)->name}, 1.5f);
+            notice_ns = 0;
+            it = shot_results.erase(it);
         }
         if (photo_drawn) {   // photo mode: the banners and the help box over the picture, never in a screenshot
             banners();
@@ -2148,13 +2446,50 @@ int run_live_window(const LiveOptions& o) {
             FpsPanel::Rect nbox, *avoid = nullptr;
             float nb[4];
             if (notice.visible() && notice.box(w, h, nb)) { nbox = {nb[0], nb[1], nb[2], nb[3]}; avoid = &nbox; }
+            else if (save_bubble.visible() && save_bubble.box(w, h, nb)) { nbox = {nb[0], nb[1], nb[2], nb[3]}; avoid = &nbox; }   // saveflow
             const bool photo_ui = photo_drawn && photo.ui() != PhotoUi::kHidden;
             fps_panel.draw_list(*dev, w, h, now, fps_view, fps_corner_in_photo(fps_corner, photo_ui), ls.view.hud_size, fps_info, avoid, drawn && !frontend && !photo_drawn && !f.split, items);
         }
         drawlist_scope.end();
         const std::uint64_t cpu_ns = b3live::now_ns();   // perf
-        if (drawn && f.split) dev->draw_views(views, sfp, items, &w, &h);   // gsoff1 (§29): `items` holds the 2D
-        else dev->draw_frame(fp, items, &w, &h);
+        const bool shown = drawn && f.split ? dev->draw_views(views, sfp, items, &w, &h)   // gsoff1 (§29): `items` holds the 2D
+                                            : dev->draw_frame(fp, items, &w, &h);
+        if (shown) {
+            if (no_frame_n > 0) std::printf("[b3live] frames shown again (after %llu not shown)\n", static_cast<unsigned long long>(no_frame_n));
+            no_frame_n = 0;
+            no_frame_told = false;
+        } else {
+            // robust2: no swapchain texture (a minimised, hidden or covered window) or a failed submit: the loop must not
+            // spin flat out (the game itself runs on its own thread). Minimised / hidden / covered: paced at about 60 per
+            // second. Otherwise backed off (1, 2, 4 ... 64 ms) and logged. After 10 s of it while the window is in front
+            // with the focus (a Wayland window on another workspace gets no frames and no occluded flag: not counted),
+            // the player is told once, with the game's own notice (never a modal box that would stop this loop; it shows
+            // on the frames that do come).
+            const std::uint64_t t = b3live::now_ns();
+            ++no_frame_n;
+            const SDL_WindowFlags wf = SDL_GetWindowFlags(win);
+            const bool away = (wf & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN | SDL_WINDOW_OCCLUDED)) != 0;
+            if (away || !(wf & SDL_WINDOW_INPUT_FOCUS)) no_frame_since = t;   // the 10 s count only in front, focused
+            else if (no_frame_n == 1) no_frame_since = t;
+            if (away) {
+                SDL_Delay(16);
+            } else {
+                if (no_frame_n == 1 || no_frame_n % 256 == 0) {
+                    std::printf("[b3live] no frame shown (%llu in a row): %s\n", static_cast<unsigned long long>(no_frame_n),
+                                SDL_GetError()[0] ? SDL_GetError() : "no swapchain image");
+                    std::fflush(stdout);
+                }
+                SDL_Delay(std::uint32_t(1) << std::min<std::uint64_t>(no_frame_n - 1, 6));
+                if (!no_frame_told && t - no_frame_since > 10000000000ull) {
+                    no_frame_told = true;
+                    std::printf("[b3live] the graphics device has shown no frame for 10 s with the window in front: the notice is up\n");
+                    std::fflush(stdout);
+                    notice.show({"THE GRAPHICS DEVICE STOPPED SHOWING FRAMES", "IF THE PICTURE STAYS BAD, RESTART THE GAME",
+                                 "PROGRESS UP TO THE LAST SAVE IS KEPT"}, 12.0f);
+                    notice_ns = 0;
+                }
+            }
+        }
         const std::uint64_t done_ns = b3live::now_ns();
         if (drawn || frontend) wstats.add(drawn ? 0 : 1, top_ns, loop_ns, cpu_ns, done_ns);
         fps_panel.frame(done_ns);
@@ -2171,8 +2506,10 @@ int run_live_window(const LiveOptions& o) {
             if (on_batt != battery_now) {   // only the battery-dependent values: the frame cap and the two particle levels
                 battery_now = on_batt;
                 const b3settings::Settings s = on_batt ? b3settings::on_battery(cur_settings) : cur_settings;
-                ls.view.effects.sparks = s.sparks;
-                ls.view.effects.popcorn = s.popcorn;
+                for (Effects* e : {&ls.view.effects, &ls.view.view2_state.effects}) {   // split2p: player 2's view too
+                    e->sparks = s.sparks;
+                    e->popcorn = s.popcorn;
+                }
                 max_fps = s.frame_cap > 0 ? double(s.frame_cap) : o.max_fps;
                 fps_info.target_fps = max_fps > 0 ? float(max_fps) : 60.0f;
                 if (on_batt) std::printf("[b3settings] on battery: BATTERY SAVER holds the frame rate to 60 and the effects to Medium at most\n");
@@ -2184,9 +2521,8 @@ int run_live_window(const LiveOptions& o) {
             // limit exactly; a frame that ran late starts a new schedule instead of rushing to catch up. With vsync at a
             // refresh the limit does not go above, vsync alone paces the frames: a second clock at the same rate beats
             // against the display's and drops a frame now and then (a 60 limit on a 60 Hz screen showed 55-58).
-            static std::uint64_t next_ns = 0;
-            static float refresh_hz = -1.0f;
-            if (refresh_hz < 0.0f) {
+            std::uint64_t& next_ns = pace_next_ns;
+            if (refresh_hz < 0.0f) {   // robust2: read again after a display change (the events above)
                 const SDL_DisplayMode* dm = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
                 refresh_hz = dm && dm->refresh_rate > 0.0f ? dm->refresh_rate : 0.0f;
             }
@@ -2199,6 +2535,29 @@ int run_live_window(const LiveOptions& o) {
             }
         }
         b3perf::frame_end(w, h);   // perf3
+        {   // perf4: FRAMES IN FLIGHT Auto, from this frame's time and its GPU waits against the target (the cap, else the refresh)
+            const double wait_ms = double(dev->take_wait_ns()) * 1e-6;
+            if (fif_auto && (drawn || frontend) && !close_deadline) {
+                float& refresh = fif_refresh;   // (read again when the window moves to another display)
+                if (refresh < 0.0f) {
+                    const SDL_DisplayMode* dm = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
+                    refresh = dm && dm->refresh_rate > 0.0f ? dm->refresh_rate : 60.0f;
+                }
+                const bool vsync = std::strcmp(dev->present_mode_name(), "vsync") == 0;
+                const double cap_ms = max_fps > 0 ? 1000.0 / max_fps : 0.0, refresh_ms = 1000.0 / double(refresh);
+                const double target_ms = vsync ? std::max(cap_ms, refresh_ms) : cap_ms > 0 ? cap_ms : refresh_ms;
+                b3gfx::FramesAuto::Change c;
+                if (fif.frame(double(b3live::now_ns() - top_ns) * 1e-6, wait_ms, target_ms, c)) {
+                    const int was = dev->frames_in_flight();
+                    const bool ok = dev->set_frames_in_flight(c.to);
+                    fif.set_current(dev->frames_in_flight());
+                    std::printf("[b3live] frames in flight %d -> %d%s (auto: %.1f fps, target %.1f, GPU waits %.0f%% of the frame: %s)\n", was, c.to,
+                                ok ? "" : " refused", c.fps, c.target_fps, 100.0 * c.wait_share, c.why);
+                    std::fflush(stdout);
+                    dev->take_wait_ns();
+                }
+            }
+        }
         if (now - title_at >= 500000000ull) {
             const double secs = double(now - title_at) * 1e-9;
             const auto& fd = ls.feed;
@@ -2224,6 +2583,7 @@ int run_live_window(const LiveOptions& o) {
     WindowStats::print_decode(ls.feed);
     if (o.native_audio) NativeAudio::instance().close();   // play1
     npad.release_pads();   // pad1: the DualSense's triggers free, the gyro sensors off
+    warm_end(*dev, warm_file);   // perf4
     dev.reset();
     SDL_DestroyWindow(win);
     SDL_Quit();

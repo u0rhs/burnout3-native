@@ -33,7 +33,7 @@ The folder's name does not matter (the id in `mod.ini` names the mod). A folder 
 A small ini file: `[section]` lines, `key = value` lines, comments starting with `#` or `;` (a whole line, or after a
 value). A value in double quotes keeps its spaces. Section and key names are not case-sensitive. A key given twice:
 the first one counts (with a note). Lines the port does not understand give a note, never an error, unless the table
-below says so.
+below says so. UTF-8, with or without a byte order mark (Notepad's "UTF-8 with BOM").
 
 ### [mod]
 
@@ -147,7 +147,7 @@ platform = no
 |---|---|
 | `windows`, `linux`, `macos` | The library for that system, a file inside the mod (no `..`, no absolute path). At least one; the game loads its own system's. |
 | `gameplay` | `yes` / `no` (default `no`): the author's statement that the mod changes physics, AI or scoring. Shown on the Mods page. |
-| `platform` | `yes` / `no` (default `no`): the mod hooks the platform tier; allowed only while Developer mods is on (PC SETTINGS > INTERFACE > DEVELOPER MODS, or the launcher Mods page's button: one switch). |
+| `platform` | `yes` / `no` (default `no`): the mod hooks the platform tier; allowed only while Developer mods is on (PC SETTINGS > MODS > DEVELOPER MODS, or the launcher Mods page's button: one switch). |
 
 A `[code]` with `api` 1, without a library, or with a path that leaves the mod: the mod cannot be used. A library that
 is not there for the system the game runs on: a note in the log; the mod is not loaded there. The game loads a code
@@ -187,12 +187,15 @@ memory = 64
 |---|---|
 | `main` | The script, a `.lua` file in a folder inside the mod (`/` between folders; no `..`, no absolute path; not at the mod's top). Required. Its folder is the script folder: `require` reads the other scripts there, and all its files are in the mod hash. |
 | `gameplay` | `yes` / `no`. `no`: the script only reads and draws; the port refuses its writes to the game, its calls of game functions and its replacements. `yes`, or not given (with a note): it may change the game, and the Mods page says it changes gameplay. |
+| `unsafe` | `yes` / `no` (default `no`): the script may write the game's memory, call its functions (`b3.call`, only those in `calls`), replace them and change a hooked call's integer arguments and result. The launcher asks the player's permission as for a code mod (mods-trusted.ini: mod.ini and the script folder's files); the game reads these rights from the mod.ini it hashed. Needs `gameplay = yes`. A hot reload with Developer mods runs edited files without asking. |
+| `calls` | With `unsafe = yes`: the game functions `b3.call` may call, addresses separated by commas (at most 64). |
 | `budget` | Lua instructions per VBlank before the script is stopped: 10000 to 50000000, default 1000000. |
 | `memory` | Megabytes of Lua memory before the script is stopped: 1 to 512, default 64. |
 
 A mod has `[code]` or `[script]`, not both. A `[script]` with `api` below 3, without `main`, or with a `main` that is
 not a `.lua` file in a folder of the mod: the mod cannot be used. A `main` that is not there: a note in the log, and the
-mod is not loaded. Scripts need no permission in the launcher (they run inside the game through the script API only);
+mod is not loaded. Scripts need no permission in the launcher (they run inside the game through the script API only),
+except one with `unsafe = yes`, which is asked about as a code mod;
 a script mod that does not load is left out of the run with its files, as a code mod.
 
 ### Sections for later parts of the kit
@@ -216,7 +219,7 @@ anything else is off. Ids that are not installed are dropped when the launcher s
 listed join at the end, off (the higher `priority` first, then by id).
 
 **Developer mods** (code mods with `platform = yes` may then hook the platform tier; the tuning console is on) is not
-kept here: it is `developer_mods` in `pc_settings.ini`, which PC SETTINGS > INTERFACE > DEVELOPER MODS and the Mods
+kept here: it is `developer_mods` in `pc_settings.ini`, which PC SETTINGS > MODS > DEVELOPER MODS and the Mods
 page's **Developer mods** button both set. An `[options]` section in `mods.ini` (written by test builds before that) is
 ignored.
 
@@ -227,15 +230,36 @@ In the user data folder, beside `mods.ini` (window runs only; offscreen runs rea
 | File | Written by | Holds |
 |---|---|---|
 | `mod-settings/<id>.ini` | the game (a change on PC SETTINGS > MODS) and the launcher's Mods page | a code or script mod's settings values: `[settings]`, then `<key> = <value>` (`Off` / `On`, a choice's name, a slider's level) |
-| `mods-trusted.ini` | the launcher (when the user allows a mod's code) | `[trusted]`, then `<SHA-256 of the library> = <id> <version>`; delete a line to be asked again |
-| `mods-state.ini` | the game, at each window start with code or script mods | per code or script mod (`[mod <id>]`): `status` (loaded / not loaded), `reason`, `library` (its SHA-256), `row` lines (its settings rows); the Mods page shows it |
+| `mods-trusted.ini` | the launcher (when the user allows a mod's code) | `[trusted]`, then `<SHA-256> = <id> <version>`: the hash over every library file in the mod (sdk-reference.md, Trust), for that id only; delete a line to be asked again |
+| `mods-state.ini` | the game, at each window start with code or script mods | per code or script mod (`[mod <id>]`): `status` (loaded / not loaded), `reason`, `library` (the SHA-256 over its code, as in `mods-trusted.ini`), `row` lines (its settings rows); the Mods page shows it |
 
 ## Archives (.b3mod, .zip)
 
 A `.b3mod` file is a zip archive; the launcher's **Add mod...** installs either. The archive holds the mod folder's
 contents: `mod.ini` at the top of the archive, or in its one top folder (an archive made by zipping the mod's folder;
 that folder is not kept). A `__MACOSX` folder (made by macOS's Finder) is ignored. The mod is unpacked into
-`mods/<id>/`.
+`mods/<id>/`. **Add folder...** installs a mod's folder the same way (its files copied; a link or junction in it
+refuses it).
+
+**A pack without `mod.ini`.** An archive or folder with no `mod.ini` whose top (or one top folder) holds only the
+game's own folders (`CNF`, `DATA`, `IOP`, `NETGUI`, `NFSUNDER`, `OVID`, `PVEH`, `SOUND`, `TRACKS`, in any case) and
+loose files (a readme) is a pack of replacement files: the launcher asks, then installs it as a data-only mod. Its
+game folders go under `data/`, loose files beside it, and it gets this `mod.ini` (the id made from the folder's or
+archive's name: lower case, `a-z 0-9 . _ -`, a number added when taken):
+
+```ini
+[mod]
+id = cool-car-pack
+name = Cool Car Pack
+version = 1
+api = 1
+description = Game files installed without a mod.ini.
+[files]
+root = data
+```
+
+No `[code]`, no `[script]`: nothing in it runs and there is no trust question. Anything else without a `mod.ini` is
+refused as before.
 
 The archive is checked before anything is written, and refused as a whole when:
 
@@ -246,13 +270,19 @@ The archive is checked before anything is written, and refused as a whole when:
   deflate; the archive is ZIP64 or split into parts;
 - an entry is larger than 2 GB, the entries add up to more than 16 GB, or there are more than 100,000 of them; an
   entry's data is longer than its header says, or its CRC does not match;
-- two entries have names that differ only in case, or a name is both a file and a folder;
+- two entries have names that differ only in case, or a name is both a file and a folder (the one top folder may be
+  written in several cases, `My Mod/` and `my mod/`: it is one folder, as on Windows and macOS);
 - there is no `mod.ini` at the top (or in the one top folder), or it has errors;
 - a mod with the same id is installed already (the launcher then offers **Replace**: the old folder is replaced, the
   mod keeps its place and its on / off switch), or the mods folder has a folder named like the id that is not that mod.
 
 Unpacking goes into a hidden folder (`.install-<id>`) that is renamed into place at the end, so a failed install leaves
-nothing behind. A new mod starts off.
+nothing behind. A new mod starts off. **Replace** moves the old folder aside and removes only what is really inside it:
+a symbolic link or a Windows junction (the mod's folder itself, or one inside it; a reparse point tagged as a symbolic
+link or a mount point) is removed as the link, never the folder it points to. Other reparse points (OneDrive and other
+cloud placeholders) are ordinary files and folders and are removed as such. A folder that cannot be removed completely
+(a file in it open) is named in the install's notes and the log; one left by an earlier install refuses the install
+until it is deleted.
 
 ## What the port computes from a set of mods
 

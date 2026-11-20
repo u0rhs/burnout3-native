@@ -11,7 +11,9 @@
 // MenuMouse turns the window's mouse into actions for the game thread (b3r_menu_actions): hovering a row (on a move)
 // selects it, a left click selects it and presses Cross, a click on a prompt presses its button, a left click elsewhere
 // on a menu page without rows presses Cross (continue screens; not on the name keyboard), a right click presses
-// Triangle (the menus' Back), the wheel presses Up / Down. The cursor shows on a move and hides after kHideAfter seconds
+// Triangle (the menus' Back), the wheel presses Up / Down. garagecam1 (garagecam.h): on a car page with GARAGE CAMERA on,
+// that click elsewhere is taken on the release instead, and only when the pointer moved less than kDragStart while held;
+// past it the press is a drag, which turns the view round the car (GarageCam::add_drag) and presses nothing. The cursor shows on a move and hides after kHideAfter seconds
 // or when a key or a pad is used. While the PC SETTINGS page is open it gets the pointer instead (page_input).
 #ifndef B3REPLAY_MENUMOUSE_H
 #define B3REPLAY_MENUMOUSE_H
@@ -48,6 +50,7 @@ struct MenuTargets {
     std::vector<MenuPromptTarget> prompts;  // button + label
     bool menu = false;                      // a menu page (rows, or the front end's prompt bar)
     bool text_entry = false;                // the on-screen keyboard takes typed text
+    bool car = false;                       // garagecam1: a car page with GARAGE CAMERA on (a left drag turns the view)
     const MenuRowTarget* row_at(float x, float y) const;
     const MenuPromptTarget* prompt_at(float x, float y) const;
     std::uint32_t index_of(std::uint32_t select) const;   // the select's current row (the record's), ~0u unknown
@@ -81,6 +84,7 @@ class MenuMouse {
 public:
     static MenuMouse& instance();
     static constexpr double kHideAfter = 3.0;   // seconds without a move
+    static constexpr float kDragStart = 0.012f;  // garagecam1: a held left button moved this far (window fractions) drags
 
     // Any thread (the window's events, scripted ones): positions in output fractions; b 1 left, 3 right
     void move(float x, float y, double t);
@@ -92,6 +96,11 @@ public:
     // `page_open`: the PC SETTINGS page has the pointer (the game gets nothing).
     void frame(const MenuTargets& t, bool page_open, double now);
     bool cursor_wanted(double now) const;   // the window shows the system cursor
+    // settingsui: the mouse was used after the last key or pad press (the PC SETTINGS page's prompt bar shows its words)
+    bool used_last() const {
+        std::lock_guard<std::mutex> l(mu_);
+        return have_pos_ && !hidden_by_device_;
+    }
     bool pending() const;                   // events not yet taken by frame()
 
     // The PC SETTINGS page's pointer (b3settings::Input; picture pixels from fractions by the caller's mapping)
@@ -117,6 +126,9 @@ private:
     double hover_at_ = -1e9;
     PagePointer page_;
     std::uint64_t sent_ = 0;
+    bool drag_held_ = false, drag_moved_ = false;   // garagecam1: a left press on a car page, held; moved past kDragStart
+    std::vector<std::uint32_t> drag_page_;          // the press's page: its selects (MenuTargets::current)
+    float drag_dx_ = 0, drag_dy_ = 0;               // its travel before it counted as a drag
 };
 
 }  // namespace b3replay

@@ -33,7 +33,7 @@ header); `tools/native/save_check.sh`.
 
 ## Windows
 
-Built from WSL with the pinned MSYS2 MinGW-w64 toolchain (hashes in `toolchain.sha256`) and the MSYS2 SDL3
+Built from WSL with the pinned MSYS2 MinGW-w64 toolchain (hashes in `tools/toolchain/toolchain.sha256`) and the MSYS2 SDL3
 package (`tools/render/README.md`). Put the toolchain at `<WIN>/toolchain/mingw64`, where `WIN` (in `local.env`) is a
 folder on the Windows side (default `build-win/` in the repo); set `SDL3_MINGW` / `MSYS2_PKGS` to the unpacked SDL3
 package and the folder with its `.pkg.tar.zst`. Then:

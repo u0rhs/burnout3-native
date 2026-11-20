@@ -144,8 +144,8 @@ library where `mod.ini` says.
 1. Copy the `menu-label-setting` folder into the mods folder (launcher: Mods > Open mods folder) and press **Look
    again**. Its card says "Contains code: runs as a program on your PC".
 2. Press **Turn on**. Because the mod contains code, the launcher asks once whether you allow it to run (a code mod is
-   a program; allow only code from people you trust). Choose **Allow and turn on**. A new version of the library is
-   asked about again.
+   a program; allow only code from people you trust). Choose **Allow and turn on**. A change to any library in the mod
+   (a new version) is asked about again.
 3. Start the game. Its log has:
 
    ```

@@ -344,6 +344,7 @@ computes, and the checks in section 6 run with every feature at its default.
 | Code | 4,655 functions compile to the retail machine code | The decompilation's relink against retail |
 | Code | The other 997 are complete and audited | The decompilation's static audit; the port's per-call differential check (retail and native from the same saved state, RAM and results compared: `tools/native/diff_check.h`); the scenarios |
 | Arithmetic | PS2 floats, VU0, libm bit-exact under the model | `make test`, exactness group ([section 3](#3-ps2-floating-point-behaviour)) |
+| Code | No generated non-void function falls off its end (undefined behaviour in C++, where retail's code leaves v0 as it was) | `make check-returns` (`tools/native/check_returns.py`; the generation and `make native-bundle` run it too) |
 | Coverage | No function needs the original code | `STRICT=1` scenario runs ([section 1](#1-what-native-means-here)) |
 | Behaviour | A build does exactly what the recorded build did | The golden recording and compare, below |
 | Input | A recorded session plays back exactly | Replay files and pad recordings, below |
@@ -378,6 +379,12 @@ or fails, which says nothing about behaviour. Two runs of one build give the sam
 layer, the renderer or a default is checked this way, and a refactor or a feature at its default must give
 identical results ([CONTRIBUTING.md](../CONTRIBUTING.md)). The comparison behind `status.json` is dated 2026-11-12.
 
+A recording keeps each scenario's whole `native_play` log (`native_play.log.gz`: its wall-clock rate every 600
+VBlanks shows how loaded the machine was), and a scenario whose verdict fails keeps its screenshots. When
+`compare.sh` fails a scenario, it copies that scenario's recording to `<new recording>.failed/<scenario>.<UTC time>`
+(`KEEP_FAILED=<folder>` to put it elsewhere, `KEEP_FAILED=none` for no copy), so a re-run into the same folder does
+not erase the evidence.
+
 ### Replays and pad recordings
 
 A deterministic simulation can be stored as its inputs. A **replay file** (`.b3replay`, about 80 KB for a race)
@@ -402,6 +409,7 @@ scenarios, a memory card folder with a profile (`SAVES`):
 
 ```sh
 make test
+make check-returns                                            # last line: check_returns: PASS ...
 STRICT=1 tools/native/race_check.sh build/native_play build/rc_race
 tools/golden/baseline.sh build/native_play build/golden-a     # record a build
 tools/golden/baseline.sh build/native_play build/golden-b     # record it again (or another build)

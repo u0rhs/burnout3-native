@@ -146,7 +146,7 @@ std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const Gamepad
 // one further from centre; bytes 18-31 from `b`.
 std::array<std::uint8_t, 32> merge_samples(const std::uint8_t* a, const std::uint8_t* b);
 
-// Boost toggle (accessibility, PC SETTINGS > INTERFACE > ACCESSIBILITY > BOOST: Toggle; b3settings boost_mode 1). OPT-IN
+// Boost toggle (accessibility, PC SETTINGS > CONTROLS > DRIVING > BOOST: Toggle; b3settings boost_mode 1). OPT-IN
 // and INPUT-CHANGING: off (Hold, the default) apply() leaves the report as it is, byte for byte. On, while driving, a
 // press of R1 (boost; any key or pad button bound to it) latches it: the report then carries R1 held (its digital bit
 // and full pressure) until the next press, whatever the button does meanwhile. The latch drops when the driving
@@ -162,7 +162,7 @@ private:
     bool prev_ = false, latched_ = false;
 };
 
-// Instant restart (speedrun1; PC SETTINGS > INTERFACE > SPEEDRUN > INSTANT RESTART: On; b3settings instant_restart 1).
+// Instant restart (speedrun1; PC SETTINGS > CONTROLS > DRIVING > INSTANT RESTART: On; b3settings instant_restart 1).
 // OPT-IN and INPUT-INJECTING: the event is restarted by the game's own pause menu -- the macro presses Start (the pause
 // menu opens on RESUME), Down (RESTART), Cross (the game's "restart?" dialog), then the dialog's YES and Cross, each a
 // press of kHold VBlanks at a fixed VBlank of the macro (the VBlank grid: one apply() per pad sample). While it runs
@@ -189,7 +189,7 @@ private:
     int t_ = -1;
 };
 
-// Car series on the shoulders (carsel1; PC SETTINGS > INTERFACE > CONTROLLER > CAR SERIES ON L1 / R1: On; b3settings
+// Car series on the shoulders (carsel1; PC SETTINGS > CAR > GARAGE > CAR SERIES ON L1 / R1: On; b3settings
 // series_shoulders 1). OPT-IN and INPUT-CHANGING. The car select page changes the series (the car class: its carousel's
 // column) with Left / Right and the car with Up / Down; it reads no shoulder button [C: CB3CarSelectPage::Update
 // 0x318A80 reads Back, Confirm, Up, Down, Left, Right and Buddies (Square: the paint) only]. On, while that page is the

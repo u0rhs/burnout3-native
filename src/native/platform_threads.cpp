@@ -30,6 +30,7 @@
 #if !defined(_WIN32)
 #include <pthread.h>
 #endif
+#include "b3report/thread_name.h"   // split2p (last: it includes windows.h)
 
 namespace b3native::platform {
 
@@ -303,6 +304,7 @@ void leave_ended(Thread& t) {
 
 void thread_main(HostCtx* c) {
     t_ctx = c;
+    b3port::name_this_thread(("guest " + std::to_string(c->thread)).c_str());   // split2p (the crash report)
     {
         std::unique_lock<std::mutex> l(baton_mutex());
         c->cv.wait(l, [c] { return g_baton == c; });

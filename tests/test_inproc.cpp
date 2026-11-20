@@ -24,6 +24,7 @@
 #include "b3live/inproc.h"
 #include "../src/b3replay/capture.h"
 #include "../src/b3replay/live.h"
+#include "../src/gameview/grab_block.h"
 
 namespace {
 
@@ -211,4 +212,87 @@ TEST(route_by_header_tells_v1_from_v2) {
     fs::remove_all(root, ec);
 }
 
+// scene_capture.cpp's grab from a host buffer (the split screen's view-1 copy: a 16-byte head and 8-byte entries, so an
+// odd entry count ends mid-block): only the buffer's bytes are read, the rest of the last block is 0
+TEST(grab_block_reads_only_the_buffer_and_zero_pads) {
+    std::vector<std::uint8_t> big(64, 0xEE);   // the buffer is the first 24 bytes; the rest is "past the end"
+    for (int i = 0; i < 24; ++i) big[std::size_t(i)] = std::uint8_t(i + 1);
+    const std::uint32_t a = 0x02000000U;
+    std::uint8_t blk[16];
+    b3gv::grab_block(big.data(), a, 24, a, blk);
+    bool first = true;
+    for (int i = 0; i < 16; ++i) first = first && blk[i] == std::uint8_t(i + 1);
+    CHECK(first);
+    b3gv::grab_block(big.data(), a, 24, a + 16, blk);
+    bool second = true;
+    for (int i = 0; i < 16; ++i) second = second && blk[i] == (i < 8 ? std::uint8_t(17 + i) : 0);
+    CHECK(second);   // 8 bytes of the buffer, then 0 (not the 0xEE after it)
+    b3gv::grab_block(big.data() + 4, a + 4, 8, a, blk);   // unaligned start: bytes 4..11 of the block
+    bool mid = true;
+    for (int i = 0; i < 16; ++i) mid = mid && blk[i] == (i >= 4 && i < 12 ? std::uint8_t(i + 1) : 0);
+    CHECK(mid);
+}
+
 TEST_MAIN("test_inproc")
+
+// photoblur: the vehicles' velocities as the ticks come (VehicleMotion, into Vehicle::motion): from the last ticks in
+// which a car moved; held while nothing moves (the pause); 0 for a car that stops while the others drive on
+TEST(vehicle_motion_holds_through_a_pause) {
+    using b3replay::Tick;
+    using b3replay::Vehicle;
+    b3replay::VehicleMotion vm;
+    float hz = 60;   // the game's timer per poll
+    const auto tick = [&hz](std::uint32_t poll, float ax, float bx) {
+        Tick t;
+        t.poll = poll;
+        t.now = float(poll) / hz;
+        Vehicle a, b;
+        a.id = 1; a.data = 10; a.main.r[3][0] = ax;
+        b.id = 2; b.data = 10; b.main.r[3][0] = bx;
+        t.vehicles = {a, b};
+        return t;
+    };
+    Tick t = tick(100, 0, 50);
+    vm.apply(t);
+    CHECK(!t.vehicles[0].motion_known);   // first seen: not known yet
+    t = tick(101, 0.5f, 50.25f);
+    vm.apply(t);
+    CHECK(t.vehicles[0].motion_known);
+    CHECK_NEAR(t.vehicles[0].motion[0], 30.0, 1e-3);   // 0.5 m in a poll: 30 m/s
+    CHECK_NEAR(t.vehicles[1].motion[0], 15.0, 1e-3);
+    t = tick(103, 1.5f, 50.25f);   // two polls apart (a skipped poll); car 2 stands while car 1 drives
+    vm.apply(t);
+    CHECK_NEAR(t.vehicles[0].motion[0], 30.0, 1e-3);
+    CHECK_NEAR(t.vehicles[1].motion[0], 15.0, 1e-3);   // one still tick: not stopped yet
+    for (std::uint32_t p = 104; p < 107; ++p) {
+        t = tick(p, 1.5f + 0.5f * float(p - 103), 50.25f);
+        vm.apply(t);
+    }
+    CHECK(t.vehicles[1].motion_known && t.vehicles[1].motion[0] == 0.0f);   // still while the other moves: stopped
+    // the pause: nothing moves for a long time; the velocities are held
+    for (std::uint32_t p = 107; p < 2000; ++p) {
+        t = tick(p, 3.0f, 50.25f);
+        vm.apply(t);
+    }
+    CHECK(t.vehicles[0].motion_known);
+    CHECK_NEAR(t.vehicles[0].motion[0], 30.0, 1e-3);
+    // resumed after the pause: the first step spans the pause (unknown), the next is known again
+    t = tick(2000, 3.5f, 50.25f);
+    vm.apply(t);
+    CHECK(!t.vehicles[0].motion_known && t.vehicles[0].motion[0] == 0.0f);
+    t = tick(2001, 4.0f, 50.25f);
+    vm.apply(t);
+    CHECK_NEAR(t.vehicles[0].motion[0], 30.0, 1e-3);
+    // a jump (a reset onto the track) is not a speed
+    t = tick(2002, 400.0f, 50.25f);
+    vm.apply(t);
+    CHECK(!t.vehicles[0].motion_known);
+    // a 50 Hz disc: 0.5 m a tick is 25 m/s by the game's timer
+    hz = 50;
+    b3replay::VehicleMotion pal;
+    t = tick(3000, 0, 0);
+    pal.apply(t);
+    t = tick(3001, 0.5f, 0);
+    pal.apply(t);
+    CHECK_NEAR(t.vehicles[0].motion[0], 25.0, 1e-2);
+}

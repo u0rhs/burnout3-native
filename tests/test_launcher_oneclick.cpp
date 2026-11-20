@@ -83,19 +83,20 @@ TEST(signed_package_is_fetched_and_written) {
     Server s;
     const fs::path d = temp_dir("ok");
     int steps = 0;
-    const oneclick::Result r = oneclick::fetch_package(release(), update::Platform::kWindows, key(), s.fetch(), d, [&](oneclick::Step) { ++steps; });
+    const oneclick::Result r = oneclick::fetch_package(release(), update::Platform::kWindows, "1.1.0+1a2b3c4d", key(), s.fetch(), d, [&](oneclick::Step) { ++steps; });
     CHECK(r.ok && r.why.empty());
     CHECK(r.package == d / "burnout3-native-1.2.0-abc-win64.zip" && read(r.package) == kPackage);
     CHECK(steps == 4 && s.requests == 3);
     CHECK(!fs::exists(d / "burnout3-native-1.2.0-abc-win64.zip.part"));
-    const oneclick::Result l = oneclick::fetch_package(release(), update::Platform::kLinux, key(), s.fetch(), d);
+    const oneclick::Result l = oneclick::fetch_package(release(), update::Platform::kLinux, "1.1.0", key(), s.fetch(), d);
     CHECK(l.ok && l.package.filename() == "burnout3-native-1.2.0-abc-linux-x86_64.tar.gz");
 }
 
 TEST(tampering_is_refused_and_nothing_written) {
-    const auto refused = [](Server& s, const char* name, update::Platform p = update::Platform::kWindows, std::array<std::uint8_t, 32> k = key()) {
+    const auto refused = [](Server& s, const char* name, update::Platform p = update::Platform::kWindows, std::array<std::uint8_t, 32> k = key(),
+                            update::Release rel = release(), const char* installed = "1.1.0") {
         const fs::path d = temp_dir(name);
-        const oneclick::Result r = oneclick::fetch_package(release(), p, k, s.fetch(), d);
+        const oneclick::Result r = oneclick::fetch_package(rel, p, installed, k, s.fetch(), d);
         CHECK(!r.ok && !r.why.empty() && fs::is_empty(d));
         return r.why;
     };
@@ -126,6 +127,45 @@ TEST(tampering_is_refused_and_nothing_written) {
         Server s;
         CHECK(refused(s, "mac", update::Platform::kMac).find("no package") != std::string::npos);
     }
+    // robust2: the downgrade guard. The tag is not signed, the names in SHA256SUMS are.
+    {   // the installed version is the signed package's: not an update
+        Server s;
+        CHECK(refused(s, "same", update::Platform::kWindows, key(), release(), "1.2.0+1a2b3c4d").find("not newer") != std::string::npos);
+    }
+    {   // a newer one is installed: an old signed release is never installed over it
+        Server s;
+        CHECK(refused(s, "older", update::Platform::kWindows, key(), release(), "1.2.1").find("not newer") != std::string::npos);
+    }
+    {   // an old signed release served under a new tag
+        Server s;
+        update::Release rel = release();
+        rel.tag = "v9.9.9";
+        CHECK(refused(s, "replay", update::Platform::kWindows, key(), rel).find("not the release's v9.9.9") != std::string::npos);
+    }
+    {   // the installed version is not known
+        Server s;
+        CHECK(refused(s, "unknown", update::Platform::kWindows, key(), release(), "").find("not known") != std::string::npos);
+    }
+}
+
+TEST(package_names_carry_the_version) {
+    const auto v = [](const char* n) {
+        const auto p = oneclick::package_version(n);
+        if (!p) return std::string("-");
+        std::string s = std::to_string(p->major) + "." + std::to_string(p->minor) + "." + std::to_string(p->patch);
+        for (const std::string& id : p->pre) s += "|" + id;
+        return s;
+    };
+    CHECK(v("burnout3-native-1.2.2-1a2b3c4d-win64.zip") == "1.2.2");
+    CHECK(v("burnout3-native-1.2.2-1a2b3c4d-dirty-linux-x86_64.tar.gz") == "1.2.2");
+    CHECK(v("burnout3-native-1.2.2-macos-arm64.dmg") == "1.2.2");
+    CHECK(v("burnout3-native-1.3.0-rc.1-1a2b3c4d-win64.zip") == "1.3.0|rc|1");
+    CHECK(v("burnout3-native-1.2.0-abc-win64.zip") == "1.2.0");
+    CHECK(v("burnout3-native-1.2.2-test-1a2b3c4d-win64.zip") == "1.2.2");   // a test build counts as its base version
+    CHECK(v("burnout3-native-win64.zip") == "-");
+    CHECK(v("burnout3-native-latest-win64.zip") == "-");
+    CHECK(v("other-1.2.2-win64.zip") == "-");
+    CHECK(v("burnout3-native-1.2.2-1a2b3c4d.zip") == "-");
 }
 
 TEST(no_release_key_means_off) {

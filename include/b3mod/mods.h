@@ -97,6 +97,13 @@ struct ScriptSpec {
     bool gameplay_given = false;
     std::uint64_t budget = kDefaultBudget;   // Lua instructions per VBlank
     unsigned memory_mb = kDefaultMemoryMb;   // its Lua memory
+    // unsafe = yes: the script may write the game's memory (b3.mem.write*) and call the game's functions (b3.call, only
+    // the ones `calls` lists). That reaches the game's own code with the script's values, so it is outside the
+    // sandbox's promise: the launcher asks the user's permission as for a code mod (trust over mod.ini and the script
+    // folder). Without it a script reads, draws and hooks only.
+    static constexpr std::size_t kMaxCalls = 64;
+    bool unsafe = false;
+    std::vector<std::uint32_t> calls;        // [script] calls: the game functions b3.call may call (guest addresses)
     // the folder of `main` inside the mod ("scripts": a main at the mod's top is refused): every file below it is in the
     // mod hash, and require() finds a script's other files there
     std::string folder() const {
@@ -225,6 +232,13 @@ struct ActiveMod {
     ScriptSpec script;
     std::string script_lines;         // "script <path> <size> <fnv 16 hex>\n" per file of the folder, by path
 };
+// media1: a mod that changes gameplay by any of its parts (DESIGN.md §6): a tuning preset, a [code] library marked
+// gameplay = yes, a [script] that may write the game (gameplay not "no"). Times and ghosts made with such a set are
+// kept apart from the plain game's (src/b3replay/records.h). (ActiveMod::changes_gameplay is the preset alone: the
+// "gameplay tuning" notes of recordings.)
+inline bool changes_gameplay_any(const ActiveMod& m) {
+    return m.changes_gameplay() || (m.code.present && m.code.gameplay) || (m.script.present && m.script.gameplay);
+}
 // What applying a mod's patches needs (Overlay::build): the user's own disc file for a key, and the cache folder for
 // the results. A patch is checked against its source's size and FNV-1a 64 (a mismatch: the whole mod is left out, with
 // a message in Overlay::errors()); its result goes to `cache` as "<patch fnv>-<source fnv>.bin" (reused while its size
@@ -281,6 +295,11 @@ private:
 std::uint64_t fnv1a64(const void* data, std::size_t n, std::uint64_t h = 0xCBF29CE484222325ull);
 std::uint64_t mod_hash(const std::vector<OverlayFile>& files, const std::string& code_lines = {}, const std::string& script_lines = {});
 std::string set_hash_text(const std::vector<ActiveMod>& mods);
+// media1: the hash naming a set's own ghosts / best times folder (src/b3replay/records.h): FNV-1a 64 over "b3mods
+// gameplay 1\n" then "mod <id> <version> <mod_hash 16 hex>\n" per mod that changes gameplay (changes_gameplay_any), in
+// priority order, as 16 hex; "" when none does. A mod that does not change gameplay (textures, sounds, a read-only
+// script) added, removed or moved leaves it as it was.
+std::string gameplay_set_hash(const std::vector<ActiveMod>& mods);
 std::string hex64(std::uint64_t v);
 // A path as UTF-8 text (messages; on Windows path::string() would be the ANSI code page) and back
 std::string path_utf8(const fs::path& p);

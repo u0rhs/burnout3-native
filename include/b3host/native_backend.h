@@ -1,7 +1,11 @@
 // b3host/native_backend.h -- the native backend (milestone S0, docs/standalone.md §8): b3host on its own.
 //
-// - Guest memory is an arena: 32 MB main RAM at guest physical 0 and the 16 KB scratchpad at 0x70000000, both plain
-//   host buffers published as b3host windows (guest pointers stay 32-bit offsets: gp<T>, host_pointer).
+// - Guest memory is an arena: 32 MB main RAM at guest physical 0 and the 16 KB scratchpad at 0x70000000, published as
+//   b3host windows (guest pointers stay 32-bit offsets: gp<T>, host_pointer). hostfix: each sits in the middle of a
+//   reserved no-access region (GuardedRegion: 4 GB on either side of RAM -- less under an address-space limit, see
+//   ram_guard_size in native_backend.cpp -- and 64 KB around the scratchpad), so host code
+//   running past a window (a memcpy with a corrupt length, an index that went negative) faults at once into the crash
+//   report ("guest memory overrun") instead of writing into the host heap.
 // - The retail ELF is read at run time from the user's install (load_elf) as data only: its PT_LOAD bytes are copied
 //   to their addresses, the rest of the segment's memsz is zero (what crt0 leaves). Nothing in it is executed.
 // - Every call into guest code that b3host's dispatch (call.h) cannot resolve to an enabled NativeOverride reaches
@@ -24,6 +28,43 @@
 #include <vector>
 
 namespace b3host {
+
+// hostfix: a guest window as pointer + size (data, size, [], begin / end). Not std::span: generated units define
+// macros named first / last before they include this header, which <span> cannot survive.
+struct GuestBytes {
+    std::uint8_t* ptr;
+    std::size_t len;
+    std::uint8_t* data() const { return ptr; }
+    std::size_t size() const { return len; }
+    std::uint8_t& operator[](std::size_t k) const { return ptr[k]; }
+    std::uint8_t* begin() const { return ptr; }
+    std::uint8_t* end() const { return ptr + len; }
+};
+
+// hostfix: `size` bytes of zeroed read-write memory with `guard` bytes of reserved no-access address space on either
+// side (POSIX: mmap PROT_NONE + mprotect; Windows: VirtualAlloc MEM_RESERVE PAGE_NOACCESS + MEM_COMMIT). The guards are
+// registered for the crash report (guard_overrun). When even the reservation fails (a very low ulimit -v), the block
+// is allocated alone with no guards (guard() == 0). Not copyable; the memory lives as long as the object.
+class GuardedRegion {
+public:
+    GuardedRegion(std::size_t size, std::size_t guard, const char* name);
+    ~GuardedRegion();
+    GuardedRegion(const GuardedRegion&) = delete;
+    GuardedRegion& operator=(const GuardedRegion&) = delete;
+    std::uint8_t* data() const { return data_; }
+    std::size_t size() const { return size_; }
+    std::size_t guard() const { return guard_; }   // the guard on each side (rounded up to pages)
+    GuestBytes bytes() const { return {data_, size_}; }
+private:
+    std::uint8_t* base_ = nullptr;   // the start of the reservation
+    std::uint8_t* data_ = nullptr;
+    std::size_t size_ = 0, guard_ = 0;
+    int slot_ = -1;
+};
+// hostfix: if host address `p` lies in a guard of a live GuardedRegion, writes "guest memory overrun: ..." (which
+// region, how far before its start / past its end) to `out` and returns true. Async-signal-safe enough for the crash
+// handler (no allocation, no locks).
+bool guard_overrun(const void* p, char* out, std::size_t out_size);
 
 // One retail function, from the decomp (tools/native/gen_table.py). kind: game, crt0, runtime, rw, rwa, sce, lg, ea;
 // c: matched, draft, none.
@@ -100,7 +141,9 @@ struct NativeFault : HostError {
 
 class NativeBackend final : public Backend {
 public:
-    NativeBackend();
+    // hostfix: `guards_off` (e.g. "safe mode") allocates guest RAM and the scratchpad without the guards; so does the
+    // environment variable B3_GUEST_GUARDS=0 (the workaround for a "guest memory overrun" crash while it is fixed)
+    explicit NativeBackend(const char* guards_off = nullptr);
 
     // The retail ELF image (its PT_LOAD segments, zero-filled to memsz). False with `error` set on failure.
     bool load_elf(const std::string& path, std::string& error);
@@ -156,13 +199,18 @@ public:
     // = args.sp. Throws MissingNative if there is none. `result` keeps what the function does not set.
     void run(gaddr function, const CallArgs& args, CallResult& result);
 
-    std::vector<std::uint8_t>& ram() { return ram_; }
-    std::vector<std::uint8_t>& scratchpad() { return spr_; }
+    // hostfix: the windows as pointer + size (guarded regions, not vectors: never resized or reassigned)
+    GuestBytes ram() { return ram_.bytes(); }
+    GuestBytes scratchpad() { return spr_.bytes(); }
+    std::size_t ram_guard() const { return ram_.guard(); }   // 4 GB, less under an address-space limit, 0: none
+    // "guest RAM guards: 4096 MB each, scratchpad 64 KB" / "guest RAM guards: off (B3_GUEST_GUARDS=0)" (native_play logs it)
+    std::string guard_text() const;
     std::uint64_t cost() const { return cost_; }
 
 private:
-    std::vector<std::uint8_t> ram_;
-    std::vector<std::uint8_t> spr_;
+    std::string guards_off_;   // why the guards are off (empty: on); before ram_ / spr_, which it sizes
+    GuardedRegion ram_;
+    GuardedRegion spr_;
     gaddr sp_ = 0;
     std::uint64_t cost_ = 0;
     HwModel* hw_model_ = nullptr;

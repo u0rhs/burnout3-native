@@ -130,6 +130,15 @@ TEST(mod_overlay) {
     m.draw_list(dev, 1280, 720, list, items);
     CHECK(items.size() == 2 && items[0].texture != items[1].texture);
     CHECK(dev.texs == 2 && dev.stale == 0);
+    // modsec: dropped (its mod stopped): its quad is no longer drawn, and a later clear does not bring it back
+    m.add_texture(7, 0, 0, nullptr);
+    items.clear();
+    m.draw_list(dev, 1280, 720, list, items);
+    CHECK(items.size() == 1);
+    dev.clear_resources();
+    items.clear();
+    m.draw_list(dev, 1280, 720, list, items);
+    CHECK(items.size() == 1 && dev.stale == 0);
 }
 
 // The draw list copies a DrawItem per draw (~2,000 a frame): the car's ~700-byte parameter block is held by pointer, so a track
@@ -146,6 +155,31 @@ TEST(draw_item_stays_small_and_car_params_copy_on_write) {
     b3gfx::DrawItem t;   // an item that never was a car costs no block
     b3gfx::DrawItem t2 = t;
     CHECK(!t2.car_);
+}
+
+// Device::create_texture_hd: an HD replacement the device refuses (a side past its limit, out of memory) gives the
+// original texture, not kNone (drawn white); the pair is only recorded when both exist
+struct LimitDev : IdDev {
+    int limit = 64;
+    std::vector<int> made_w;
+    int pairs = 0;
+    b3gfx::TextureId create_texture(const std::vector<b3gfx::TextureLevel>& l) override {
+        if (l.empty() || l[0].w > limit || l[0].h > limit) return b3gfx::kNone;
+        made_w.push_back(l[0].w);
+        return b3gfx::TextureId(texs++);
+    }
+    void set_texture_original(b3gfx::TextureId, b3gfx::TextureId, std::size_t, std::size_t) override { ++pairs; }
+};
+TEST(hd_texture_creation_failure_falls_back_to_the_original) {
+    std::vector<std::uint8_t> px(std::size_t(128) * 128 * 4, 0x80);
+    LimitDev dev;
+    const b3gfx::TextureId big = dev.create_texture_hd({{128, 128, px.data()}}, {{32, 32, px.data()}});
+    CHECK(big != b3gfx::kNone);
+    CHECK(dev.made_w.size() == 1 && dev.made_w[0] == 32);   // the original, alone
+    CHECK(dev.pairs == 0);
+    const b3gfx::TextureId ok = dev.create_texture_hd({{64, 64, px.data()}}, {{32, 32, px.data()}});
+    CHECK(ok != b3gfx::kNone && dev.pairs == 1 && dev.made_w.size() == 3);
+    CHECK(dev.create_texture_hd({{128, 128, px.data()}}, {}) == b3gfx::kNone);   // no original: none, as before
 }
 
 TEST_MAIN("b3replay panels after a track load (Device::resource_epoch)")

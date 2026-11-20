@@ -300,6 +300,10 @@ bool build_scene(b3gfx::Device& dev, b3asset::Model&& model, bool prelit, Scene&
     else
         for (const auto& t : m.textures) tex.push_back(upload_texture(dev, t.levels, t.original));   // hdkey: and its original
     out.textures = tex;
+    // hdgpu: compressed HD levels are on the GPU now: their CPU copy goes (the sizes stay: the LOD model's share check)
+    for (auto& t : out.model.textures)
+        for (auto& l : t.levels)
+            if (l.bc) l.blocks.reset();
     for (const auto& d : m.draws) {
         b3gfx::DrawItem it;
         it.vertices = vb;
@@ -315,6 +319,18 @@ bool build_scene(b3gfx::Device& dev, b3asset::Model&& model, bool prelit, Scene&
         if (d.transform >= 0 && std::size_t(d.transform) < m.transforms.size())
             std::copy(m.transforms[d.transform].begin(), m.transforms[d.transform].end(), it.model);
         if (prelit) track_item(m, d, it);
+        {   // perf4: the draw's vertices' box (the sun's occlusion pass leaves out what lies outside its box)
+            float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+            const std::size_t end = std::min<std::size_t>(std::size_t(d.first_index) + d.index_count, m.indices.size());
+            for (std::size_t i = d.first_index; i < end; ++i) {
+                const std::uint32_t vi = m.indices[i];
+                if (vi >= m.vertices.size()) continue;
+                const float* p = m.vertices[vi].pos;
+                for (int a = 0; a < 3; ++a) { lo[a] = std::min(lo[a], p[a]); hi[a] = std::max(hi[a], p[a]); }
+            }
+            if (lo[0] <= hi[0] && lo[1] <= hi[1] && lo[2] <= hi[2] && std::isfinite(lo[0] + lo[1] + lo[2] + hi[0] + hi[1] + hi[2]))
+                for (int a = 0; a < 3; ++a) { it.bounds[a] = lo[a]; it.bounds[3 + a] = hi[a]; }
+        }
         if (d.anim >= 0 && std::size_t(d.anim) < m.track_anims.size()) out.anim_items.push_back(int(out.items.size()));
         out.items.push_back(it);
     }

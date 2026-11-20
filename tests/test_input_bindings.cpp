@@ -285,7 +285,7 @@ TEST(conflicts_swap_clear_keep_keyboard) {
     Controls c = d;
     rebind(c, 1, Device::Keyboard, Ds2::Cross, key(sc::Q), KeyCtx::Any, Resolve::Clear);
     CHECK(c.player[1].has_keys());
-    CHECK(bound_text(c, 0, Device::Keyboard, Ds2::L1, KeyCtx::Drive, PadStyle::Generic) == "-");
+    CHECK(bound_text(c, 0, Device::Keyboard, Ds2::L1, KeyCtx::Drive, PadStyle::Generic) == kUnbound);   // settingsui: a word, not "-"
 }
 
 TEST(conflicts_gamepad) {
@@ -605,6 +605,31 @@ TEST(port_defaults_and_ini) {
     CHECK(bad.port.pad[std::size_t(PortAction::Fullscreen)].empty());
 }
 
+// robust2: chords with a stick's half axis ("left_x+") round-trip; files the old writer made read the same
+TEST(port_chord_with_axes_round_trips) {
+    const Controls d = default_controls();
+    Controls c = d;
+    c.port.pad[std::size_t(PortAction::Screenshot)] = {PadInput::LeftXPos, PadInput::Start};
+    c.port.pad[std::size_t(PortAction::Restart)] = {PadInput::Back, PadInput::RightYPos};
+    c.port.pad[std::size_t(PortAction::PhotoMode)] = {PadInput::LeftXNeg, PadInput::RightXPos, PadInput::LeftTrigger};
+    const std::string ini = to_ini(c);
+    std::vector<std::string> w;
+    CHECK(controls_from_ini(ini, &w) == c && w.empty());
+    CHECK(ini.find("screenshot = left_x++start") != std::string::npos);   // the format as before
+    CHECK(parse_pad_chord("left_x++start") == (std::vector<PadInput>{PadInput::LeftXPos, PadInput::Start}));
+    CHECK(parse_pad_chord("back+right_y+") == (std::vector<PadInput>{PadInput::Back, PadInput::RightYPos}));
+    CHECK(parse_pad_chord(" left_x- + right_x+ , left_trigger ") ==
+          (std::vector<PadInput>{PadInput::LeftXNeg, PadInput::RightXPos, PadInput::LeftTrigger}));
+    CHECK(parse_pad_chord("guide+left_shoulder+right_shoulder") ==
+          (std::vector<PadInput>{PadInput::Guide, PadInput::LeftShoulder, PadInput::RightShoulder}));
+    CHECK(parse_pad_chord("start+start") == std::vector<PadInput>{PadInput::Start});
+    std::vector<std::string> unknown;
+    CHECK(parse_pad_chord("left_x+zzz+start", &unknown) == std::vector<PadInput>{PadInput::Start});   // "left_x+zzz": no input
+    CHECK((unknown == std::vector<std::string>{"left_x", "zzz"}));
+    unknown.clear();
+    CHECK(parse_pad_chord("zzz+start", &unknown) == std::vector<PadInput>{PadInput::Start} && unknown == std::vector<std::string>{"zzz"});
+}
+
 TEST(fps_view_shortcut) {
     // fpsoverlay2: the FPS counter's view key: F3 by default, remappable like the other shortcuts, no gamepad chord
     const Controls d = default_controls();
@@ -639,6 +664,95 @@ TEST(hd_textures_shortcut) {
     CHECK(c.port.pad[std::size_t(a)] == std::vector<PadInput>{PadInput::DpadUp});
     std::vector<std::string> w;
     CHECK(controls_from_ini(to_ini(c), &w) == c && w.empty() && to_ini(c).find("hd_textures") != std::string::npos);
+}
+
+TEST(race_time_action) {
+    // todrace (tools/native/race_time.h): TIME OF DAY PER RACE, T and LB / L1 by default, taken on the track page only:
+    // it conflicts with no game binding and no photo mode control (LB is photo mode's roll too), only with the other
+    // window shortcuts
+    const Controls d = default_controls();
+    constexpr PortAction a = PortAction::RaceTime;
+    CHECK(d.port.keys[std::size_t(a)] == std::vector<std::uint16_t>{23});
+    CHECK(d.port.pad[std::size_t(a)] == std::vector<PadInput>{PadInput::LeftShoulder});
+    CHECK(port_page(a) && !port_photo(a) && port_has_pad(a) && !port_analog(a));
+    CHECK(parse_port_action("race_time") == a && std::string(port_label(a)) == "TIME OF DAY PER RACE");
+    CHECK(port_actions_of_key(d.port, 23) == (std::uint64_t(1) << int(a)));
+    for (int pl = 0; pl < 2; ++pl)   // T is free: no game action of either player has it
+        for (const KeyBinding& k : key_map(d.player[std::size_t(pl)])) CHECK(k.scancode != 23);
+    CHECK(uses_port(d, a, Device::Gamepad, PhysInput{Device::Gamepad, 0, PadInput::LeftShoulder}).empty());   // not L1's, not the roll's
+    CHECK(uses_port(d, PortAction::PhotoRollLeft, Device::Gamepad, PhysInput{Device::Gamepad, 0, PadInput::LeftShoulder}).empty());
+    CHECK(!uses_port(d, a, Device::Keyboard, PhysInput{Device::Keyboard, 69, PadInput::None}).empty());   // F12: SCREENSHOT's
+    // the chord taken out of the pad's state when held whole (the game's report then has no L1)
+    GamepadState g;
+    g.left_shoulder = true;
+    g.south = true;
+    CHECK(take_port_chord(g, d.port, a, 0.24f) && !g.left_shoulder && g.south);
+    CHECK(!take_port_chord(g, d.port, a, 0.24f) && g.south);
+    Controls c = d;   // a chord of two: taken only whole
+    rebind_port(c, a, Device::Gamepad, PhysInput{Device::Gamepad, 0, PadInput::Back}, Resolve::Keep);
+    rebind_port(c, a, Device::Gamepad, PhysInput{Device::Gamepad, 0, PadInput::RightTrigger}, Resolve::Keep, true);
+    GamepadState h;
+    h.back = true;
+    CHECK(!take_port_chord(h, c.port, a, 0.24f) && h.back);
+    h.right_trigger = 32767;
+    CHECK(take_port_chord(h, c.port, a, 0.24f) && !h.back && h.right_trigger == 0);
+    std::vector<std::string> w;
+    CHECK(controls_from_ini(to_ini(c), &w) == c && w.empty() && to_ini(c).find("race_time") != std::string::npos);
+}
+
+TEST(race_time_refuses_page_inputs) {
+    // todrace: the action may not take an input the track pages read (Confirm, Back, the D-pad, the left stick), in any
+    // controller layout, on either device; the flow says so and goes on waiting for another
+    const Controls d = default_controls();
+    constexpr PortAction a = PortAction::RaceTime;
+    for (std::uint16_t key : {40, 88, 42, 82, 81, 80, 79, 29, 26, 22, 4, 7})   // Return, keypad Enter, Backspace, arrows, Z, W S A D
+        CHECK(page_reads_input(d, PhysInput{Device::Keyboard, key, PadInput::None}));
+    for (PadInput p : {PadInput::South, PadInput::East, PadInput::North, PadInput::DpadUp, PadInput::DpadDown, PadInput::DpadLeft,
+                       PadInput::DpadRight, PadInput::LeftXNeg, PadInput::LeftYPos})
+        CHECK(page_reads_input(d, PhysInput{Device::Gamepad, 0, p}));
+    for (std::uint16_t key : {23, 20, 25})   // T, Q (L1), V (Square): free on the pages
+        CHECK(!page_reads_input(d, PhysInput{Device::Keyboard, key, PadInput::None}));
+    for (PadInput p : {PadInput::LeftShoulder, PadInput::RightShoulder, PadInput::West, PadInput::Back, PadInput::LeftTrigger})
+        CHECK(!page_reads_input(d, PhysInput{Device::Gamepad, 0, p}));
+    CHECK(port_page_safe(d, a, Device::Keyboard) && port_page_safe(d, a, Device::Gamepad));
+    Controls c = d;
+    RebindFlow f;
+    f.begin_port(a, Device::Keyboard, false);
+    CHECK(f.input(c, PhysInput{Device::Keyboard, 40, PadInput::None}) == RebindFlow::State::Waiting);   // Return: refused
+    CHECK(f.refused() && f.refused()->key == 40 && c == d);
+    CHECK(f.message(PadStyle::Xbox).find("TRACK PAGES USE THEMSELVES") != std::string::npos);
+    CHECK(f.input(c, PhysInput{Device::Keyboard, 21, PadInput::None}) == RebindFlow::State::Done);       // R: taken
+    CHECK(c.port.keys[std::size_t(a)] == std::vector<std::uint16_t>{21});
+    f.begin_port(a, Device::Gamepad, false);
+    CHECK(!f.refused());
+    CHECK(f.input(c, PhysInput{Device::Gamepad, 0, PadInput::South}) == RebindFlow::State::Waiting);    // A / Cross: refused
+    CHECK(f.input(c, PhysInput{Device::Gamepad, 0, PadInput::East}) == RebindFlow::State::Waiting);     // B: Back in menus
+    CHECK(f.input(c, PhysInput{Device::Gamepad, 0, PadInput::RightShoulder}) == RebindFlow::State::Done);
+    f.begin_port(PortAction::Screenshot, Device::Keyboard, false);   // other shortcuts are not limited so
+    CHECK(f.input(c, PhysInput{Device::Keyboard, 40, PadInput::None}) != RebindFlow::State::Waiting);
+    // a hand-edited controls.ini can still bind one: not safe (the window leaves it to the game)
+    std::vector<std::string> w;
+    const Controls e = controls_from_ini("version = 3\n[port.keyboard]\nrace_time = Return\n", &w);
+    CHECK(!port_page_safe(e, a, Device::Keyboard) && port_page_safe(e, a, Device::Gamepad));
+}
+
+TEST(page_chord_held_past_the_page) {
+    // todrace: the chord taken on the page stays taken until released, after the page goes (no L1 on SELECT CAR)
+    PageChord p;
+    CHECK(!p.take(true, false));                       // off the page: the game's
+    CHECK(!p.end_poll(false, true, false));
+    CHECK(!p.end_poll(false, false, false));           // released
+    CHECK(p.take(true, true));                         // on the page: taken, a press
+    CHECK(p.end_poll(true, true, true));
+    CHECK(p.take(true, true) && !p.end_poll(true, true, true));   // still held: no second press
+    CHECK(p.take(true, false));                        // the page went (Confirm), still held: still taken
+    CHECK(!p.end_poll(true, true, false) && p.withheld());
+    CHECK(p.take(true, false));
+    CHECK(!p.end_poll(true, true, false));
+    CHECK(!p.take(false, false));                      // released
+    CHECK(!p.end_poll(false, false, false) && !p.withheld());
+    CHECK(!p.take(true, false));                       // pressed again off the page: the game's
+    CHECK(!p.end_poll(false, true, false));
 }
 
 TEST(port_chord_amount) {
@@ -789,6 +903,8 @@ TEST(layout_selection_by_pad_type) {
         CHECK(resolved_layout(PadLayout::Auto, f) == (f == PadStyle::PlayStation ? PadLayout::PlayStation : PadLayout::Xbox));
         CHECK(resolved_layout(PadLayout::Xbox, f) == PadLayout::Xbox);
         CHECK(resolved_layout(PadLayout::PlayStation, f) == PadLayout::PlayStation);
+        CHECK(resolved_layout(PadLayout::Nintendo, f) == PadLayout::Nintendo);   // only when chosen: Auto never picks it
+        CHECK(resolved_layout(PadLayout::Auto, f) != PadLayout::Nintendo);
         CHECK(resolved_layout(PadLayout::Custom, f) == PadLayout::Custom);
     }
     // the defaults: Auto for both players, the Custom bindings the 1.x layout (the report of before for a Custom player)
@@ -800,8 +916,11 @@ TEST(layout_selection_by_pad_type) {
     CHECK(&pad_bindings(d.player[0], PadStyle::Generic) == &layout_bindings(PadLayout::Xbox));
     CHECK(pad_bindings(classic_player(0), PadStyle::PlayStation) == default_player(0).pad);
     // names: the ini's and the pages'
-    for (PadLayout l : {PadLayout::Auto, PadLayout::Xbox, PadLayout::PlayStation, PadLayout::Custom}) CHECK(parse_pad_layout(pad_layout_key(l)) == l);
-    CHECK(parse_pad_layout(" PlayStation ") == PadLayout::PlayStation && !parse_pad_layout("nintendo"));
+    for (PadLayout l : {PadLayout::Auto, PadLayout::Xbox, PadLayout::PlayStation, PadLayout::Nintendo, PadLayout::Custom})
+        CHECK(parse_pad_layout(pad_layout_key(l)) == l);
+    CHECK(parse_pad_layout(" PlayStation ") == PadLayout::PlayStation && parse_pad_layout("Nintendo") == PadLayout::Nintendo);
+    CHECK(parse_pad_layout("switch") == PadLayout::Nintendo && !parse_pad_layout("gamecube"));
+    CHECK(std::string(pad_layout_key(PadLayout::Nintendo)) == "nintendo" && std::string(pad_layout_key(PadLayout::Custom)) == "custom");
     PlayerControls p = d.player[0];
     CHECK(layout_text(p, PadStyle::Xbox, true) == "Auto: Xbox controller");
     CHECK(layout_text(p, PadStyle::PlayStation, true) == "Auto: PlayStation controller");
@@ -810,6 +929,10 @@ TEST(layout_selection_by_pad_type) {
     CHECK(layout_text(p, PadStyle::Generic, true) == "Auto: controller, Xbox layout");
     p.layout = PadLayout::PlayStation;
     CHECK(layout_text(p, PadStyle::Xbox, true) == "PlayStation");
+    p.layout = PadLayout::Nintendo;
+    CHECK(layout_text(p, PadStyle::Nintendo, true) == "Nintendo");
+    CHECK(&pad_bindings(p, PadStyle::Nintendo) == &layout_bindings(PadLayout::Nintendo));
+    CHECK(&pad_bindings(p, PadStyle::Xbox) == &layout_bindings(PadLayout::Nintendo));   // whatever the pad
     p.layout = PadLayout::Custom;
     CHECK(layout_text(p, PadStyle::Xbox, true) == "Custom");
 }
@@ -884,6 +1007,44 @@ TEST(xbox_layout_both_contexts) {
     CHECK(bound_text(c, 0, Device::Gamepad, Ds2::Cross, KeyCtx::Menu, PadStyle::Xbox) == "RT, A");
     CHECK(bound_text(c, 0, Device::Gamepad, Ds2::Cross, KeyCtx::Drive, PadStyle::Xbox) == "RT");
     CHECK(bound_text(c, 0, Device::Gamepad, Ds2::Triangle, KeyCtx::Menu, PadStyle::Xbox) == "B");
+}
+
+// The Nintendo layout (2026-11-19): the Xbox layout mirrored by label. A (East) confirms and boosts, B (South) goes back
+// and is the Crashbreaker, X (North) looks back / Square, Y (West) the camera / Circle; the rest as the Xbox layout's
+TEST(nintendo_layout_mirrors_xbox_by_label) {
+    const PadBindings& n = layout_bindings(PadLayout::Nintendo);
+    const GamepadTuning t;
+    const auto one = [&](auto set, KeyCtx now) {
+        GamepadState g;
+        set(g);
+        return gamepad_sample(g, n, t, now);
+    };
+    struct Row { void (*set)(GamepadState&); unsigned drive, menus; };
+    const Row rows[] = {
+        {[](GamepadState& g) { g.east = true; }, bits({kR1}), bits({kCross})},              // A: boost / confirm
+        {[](GamepadState& g) { g.south = true; }, bits({kR2}), bits({kTriangle})},          // B: Crashbreaker / back
+        {[](GamepadState& g) { g.north = true; }, bits({kL1}), bits({kSquare})},            // X: look back / Square
+        {[](GamepadState& g) { g.west = true; }, bits({kTriangle}), bits({kCircle})},       // Y: camera / Circle
+        {[](GamepadState& g) { g.back = true; }, bits({kL2}), bits({kSelect})},             // -: music / Select
+        {[](GamepadState& g) { g.left_stick = true; }, bits({kCircle}), 0},                 // LS: the horn
+        {[](GamepadState& g) { g.right_shoulder = true; }, bits({kR1}), bits({kR1})},
+        {[](GamepadState& g) { g.start = true; }, bits({kStart}), bits({kStart})},
+        {[](GamepadState& g) { g.right_trigger = 32767; g.left_trigger = 32767; }, bits({kCross, kSquare}), bits({kCross, kSquare})},
+    };
+    for (const Row& r : rows) {
+        CHECK(held(one(r.set, KeyCtx::Drive)) == r.drive);
+        CHECK(held(one(r.set, KeyCtx::Menu)) == r.menus);
+    }
+    // the prompts' glyph positions: Cross (confirm) at the right face button (Circle's place, the Nintendo pad's A),
+    // Triangle (back) at the bottom one (B)
+    const std::array<Ds2, 16> menu = pad_glyphs(n, KeyCtx::Menu);
+    CHECK(menu[std::size_t(Ds2::Cross)] == Ds2::Circle && menu[std::size_t(Ds2::Triangle)] == Ds2::Cross);
+    CHECK(menu[std::size_t(Ds2::Square)] == Ds2::Triangle && menu[std::size_t(Ds2::Circle)] == Ds2::Square);
+    const std::array<Ds2, 16> drive = pad_glyphs(n, KeyCtx::Drive);
+    CHECK(drive[std::size_t(Ds2::R1)] == Ds2::Circle && drive[std::size_t(Ds2::R2)] == Ds2::Cross);
+    // the same as the Xbox layout off the face buttons
+    const PadBindings& x = layout_bindings(PadLayout::Xbox);
+    for (Ds2 a : {Ds2::Start, Ds2::Select, Ds2::L2, Ds2::Up, Ds2::SteerLeft}) CHECK(n[std::size_t(a)] == x[std::size_t(a)]);
 }
 
 // The PlayStation layout: the PS2's, with the triggers as the pedals (Cross / R2 accelerate, Square / L2 brake), the
@@ -998,7 +1159,7 @@ TEST(layout_migration) {
     CHECK(controls_from_ini("version = 3\n[player1.gamepad]\nlayout = auto\ncross = east\n").player[0].layout == PadLayout::Auto);
     CHECK(controls_from_ini("version = 3\n[player1.gamepad]\nlayout = custom\n").player[0].layout == PadLayout::Custom);
     std::vector<std::string> w;
-    const Controls bad = controls_from_ini("version = 3\n[player1.gamepad]\nlayout = nintendo\n", &w);
+    const Controls bad = controls_from_ini("version = 3\n[player1.gamepad]\nlayout = gamecube\n", &w);   // (nintendo: padpaint's)
     CHECK(bad.player[0].layout == PadLayout::Auto && w.size() == 1 && w[0].find("layout") != std::string::npos);
 }
 
@@ -1013,7 +1174,7 @@ TEST(layout_choice_then_edit_is_custom) {
     CHECK(pad_bindings(c.player[0], PadStyle::PlayStation) == layout_bindings(PadLayout::Xbox));
     CHECK(bound_text(c, 0, Device::Gamepad, Ds2::R2, KeyCtx::Drive, PadStyle::Xbox) == "B");
     // round trip of every choice
-    for (PadLayout l : {PadLayout::Auto, PadLayout::Xbox, PadLayout::PlayStation, PadLayout::Custom}) {
+    for (PadLayout l : {PadLayout::Auto, PadLayout::Xbox, PadLayout::PlayStation, PadLayout::Nintendo, PadLayout::Custom}) {
         Controls k = c;
         set_layout(k, 0, l);
         CHECK(controls_from_ini(to_ini(k)) == k);

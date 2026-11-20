@@ -15,6 +15,7 @@
 #include "../audio/spu2_stub_mixer.h"
 
 #include "b3asset/discfs.h"
+#include "b3port/fileio.h"   // UTF-8 paths
 #include "b3host/call.h"
 #include "b3host/host.h"
 
@@ -86,7 +87,7 @@ std::FILE* rwa_log() {
 
 struct Platform final : RwaIopPlatform {
     void read_ee(std::uint32_t a, void* dst, std::uint32_t n) override {
-        std::memcpy(dst, b3host::host_pointer(a & 0x1FFFFFFFu, n), n);
+        std::memcpy(dst, b3host::host_pointer_checked(a & 0x1FFFFFFFu, n), n);
     }
     void write_ee(std::uint32_t a, const void* src, std::uint32_t n) override {
         if (n == 0x680u)
@@ -95,7 +96,7 @@ struct Platform final : RwaIopPlatform {
                 for (std::uint32_t k = 0; k < n; ++k) std::fprintf(f, "%02x", static_cast<const std::uint8_t*>(src)[k]);
                 std::fprintf(f, "\n");
             }
-        std::memcpy(b3host::host_pointer(a & 0x1FFFFFFFu, n), src, n);
+        std::memcpy(b3host::host_pointer_checked(a & 0x1FFFFFFFu, n), src, n);
     }
     void reply(const std::uint32_t packet[12]) override {
         if (std::FILE* f = rwa_log())   // sync1: v= VBlank, c= virtual EE cycles (as the siflog's c=)
@@ -238,7 +239,7 @@ void install_rwa_iop(b3audio::AudioSink* sink) {
         g_mixer = std::make_unique<b3audio::Spu2MixerImpl>();
         const std::string libsd = disc::root() + "/IOP/LIBSD.IRX";
         std::vector<std::uint8_t> irx;   // iso1: from the disc folder or the disc image (b3asset/discfs.h)
-        if (!b3asset::disc::read_file(libsd, irx) || !b3audio::load_libsd_reverb_presets_bytes(irx))
+        if (!b3asset::disc::read_file(b3io::u8path(libsd), irx) || !b3audio::load_libsd_reverb_presets_bytes(irx))
             stub_note("RW Audio mixer", "libsd reverb presets not loaded from " + libsd + ": reverb silent");
     }
     sif::set_cmd_sink(0, [](const sif::SentCmd& c) {
@@ -250,7 +251,7 @@ void install_rwa_iop(b3audio::AudioSink* sink) {
         }
         rwa_catch_up(At::row);
         std::uint32_t pkt[12];
-        std::memcpy(pkt, b3host::host_pointer(c.packet, 0x30), 0x30);
+        std::memcpy(pkt, b3host::host_pointer_checked(c.packet, 0x30), 0x30);
         if (std::FILE* f = rwa_log()) {
             std::fprintf(f, "S %llu %x t=%llu v=%llu c=%llu ", (unsigned long long)log_poll, pkt[4], (unsigned long long)g_rwa->now(), (unsigned long long)kernel().vblanks, (unsigned long long)virtual_cycles());
             for (int k = 0; k < 12; ++k) std::fprintf(f, "%08x", pkt[k]);

@@ -20,6 +20,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -57,6 +58,11 @@ bool read_raster_header(Bytes file, std::size_t offset, RasterHeader& out, std::
 struct Image {
     int w = 0, h = 0;
     std::vector<std::uint8_t> rgba;  // 8-bit RGBA, PS2 alpha 0x80 mapped to 0xFF (alpha > 0x80 clamps)
+    // hdgpu: a compressed level instead (an HD pack replacement kept as BC blocks for the GPU, hdpack.h): `bc` = kBC1 /
+    // kBC2 / kBC3 (bc.h), the blocks in `blocks` (shared by the decodes of one replacement; dropped once uploaded:
+    // b3view::build_scene), `rgba` empty. 0: RGBA8 in `rgba`.
+    int bc = 0;
+    std::shared_ptr<const std::vector<std::uint8_t>> blocks;
 };
 
 struct DecodedRaster {
@@ -82,6 +88,9 @@ bool decode_raster(Bytes file, std::size_t offset, GsMemory& gs, DecodedRaster& 
 // u16 table at +0x90 [C asm 0x219A88]).
 bool decode_raster_clut(Bytes file, std::size_t offset, GsMemory& gs, DecodedRaster& out, std::uint32_t cbp_add,
                         std::string* why = nullptr);
+// carpaint: decode_raster without the HD pack hook (hdpack.h set_hd_textures): the PS2 picture whatever pack is set.
+bool decode_raster_ps2(Bytes file, std::size_t offset, GsMemory& gs, DecodedRaster& out, int palette = 0,
+                       std::string* why = nullptr);
 
 // Executes a GIF packet of `qwc` quadwords (PACKED A+D register writes, IMAGE data) against `gs`.
 void run_gif(Bytes file, std::size_t at, std::size_t qwc, GsMemory& gs);

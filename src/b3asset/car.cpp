@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "b3asset/hdpack.h"
 #include "b3asset/vif.h"
 
 namespace b3asset {
@@ -76,14 +77,21 @@ bool decode_mesh(Bytes f, std::size_t at, VifInterpreter& vif, const Mat& M, Mod
 
 bool read_car(Bytes f, const CarOptions& opt, GsMemory& gs, Model& out, std::string* why) {
     out = Model{};
+    // modsec: every offset below comes from the file (a modded car reaches the Showroom, the mod tool and the renderer):
+    // each read is checked against its size
+    if (!f.has(0, 0x64)) return fail(why, "too short for a vehicle file header");
     if (f.u32(0) != 0x17) return fail(why, "not a version 0x17 vehicle file");
     // Texture atlas: one texture per palette variant would be wasteful; the chosen variant only.
     const std::uint32_t tex_at = f.u32(0x60);
     int tex = -1;
-    if (tex_at) {
+    if (tex_at && !opt.texture) {
+        tex = 0;   // the draws name the atlas as texture 0; Model::textures stays empty
+    } else if (tex_at) {
         DecodedRaster r;
         std::string err;
+        if (!f.has(tex_at, 0xC8)) return fail(why, "car texture outside the file");
         const int npal = f.p[tex_at + 0xA0] ? f.p[tex_at + 0xA0] : 1;
+        const HdCompressScope bc;   // hdgpu: the atlas is only uploaded (an HD replacement may stay BC)
         if (!decode_raster(f, tex_at, gs, r, opt.palette, &err)) return fail(why, "car texture: " + err);
         out.textures.push_back(Texture{r.hdr.name, std::move(r.levels), r.translucent, std::move(r.original)});
         tex = 0;
@@ -103,6 +111,7 @@ bool read_car(Bytes f, const CarOptions& opt, GsMemory& gs, Model& out, std::str
         const std::uint32_t rel = f.u32(block + 4 * li);
         if (!rel) continue;
         const std::size_t lst = block + rel;
+        if (!f.has(lst, 8)) return fail(why, "car list outside the file");
         const int count = std::int8_t(f.p[lst]);
         const int first_glass = std::int8_t(f.p[lst + 1]);
         const std::size_t entries = lst + f.u32(lst + 4);

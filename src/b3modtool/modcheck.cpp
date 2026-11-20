@@ -189,7 +189,7 @@ std::vector<DiscFile> disc_files(const std::string& disc) {
             }
         }
     };
-    walk(fs::path(disc), "");
+    walk(b3mod::path_from_utf8(disc), "");
     std::sort(out.begin(), out.end(), [](const DiscFile& a, const DiscFile& b) { return a.key < b.key; });
     return out;
 }
@@ -198,8 +198,8 @@ bool verify_mod(const std::string& mod, const std::string& game, VerifyReport& r
     rep = VerifyReport{};
     std::vector<ModFile> files;
     std::error_code ec;
-    if (fs::is_directory(mod, ec)) {
-        if (!folder_files(mod, files, rep)) return false;
+    if (fs::is_directory(b3mod::path_from_utf8(mod), ec)) {
+        if (!folder_files(b3mod::path_from_utf8(mod), files, rep)) return false;
     } else {
         auto z = std::make_shared<Buf>();
         if (!read_host_file(mod, *z)) { rep.errors.push_back("cannot read " + mod); return false; }
@@ -401,13 +401,13 @@ bool pack_allowed(const VerifyReport& rep, bool force, std::string* why) {
 bool pack_mod(const std::string& dir, const std::string& out, std::size_t* entries, std::string* why) {
     VerifyReport rep;
     std::vector<ModFile> files;
-    if (!folder_files(dir, files, rep)) { if (why) *why = rep.errors.empty() ? "cannot list " + dir : rep.errors[0]; return false; }
+    if (!folder_files(b3mod::path_from_utf8(dir), files, rep)) { if (why) *why = rep.errors.empty() ? "cannot list " + dir : rep.errors[0]; return false; }
     std::error_code ec;
-    const fs::path outp = fs::weakly_canonical(out, ec);
+    const fs::path outp = fs::weakly_canonical(b3mod::path_from_utf8(out), ec);
     std::vector<std::pair<std::string, fs::path>> list;
     for (const ModFile& f : files) {
         if (ignored_name(f.rel)) continue;
-        const fs::path p = fs::path(dir) / b3mod::path_from_utf8(f.rel);
+        const fs::path p = b3mod::path_from_utf8(dir) / b3mod::path_from_utf8(f.rel);
         if (fs::weakly_canonical(p, ec) == outp) continue;   // the archive itself, when it is written into the folder
         list.push_back({f.rel, p});
     }
@@ -416,12 +416,29 @@ bool pack_mod(const std::string& dir, const std::string& out, std::size_t* entri
         return am != bm ? am : a.first < b.first;
     });
     if (list.empty() || list[0].first != b3mod::kManifestName) { if (why) *why = dir + ": no mod.ini at the top"; return false; }
-    b3port::ZipWriter z;
-    if (!z.open(fs::path(out))) { if (why) *why = z.error(); return false; }
-    for (const auto& [rel, p] : list)
-        if (!z.add_file(rel, p)) { if (why) *why = z.error(); return false; }
-    if (entries) *entries = z.entries();
-    if (!z.close()) { if (why) *why = z.error(); return false; }
+    // modsec: written beside it as <out>.part, then put in its place: a failure leaves no partial .b3mod (and an older
+    // archive of that name as it was)
+    const fs::path final_path = b3mod::path_from_utf8(out);
+    const fs::path part = fs::path(final_path).concat(".part");
+    std::string err;
+    {
+        b3port::ZipWriter z;   // (one not closed is removed when it goes)
+        if (!z.open(part)) err = z.error();
+        for (std::size_t k = 0; err.empty() && k < list.size(); ++k)
+            if (!z.add_file(list[k].first, list[k].second)) err = z.error();
+        if (err.empty() && entries) *entries = z.entries();
+        if (err.empty() && !z.close()) err = z.error();
+    }
+    if (err.empty()) {
+        fs::rename(part, final_path, ec);
+        if (ec) err = "cannot put the archive in place: " + ec.message();
+    }
+    if (!err.empty()) {
+        if (why) *why = err;
+        std::error_code e2;
+        fs::remove(part, e2);
+        return false;
+    }
     return true;
 }
 

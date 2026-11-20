@@ -18,7 +18,10 @@ namespace b3view {
 // hdkey: decoded levels as the device takes them (pointing into `levels`)
 inline std::vector<b3gfx::TextureLevel> texture_levels(const std::vector<b3asset::Image>& levels) {
     std::vector<b3gfx::TextureLevel> out;
-    for (const auto& l : levels) out.push_back({l.w, l.h, l.rgba.data()});
+    for (const auto& l : levels) {
+        if (l.bc && l.blocks) out.push_back({l.w, l.h, l.blocks->data(), l.bc, l.blocks->size()});   // hdgpu
+        else out.push_back({l.w, l.h, l.rgba.data()});
+    }
     return out;
 }
 // A decoded texture on the device (kNone: no levels), and the decode an HD pack replacement stands for beside it

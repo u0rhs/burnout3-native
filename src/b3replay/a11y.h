@@ -1,4 +1,4 @@
-// a11y.h -- the accessibility rows' drawing side (remaster-features "Accessibility"; PC SETTINGS > INTERFACE, section
+// a11y.h -- the accessibility rows' drawing side (remaster-features "Accessibility"; PC SETTINGS > GAME, section
 // ACCESSIBILITY; docs/pc-settings.md). Pure functions (no GPU, no guest memory), unit-tested in tests/test_a11y.cpp;
 // View::hud_list / host_ui_list apply them to the 2D layer only. With the defaults (Full, Off) nothing here runs, so the
 // frames are the game's byte for byte.

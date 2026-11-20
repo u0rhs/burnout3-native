@@ -170,7 +170,7 @@ and the box in the shot at poll 11500 is at the bottom left, above the boost bar
 
 ## 4. Change it while the game runs (hot reload)
 
-Turn on **Developer mods** on the launcher's Mods page (the same switch as PC SETTINGS > INTERFACE > DEVELOPER MODS;
+Turn on **Developer mods** on the launcher's Mods page (the same switch as PC SETTINGS > MODS > DEVELOPER MODS;
 or start native_play with `--developer-mods`). The game then
 looks at the script folder twice a second; save a change to `main.lua` (make the box red: `b3.rgba(120, 0, 0, 170)`) and
 the script is loaded again within half a second (the port checked this with a race run that changed the box's colour
@@ -210,5 +210,7 @@ check passes.) Its drawing ends, and its settings row stays. The limits are in `
 - **Your own pictures**: `b3.draw.texture(w, h, pixels)` once in the main chunk, then `b3.draw.quad(..., id)`.
 - **Your own files**: `b3.data.read("data/table.txt")` reads a file of the mod; `b3.data.read("disc:DATA/...")` a disc
   file.
-- **Change the game**: say `gameplay = yes` and use `b3.mem.write`, `b3.call` and `b3.hook` ([the
-  reference](../lua-reference.md#calls-and-hooks)); times and replays made with such a mod are kept apart.
+- **Change the game**: say `gameplay = yes`; `b3.hook.wrap` watches the game's calls ([the
+  reference](../lua-reference.md#calls-and-hooks)). `b3.mem.write`, `b3.call`, `b3.hook.replace` and a call's
+  `set_arg` / `set_result` also need `unsafe = yes` (and `calls = ...` for the functions you call), and the player is
+  then asked to allow the mod as for a code mod. Times and replays made with such a mod are kept apart.

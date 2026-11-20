@@ -15,7 +15,7 @@
 //   --pace-from N       tests: unpaced up to VBlank N, real time from there (a race measured at the game's own rate
 //                         without waiting through the front end in real time)
 //   --fast-loading on|off fastload1 (tools/native/fast_load.h): a paced run stops pacing while the game's loading screen
-//                         is up (the same VBlanks, sooner). Default: PC SETTINGS > DISPLAY > FAST LOADING (b3r_fast_loading;
+//                         is up (the same VBlanks, sooner). Default: PC SETTINGS > GAME > STARTING AND LOADING > FAST LOADING (b3r_fast_loading;
 //                         B3NATIVE_FAST_LOADING=0|1 also overrides it). The loading screen's start and end are logged either way
 //   --save-screens hide|show autosave1 (tools/native/save_screens.h): the AUTOSAVE page after a race is not shown (the display
 //                         holds the page before it; a paced run does not wait through it). Default: PC SETTINGS > SAVES >
@@ -50,7 +50,7 @@
 //   --replay-pad FILE     mac4: take the pad reports from a recording instead of the window / --keys (the same run again)
 //   --record-replay FILE  replay1: write the session as a replay file (src/native/replay_file.h) at its end: the pads of
 //                         both ports, typed text, the card as it was at the boot, the game-side options and settings,
-//                         RAM checkpoints. A window run does it by itself with PC SETTINGS > INTERFACE > RECORD REPLAYS
+//                         RAM checkpoints. A window run does it by itself with PC SETTINGS > GAME > MODES > RECORD REPLAYS
 //                         On (<user data folder>/replays/<date-time>.b3replay, the newest 20 kept)
 //   --replay FILE         replay1: play a replay file again (a bare name: one in <user data folder>/replays): the
 //                         recorded pads, card (a throwaway copy: the player's own saves are not touched), clock, options
@@ -58,7 +58,7 @@
 //                         Start (Esc), which pauses the replay; it ends where the recording did. The checkpoints say
 //                         whether it stayed on the recorded timeline
 //   --no-movie-skip       mac4: Start / Cross do not end movies (default: they do, tools/native/movie_skip.h; mac5:
-//                         while one can be, a corner hint shows the button: PC SETTINGS > INTERFACE > VIDEO SKIP HINT)
+//                         while one can be, a corner hint shows the button: PC SETTINGS > GAME > INTERFACE > VIDEO SKIP HINT)
 //   --saves DIR           save1: the saves folder (B3NATIVE_SAVES_ROOT; src/native/save_store.h): profile-N.sav files,
 //                         active-slot.txt. Default in a window (not --offscreen, not --replay-pad): the user's own,
 //                         save_store.h default_saves_root() (beside pc_settings.ini), or the folder chosen on the
@@ -97,14 +97,14 @@
 //   --mod-set SPEC        sdk2b: code mods' settings, "[<vblank>:]<mod>.<key>=<value>,..." (no VBlank: from the start;
 //                         env B3NATIVE_MOD_SET), recorded like the PC SETTINGS page's changes; a replay ignores them
 //   --developer-mods      sdk2b / tune4: Developer mods on for this run (env B3NATIVE_DEVELOPER_MODS=1), whatever
-//                         PC SETTINGS > INTERFACE > DEVELOPER MODS says (pc_settings.ini developer_mods: the one switch,
+//                         PC SETTINGS > MODS > DEVELOPER MODS says (pc_settings.ini developer_mods: the one switch,
 //                         which a window run reads and the launcher's Mods page toggles too; an offscreen run: off).
 //                         On: a code mod with [code] platform = yes may hook the platform tier, and the tuning console
 //                         is on (unless --tuning off)
 //   --tuning on|off       tune4 (the tuning console, tools/native/tuning_console.h, docs/modding/tuning.md): record the
 //                         game's tuning registry and give the console (PC SETTINGS > DEVELOPER, F9) to the window
 //                         (env B3NATIVE_TUNING=0|1). Default: Developer mods (above: --developer-mods, else in a
-//                         window run PC SETTINGS > INTERFACE > DEVELOPER MODS; off by default). Off, nothing is
+//                         window run PC SETTINGS > MODS > DEVELOPER MODS; off by default). Off, nothing is
 //                         wrapped. A mod's [tuning] preset, --tune or a recording with tuning edits installs the
 //                         registry whatever this says
 //   --tune LIST           tune4: scripted edits "<vblank>:<group> | <name>[<i>]=<value>;..." (or 0x<key>[<i>]=...; env
@@ -128,12 +128,16 @@
 #include "fast_load.h"
 #include "save_screens.h"
 #include "car_select.h"   // carsel1: the car series on L1 / R1
+#include "race_time.h"    // todrace: DAY / NIGHT per race on the track pages
+// 1.3.0: night mode is held back (still being finished), and with it the DAY / NIGHT choice on the track pages
+constexpr bool kRaceTimeThisRelease = false;
 #include "diff_check.h"
 #include "poison_check.h"
 #include "pc_menu.h"
 #include "card_silence.h"
 #include "date_format.h"
 #include "speed_units.h"
+#include "training_voice.h"   // 1.3.0 VOICES
 #include "online_message.h"
 #include "custom_soundtrack.h"
 #include "now_playing_popup.h"
@@ -175,6 +179,8 @@ b3native::Path3Check g_path3_check;
 #include "code_mods.h"       // sdk2b: the code-mod loader and its API
 #include "script_mods.h"     // lua6: script mods (Lua) on that loader
 #include "replay_file.h"
+#include "replay_stream.h"   // media1: the replay on disk at every checkpoint while it records
+#include "replay_card.h"     // media1: the throwaway replay card removed on every way out
 #include "b3settings/safemode.h"   // modkit1b: safe mode starts without mods
 
 #include <algorithm>
@@ -186,6 +192,16 @@ b3native::Path3Check g_path3_check;
 #include <ctime>
 #include <cstring>
 #include <pthread.h>   // (MinGW: winpthreads)
+#include <cerrno>
+#include <csignal>
+#ifndef _WIN32
+#include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
+#endif
+#ifdef __linux__
+#include <sys/syscall.h>   // the replay card's signal handler: getdents64 (async-signal-safe, no allocation)
+#endif
 #ifdef __APPLE__
 #include <pthread/qos.h>
 #endif
@@ -195,6 +211,8 @@ b3native::Path3Check g_path3_check;
 #else
 #include <dlfcn.h>
 #endif
+#include "b3port/fileio.h"   // fsrobust: UTF-8 paths, arguments and folders
+#include "b3port/user_dir.h"   // portable mode (1.3.0)
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -249,7 +267,7 @@ struct Render {
     int (*other_music_apps)() = nullptr;  // nowplaying1, optional: b3r_other_music_apps (now_playing_popup.h; an older b3render: off)
     void (*now_playing)(const char*) = nullptr;   // nowplaying1, optional: b3r_now_playing, what is detected (the row's text)
     int (*settings_active)() = nullptr;   // mac5, optional: 1 while the page is open (the game then sees a neutral pad)
-    int (*record_replays)() = nullptr;    // replay1, optional: PC SETTINGS > INTERFACE > RECORD REPLAYS
+    int (*record_replays)() = nullptr;    // replay1, optional: PC SETTINGS > GAME > MODES > RECORD REPLAYS
     int (*photo_row)() = nullptr;         // photorow1, optional: b3r_photo_row (an older b3render: no row)
     int (*photo_enter)() = nullptr;       // photorow1, optional: b3r_photo_enter, the pause menu's PHOTO MODE row (1: entered)
     void (*set_paused)(int) = nullptr;    // photo mode, optional: the race's pause menu is up (src/b3replay/photomode.h)
@@ -266,6 +284,10 @@ struct Render {
     int (*hide_save_screens)() = nullptr; // autosave1, optional: b3r_hide_save_screens (an older b3render: shown)
     int (*fast_loading)() = nullptr;      // fastload1, optional: b3r_fast_loading (an older b3render: off)
     int (*series_shoulders)() = nullptr;  // carsel1, optional: b3r_series_shoulders (an older b3render: off)
+    // todrace, optional (an older b3render: no presses, the label never drawn): a track page (race_time.h) is up, and the
+    // TIME OF DAY presses the window took there since the last call (race_time.h)
+    void (*race_time_page)(int) = nullptr;
+    int (*race_time_presses)() = nullptr;
     void (*fast_forward)(int) = nullptr;  // fastload1, optional: the display shows the newest frame while 1
     int (*scene_wait)(int) = nullptr;     // loadlag1, optional: a fast load's end waits for the race's scene (fast_load.h)
     // sdk2b, optional (an older b3render: no MODS tab, no textures): the code mods' settings rows for PC SETTINGS >
@@ -313,9 +335,13 @@ struct RenderSink : b3audio::AudioSink {
     ~RenderSink() { if (wav) std::fclose(wav); }
 };
 
+std::string g_voice_code;   // 1.3.0 VOICES: the voices' language this run ("": English; training_voice.h)
+bool g_training_pictures = false;   // ... the imported training pictures in use (the replay's "training_pictures")
+std::string g_dj_banks;             // ... the DJ banks redirected (platform::disc::dj_banks; the replay's "dj_banks")
 bool g_hide_save_screens = false;   // autosave1: SAVE SCREENS is Hide (latched per VBlank; the poll's hold probe reads it)
 bool hold_probe() {   // at each poll: the AUTOSAVE page is up and hidden (the display holds the page before it)
-    return g_hide_save_screens && b3native::autosave_page_up(b3host::load<std::uint32_t>(b3native::kMenuCurrentPage));
+    return g_hide_save_screens && b3native::autosave_page_up(b3host::load<std::uint32_t>(b3native::kMenuCurrentPage)) &&
+           !b3native::message_box_up(b3host::load<std::uint8_t>(b3native::kMessageShown));   // saveflow: a question shows
 }
 std::atomic<std::uint64_t> g_accel_calls{0};   // mac4: GetAccelerator calls (the key map's driving context)
 b3native::MovieSkip* g_movie_skip = nullptr;   // mac4: the watch callback's target (the game thread's)
@@ -383,11 +409,7 @@ std::vector<TextEvent> parse_text(const std::string& s) {
 
 // replay1 (src/native/replay_file.h): the environment set / cleared as a replay recorded it
 void env_set(const char* name, const std::string& v) {
-#ifdef _WIN32
-    _putenv_s(name, v.c_str());
-#else
-    setenv(name, v.c_str(), 1);
-#endif
+    b3io::setenv(name, v);   // fsrobust: UTF-8 (Windows: the wide environment; read back with b3io::getenv)
 }
 void env_unset(const char* name) {
 #ifdef _WIN32
@@ -432,16 +454,103 @@ struct LiveSettings {
     int music_volume = 100;   // musicvol1: CUSTOM MUSIC VOLUME (custom_soundtrack.h; host audio only, the game never reads it)
     std::string music_dir;
     std::string now_playing;   // nowplaying1: a replay's latched track (b3nowplaying::encode; empty: none recorded)
+    int race_time = 0;         // todrace: the track page's DAY / NIGHT choice (race_time.h; a recording without it: Default)
 };
 LiveSettings g_live;
 int (*g_photo_row)() = nullptr;   // photorow1: b3r_photo_row
-// B3_PHOTO_ROW=0|1 overrides PC SETTINGS > INTERFACE > PHOTO MODE IN PAUSE MENU (the golden runs set 0: the game's own menu);
+// B3_PHOTO_ROW=0|1 overrides PC SETTINGS > GAME > INTERFACE > PHOTO MODE IN PAUSE MENU (the golden runs set 0: the game's own menu);
 // no renderer: no row
 bool photo_row_wanted() {
     if (const char* e = std::getenv("B3_PHOTO_ROW"); e && (e[0] == '0' || e[0] == '1') && !e[1]) return e[0] == '1';
     return g_photo_row && g_photo_row() != 0;
 }
 std::atomic<bool> g_replay_paused{false};   // the viewer paused a replay (the stall watchdog then waits)
+
+// media1 (replay_card.h): the throwaway replay card removed on Ctrl+C / a terminate request. POSIX: the handler removes
+// the card's known files and its folder with unlink / rmdir (async-signal-safe; paths kept beforehand), then the signal
+// does what it did before. Windows: the console control handler runs on a thread of its own: remove_all, then the
+// default handler ends the process. The backups/ folder a save makes: its files removed with getdents64 on Linux (no
+// allocation); elsewhere it is left. Anything left (that folder, a kill) goes at the next start.
+std::filesystem::path g_card_dir_path;
+#ifndef _WIN32
+char g_card_dir[1024];
+char g_card_backups[1100];
+char g_card_files[5][1100];
+int g_card_nfiles = 0;
+void card_signal_backups() {
+#ifdef __linux__
+    const int fd = open(g_card_backups, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) return;
+    alignas(8) char buf[4096];
+    for (;;) {
+        const long n = syscall(SYS_getdents64, fd, buf, sizeof buf);
+        if (n <= 0) break;
+        for (long off = 0; off < n;) {   // struct linux_dirent64: d_ino 8, d_off 8, d_reclen 2, d_type 1, d_name
+            unsigned short reclen;
+            std::memcpy(&reclen, buf + off + 16, sizeof reclen);
+            const char* name = buf + off + 19;
+            if (!(name[0] == '.' && (!name[1] || (name[1] == '.' && !name[2])))) unlinkat(fd, name, 0);
+            off += reclen;
+        }
+    }
+    close(fd);
+#endif
+    rmdir(g_card_backups);
+}
+extern "C" void card_signal(int sig) {
+    for (int k = 0; k < g_card_nfiles; ++k) unlink(g_card_files[k]);
+    card_signal_backups();
+    rmdir(g_card_dir);
+    std::signal(sig, SIG_DFL);
+    std::raise(sig);
+}
+#else
+BOOL WINAPI card_ctrl(DWORD) {
+    std::error_code ec;
+    std::filesystem::remove_all(g_card_dir_path, ec);
+    return FALSE;
+}
+#endif
+void install_card_signals(const std::filesystem::path& dir, const std::filesystem::path& profile) {
+    g_card_dir_path = dir;
+#ifndef _WIN32
+    const std::string d = dir.string();
+    if (d.size() >= sizeof g_card_dir) return;
+    std::memcpy(g_card_dir, d.c_str(), d.size() + 1);
+    for (const std::string& f : {profile.string(), profile.string() + ".bak", profile.string() + ".tmp", profile.string() + ".unfinished",
+                                 (dir / "active-slot.txt").string()})
+        if (f.size() < sizeof g_card_files[0]) std::memcpy(g_card_files[g_card_nfiles++], f.c_str(), f.size() + 1);
+    if (const std::string b = (dir / "backups").string(); b.size() < sizeof g_card_backups) std::memcpy(g_card_backups, b.c_str(), b.size() + 1);
+    for (int sig : {SIGINT, SIGTERM, SIGHUP}) {
+        struct sigaction sa {};
+        sa.sa_handler = card_signal;
+        sigemptyset(&sa.sa_mask);
+        sigaction(sig, &sa, nullptr);
+    }
+#else
+    (void)profile;
+    SetConsoleCtrlHandler(card_ctrl, TRUE);
+#endif
+}
+bool process_alive(std::uint64_t pid) {
+#ifndef _WIN32
+    return pid <= 0x7FFFFFFFull && (kill(static_cast<pid_t>(pid), 0) == 0 || errno == EPERM);
+#else
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
+    if (!h) return GetLastError() == ERROR_ACCESS_DENIED;
+    DWORD code = 0;
+    const bool alive = GetExitCodeProcess(h, &code) && code == STILL_ACTIVE;
+    CloseHandle(h);
+    return alive;
+#endif
+}
+std::uint64_t own_pid() {
+#ifndef _WIN32
+    return static_cast<std::uint64_t>(getpid());
+#else
+    return static_cast<std::uint64_t>(GetCurrentProcessId());
+#endif
+}
 
 // What the pad model was given (the check that keys reach set_pad_sample)
 struct PadLog {
@@ -491,10 +600,13 @@ static void tell_user(const std::string& title, const std::string& text, const s
     MessageBoxW(nullptr, wide(text).c_str(), wide("Burnout 3 - " + title).c_str(), MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
 #else
     using Box = bool (*)(std::uint32_t, const char*, const char*, void*);
+    // robust2: the SDL3 the package carries beside native_play first (a bare name is not looked for in the program's
+    // folder on macOS, so a renderer that failed to load showed no box there), then the renderer's, then the system's
 #ifdef __APPLE__
-    const std::string libs[] = {exe_dir + "/libb3render.so", "libSDL3.0.dylib", "libSDL3.dylib"};
+    const std::string libs[] = {exe_dir + "/libSDL3.0.dylib", exe_dir + "/../Frameworks/libSDL3.0.dylib", exe_dir + "/libb3render.so",
+                                "@executable_path/libSDL3.0.dylib", "libSDL3.0.dylib", "libSDL3.dylib"};
 #else
-    const std::string libs[] = {exe_dir + "/libb3render.so", "libSDL3.so.0"};
+    const std::string libs[] = {exe_dir + "/libSDL3.so.0", exe_dir + "/libb3render.so", "libSDL3.so.0"};
 #endif
     for (const std::string& l : libs)
         if (void* h = dlopen(l.c_str(), RTLD_NOW | RTLD_LOCAL))
@@ -520,12 +632,30 @@ static std::string launcher_game_dir() {
     while (std::getline(f, line)) {
         const std::size_t eq = line.find('=');
         if (eq == std::string::npos || line.empty() || line[0] == '#') continue;
-        if (trim(line.substr(0, eq)) == "game_dir") return trim(line.substr(eq + 1));
+        if (trim(line.substr(0, eq)) == "game_dir") return b3io::install_resolved(trim(line.substr(eq + 1)), b3io::exe_dir());   // portable mode
     }
     return {};
 }
 
 int main(int argc, char** argv) {
+    // robust2: Steam's Flatpak sandbox: the host's data folder when it is reachable (save_store.h), else said in the log
+    // (printed now, and again once the run log is open: robust2 review 2, so bug reports carry it)
+    std::string sandbox_line;
+    if (const b3native::save::SandboxData sb = b3native::save::use_host_data_in_sandbox(); sb.sandbox) {
+        sandbox_line = "native_play: in a Flatpak sandbox: the data folder is " + sb.dir.string();
+        if (sb.host && !sb.left.empty())
+            sandbox_line += " (the host's; the settings in the sandbox's own " + sb.left.string() + ", which holds no save, are left there)";
+        else if (sb.host) sandbox_line += " (the host's)";
+        else if (sb.two) sandbox_line += " (the sandbox's own, which holds saves; the host's holds data too: " + sb.other.string() + ")";
+        else sandbox_line += " (the sandbox's own; docs/PLAYING.md: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam)";
+        std::fprintf(stderr, "%s\n", sandbox_line.c_str());
+    }
+#ifdef _WIN32
+    // fsrobust: the arguments as UTF-8, as every path in the port (the C runtime's argv is the ANSI code page: a game,
+    // saves or mods folder under C:\Users\José or with 東京 in it was mangled; the launcher passes them on a wide command
+    // line). The same split as the C runtime's; when the two disagree on the count, the C runtime's argv stays.
+    b3io::utf8_args(argc, argv);
+#endif
     // vu0 (2026-11-07): native_play runs VU0 micro mode through the generated programs by default
     // (src/native/vu0_aot_rt.h; per launch equal to the interpreter on 3,661,844 launches of navproof14 + races14);
     // B3_VU0_AOT=0 (or check) set by the caller wins -- in a dev build only
@@ -569,6 +699,14 @@ int main(int argc, char** argv) {
         if (s == "--elf") elf = next();
         else if (s == "--game") game = next();
         else if (s == "--offscreen") offscreen = true;
+        else if (s == "--data-folder") {   // portable mode (1.3.0): the user data folder this program uses, and why; nothing else
+            const b3io::UserDirChoice in_use = b3io::user_dir_choice();
+            std::printf("%s\n%s\n", b3io::u8string(in_use.dir).c_str(),
+                        in_use.kind == b3io::UserDirKind::kPortable   ? "portable: the appdata folder beside the game"
+                        : in_use.kind == b3io::UserDirKind::kOverride ? "given: B3PORT_USER_DIR"
+                                                                      : "this computer's user folder");
+            return 0;
+        }
         else if (s == "--render-lib") render_lib = next();
         else if (s == "--render-args") render_args = next();
         else if (s == "--hz") hz = std::atof(next().c_str());
@@ -636,7 +774,7 @@ int main(int argc, char** argv) {
         const bool auto_log = !offscreen && replay_pad.empty() && replay_file.empty() && !run_log_off && !(env_off && std::string(env_off) == "0");
         std::filesystem::path log;
         std::error_code ec;
-        if (!run_log_path.empty()) log = std::filesystem::path(run_log_path);
+        if (!run_log_path.empty()) log = b3io::u8path(run_log_path);
         else if (auto_log) {
             const std::filesystem::path pref = b3native::save::user_data_dir();
             if (!pref.empty()) log = b3port::runlog::new_run(b3port::runlog::logs_dir(pref), std::time(nullptr)).log;
@@ -659,12 +797,33 @@ int main(int argc, char** argv) {
         for (int k = 0; k < argc; ++k) std::printf(" %s", argv[k]);
         std::printf("\n");
         if (b3native::runlog::state().active) std::printf("native_play: run log %s\n", b3native::runlog::state().path.c_str());
+        if (b3native::runlog::state().active && !sandbox_line.empty()) std::printf("%s\n", sandbox_line.c_str());   // robust2 review 2
+        if (!offscreen) {   // portable mode (1.3.0): which data folder this run uses (include/b3port/user_dir.h)
+            const b3io::UserDirChoice in_use = b3io::user_dir_choice();
+            std::printf("native_play: data folder %s (%s)\n", b3io::u8string(in_use.dir).c_str(),
+                        in_use.kind == b3io::UserDirKind::kPortable ? "portable: appdata beside the game"
+                        : in_use.kind == b3io::UserDirKind::kOverride ? "given: B3PORT_USER_DIR" : "this computer's");
+            std::error_code dec;
+            if (in_use.kind == b3io::UserDirKind::kPortable && std::filesystem::is_directory(in_use.dir, dec) && !b3io::dir_writable(in_use.dir))
+                std::printf("native_play: the portable data folder cannot be written (a write-protected drive?): settings and "
+                            "saves are not kept this time; a save that fails is copied to %s\n",
+                            b3io::u8string(b3io::platform_user_dir() / "unsaved").c_str());
+        }
         std::fflush(stdout);
     }
     // replay1: a replay to play (src/native/replay_file.h): read, checked against this disc and port, then its game-side
     // environment, options and card (a throwaway copy) put in place of this run's
     std::optional<b3native::replay::Replay> replay_in;
     std::filesystem::path replay_card;   // the throwaway card's folder (removed at the end)
+    b3native::replay_card::CardFolder replay_card_guard;   // media1: removed on every return, whatever the way out
+    {   // media1: the cards of earlier replays whose process is gone (a kill, a crash)
+        std::error_code ec;
+        const std::filesystem::path tmp = std::filesystem::temp_directory_path(ec);
+        if (!ec && !tmp.empty())
+            if (const int gone = b3native::replay_card::sweep_stale_cards(tmp, process_alive); gone > 0)
+                std::printf("native_play: replay: %d throwaway memory card%s of earlier replays removed from %s\n", gone, gone == 1 ? "" : "s",
+                            tmp.string().c_str());
+    }
     if (!replay_file.empty()) {
         auto refuse = [&](const std::string& text) {
             if (!offscreen) tell_user("cannot play the replay", text, exe_dir);
@@ -700,8 +859,10 @@ int main(int argc, char** argv) {
         if (replay_in->card) {   // the card as it was at the recording's boot, in a folder of its own
             std::error_code ec;
             replay_card = std::filesystem::temp_directory_path(ec) /
-                          ("b3port-replay-card-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+                          b3native::replay_card::folder_name(own_pid(), std::uint64_t(std::chrono::steady_clock::now().time_since_epoch().count()));
             std::filesystem::create_directories(replay_card, ec);
+            replay_card_guard.set(replay_card);
+            install_card_signals(replay_card, b3native::save::profile_file(replay_card, replay_in->card_slot));
             std::ofstream f(b3native::save::profile_file(replay_card, replay_in->card_slot), std::ios::binary);
             f.write(reinterpret_cast<const char*>(replay_in->card_sav.data()), std::streamsize(replay_in->card_sav.size()));
             f.close();
@@ -709,6 +870,7 @@ int main(int argc, char** argv) {
                 return refuse("No room for the replay's memory card in " + replay_card.string() + ".");
             saves = replay_card.string();
             env_set("B3NATIVE_CARD_PERSIST", "1");
+            env_set("B3NATIVE_CARD_THROWAWAY", "1");   // saveflow: no folder lock, no SAVED bubble for it (save_store.h)
         }
         std::printf("native_play: replaying %s: recorded %s by %s, %s long (to VBlank %llu), %zu pad ops, %zu checkpoints, %s; "
                     "the window's controls are ignored (Start pauses it)\n",
@@ -718,12 +880,12 @@ int main(int argc, char** argv) {
                     replay_in->card ? ("its card (profile " + std::to_string(replay_in->card_slot) + ") in a throwaway copy").c_str() : "no memory card");
         std::fflush(stdout);
     }
-    if (game.empty()) if (const char* g = std::getenv("B3_GAME_DIR"); g && *g) game = g;
+    if (game.empty()) if (const auto g = b3io::getenv("B3_GAME_DIR")) game = *g;   // fsrobust: the wide value
     if (game.empty() && !offscreen) {   // started directly (not by the launcher): the launcher's choice
         game = launcher_game_dir();
         if (!game.empty()) std::printf("native_play: game data folder from launcher.ini: %s\n", game.c_str());
     }
-    if (elf.empty()) if (const char* e = std::getenv("B3_ELF"); e && *e) elf = e;
+    if (elf.empty()) if (const auto e = b3io::getenv("B3_ELF")) elf = *e;
     if (elf.empty() && !game.empty()) elf = game + "/SLUS_210.50";
     if (elf.empty() || game.empty()) {
         if (!offscreen)
@@ -739,13 +901,7 @@ int main(int argc, char** argv) {
     if (!(hz > 1 && hz < 1000)) hz = 59.94;
     // save1: the card is the user's profile file (src/native/save_store.h); B3NATIVE_SAVES_ROOT set by the caller wins
     {
-        auto set_env = [](const char* name, const std::string& v) {
-#ifdef _WIN32
-            _putenv_s(name, v.c_str());
-#else
-            setenv(name, v.c_str(), 1);
-#endif
-        };
+        auto set_env = [](const char* name, const std::string& v) { b3io::setenv(name, v); };   // fsrobust: UTF-8
         const char* given = std::getenv("B3NATIVE_SAVES_ROOT");
         if (!saves.empty()) set_env("B3NATIVE_SAVES_ROOT", saves);
         else if (!(given && *given) && !offscreen && replay_pad.empty() && replay_file.empty() &&
@@ -756,11 +912,7 @@ int main(int argc, char** argv) {
             std::error_code ec;
             std::string root;
             if (std::filesystem::is_directory(d, ec)) {
-                try {
-                    root = d.string();   // (the environment's text: the system's code page on Windows)
-                } catch (const std::exception&) {
-                    root.clear();
-                }
+                root = b3io::u8string(d);   // fsrobust: UTF-8 (set wide on Windows; read with b3io::getenv)
             }
             const std::u8string u8 = d.u8string();
             const std::string shown(u8.begin(), u8.end());
@@ -775,14 +927,13 @@ int main(int argc, char** argv) {
             const std::filesystem::path d = b3native::save::default_saves_root();
             std::error_code ec;
             if (!d.empty()) std::filesystem::create_directories(d, ec);
-            if (!d.empty() && !ec) set_env("B3NATIVE_SAVES_ROOT", d.string());
+            if (!d.empty() && !ec) set_env("B3NATIVE_SAVES_ROOT", b3io::u8string(d));
             else std::fprintf(stderr, "native_play: no saves folder (%s): no memory card this run\n", d.empty() ? "no user data folder" : ec.message().c_str());
         }
-        const char* root = std::getenv("B3NATIVE_SAVES_ROOT");
-        if (root && *root) {
+        if (const auto root = b3io::getenv("B3NATIVE_SAVES_ROOT")) {
             if (!std::getenv("B3NATIVE_CARD_PRESENT_VBLANK")) set_env("B3NATIVE_CARD_PRESENT_VBLANK", "0");
             if (!std::getenv("B3NATIVE_CARD_PERSIST")) set_env("B3NATIVE_CARD_PERSIST", "1");   // the game's saves to the .sav
-            std::printf("native_play: saves in %s (profile %d)\n", root, b3native::save::read_active_slot(root));
+            std::printf("native_play: saves in %s (profile %d)\n", root->c_str(), b3native::save::read_active_slot(b3io::u8path(*root)));
         } else {
             std::printf("native_play: no saves folder (--saves / B3NATIVE_SAVES_ROOT): the game has no memory card\n");
         }
@@ -801,13 +952,14 @@ int main(int argc, char** argv) {
     std::filesystem::path mods_pref, mods_root;
     std::string mods_from;
     std::map<std::string, std::string> code_refused, code_digest;   // id -> why it does not load (trust) / the library's SHA-256
+    std::string guards_off;   // hostfix: why the guest RAM guards are off this run (empty: on; B3_GUEST_GUARDS=0: the backend)
     {
         if (!mods_given)
             if (const char* e = std::getenv("B3NATIVE_MODS"); e && *e) { mods_arg = e; mods_given = true; }
         if (mods_dir.empty())
-            if (const char* e = std::getenv("B3NATIVE_MODS_DIR"); e && *e) mods_dir = e;
+            if (const auto e = b3io::getenv("B3NATIVE_MODS_DIR")) mods_dir = *e;
         const std::filesystem::path pref = b3native::save::user_data_dir();
-        const std::filesystem::path root = !mods_dir.empty() ? std::filesystem::path(mods_dir)
+        const std::filesystem::path root = !mods_dir.empty() ? b3io::u8path(mods_dir)
                                            : pref.empty()     ? std::filesystem::path()
                                                               : b3mod::mods_folder(pref);
         std::vector<std::string> ids;
@@ -827,6 +979,30 @@ int main(int argc, char** argv) {
                 from = "mods.ini";
             }
         }
+        // hostfix: the guest RAM guards (b3settings::safe_mode_guards_off): safe mode asked for (the launcher's START IN
+        // SAFE MODE: --safe-mode; B3_SAFE_MODE=1) starts with them off, the workaround for a "guest memory overrun" crash.
+        // Safe mode chosen after two runs that did not end cleanly (run_state.ini, read here before the renderer writes
+        // it, as for the mods below) keeps them on unless the previous run's log shows such an overrun.
+        {
+            const char* env = std::getenv("B3_SAFE_MODE");
+            b3settings::StartDecision d;
+            d.forced = d.safe = safe_mode || (env && std::strcmp(env, "1") == 0);
+            if (!d.safe && !offscreen && !pref.empty() && !std::getenv("B3_NO_USER_SETTINGS") && render_args.find("--settings") == std::string::npos)
+                d = b3settings::start_run(b3settings::load_run_state(b3mod::path_utf8(pref / "run_state.ini")), false);
+            bool overrun = false;
+            std::string last_log;
+            if (d.safe && !d.forced && !pref.empty()) {   // the previous run's log (this run's is the newest)
+                const std::filesystem::path dir = b3port::runlog::logs_dir(pref);
+                const std::string mine = b3native::runlog::state().active ? b3port::runlog::detail::run_of(b3io::u8path(b3native::runlog::state().path)) : "";
+                for (const std::string& r : b3port::runlog::runs(dir))
+                    if (r != mine) { last_log = b3mod::path_utf8(dir / (r + ".log")); break; }
+                overrun = !last_log.empty() && b3settings::log_shows_guard_overrun(last_log);
+            }
+            guards_off = b3settings::safe_mode_guards_off(d, overrun);
+            if (d.safe && !d.forced)
+                std::printf("native_play: safe mode (the last runs did not end cleanly): guest RAM guards %s (%s)\n", guards_off.empty() ? "stay on" : "off",
+                            last_log.empty() ? "no earlier run log" : ((overrun ? "a guest memory overrun in " : "no guest memory overrun in ") + last_log).c_str());
+        }
         // modkit1b: safe mode starts without mods. The renderer decides safe mode for a window run (b3replay main.cpp:
         // run_state.ini beside pc_settings.ini, then writes it); this reads the same file first, without writing it, so
         // both make the same decision.
@@ -845,7 +1021,7 @@ int main(int argc, char** argv) {
         mods_root = root;
         mods_from = from;
         // sdk2b / tune4: Developer mods, one switch: --developer-mods / B3NATIVE_DEVELOPER_MODS=1, else in a window run
-        // PC SETTINGS > INTERFACE > DEVELOPER MODS (pc_settings.ini developer_mods, which the launcher's Mods page
+        // PC SETTINGS > MODS > DEVELOPER MODS (pc_settings.ini developer_mods, which the launcher's Mods page
         // toggles too; read here as the renderer will read it: tools/native/tuning_console.h developer_mods_on)
         if (const char* e = std::getenv("B3NATIVE_DEVELOPER_MODS"); e && *e == '1') developer_mods = true;
         if (!developer_mods && !offscreen) developer_mods = b3native::developer_mods_on(render_args, pref);
@@ -856,8 +1032,8 @@ int main(int argc, char** argv) {
             mods_selected = sel.mods;
             // patches3: [files] patches are applied to this disc's files (B3_DISC_ROOT, else --game, as the platform reads
             // it), the results kept in <mods folder>/.cache; a mod whose patch does not fit this disc is left out
-            const char* droot = std::getenv("B3_DISC_ROOT");
-            const std::filesystem::path disc_root = droot && *droot ? droot : !game.empty() ? game : "data/game";
+            const auto droot = b3io::getenv("B3_DISC_ROOT");
+            const std::filesystem::path disc_root = b3io::u8path(droot ? *droot : !game.empty() ? game : "data/game");
             mods_penv.cache = b3mod::patch_cache(root);
             mods_penv.read_disc = [disc_root](const std::string& key, std::vector<std::uint8_t>& out) {
                 const std::filesystem::path p = b3asset::disc::resolve_ci(disc_root, key);
@@ -884,20 +1060,34 @@ int main(int argc, char** argv) {
                             m.textures.empty() ? "" : " and a texture pack", b3mod::hex64(m.hash).c_str());
                 for (const std::string& n : m.notes) std::printf("native_play: mods: %s: %s\n", m.id.c_str(), n.c_str());
                 mod_ids += (mod_ids.empty() ? "" : ",") + m.id;
-                // sdk2b (DESIGN.md §2.5): a code mod is a program; a window run loads only a library the user allowed
-                // in the launcher (once per library: its SHA-256 in mods-trusted.ini). Offscreen runs (tests, scripts
-                // naming the mods) are not asked.
+                // sdk2b (DESIGN.md §2.5): a code mod is a program; a window run loads only code the user allowed in
+                // the launcher (once per mod id and set of files: the SHA-256 over every library in the mod's folder,
+                // in mods-trusted.ini). Offscreen runs (tests, scripts naming the mods) are not asked: a test-only
+                // behaviour, the launcher never starts the game offscreen. The loader checks the set again right
+                // before it loads the library (CodeMods::load).
                 if (m.code.present) {
                     std::printf("native_play: mods: %s: contains code (%s%s)\n", m.id.c_str(),
                                 m.library.empty() ? "no library for this system" : b3mod::path_utf8(m.library).c_str(),
                                 m.code.gameplay ? "; changes gameplay" : "");
-                    if (!m.library.empty()) code_digest[m.id] = b3mod::library_digest(m.library);
-                    if (!offscreen && !m.library.empty() && !b3mod::trusted(pref, code_digest[m.id]))
-                        code_refused[m.id] = "its library is not allowed to run yet: turn the mod on again on the launcher's Mods page and allow it";
+                    if (!m.library.empty()) code_digest[m.id] = b3mod::trust_digest(m.dir, m.code, m.script);
+                    if (!m.library.empty() && code_digest[m.id].empty())
+                        code_refused[m.id] = "its libraries could not be read (to check them against what you allowed)";
+                    else if (!offscreen && !m.library.empty() && !b3mod::trusted(pref, m.id, code_digest[m.id]))
+                        code_refused[m.id] = "its code is not allowed to run yet (new, or a library in it changed): turn the mod on again on the launcher's Mods page and allow it";
                 }
-                if (m.script.present)   // lua6: a script (sandboxed: no trust question)
+                if (m.script.present) {   // lua6: a script (sandboxed: no trust question, unless it says unsafe = yes)
                     std::printf("native_play: mods: %s: a script (%s; %s)\n", m.id.c_str(), m.script.main_file.c_str(),
-                                m.script.gameplay ? "may change gameplay" : "gameplay = no: reads and draws only");
+                                m.script.unsafe ? "unsafe = yes: may write the game's memory and call or replace its functions"
+                                : m.script.gameplay ? "may change gameplay" : "gameplay = no: reads and draws only");
+                    // modsec: an unsafe script reaches the game's own code with its values: asked as a code mod is
+                    if (m.script.unsafe) {
+                        code_digest[m.id] = b3mod::trust_digest(m.dir, m.code, m.script);
+                        if (code_digest[m.id].empty())
+                            code_refused[m.id] = "its script files could not be read (to check them against what you allowed)";
+                        else if (!offscreen && !b3mod::trusted(pref, m.id, code_digest[m.id]))
+                            code_refused[m.id] = "its unsafe script is not allowed to run yet (new, or a file in it changed): turn the mod on again on the launcher's Mods page and allow it";
+                    }
+                }
             }
         }
         if (mod_overlay.empty()) std::printf("native_play: mods: none\n");
@@ -915,6 +1105,65 @@ int main(int argc, char** argv) {
                 else
                     std::printf("native_play: language %s: not imported (%s); the game's own text (English)\n", ls.language.c_str(), lroot.c_str());
             }
+            // 1.3.0 VOICES (b3asset/language.h dj_*, training_voice.h): with LANGUAGE French / German / Italian / Spanish and
+            // VOICES Language, the race training's narration in it (installed below) and the DJ when its banks are imported.
+            // A replay plays with the voices it was recorded with (its "voice" and "dj_voice" options; none: English)
+            namespace L = b3asset::language;
+            if (!lroot.empty()) b3native::platform::disc::set_languages_root(lroot);   // the training's localized pictures
+            std::string voice = !sp.empty() && ls.voices == 0 && L::dj_letter(ls.language) ? L::normalise(ls.language) : std::string();
+            std::string dj = voice;
+            if (replay_in) {
+                const std::string* o = replay_in->option("voice");
+                const std::string* d = replay_in->option("dj_voice");
+                voice = o ? L::normalise(*o) : std::string();
+                dj = d ? L::normalise(*d) : std::string();
+            }
+            g_voice_code = voice;
+            if (!voice.empty()) {
+                // the training's pictures: the imported ones when there, else the English; a replay plays the ones it had
+                bool pictures = b3native::platform::disc::training_pictures(voice);
+                if (replay_in) {
+                    const std::string* tp = replay_in->option("training_pictures");
+                    const bool want = tp && *tp == "imported";
+                    if (want && !pictures) {
+                        const std::string text = "This replay was recorded with the race training videos in " + L::name_of(voice) +
+                                                 ", which are not imported here (the launcher's Settings > GAME > IMPORT LANGUAGES), so it would not play the same.";
+                        if (!offscreen) tell_user("cannot play the replay", text, exe_dir);
+                        else std::fprintf(stderr, "native_play: replay: %s\n", text.c_str());
+                        return 2;
+                    }
+                    pictures = want;
+                }
+                b3native::platform::disc::use_training_pictures(pictures);
+                g_training_pictures = pictures;
+                std::printf("native_play: voices %s (%s): the race training's narration, its pictures %s\n", voice.c_str(), L::name_of(voice).c_str(),
+                            pictures ? "imported" : "English");
+            }
+            if (!dj.empty()) {
+                const std::string droot = pref.empty() ? std::string() : b3mod::path_utf8(L::dj_root(pref, dj));
+                if (b3native::platform::disc::set_dj_voice(droot, dj)) {
+                    const auto disc_env = b3io::getenv("B3_DISC_ROOT");   // (set from --game further on when unset)
+                    g_dj_banks = b3native::platform::disc::dj_banks(disc_env ? *disc_env : game);   // every bank decided now (the replay's "dj_banks")
+                    std::printf("native_play: dj voice %s (%s), imported in %s; banks %s\n", dj.c_str(), L::name_of(dj).c_str(), droot.c_str(),
+                                g_dj_banks.c_str());
+                    const std::string* want = replay_in ? replay_in->option("dj_banks") : nullptr;
+                    if (replay_in && (!want || *want != g_dj_banks)) {
+                        const std::string text = "This replay was recorded with other DJ banks in " + L::name_of(dj) + " (" +
+                                                 (want ? *want : std::string("none")) + ", here " + g_dj_banks + "), so it would not play the same.";
+                        if (!offscreen) tell_user("cannot play the replay", text, exe_dir);
+                        else std::fprintf(stderr, "native_play: replay: %s\n", text.c_str());
+                        return 2;
+                    }
+                } else if (replay_in) {
+                    const std::string text = "This replay was recorded with the DJ in " + L::name_of(dj) +
+                                             ", which is not imported here (the launcher's Settings > GAME > IMPORT LANGUAGES), so it would not play the same.";
+                    if (!offscreen) tell_user("cannot play the replay", text, exe_dir);
+                    else std::fprintf(stderr, "native_play: replay: %s\n", text.c_str());
+                    return 2;
+                } else
+                    std::printf("native_play: dj voice %s: not imported (%s); the English DJ\n", dj.c_str(), droot.c_str());
+            } else if (!replay_in && ls.voices == 1 && L::dj_letter(ls.language))
+                std::printf("native_play: voices: English (VOICES)\n");
         }
         if (replay_in) {   // replay1: the same mods, file for file (the set hash covers each file's size and bytes)
             const std::string* want = replay_in->option("mods.hash");
@@ -970,18 +1219,13 @@ int main(int argc, char** argv) {
         }
     }
     ro.args = render_args + (safe_mode ? " --safe-mode" : "") + " --native-pad" + (audio && !offscreen ? " --native-audio" : "") +
+              (replay_in ? " --replay-playback" : "") +   // media1: a replay's laps and times are not the player's (records.h)
               mod_render_args + (mods_safe_off ? " --mods-safe-off " + std::to_string(mods_safe_off) : "");   // modkit1b
     ro.game = game;
     ro.vblank = &b3native::platform::vblank_count;
     // mac4: the platform reads the disc's files from B3_DISC_ROOT (platform_sif.cpp disc_root; its default is this PC's
     // data/game or the WSL install): --game is that folder unless B3_DISC_ROOT says otherwise
-    if (!game.empty() && !std::getenv("B3_DISC_ROOT")) {
-#ifdef _WIN32
-        _putenv_s("B3_DISC_ROOT", game.c_str());
-#else
-        setenv("B3_DISC_ROOT", game.c_str(), 1);
-#endif
-    }
+    if (!game.empty() && !std::getenv("B3_DISC_ROOT")) b3io::setenv("B3_DISC_ROOT", game);   // fsrobust: UTF-8, read with b3io::getenv
     if (!b3gv_native::install(ro, exe_dir)) return 2;
     Render r;
     {
@@ -1003,7 +1247,17 @@ int main(int argc, char** argv) {
         auto sym = [m](const char* name) { return reinterpret_cast<void*>(GetProcAddress(m, name)); };
 #else
         void* m = lib ? dlopen(lib, RTLD_NOW | RTLD_LOCAL) : nullptr;
-        if (!m) { std::fprintf(stderr, "native_play: cannot load the renderer %s (%s)\n", lib ? lib : "(none)", dlerror()); return 2; }
+        if (!m) {   // robust2: told in a box too (macOS, Linux), as on Windows
+            const char* err = dlerror();
+            const std::string why = err ? err : "not found";
+            std::fprintf(stderr, "native_play: cannot load the renderer %s (%s)\n", lib ? lib : "(none)", why.c_str());
+            if (!offscreen)
+                tell_user("cannot start",
+                          "The game's renderer (" + std::string(lib ? lib : "libb3render.so") + ") could not be loaded:\n" + why +
+                              "\n\nKeep the game's files together in one folder (or reinstall the game), then start it again.",
+                          exe_dir);
+            return 2;
+        }
         auto sym = [m](const char* name) { return dlsym(m, name); };
 #endif
         r.open = reinterpret_cast<int (*)(const char*)>(sym("b3r_open_main"));
@@ -1044,6 +1298,8 @@ int main(int argc, char** argv) {
         r.fast_loading = reinterpret_cast<int (*)()>(sym("b3r_fast_loading"));     // fastload1
         r.hide_save_screens = reinterpret_cast<int (*)()>(sym("b3r_hide_save_screens"));   // autosave1
         r.series_shoulders = reinterpret_cast<int (*)()>(sym("b3r_series_shoulders"));   // carsel1
+        r.race_time_page = reinterpret_cast<void (*)(int)>(sym("b3r_race_time_page"));   // todrace
+        r.race_time_presses = reinterpret_cast<int (*)()>(sym("b3r_race_time_presses"));
         r.fast_forward = reinterpret_cast<void (*)(int)>(sym("b3r_fast_forward"));
         r.scene_wait = reinterpret_cast<int (*)(int)>(sym("b3r_scene_wait"));   // loadlag1
         r.mod_rows = reinterpret_cast<void (*)(const char*)>(sym("b3r_mod_rows"));   // sdk2b
@@ -1086,6 +1342,8 @@ int main(int argc, char** argv) {
     // (b3r_game_stopped: F10 makes the bug report there), a message box after the window, and the run left marked as not
     // ended cleanly, as a crash leaves it (run_state.ini: the launcher's "Last run" line, safe mode after two such runs).
     std::string stop_text;                     // the message box's text (empty: the game did not stop on a missing function)
+    std::string save_exit_text;                // fsrobust: the last save not written as it should be (empty: it was)
+    std::uint64_t quit_hold_from = 0;          // fsrobust: the VBlank a quit waited from for a save being written
     std::filesystem::path stop_state_path;     // run_state.ini the renderer marked at the start of this window run
     b3settings::RunState stop_state;           // its state at the stop, written back after the renderer's clean end
     const char* test_missing = std::getenv("B3NATIVE_TEST_MISSING");   // test hook (below)
@@ -1111,10 +1369,12 @@ int main(int argc, char** argv) {
         // whatever way the game ends, the feed is closed, so the renderer (on the main thread) ends too
         struct CloseFeed { Render& r; ~CloseFeed() { r.close(5000); } } close_feed{r};
         b3native::install_crash_stack();   // this (the game's) thread reports a stack overflow too
+        b3port::name_this_thread("game");   // split2p: the crash report names the faulting thread
         // the backend, as native_boot sets it up
         std::size_t n = 0;
         const b3native::TableEntry* table = b3native::install(n);
-        auto nb = std::make_unique<b3host::NativeBackend>();
+        auto nb = std::make_unique<b3host::NativeBackend>(guards_off.empty() ? nullptr : guards_off.c_str());
+        std::printf("native_play: %s\n", nb->guard_text().c_str());   // hostfix: bug reports show the guard size
         {
             // iso1: from the disc folder or from inside the disc image (<image>/SLUS_210.50, b3asset/discfs.h)
             std::vector<std::uint8_t> d;
@@ -1223,10 +1483,12 @@ int main(int argc, char** argv) {
             return s;
         }();
         std::unique_ptr<b3native::replay::Recorder> rrec;
+        std::unique_ptr<b3native::replay::StreamWriter> rstream;   // media1: the recording so far, at each checkpoint
         std::unique_ptr<b3native::replay::Player> rplay;
         std::unique_ptr<b3native::TuningConsole> tuning;   // tune4 (installed below, before the table is sealed)
         bool units_recorded = false;   // units1: a "speed_units" entry is in the recording
         bool music_volume_recorded = false;   // musicvol1: a "music_volume" entry is in the recording
+        bool race_time_recorded = false;   // todrace: a "race_time" entry is in the recording
         auto sample_live = [&](std::uint64_t v) {   // recording: the renderer's values for this VBlank
             char buf[1024] = {};
             g_live.date = r.date_format ? r.date_format() : 0;
@@ -1253,7 +1515,7 @@ int main(int argc, char** argv) {
             int mode = g_live.music_mode;
             std::string folder = g_live.music_dir;
             if (const char* e = std::getenv("B3NATIVE_MUSIC_MODE"); e && e[0] >= '0' && e[0] <= '2' && !e[1]) mode = e[0] - '0';
-            if (const char* e = std::getenv("B3NATIVE_MUSIC_DIR"); e && *e) folder = e;
+            if (const auto e = b3io::getenv("B3NATIVE_MUSIC_DIR")) folder = *e;
             if (mode != 0 && !folder.empty() && !rrec->replay().option("music_fp." + folder)) {
                 rrec->replay().options.emplace_back("music_fp." + folder, music_fingerprint(folder));
                 // eatrax1: the custom songs' EA TRAX modes as they are now (custom_soundtrack.h modes_digits)
@@ -1273,6 +1535,7 @@ int main(int argc, char** argv) {
                 else if (op->key == "speed_units") g_live.units = std::atoi(op->value.c_str()) == 1 ? 1 : 0;   // units1
                 else if (op->key == "now_playing") g_live.now_playing = op->value;   // nowplaying1
                 else if (op->key == "music_volume") g_live.music_volume = std::atoi(op->value.c_str());   // musicvol1
+                else if (op->key == "race_time") g_live.race_time = std::atoi(op->value.c_str());   // todrace
                 else if (op->key == "music") {
                     const std::size_t bar = op->value.find('|');
                     g_live.music_mode = std::atoi(op->value.substr(0, bar).c_str());
@@ -1315,11 +1578,18 @@ int main(int argc, char** argv) {
             for (const char* name : b3native::replay::kGameEnv)
                 if (const char* e = std::getenv(name)) h.options.emplace_back(std::string("env.") + name, e);
             if (const std::string g = b3native::tuning_gameplay_ids(mod_overlay); !g.empty()) h.info.emplace_back("gameplay", g);   // tune4
+            if (!g_voice_code.empty()) h.options.emplace_back("voice", g_voice_code);   // 1.3.0: the training's narration
+            if (!g_voice_code.empty()) h.options.emplace_back("training_pictures", g_training_pictures ? "imported" : "english");
+            if (const std::string dj = b3native::platform::disc::dj_voice(); !dj.empty()) {   // and the DJ, bank for bank
+                h.options.emplace_back("dj_voice", dj);
+                h.options.emplace_back("dj_banks", g_dj_banks);
+            }
             if (!mod_overlay.empty()) {   // modkit1: the mod set (playback takes these ids and checks the hash)
                 h.options.emplace_back("mods.ids", mod_ids);
                 h.options.emplace_back("mods.hash", b3mod::hex64(mod_overlay.set_hash()));
             }
-            if (const char* root = std::getenv("B3NATIVE_SAVES_ROOT"); root && *root) {   // the card as the game gets it (ProfileCard::attach)
+            if (const auto root_s = b3io::getenv("B3NATIVE_SAVES_ROOT")) {   // the card as the game gets it (ProfileCard::attach)
+                const std::filesystem::path root = b3io::u8path(*root_s);
                 h.card = true;
                 h.card_slot = b3native::save::read_active_slot(root);
                 std::optional<std::int64_t> fixed;
@@ -1330,27 +1600,30 @@ int main(int argc, char** argv) {
             }
             g_live.on = true;
             sample_live(0);
+            rstream = std::make_unique<b3native::replay::StreamWriter>(replay_out, replay_auto ? replay_out.parent_path() : std::filesystem::path());
         }
         if (replay_in) {
             rplay = std::make_unique<b3native::replay::Player>(*replay_in);
             g_live.on = true;
             apply_live(0);
         }
-        static int (*g_date_format)() = nullptr;   // mac5: SETTINGS > INTERFACE > DATE FORMAT (tools/native/date_format.h)
+        static int (*g_date_format)() = nullptr;   // mac5: SETTINGS > GAME > LANGUAGE AND UNITS > DATE FORMAT (tools/native/date_format.h)
         g_date_format = r.date_format;
         b3native::DateFormat date_format;
         date_format.install(hooks, [] { return g_live.on ? g_live.date : g_date_format ? g_date_format() : 0; });
-        static int (*g_speed_units)() = nullptr;   // units1: SETTINGS > INTERFACE > SPEED UNITS (tools/native/speed_units.h)
+        static int (*g_speed_units)() = nullptr;   // units1: SETTINGS > GAME > LANGUAGE AND UNITS > SPEED UNITS (tools/native/speed_units.h)
         g_speed_units = r.speed_units;
         b3native::SpeedUnits speed_units;
         speed_units.install(hooks, [] { return g_live.on ? g_live.units : g_speed_units ? g_speed_units() : 0; },
                             [] { return static_cast<std::uint64_t>(b3native::platform::vblank_count()); });
+        b3native::TrainingVoice training_voice;   // 1.3.0 VOICES: the race training's narration (English: nothing wrapped)
+        if (!g_voice_code.empty()) training_voice.install(hooks, g_voice_code);
         // the ONLINE dialog's words: the port's own instead of the PS2's "no network adaptor" (tools/native/online_message.h;
         // B3NATIVE_ONLINE_MESSAGE=0: the game's text)
         b3native::OnlineMessage online_message;
         online_message.set_language(b3native::platform::disc::language_text());   // 1.1: a language pack's words
         online_message.install(hooks);
-        static int (*g_music)(char*, int) = nullptr;   // PC SETTINGS > INTERFACE > MUSIC (tools/native/custom_soundtrack.h)
+        static int (*g_music)(char*, int) = nullptr;   // PC SETTINGS > AUDIO > MUSIC (tools/native/custom_soundtrack.h)
         g_music = r.music;
         static int (*g_music_volume)() = nullptr;   // musicvol1: CUSTOM MUSIC VOLUME
         g_music_volume = r.music_volume;
@@ -1373,7 +1646,7 @@ int main(int argc, char** argv) {
                 return g_music ? g_music(folder, max) : 0;
             });
         // nowplaying1 (tools/native/now_playing_popup.h): another music app's song in the EA TRAX popup, latched per
-        // VBlank below (PC SETTINGS > INTERFACE > MUSIC > OTHER MUSIC APPS; no poller, no system calls while it is off)
+        // VBlank below (PC SETTINGS > AUDIO > MUSIC > OTHER MUSIC APPS; no poller, no system calls while it is off)
         b3native::NowPlayingSource now_playing_source;
         static b3native::NowPlayingSource* g_now_playing = nullptr;
         g_now_playing = &now_playing_source;
@@ -1428,7 +1701,7 @@ int main(int argc, char** argv) {
             }
             to.replaying = replay_in || !replay_pad.empty();
             if (!to.replaying) to.script = tune_script;
-            to.mods_dir = !mods_dir.empty() ? std::filesystem::path(mods_dir) : b3native::save::user_data_dir().empty() ? std::filesystem::path()
+            to.mods_dir = !mods_dir.empty() ? b3io::u8path(mods_dir) : b3native::save::user_data_dir().empty() ? std::filesystem::path()
                           : b3mod::mods_folder(b3native::save::user_data_dir());
             to.log_registrations = [] { const char* e = std::getenv("B3NATIVE_TUNE_LOG"); return e && *e == '1'; }();
             if (to.console || !to.presets.empty() || !to.script.empty() || recorded) {
@@ -1463,6 +1736,7 @@ int main(int argc, char** argv) {
                 return static_cast<std::int64_t>(k);
             };
             if (r.mod_texture) h.texture = [&r](std::uint32_t id, std::uint32_t w, std::uint32_t hh, const std::uint8_t* px) { r.mod_texture(id, w, hh, px); };
+            if (r.mod_texture) h.texture_free = [&r](std::uint32_t id) { r.mod_texture(id, 0, 0, nullptr); };   // (0 x 0, no pixels: drop it)
             const bool window_values = !offscreen && !mods_pref.empty();
             if (window_values) h.saved_values = [&](const std::string& id) { return b3mod::load_values(b3mod::settings_file(mods_pref, id)); };
             code_mods = std::make_unique<b3native::CodeMods>(hooks, b3native::guest_arena(), h);
@@ -1470,11 +1744,7 @@ int main(int argc, char** argv) {
             std::vector<b3mod::ModState> state;
             std::set<std::string> left_out;
             for (const b3mod::ActiveMod& m : mod_overlay.mods()) {
-                if (m.script.present) {   // lua6: a script mod, the same loader (src/native/script_mods.h)
-                    cands.push_back(b3native::script_candidate(m, developer_mods));
-                    continue;
-                }
-                if (!m.code.present) continue;
+                if (!m.code.present && !m.script.present) continue;
                 if (const auto it = code_refused.find(m.id); it != code_refused.end()) {
                     std::printf("native_play: mods: %s: not loaded: %s\n", m.id.c_str(), it->second.c_str());
                     left_out.insert(m.id);
@@ -1485,7 +1755,14 @@ int main(int argc, char** argv) {
                     state.push_back(st);
                     continue;
                 }
-                cands.push_back({m.id, m.version, m.dir, m.library, m.code.platform});
+                if (m.script.present) {   // lua6: a script mod, the same loader (src/native/script_mods.h)
+                    cands.push_back(b3native::script_candidate(m, developer_mods, code_digest.count(m.id) ? code_digest[m.id] : std::string()));
+                    continue;
+                }
+                b3native::CodeMods::Candidate k{m.id, m.version, m.dir, m.library, m.code.platform};
+                k.code = m.code;
+                k.trust_digest = code_digest[m.id];   // checked again right before the library loads
+                cands.push_back(std::move(k));
             }
             for (const b3native::CodeMods::Result& res : code_mods->load(cands, developer_mods)) {
                 b3mod::ModState st;
@@ -1718,6 +1995,8 @@ int main(int argc, char** argv) {
         // (port 2: G2's car select in MULTIPLAYER); the live reports only (a replay holds the translated ones)
         b3native::input::ShoulderSeries series1, series2;
         bool series_on = false, series_page = false;
+        b3native::RaceTime race_time;   // todrace (race_time.h): DAY / NIGHT per race on the track pages
+        bool race_page = false, race_published = false;
         std::uint32_t series_shown = 0xFFFFFFFFu;   // the carousel's series / car last logged (while on)
         auto series_apply = [&](b3native::input::ShoulderSeries& t, std::array<unsigned char, 32>& rep, int port, std::uint64_t vb) {
             const bool was[2] = {t.translating(0), t.translating(1)};
@@ -1736,6 +2015,7 @@ int main(int argc, char** argv) {
         bool autosave_up = false, span_is_load = false;   // autosave1
         const bool page_log = std::getenv("B3NATIVE_PAGE_LOG") != nullptr;
         std::uint32_t page_logged = 0xFFFFFFFFu;
+        std::uint8_t box_logged = 0xFF;
         std::uint64_t autosave_from = 0;
         std::uint64_t load_from = 0, loads = 0, load_vblanks = 0, load_audible_from = 0;
         auto load_wall_from = clock::now();
@@ -1758,7 +2038,7 @@ int main(int argc, char** argv) {
             b3native::platform::hw_model().on_dma = [](unsigned c, std::uint32_t chcr, std::uint32_t madr, std::uint32_t qwc, std::uint32_t tadr) {
                 auto& hw = b3native::platform::hw_model();
                 const std::uint32_t regs[4] = {chcr, madr, qwc, tadr};
-                auto rd = [](std::uint32_t a) { std::uint32_t v = 0; std::memcpy(&v, b3host::host_pointer(a, 4), 4); return v; };
+                auto rd = [](std::uint32_t a) { std::uint32_t v = 0; std::memcpy(&v, b3host::host_pointer_checked(a, 4), 4); return v; };
                 g_path3_check.kick(c, regs, hw.mskpath3(), hw.clock ? hw.clock() : 0, rd);
                 const std::uint64_t n = hw.dma_count();
                 static std::uint64_t vif1_hash = 0;
@@ -2033,12 +2313,16 @@ int main(int argc, char** argv) {
             // it (hold_probe) and a paced run goes through it as through a fast load (whatever FAST LOADING says)
             const bool hide_wanted = save_screens_arg >= 0 ? save_screens_arg != 0 : r.hide_save_screens && r.hide_save_screens() != 0;
             g_hide_save_screens = hide_wanted;
-            const bool autosave = hide_wanted && b3native::autosave_page_up(b3host::load<std::uint32_t>(b3native::kMenuCurrentPage));
+            const bool autosave = hide_wanted && b3native::autosave_page_up(b3host::load<std::uint32_t>(b3native::kMenuCurrentPage)) &&
+                                  !b3native::message_box_up(b3host::load<std::uint8_t>(b3native::kMessageShown));   // saveflow
             if (page_log) {   // B3NATIVE_PAGE_LOG=1: each change of the menu's current page (autosave1: which page is which)
                 const std::uint32_t cur = b3host::load<std::uint32_t>(b3native::kMenuCurrentPage);
-                if (cur != page_logged) {
+                const std::uint8_t box = b3host::load<std::uint8_t>(b3native::kMessageShown);   // saveflow: and the card box's
+                if (cur != page_logged || box != box_logged) {
                     page_logged = cur;
-                    std::printf("native_play: VBlank %llu: menu page %08X\n", static_cast<unsigned long long>(v), cur);
+                    box_logged = box;
+                    std::printf("native_play: VBlank %llu: menu page %08X, card message box %s\n", static_cast<unsigned long long>(v), cur,
+                                b3native::message_box_up(box) ? "up" : "down");
                     std::fflush(stdout);
                 }
             }
@@ -2153,6 +2437,49 @@ int main(int argc, char** argv) {
                     }
                 } else {
                     series_shown = 0xFFFFFFFFu;
+                }
+            }
+            {   // todrace (race_time.h): DAY / NIGHT per race on the track pages. Live: the window's presses there; a
+                // replay: the recorded choice ("race_time", from the first VBlank it was not Default). The renderer gets
+                // the race's value and the label (nothing published before the page or a choice first shows)
+                const std::uint32_t page = b3host::load<std::uint32_t>(b3native::kMenuCurrentPage);
+                const std::uint32_t state = b3host::load<std::uint32_t>(b3native::kPageState);
+                const bool on_page = kRaceTimeThisRelease && b3native::race_time_page(page);   // (1.3.0: held back with night)
+                if (on_page != race_page) {
+                    race_page = on_page;
+                    if (r.race_time_page) r.race_time_page(on_page ? 1 : 0);
+                }
+                int presses = kRaceTimeThisRelease && r.race_time_presses ? r.race_time_presses() : 0;
+                const int choice_before = race_time.choice();
+                if (rplay) {
+                    presses = 0;
+                    race_time.set_choice(g_live.race_time);
+                }
+                const b3native::RaceTime::Step st = race_time.step(page, state, b3native::loading_page_up(page), presses);
+                if (st.choice_changed || race_time.choice() != choice_before) {   // (a replay's: set before the step)
+                    std::printf("native_play: VBlank %llu: time of day: %s (%s)\n", static_cast<unsigned long long>(v),
+                                b3native::race_time_name(race_time.choice()),
+                                (page & 0x01FFFFFFu) == b3native::kRaceTimeMainMenu ? "the main menu: back to the setting" :
+                                rplay ? "the replay's" : "a press on the track page");
+                    std::fflush(stdout);
+                    if (rrec && (race_time_recorded || race_time.choice() != b3native::kRaceTimeDefault)) {
+                        rrec->setting(v, "race_time", std::to_string(race_time.choice()));
+                        race_time_recorded = true;
+                    }
+                    if (!rplay) g_live.race_time = race_time.choice();
+                }
+                if (st.race_changed) {
+                    std::printf("native_play: VBlank %llu: time of day: the race takes %s\n", static_cast<unsigned long long>(v),
+                                b3native::race_time_name(race_time.race()));
+                    std::fflush(stdout);
+                }
+                // B3_RACE_TIME_LABEL=0 (the golden record's pin, tools/golden/baseline.sh): no label (the choice still works)
+                static const bool label_on = [] { const char* e = std::getenv("B3_RACE_TIME_LABEL"); return !(e && e[0] == '0' && !e[1]); }();
+                const std::uint8_t opacity = label_on ? race_time.opacity() : 0;
+                if (race_published || race_time.race() != b3native::kRaceTimeDefault || opacity != 0 ||
+                    race_time.choice() != b3native::kRaceTimeDefault) {
+                    race_published = true;
+                    b3gv_native::set_race_time(std::uint8_t(race_time.race()), std::uint8_t(race_time.choice()), opacity);
                 }
             }
             if (!keys2.empty() && !rplay) {   // fe1: port 2's report for this VBlank (the same context as port 1's keys)
@@ -2293,6 +2620,8 @@ int main(int argc, char** argv) {
             if (rrec) {   // replay1: what both ports were given this VBlank
                 rrec->sample(v, 0, have ? s.data() : nullptr);
                 rrec->sample(v, 1, port1_set ? port1.data() : nullptr);
+                // media1: at each checkpoint the recording so far to the file (this VBlank's ops all taken: it plays to here)
+                if (rstream && v > 0 && v % check_every == 0) rstream->checkpoint(rrec->replay(), v);   // (encoded on the writer's thread)
             }
             if (have) {
                 recorder.put(v, s);
@@ -2317,8 +2646,21 @@ int main(int argc, char** argv) {
                 if (s != pad.last) ++pad.changes;
                 pad.last = s;
             }
-            if (r.quit_requested()) { end_reason = "the window was closed"; throw PlayEnd(end_reason); }
-            if (pc_menu && pc_menu->quit_requested()) { end_reason = "QUIT GAME"; throw PlayEnd(end_reason); }
+            if (const char* quit = r.quit_requested() ? "the window was closed" : pc_menu && pc_menu->quit_requested() ? "QUIT GAME" : nullptr) {
+                // fsrobust: a save the game is writing (it spans many VBlanks) finishes and settles first, up to 5 s:
+                // the card is not cut in the middle of a save
+                b3native::save::ProfileCard* card = b3native::platform::sif::save_profile_card();
+                if (card && card->writing() && (!quit_hold_from || v < quit_hold_from + 300)) {
+                    if (!quit_hold_from) {
+                        quit_hold_from = v;
+                        std::printf("native_play: VBlank %llu: %s while the game is saving: the save finishes first\n", static_cast<unsigned long long>(v), quit);
+                        std::fflush(stdout);
+                    }
+                } else {
+                    end_reason = quit;
+                    throw PlayEnd(end_reason);
+                }
+            }
             if (quit_after > 0 && std::chrono::duration<double>(clock::now() - start).count() >= quit_after) {
                 end_reason = "--quit-after";
                 throw PlayEnd(end_reason);
@@ -2380,10 +2722,15 @@ int main(int argc, char** argv) {
             const std::uint32_t argc_word = b3host::load<std::uint32_t>(0x01D9CE80u);
             if (run("main", 0x0012EB30u, args_of({argc_word, 0x01D9CE84u}))) clean = run("exit", 0x001213B8u, args_of({0})) || clean;
         }
-        b3native::platform::sif::save_card_flush();   // save1: a save the game made in its last second
+        // save1: a save the game made in its last second (a replay's throwaway card: nothing written, kept or told)
+        save_exit_text = b3native::platform::sif::save_card_flush(replay_in.has_value());
         if (code_mods && clean) code_mods->shutdown();   // sdk2b: on_shutdown (a normal end only)
         const double secs = std::chrono::duration<double>(clock::now() - start).count();
         const std::uint64_t vbl = b3native::platform::vblank_count();
+        if (rstream) {   // media1: the last checkpoint's write done before the whole file goes over it
+            rstream->stop();
+            if (const std::string e = rstream->error(); !e.empty()) std::fprintf(stderr, "native_play: replay: a checkpoint's file: %s\n", e.c_str());
+        }
         if (rrec) {   // replay1: the session's replay file
             b3native::replay::Replay& out = rrec->replay();
             out.vblanks = vbl;
@@ -2525,10 +2872,11 @@ int main(int argc, char** argv) {
                     stop_state.unclean);
     }
     if (!stop_text.empty() && !offscreen) tell_user("the game stopped", stop_text, exe_dir);
-    if (!replay_card.empty()) {   // replay1: the throwaway card
-        std::error_code ec;
-        std::filesystem::remove_all(replay_card, ec);
+    if (!save_exit_text.empty()) {   // fsrobust
+        std::fprintf(stderr, "native_play: %s\n", save_exit_text.c_str());
+        if (!offscreen && !replay_in) tell_user("save not written", save_exit_text, exe_dir);
     }
+    replay_card_guard.remove();   // replay1: the throwaway card (media1: every earlier return removes it too)
     if (replay_parted && !offscreen)
         tell_user("replay", "This replay did not play as it was recorded from " + b3native::replay::format_length(replay_parted) +
                                 " on: this build or this PC gives the game something the recording's did not. What came after "

@@ -355,26 +355,106 @@ std::string library_digest(const fs::path& library) {
     return b3native::sha256_hex(b3native::sha256(bytes.data(), bytes.size()));
 }
 
-bool trusted(const fs::path& pref, const std::string& digest) {
-    if (digest.size() != 64) return false;
+bool needs_trust(const CodeSpec& code, const ScriptSpec& script) { return code.present || (script.present && script.unsafe); }
+
+bool library_file_name(const std::string& name) {
+    const std::string l = lower(name);
+    auto ends = [&](std::string_view e) { return l.size() > e.size() && l.compare(l.size() - e.size(), e.size(), e) == 0; };
+    if (ends(".dll") || ends(".so") || ends(".dylib")) return true;
+    const std::size_t so = l.rfind(".so.");   // libfoo.so.1, libfoo.so.1.2
+    if (so == std::string::npos || so == 0) return false;
+    for (std::size_t k = so + 4; k < l.size(); ++k)
+        if (!((l[k] >= '0' && l[k] <= '9') || l[k] == '.')) return false;
+    return so + 4 < l.size();
+}
+
+static std::string slashed(std::string s) {
+    std::replace(s.begin(), s.end(), '\\', '/');
+    return s;
+}
+
+bool trust_files(const fs::path& dir, const CodeSpec& code, const ScriptSpec& script, std::vector<TrustFile>& out, std::string* why) {
+    out.clear();
+    std::set<std::string> want;   // paths inside the mod ('/')
+    std::error_code ec;
+    const bool unsafe_script = script.present && script.unsafe;
+    const std::string sfolder = unsafe_script ? script.folder() + "/" : std::string();
+    if (code.present || unsafe_script) {
+        for (fs::recursive_directory_iterator it(dir, fs::directory_options::none, ec), end; it != end; it.increment(ec)) {
+            if (ec) break;
+            std::error_code e2;
+            if (!it->is_regular_file(e2)) continue;   // (a link to a file: its target's bytes, as a loader reads it)
+            const std::string rel = slashed(path_utf8(it->path().lexically_relative(dir)));
+            if (code.present && library_file_name(path_utf8(it->path().filename()))) want.insert(rel);
+            if (unsafe_script && sfolder.size() > 1 && rel.compare(0, sfolder.size(), sfolder) == 0) want.insert(rel);
+        }
+        if (ec) {
+            if (why) *why = "cannot list " + path_utf8(dir) + ": " + ec.message();
+            return false;
+        }
+    }
+    if (unsafe_script) want.insert(kManifestName);   // its [script] unsafe and calls lines
+    if (code.present) {
+        const std::string& named = code.path_for(host_system());
+        std::error_code e2;
+        if (!named.empty() && fs::is_regular_file(dir / path_from_utf8(named), e2)) want.insert(slashed(path_utf8(path_from_utf8(named).lexically_normal())));
+    }
+    for (const std::string& rel : want) {
+        TrustFile f;
+        f.rel = rel;
+        if (!read_text(dir / path_from_utf8(rel), f.bytes)) {
+            if (why) *why = "cannot read " + rel;
+            out.clear();
+            return false;
+        }
+        out.push_back(std::move(f));
+    }
+    return true;
+}
+
+std::string trust_digest(const std::vector<TrustFile>& files) {
+    if (files.empty()) return {};
+    std::vector<const TrustFile*> v;
+    for (const TrustFile& f : files) v.push_back(&f);
+    std::sort(v.begin(), v.end(), [](const TrustFile* a, const TrustFile* b) { return a->rel < b->rel; });
+    std::string list = "b3mod trust 2\n";
+    for (const TrustFile* f : v)
+        list += f->rel + '\0' + std::to_string(f->bytes.size()) + ' ' + b3native::sha256_hex(b3native::sha256(f->bytes.data(), f->bytes.size())) + '\n';
+    return b3native::sha256_hex(b3native::sha256(list.data(), list.size()));
+}
+
+std::string trust_digest(const fs::path& dir, const CodeSpec& code, const ScriptSpec& script) {
+    if (!needs_trust(code, script)) return {};
+    std::vector<TrustFile> files;
+    if (!trust_files(dir, code, script, files)) return {};
+    return trust_digest(files);
+}
+
+bool trusted(const fs::path& pref, const std::string& id, const std::string& digest) {
+    if (digest.size() != 64 || id.empty()) return false;
     std::string text;
     if (!read_text(trust_file(pref), text)) return false;
     bool found = false;
     for_lines(text, [&](std::string_view raw) {
         const std::string_view s = trim(raw);
         const std::size_t eq = s.find('=');
-        if (eq != std::string_view::npos && lower(trim(s.substr(0, eq))) == digest) found = true;
+        if (eq == std::string_view::npos || lower(trim(s.substr(0, eq))) != digest) return;
+        const std::string_view rest = trim(s.substr(eq + 1));
+        const std::string_view who = rest.substr(0, rest.find_first_of(" \t"));
+        if (who == id) found = true;
     });
     return found;
 }
 
 bool add_trust(const fs::path& pref, const std::string& digest, const std::string& id, const std::string& version, std::string* why) {
-    if (digest.size() != 64) { if (why) *why = "no library digest"; return false; }
-    if (trusted(pref, digest)) return true;
+    if (digest.size() != 64) { if (why) *why = "no digest of the mod's code"; return false; }
+    if (!valid_id(id)) { if (why) *why = "not a mod id"; return false; }
+    if (trusted(pref, id, digest)) return true;
     std::string text;
     if (!read_text(trust_file(pref), text) || text.empty())
-        text = "# Burnout 3 port: the code mods' libraries you allowed to run (the launcher asks once per library).\n"
-               "# A library that changes (a new version of the mod) is asked about again. Delete a line to be asked again.\n[trusted]\n";
+        text = "# Burnout 3 port: the mods' code you allowed to run (the launcher asks once per mod and set of files).\n"
+               "# The hash covers every library in the mod (and an unsafe script's files): a change to any of them is\n"
+               "# asked about again. Delete a line to be asked again.\n[trusted]\n";
     if (text.back() != '\n') text += '\n';
     text += digest + " = " + id + " " + version + "\n";
     return write_text(trust_file(pref), text, why);

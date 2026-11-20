@@ -2,6 +2,7 @@
 #include "showroom_view.h"
 
 #include "b3asset/car.h"
+#include "b3asset/carpaint.h"
 #include "b3asset/discfs.h"
 #include "b3asset/gs_memory.h"
 #include "b3asset/hdpack.h"
@@ -83,6 +84,11 @@ struct View::Impl {
     unsigned hd_gen = 0;
     bool hd_set = false;
     std::size_t hd_replaced = 0;
+    // padpaint: the custom paint, the loaded car's paint map and its texture (none: the game's paint)
+    Paint custom;
+    bool painted = false;
+    b3asset::CarPaintMap map;
+    b3gfx::TextureId mask = b3gfx::kNone;
 };
 
 namespace {
@@ -107,6 +113,7 @@ bool View::ready(std::string* why) {
         opt.msaa = 8;
         p.dev = b3gfx::Device::create(nullptr, opt, &p.fail);
         if (!p.dev && p.fail.empty()) p.fail = "no GPU device";
+        if (p.dev) b3asset::set_hd_compressed(p.dev->supports_bc());   // hdgpu
         if (p.dev) std::printf("[b3launcher] showroom: %s device, MSAA %d\n", p.dev->driver_name(), p.dev->msaa());
         else std::printf("[b3launcher] showroom: no GPU device: %s\n", p.fail.c_str());
         std::fflush(stdout);
@@ -118,6 +125,13 @@ bool View::ready(std::string* why) {
 const char* View::driver() const { return p_->dev ? p_->dev->driver_name() : "none"; }
 bool View::loaded() const { return p_->loaded; }
 int View::paints() const { return p_->paints; }
+bool View::custom_paint() const { return p_->loaded && p_->painted; }
+
+bool View::set_paint(const Paint& c) {
+    const bool reload = c.on != p_->custom.on;
+    p_->custom = c;
+    return reload;
+}
 int View::paint() const { return p_->paint; }
 
 std::size_t View::hd_indexed() const { return p_->hd.pack.files.size(); }
@@ -161,10 +175,26 @@ bool View::load(const fs::path& game_dir, const CarEntry& c, int paint, std::str
         if (!b3asset::read_car(b3asset::Bytes{bytes.data(), bytes.size()}, co, gs, baked, why)) return false;
     }
     const auto np = baked.stats.find("palettes");
-    p.paints = std::max(1, np != baked.stats.end() ? int(np->second) : 1);
+    // modsec: 1 to 8 (the palette count is a byte of the file; a car has at most 8 paints: palette_cbp_add, raster.cpp)
+    p.paints = std::clamp(np != baked.stats.end() ? int(np->second) : 1, 1, 8);
     p.paint = ((paint % p.paints) + p.paints) % p.paints;
     p.dev->clear_resources();   // the last car's buffers and textures
     p.floor_vb = p.floor_ib = p.shadow_vb = p.shadow_ib = b3gfx::kNone;
+    // padpaint: with the custom paint, the car's paint map, the model decoded in its reference paint (the game's renderer)
+    p.painted = false;
+    p.mask = b3gfx::kNone;
+    int decode_paint = p.paint;
+    if (p.custom.on) {
+        std::string w;
+        p.map = b3asset::CarPaintMap{};
+        if (b3asset::car_paint_map(b3asset::Bytes{bytes.data(), bytes.size()}, p.map, &w)) {
+            p.painted = true;
+            decode_paint = p.map.ref;
+            p.mask = b3view::upload_texture(*p.dev, {p.map.mask});
+        } else {
+            std::printf("[b3launcher] showroom: %s: no custom paint (%s)\n", c.name.c_str(), w.c_str());
+        }
+    }
     p.car = b3view::CarModel{};
     p.globals = b3view::CarGlobals{};
     p.env = b3view::Scene{};
@@ -172,7 +202,7 @@ bool View::load(const fs::path& game_dir, const CarEntry& c, int paint, std::str
     {   // showhd1: the textures through the HD packs, as the race renderer's decodes (its View::car_model: load_car_model)
         const HdHook hook(p.hd.pack.files.empty() ? nullptr : &p.hd);
         const std::size_t hits0 = p.hd.hits;
-        if (!b3view::load_car_model(*p.dev, bytes, p.paint, 3, p.car, why)) return false;
+        if (!b3view::load_car_model(*p.dev, bytes, decode_paint, 3, p.car, why)) return false;
         std::string w;
         if (!b3view::load_car_globals(*p.dev, game_dir.string(), p.globals, &w))
             std::printf("[b3launcher] showroom: %s (glass and underside untextured)\n", w.c_str());
@@ -212,8 +242,8 @@ bool View::load(const fs::path& game_dir, const CarEntry& c, int paint, std::str
     p.shadow_ib = p.dev->create_index_buffer(is.data(), is.size());
     p.shadow_n = std::uint32_t(is.size());
     p.loaded = true;
-    std::printf("[b3launcher] showroom: %s (%s), paint %d of %d, LOD block %d, %zu draws\n", c.name.c_str(), c.file.string().c_str(), p.paint + 1,
-                p.paints, p.car.lod, p.car.draws.size());
+    std::printf("[b3launcher] showroom: %s (%s), paint %d of %d, LOD block %d, %zu draws%s\n", c.name.c_str(), c.file.string().c_str(), p.paint + 1,
+                p.paints, p.car.lod, p.car.draws.size(), p.painted ? ", custom paint" : "");
     if (!p.hd.pack.files.empty()) std::printf("[b3launcher] showroom: %zu textures from the HD packs\n", p.hd_replaced);
     std::fflush(stdout);
     return true;
@@ -271,7 +301,22 @@ bool View::draw(const Turntable& t, int w, int h, std::vector<std::uint8_t>& rgb
     b3view::CarPose pose;
     std::memcpy(pose.sh, kCarSh, sizeof pose.sh);
     pose.main = pose.body = rot;
+    const std::size_t first = items.size();
     if (car) b3view::add_car_draws(p.car, p.globals, pose, eye, eye, items);
+    if (p.painted && p.mask != b3gfx::kNone && !p.car.scene.textures.empty()) {   // padpaint: as View::vehicle_draws
+        const b3gfx::TextureId atlas = p.car.scene.textures.front();
+        float paint[3];
+        b3asset::custom_paint_texel(p.custom.rgb, paint);
+        for (std::size_t k = first; k < items.size(); ++k) {
+            if (items[k].texture != atlas) continue;
+            b3gfx::CarParams& cp = items[k].car_mut();
+            cp.paint_mode = 1 | (p.custom.decals ? 0 : 2) | (p.custom.finish == 1 ? 4 : p.custom.finish == 2 ? 8 : 0);
+            std::memcpy(cp.paint, paint, sizeof cp.paint);
+            std::memcpy(cp.paint2, paint, sizeof cp.paint2);
+            cp.paint_ref = p.map.ref_level;
+            cp.paint_mask = p.mask;
+        }
+    }
     return p.dev->draw_offscreen(w, h, fp, items, rgba);
 }
 

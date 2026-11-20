@@ -37,6 +37,19 @@ public:
     bool set_hd(const std::vector<std::string>& folders, unsigned generation);
     std::size_t hd_indexed() const;    // the replacements the packs hold (0: no HD textures)
     std::size_t hd_replaced() const;   // the textures the last load took from them
+    // padpaint: player 1's custom paint (PC SETTINGS > CAR > CAR PAINT Custom) drawn over the car as the game's
+    // renderer draws it (b3asset/carpaint.h, car.frag): `on` the colour `rgb` (0xRRGGBB) over the reference paint,
+    // `decals` false the livery filled in, `finish` 0 gloss / 1 metallic / 2 pearl. True when the car must be loaded
+    // again (custom paint turned on or off: the paint the model is decoded in changes); the rest applies at the next draw.
+    struct Paint {
+        bool on = false;
+        std::uint32_t rgb = 0;
+        bool decals = true;
+        int finish = 0;
+        bool operator==(const Paint&) const = default;
+    };
+    bool set_paint(const Paint& p);
+    bool custom_paint() const;   // the loaded car is drawn in the custom paint (it has a paint map)
     // Loads `car` in paint `paint` (wrapping at the file's paint count) from `game_dir`; false with a reason.
     bool load(const std::filesystem::path& game_dir, const CarEntry& car, int paint, std::string* why);
     bool loaded() const;

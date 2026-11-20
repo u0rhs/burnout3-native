@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <mutex>
 
 #include "b3asset/enviro.h"
 #include "b3asset/export.h"
@@ -14,6 +15,7 @@
 #include "b3asset/trailshade.h"
 #include "sparks.h"
 #include "../b3view/scene.h"   // hdkey: upload_texture
+#include "b3report/thread_name.h"   // split2p: the workers named (last: it includes windows.h)
 
 namespace b3replay {
 
@@ -125,12 +127,28 @@ void scrape_strip(const ContactFx& c, const ScrapeEmitter& e, std::vector<b3gfx:
 
 bool Effects::load(b3gfx::Device& dev, const std::string& game, std::string* why) {
     clear();
+    epoch_ = dev.resource_epoch();
     std::vector<std::uint8_t> txd;
     if (!b3asset::read_file(game + "/DATA/GLOBAL.TXD", txd)) { if (why) *why = "cannot read " + game + "/DATA/GLOBAL.TXD"; return false; }
     shadow_tex_ = load_global(dev, txd, "blobbyshadow");   // D_004C4550 [C BeginShadowPlaneRendering]
     if (shadow_tex_ == b3gfx::kNone) { if (why) *why = "GLOBAL.TXD has no blobbyshadow"; return false; }
     txd_ = std::move(txd);
     return true;
+}
+
+bool Effects::load_shared(b3gfx::Device& dev, const Effects& from) {
+    clear();
+    epoch_ = dev.resource_epoch();
+    if (from.txd_.empty() || from.shadow_tex_ == b3gfx::kNone) return false;
+    txd_ = from.txd_;
+    shadow_tex_ = from.shadow_tex_;   // the same texture (both go with the device's resources)
+    return true;
+}
+
+void Effects::sync(b3gfx::Device& dev) {
+    if (dev.resource_epoch() == epoch_) return;
+    clear();
+    epoch_ = dev.resource_epoch();
 }
 
 void Effects::clear() {
@@ -150,14 +168,40 @@ void Effects::clear() {
     particle_key_ = ParticleKey{};
     particle_draws_.clear();
     flash_ = Trail{};
+    headlight_ = Trail{};
     textures_.clear();
     txd_.clear();
 }
 
 b3gfx::TextureId Effects::texture(b3gfx::Device& dev, const std::string& name) {
+    sync(dev);   // ids from before a Device::clear_resources are dropped
     const auto it = textures_.find(name);
     if (it != textures_.end()) return it->second;
-    return textures_[name] = txd_.empty() || name.empty() ? b3gfx::kNone : load_global(dev, txd_, name.c_str());
+    const b3gfx::TextureId t = textures_[name] = txd_.empty() || name.empty() ? b3gfx::kNone : load_global(dev, txd_, name.c_str());
+    if (t != b3gfx::kNone) add_warm_names({name});
+    return t;
+}
+
+namespace {
+std::mutex g_warm_m;
+std::set<std::string> g_warm_names;   // perf4
+}  // namespace
+std::set<std::string> Effects::warm_names() {
+    std::lock_guard<std::mutex> lk(g_warm_m);
+    return g_warm_names;
+}
+void Effects::add_warm_names(const std::set<std::string>& names) {
+    std::lock_guard<std::mutex> lk(g_warm_m);
+    g_warm_names.insert(names.begin(), names.end());
+}
+void Effects::drop_warm_name(const std::string& name) {
+    std::lock_guard<std::mutex> lk(g_warm_m);
+    g_warm_names.erase(name);
+}
+void Effects::preload(b3gfx::Device& dev) {
+    if (const char* e = std::getenv("B3_PIPELINE_WARM"); e && e[0] == '0') return;   // (the warm-up's off switch, as in b3gfx)
+    for (const std::string& n : warm_names())
+        if (texture(dev, n) == b3gfx::kNone) drop_warm_name(n);   // not in this GLOBAL.TXD (any more): not saved again
 }
 
 void Effects::push_shadows(b3gfx::Device& dev, std::vector<b3gfx::DrawItem>& out) {
@@ -182,6 +226,7 @@ void Effects::push_shadows(b3gfx::Device& dev, std::vector<b3gfx::DrawItem>& out
 }
 
 void Effects::draw_frontend_shadow(b3gfx::Device& dev, const Vehicle::Shadow& s, std::vector<b3gfx::DrawItem>& out) {
+    sync(dev);   // ids from before a Device::clear_resources are dropped
     verts_.clear();
     idx_.clear();
     b3gfx::Vertex v[8];
@@ -193,6 +238,7 @@ void Effects::draw_frontend_shadow(b3gfx::Device& dev, const Vehicle::Shadow& s,
 
 void Effects::draw(b3gfx::Device& dev, const std::vector<Vehicle>& vehicles, const FrameEffects& fx, std::vector<b3gfx::DrawItem>& out,
                    EffectStats* stats, const std::vector<float>* fades) {
+    sync(dev);   // ids from before a Device::clear_resources are dropped
     if (!fx.valid) return;
     // CB3ShadowMgr::RenderShadows 0x3033F0: race cars, then traffic, then crashed vehicles (the order of the frame's
     // vehicle list; strips do not overlap in a way the order changes: same texture, one blend)
@@ -335,6 +381,7 @@ void Effects::set_spark_key(SparkKey& k, const ContactFx& c, const std::uint32_t
 }
 
 void Effects::draw_sparks(b3gfx::Device& dev, const FrameEffects& fx, std::vector<b3gfx::DrawItem>& out, EffectStats* stats) {
+    sync(dev);   // ids from before a Device::clear_resources are dropped
     if (!fx.valid || !fx.effects_on || !particles || !sparks) return;   // settings1: SPARKS
     const ContactFx& c = fx.contact;
     if (async_sparks) {   // perf1: the worker's finished build in, a new tick's build out; draw what is uploaded
@@ -357,6 +404,7 @@ void Effects::draw_sparks(b3gfx::Device& dev, const FrameEffects& fx, std::vecto
             std::memcpy(cam, fx.spark_cam914, sizeof cam);
             const int level = sparks;
             spark_job_ = std::async(std::launch::async, [c, cam, level]() {   // the tick's objects are shared_ptrs: copied, kept alive
+                b3port::name_this_thread("fx sparks");   // split2p (the crash report)
                 SparkBuild b;
                 SparkStats ss;
                 b.ok = build_sparks(c, cam, b.verts, b.idx, &ss, level);
@@ -394,6 +442,7 @@ void Effects::draw_sparks(b3gfx::Device& dev, const FrameEffects& fx, std::vecto
     d.post_fog = true;                    // after CB3Fog::Render, unfogged
     d.gs_alpha = 0x48;                    // Cs As + Cd
     d.clamp_uv = true;                    // CLAMP_1 5
+    d.night_glow = true;                  // night mode: sparks stay bright
     out.push_back(d);
 }
 
@@ -403,6 +452,7 @@ void Effects::draw_sparks(b3gfx::Device& dev, const FrameEffects& fx, std::vecto
 // CLAMP_1 5, the array's raster ("fxpopcornspark" / "fxpopcorndebris"), MODULATE; RGBAQ per sprite, Q 1.
 void Effects::draw_popcorn(b3gfx::Device& dev, const FrameEffects& fx, const Camera& game, const Camera& view, std::vector<b3gfx::DrawItem>& out,
                            EffectStats* stats) {
+    sync(dev);   // ids from before a Device::clear_resources are dropped
     const ContactFx& c = fx.contact;
     if (!fx.valid || !fx.effects_on || !particles || !popcorn || !c.popcorn_valid || !c.scrapes_valid || !c.scrape_gate) return;
     popcorn_.verts.clear();
@@ -432,6 +482,7 @@ void Effects::draw_popcorn(b3gfx::Device& dev, const FrameEffects& fx, const Cam
         d.gs_alpha = std::uint8_t(pd.alpha & 0xFF);
         if (((d.gs_alpha >> 4) & 3) == 2) d.blend_fix = float((pd.alpha >> 24) & 0xFF) / 128.0f;
         d.clamp_uv = true;                // CLAMP_1 5
+        d.night_glow = std::strstr(pd.texture, "spark") != nullptr;   // night mode: the crash's sparks glow, its debris does not
         out.push_back(d);
     }
 }
@@ -442,6 +493,7 @@ void Effects::draw_popcorn(b3gfx::Device& dev, const FrameEffects& fx, const Cam
 // blend), TEST_1 (alpha test GREATER the array's reference, AFAIL FB_ONLY: nothing dropped, Z tested GEQUAL), ZBUF ZMSK
 // (no Z write), CLAMP_1 5, the array's raster by name, MODULATE.
 void Effects::draw_particles(b3gfx::Device& dev, const FrameEffects& fx, std::vector<b3gfx::DrawItem>& out, EffectStats* stats) {
+    sync(dev);   // ids from before a Device::clear_resources are dropped
     // $B3_PARTICLES=off: this layer not drawn at all (the golden record's reference look; tools/golden/baseline.sh exports it);
     // `full` draws the whole set at High. The build (the game's VU program on the captured arrays, ~5.5 ms per tick with
     // smoke on a Ryzen 9 7950X3D) runs on a worker in the window (async_sparks), so it never lands on a frame.
@@ -452,13 +504,13 @@ void Effects::draw_particles(b3gfx::Device& dev, const FrameEffects& fx, std::ve
         if (particle_job_.valid()) particle_job_.wait();   // the worker runs particle_vu_
         particle_job_ = {};
         particle_prog_ = c.particle_prog;
-        particle_vu_ = b3asset::ParticleVu();
+        particle_vu_ = std::make_shared<b3asset::ParticleVu>();   // (a running build keeps its own)
         std::string why;
-        if (!particle_vu_.load(c.particle_prog->data(), c.particle_prog->size(), &why)) std::fprintf(stderr, "particles: program: %s\n", why.c_str());
+        if (!particle_vu_->load(c.particle_prog->data(), c.particle_prog->size(), &why)) std::fprintf(stderr, "particles: program: %s\n", why.c_str());
         particle_key_ = ParticleKey{};
         particle_job_key_ = ParticleKey{};
     }
-    if (!particle_vu_.loaded()) return;
+    if (!particle_vu_->loaded()) return;
     const bool crash = c.scrapes_valid && c.scrape_gate;
     static const bool full = [] { const char* e = std::getenv("B3_PARTICLES"); return e && !std::strcmp(e, "full"); }();
     const int smoke_lv = particle_layer_level(sparks, full), debris_lv = particle_layer_level(popcorn, full);
@@ -503,7 +555,8 @@ void Effects::draw_particles(b3gfx::Device& dev, const FrameEffects& fx, std::ve
                          b.us, b.stats.quads, b.stats.triangles, b.draws.size(), static_cast<unsigned long long>(b.stats.vu.kicks),
                          static_cast<unsigned long long>(b.stats.vu.vertices), static_cast<unsigned long long>(b.stats.vu.unprojected_bad));
     };
-    auto build = [](ContactFx cc, bool cr, int sl, int dl, b3asset::ParticleVu* vu) {
+    auto build = [](ContactFx cc, bool cr, int sl, int dl, std::shared_ptr<b3asset::ParticleVu> vu, bool worker) {
+        if (worker) b3port::name_this_thread("fx particles");   // split2p (the crash report)
         ParticleBuild b;
         const auto t0 = std::chrono::steady_clock::now();
         b.ok = build_particles(cc, cr, sl, dl, *vu, b.verts, b.idx, b.draws, &b.stats);
@@ -518,10 +571,10 @@ void Effects::draw_particles(b3gfx::Device& dev, const FrameEffects& fx, std::ve
         }
         if (!same(particle_key_) && !particle_job_.valid()) {
             particle_job_key_ = want;
-            particle_job_ = std::async(std::launch::async, build, c, crash, smoke_lv, debris_lv, &particle_vu_);   // the tick's objects are shared_ptrs: copied, kept alive
+            particle_job_ = std::async(std::launch::async, build, c, crash, smoke_lv, debris_lv, particle_vu_, true);   // the tick's objects and the VU are shared_ptrs: copied, kept alive
         }
     } else if (!same(particle_key_)) {   // offscreen: the tick's own build, in place (deterministic shots)
-        ParticleBuild b = build(c, crash, smoke_lv, debris_lv, &particle_vu_);
+        ParticleBuild b = build(c, crash, smoke_lv, debris_lv, particle_vu_, false);
         apply(b);
         particle_key_ = want;
     }
@@ -545,6 +598,9 @@ void Effects::draw_particles(b3gfx::Device& dev, const FrameEffects& fx, std::ve
         d.gs_alpha = std::uint8_t(pd.alpha & 0xFF);
         if (((d.gs_alpha >> 4) & 3) == 2) d.blend_fix = float((pd.alpha >> 32) & 0xFF) / 128.0f;
         d.clamp_uv = true;                // CLAMP_1 5
+        // night mode: fire and flashes glow; smoke, dust, gravel, snow and glass are lit by the night like the rest
+        d.night_glow = pd.texture.find("fire") != std::string::npos || pd.texture.find("flash") != std::string::npos ||
+                       pd.texture.find("spark") != std::string::npos;
         out.push_back(d);
     }
 }
@@ -556,6 +612,7 @@ void Effects::draw_particles(b3gfx::Device& dev, const FrameEffects& fx, std::ve
 // the near plane (reverse-Z: it passes every depth test) and is oversized so it covers the view at any aspect.
 int Effects::draw_explosion_flash(b3gfx::Device& dev, const FrameEffects& fx, const PostIn& post, bool crashed, const Camera& cam,
                                   float aspect, bool reduce, std::vector<b3gfx::DrawItem>& out) {
+    sync(dev);   // ids from before a Device::clear_resources are dropped
     if (!fx.valid || !fx.effects_on || !crashed || !post.inputs || !post.has_crash_obj || (post.flags & 0x2000u) != 0 || !(post.crash_time > 0.0f) ||
         !cam.valid)
         return 0;
@@ -595,8 +652,82 @@ int Effects::draw_explosion_flash(b3gfx::Device& dev, const FrameEffects& fx, co
     di.effect = true;
     di.post_fog = true;
     di.gs_alpha = 0x48;
+    di.night_glow = true;
     out.push_back(di);
     return f.a;
+}
+
+}  // namespace b3replay
+
+namespace b3replay {
+
+void Effects::draw_headlights(b3gfx::Device& dev, const std::vector<Vehicle>& vehicles, const float shape[4], const float colour[3],
+                              std::vector<b3gfx::DrawItem>& out, const std::vector<float>* fades) {
+    Trail& h = headlight_;
+    h.verts.clear();
+    h.idx.clear();
+    const float range = shape[1], spread = shape[0];
+    for (std::size_t n = 0; n < vehicles.size(); ++n) {
+        const Vehicle& v = vehicles[n];
+        if (v.kind == VehicleKind::kCrashed) continue;
+        if (v.kind == VehicleKind::kTraffic && !(v.shadow.cast || v.corona.submit)) continue;
+        const Vehicle::Shadow& s = v.shadow;
+        // airborne: the light leaves the road (the shadow's lrHeightAboveOffset, over a longer fade)
+        float a = 1.0f - std::clamp((s.dist - s.radius) / 2.5f, 0.0f, 1.0f);
+        if (fades && n < fades->size()) a *= (*fades)[n];
+        if (!(a > 0.01f)) continue;
+        float nrm[3] = {s.normal[0], s.normal[1], s.normal[2]};
+        float l = std::sqrt(nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]);
+        if (!(l > 0.1f)) { nrm[0] = 0; nrm[1] = 1; nrm[2] = 0; l = 1; }
+        for (float& c : nrm) c /= l;
+        const float* at = s.ess.r[2];
+        const float fd = at[0] * nrm[0] + at[1] * nrm[1] + at[2] * nrm[2];
+        float fw[3] = {at[0] - fd * nrm[0], at[1] - fd * nrm[1], at[2] - fd * nrm[2]};
+        l = std::sqrt(fw[0] * fw[0] + fw[1] * fw[1] + fw[2] * fw[2]);
+        if (!(l > 1e-3f)) continue;
+        for (float& c : fw) c /= l;
+        const float rt[3] = {nrm[1] * fw[2] - nrm[2] * fw[1], nrm[2] * fw[0] - nrm[0] * fw[2], nrm[0] * fw[1] - nrm[1] * fw[0]};
+        // the ground under the car (where RenderAmbientShadow puts its strip), lifted 4 cm; the lamps at the box's front
+        const float lift = 0.04f;
+        const float front = s.sup[2] > 0.5f ? s.sup[2] : 2.0f;
+        const float half = std::clamp(0.8f * std::max(std::fabs(s.sup[0]), std::fabs(s.inf[0])), 0.4f, 1.4f);
+        const float g[3] = {s.ess.r[3][0] + lift * nrm[0], s.ess.r[3][1] - s.dist + lift * nrm[1], s.ess.r[3][2] + lift * nrm[2]};
+        const float far_half = half + range * spread;
+
+        auto byte = [&](float c) { return std::uint32_t(std::clamp(c * a, 0.0f, 1.0f) * 255.0f + 0.5f); };
+        const std::uint32_t rgba = byte(colour[0]) | byte(colour[1]) << 8 | byte(colour[2]) << 16 | 0xFF000000u;
+        const std::uint32_t b = std::uint32_t(h.verts.size());
+        const float corner[4][2] = {{-half, -0.25f}, {half, -0.25f}, {-far_half, range}, {far_half, range}};
+        for (const auto& c : corner) {
+            b3gfx::Vertex o;
+            std::memset(&o, 0, sizeof o);
+            const float along = front + c[1];
+            for (int k = 0; k < 3; ++k) o.pos[k] = g[k] + fw[k] * along + rt[k] * c[0];
+            o.normal[0] = half;   // light.frag: the half width at the lamps
+            o.uv[0] = c[0];
+            o.uv[1] = c[1];
+            o.rgba = rgba;
+            h.verts.push_back(o);
+        }
+        for (std::uint32_t t : {0u, 1u, 2u, 1u, 3u, 2u}) h.idx.push_back(b + t);
+    }
+    if (h.idx.empty()) return;
+    dev.update_vertex_buffer(h.vb, h.verts.data(), h.verts.size());
+    dev.update_index_buffer(h.ib, h.idx.data(), h.idx.size());
+    b3gfx::DrawItem d;
+    d.vertices = h.vb;
+    d.indices = h.ib;
+    d.index_count = std::uint32_t(h.idx.size());
+    d.texture = b3gfx::kNone;
+    d.textured = false;
+    d.blend = b3gfx::Blend::kAlpha;
+    d.shading = b3gfx::Shading::kSimple;
+    d.lighting = 0;
+    d.effect = true;
+    d.post_fog = true;
+    d.night_light = true;
+    for (int k = 0; k < 4; ++k) d.night_shape[k] = shape[k];
+    out.push_back(d);
 }
 
 }  // namespace b3replay

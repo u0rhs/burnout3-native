@@ -81,17 +81,17 @@ keys look, scrolling or - / = zoom, Z / C tilt, R back to the game's view, H hid
 Gamepad: left stick move, right stick look, RT / LT up / down, LB / RB tilt, D-pad zoom. P, Escape or B / Circle leave
 it; the race is still paused.
 
-Your own music: SETTINGS > INTERFACE > MUSIC, or the launcher's MUSIC page (the same settings). Choose a folder (MP3,
+Your own music: SETTINGS > AUDIO > MUSIC, or the launcher's MUSIC page (the same settings). Choose a folder (MP3,
 FLAC, Ogg Vorbis or WAV; subfolders too) and the PLAYLIST: EA Trax only (the original, the default), Custom only, or
 Mixed. Your songs play through the game's radio (its volume, shuffle and the EA TRAX popup with the song's title /
 artist / album from its tags). Changes apply from the next song. Note: a bug report's input recording replays exactly
 only with the same music settings.
 
-Accessibility: SETTINGS > INTERFACE > ACCESSIBILITY -- SCREEN FLASHES Reduced, a HUD COLOUR FILTER for colour-blind
+Accessibility: SETTINGS > GAME > ACCESSIBILITY -- SCREEN FLASHES Reduced, a HUD COLOUR FILTER for colour-blind
 players, HUD SIZE (the race HUD at 115 / 130 / 150 %; menus keep their size), and BOOST Toggle (press once to keep
 boosting; it changes the input the game gets, so Hold is the default).
 
-Ghosts: SETTINGS > INTERFACE > TIME ATTACK > GHOST Best lap -- your best Time Attack lap races with you, see-through.
+Ghosts: SETTINGS > GAME > MODES > GHOST Best lap -- your best Time Attack lap races with you, see-through.
 
 The launcher's STATS page shows each profile's stats from the game's save and 13 achievements worked out from them.
 

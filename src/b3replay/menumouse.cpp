@@ -1,5 +1,6 @@
 // The mouse in the game's own menus, the renderer's side: src/b3replay/menumouse.h.
 #include "menumouse.h"
+#include "garagecam.h"   // garagecam1: a drag on a car page
 
 #include <algorithm>
 #include <cmath>
@@ -209,11 +210,34 @@ void MenuMouse::frame(const MenuTargets& t, bool page_open, double now) {
     namespace pad = b3live::pad;
     auto press = [&](std::uint8_t b, bool after = false) { MenuAction a; a.kind = MenuAction::kPress; a.button = b; a.after_target = after; emit(a); };
     auto target = [&](const MenuRowTarget& r) { MenuAction a; a.kind = MenuAction::kTarget; a.select = r.select; a.row = r.row; emit(a); };
+    // garagecam1: a held press on a car page belongs to that page: the page going away (no longer a car page, another
+    // page's selects, or the PC SETTINGS page opened over it) drops it, so its release never sends a Cross to what
+    // is on screen by then
+    const auto car_page = [&] { return !page_open && t.menu && t.rows.empty() && !t.text_entry && t.car; };
+    const auto selects = [&] {
+        std::vector<std::uint32_t> v;
+        for (const auto& c : t.current) v.push_back(c.first);
+        return v;
+    };
+    if (drag_held_ && (!car_page() || selects() != drag_page_)) drag_held_ = drag_moved_ = false;
     bool moved = false;
     for (const Event& e : events_) {
         switch (e.kind) {
         case Event::kMove:
             moved = moved || !have_pos_ || e.x != x_ || e.y != y_;
+            if (drag_held_ && have_pos_) {   // garagecam1: the held press on a car page
+                const float dx = e.x - x_, dy = e.y - y_;
+                if (drag_moved_) {
+                    GarageCam::instance().add_drag(dx, dy);
+                } else {
+                    drag_dx_ += dx;
+                    drag_dy_ += dy;
+                    if (drag_dx_ * drag_dx_ + drag_dy_ * drag_dy_ > kDragStart * kDragStart) {
+                        drag_moved_ = true;
+                        GarageCam::instance().add_drag(drag_dx_, drag_dy_);
+                    }
+                }
+            }
             x_ = e.x; y_ = e.y; have_pos_ = true;
             last_move_ = now;
             hidden_by_device_ = false;
@@ -230,6 +254,11 @@ void MenuMouse::frame(const MenuTargets& t, bool page_open, double now) {
                     hover_select_ = r->select; hover_row_ = r->row; hover_at_ = now;
                 } else if (const MenuPromptTarget* p = t.prompt_at(x_, y_)) {
                     press(p->button);
+                } else if (car_page()) {
+                    drag_held_ = true;   // garagecam1: a click (Cross on the release) or a drag (the view)
+                    drag_moved_ = false;
+                    drag_page_ = selects();
+                    drag_dx_ = drag_dy_ = 0;
                 } else if (t.menu && t.rows.empty() && !t.text_entry) {
                     press(pad::kCross);   // a page without rows (a message, the car or track pages): continue
                 }
@@ -240,6 +269,10 @@ void MenuMouse::frame(const MenuTargets& t, bool page_open, double now) {
             break;
         case Event::kUp:
             if (e.n == 1) page_.held = false;
+            if (e.n == 1 && drag_held_) {   // garagecam1: released without a drag: the click's Cross (the same car page)
+                if (!drag_moved_ && car_page() && selects() == drag_page_) press(pad::kCross);
+                drag_held_ = drag_moved_ = false;
+            }
             break;
         case Event::kWheel:
             if (page_open) { page_.wheel += e.n; break; }

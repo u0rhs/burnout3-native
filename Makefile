@@ -175,6 +175,7 @@ $(GEN)/manifest.tsv: $(GAME_SELECT) tools/decomp2host/decomp2host.py $(wildcard 
 	python3 -c "import shutil; shutil.rmtree('$(GEN).new', ignore_errors=True)"
 	env -u DECOMP2HOST_CACHE python3 -I tools/decomp2host/decomp2host.py --decomp $(DECOMP) --out $(GEN).new --select $(GAME_SELECT) --objects $(BUILD)/gen_fast,$(BUILD)/gen_ps2
 	rsync -rc --delete --exclude README.md --out-format='gen/decomp: %n' $(GEN).new/ $(GEN)/
+	$(call check_returns_gen,$(GEN)/units)
 	touch $@
 else
 # public1: no decomp (a code-only checkout, CI): the committed gen/decomp is used as it is. A fresh clone's file dates
@@ -203,7 +204,7 @@ $(CALLS_GEN)/manifest.tsv: $(CALLS_SELECT) tools/decomp2host/decomp2host.py
 	python3 -I tools/decomp2host/decomp2host.py --decomp $(DECOMP) --out $(CALLS_GEN) --select $(CALLS_SELECT)
 $(BUILD)/test_calls: tests/test_calls.cpp tests/test.h tests/r5900_mini.h tests/mini_backend.h tools/abi_probe/probe3.bin $(CALLS_DEP) $(HOST_SRC) $(wildcard include/gtmath/b3/*.h include/b3host/*.h)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(LIBM_DEFS) -DB3_PS2_FLOAT=1 -DB3_BOUNCE_CANARY=1 '-DB3_PROBE3_DIR="$(abspath tools/abi_probe)"' $< $(CALLS_FLAGS) $(HOST_SRC) -o $@
-$(BUILD)/test_native_backend: tests/test_native_backend.cpp tests/test.h src/b3host/native_backend.cpp include/b3host/native_backend.h $(HOST_SRC) $(wildcard include/b3host/*.h)
+$(BUILD)/test_native_backend: tests/test_native_backend.cpp tests/test.h src/b3host/native_backend.cpp include/b3host/native_backend.h tools/native/crash_report.h $(HOST_SRC) $(wildcard include/b3host/*.h)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< src/b3host/native_backend.cpp $(HOST_SRC) -o $@
 # mod kit 2a: the hook table and the mod arena (src/native/hook_table.h), config/mod_hooks.txt's route prologue
@@ -242,8 +243,9 @@ $(BUILD)/test_ipu_model: tests/test_ipu_model.cpp tests/test.h src/native/ipu_mo
 $(BUILD)/test_native_platform: tests/test_native_platform.cpp tests/test.h tests/r5900_mini.h src/native/platform.h src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp include/b3asset/discfs.h $(CHD_OBJ) src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) $(wildcard include/b3host/*.h)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $(LIBM_DEFS) $(VU_DEFS) -DB3_PS2_FLOAT=1 -DB3_VU0_INTERP=1 $< src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp $(CHD_OBJ) src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) -pthread -o $@
-# The native memory card (boot2, src/native/save_card.h): not in `make test` yet; reads the kit's 100% profile
-# ($B3_SAVES_ROOT, default perf/saves-100; its checks skip without it).
+# The native memory card (boot2, src/native/save_card.h); reads the kit's 100% profile ($B3_SAVES_ROOT: make test passes
+# SAVES; its checks of that profile are SKIPPED without it)
+TESTS += $(BUILD)/test_save_card
 $(BUILD)/test_save_card: tests/test_save_card.cpp tests/test.h src/native/save_card.h src/native/save_formats.h src/native/save_store.h src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $< src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp -o $@
@@ -277,7 +279,9 @@ $(BUILD)/test_eeasm_%: tests/test_eeasm.cpp tests/test.h tests/r5900_mini.h $(BU
 # Native renderer foundation (docs/native-renderer.md §10): b3asset decoders (portable C++, no SSE flags so it builds on
 # Apple Silicon too), their tests, the offline dump tool, and b3gfx + b3view on SDL3 (`make render`, not part of `all`).
 # The game install is read for the optional real-data tests and never written; outputs stay out of git.
-RENDER_FLAGS := -std=c++20 -Wall -Wextra -Werror=return-type
+# -ffp-contract=off as REQFLAGS (the same results with and without FMA: x86-64's baseline has none, so this changes
+# nothing there; arm64 / an -mfma build no longer contracts a*b+c in the renderer either)
+RENDER_FLAGS := -std=c++20 -Wall -Wextra -Werror=return-type -ffp-contract=off
 B3ASSET_SRC := $(wildcard src/b3asset/*.cpp)
 B3ASSET_OBJ := $(B3ASSET_SRC:%.cpp=$(BUILD)/render/%.o)
 # nofallback1: the shipped programs (libb3render.so, b3launcher, b3modtool; tools/render/build_win.sh likewise) without
@@ -322,6 +326,15 @@ TESTS += $(BUILD)/test_b3asset $(BUILD)/test_hdpack $(BUILD)/test_discfs
 $(BUILD)/test_discfs: tests/test_discfs.cpp tests/test.h tests/iso_writer.h tests/chd_writer.h include/b3asset/discfs.h $(BUILD)/render/src/b3asset/discfs.o $(CHD_OBJ)
 	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(BUILD)/render/src/b3asset/discfs.o $(CHD_OBJ) -pthread -lz -o $@
 $(BUILD)/test_hdpack: tests/test_hdpack.cpp tests/test.h $(B3ASSET_OBJ)
+	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(B3ASSET_OBJ) -o $@
+# xboximport (1.3.0): Import Xbox textures (b3asset/xdvdfs.h, xboxtex.h, xboximport.h): synthetic XDVDFS images, Xbox
+# textures, the detail transfer, the car paint mapping, the DDS writer and the import end to end (no disc data)
+TESTS += $(BUILD)/test_xboximport
+$(BUILD)/test_xboximport: tests/test_xboximport.cpp tests/test.h $(B3ASSET_OBJ)
+	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(B3ASSET_OBJ) -pthread -lz -o $@
+# carpaint (docs/remaster-features.md §15): the paint / livery map of a car atlas, synthetic palettes
+TESTS += $(BUILD)/test_carpaint
+$(BUILD)/test_carpaint: tests/test_carpaint.cpp tests/test.h $(B3ASSET_OBJ)
 	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(B3ASSET_OBJ) -o $@
 $(BUILD)/test_b3asset: tests/test_b3asset.cpp tests/test.h $(B3ASSET_OBJ) $(VU_STAMP)
 	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $(GAME_DEFS) $(VU_DEFS) $< $(B3ASSET_OBJ) -o $@
@@ -398,9 +411,13 @@ $(BUILD)/test_prompts: tests/test_prompts.cpp tests/test.h $(PROMPTS_DEP)
 	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< $(PROMPTS_SRC) -o $@
 # photo mode (remaster-features §5): the free camera, its controls, entering / leaving, the pad withheld (photomode.h)
 TESTS += $(BUILD)/test_photomode
-PHOTO_SRC := src/b3replay/photomode.cpp src/b3replay/photohud.cpp src/b3replay/notice.cpp src/b3replay/a11y.cpp $(PROMPTS_SRC) src/native/input_bindings.cpp
+PHOTO_SRC := src/b3replay/photomode.cpp src/b3replay/garagecam.cpp src/b3replay/photohud.cpp src/b3replay/notice.cpp src/b3replay/a11y.cpp $(PROMPTS_SRC) src/native/input_bindings.cpp
 $(BUILD)/test_photomode: tests/test_photomode.cpp tests/test.h $(PHOTO_SRC) src/b3replay/photomode.h src/b3replay/photohud.h src/b3replay/prompts.h src/b3replay/notice.h src/b3replay/glyphdraw.h src/b3replay/capture.h
 	$(CXX) -Iinclude -Isrc/b3replay -Isrc/native $(SDL3_CFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(PHOTO_SRC) -o $@
+# garagecam1: the car pages' view round the car (src/b3replay/garagecam.h): hold / resume, clamps, the orbit, stamped input
+TESTS += $(BUILD)/test_garagecam
+$(BUILD)/test_garagecam: tests/test_garagecam.cpp tests/test.h src/b3replay/garagecam.cpp src/b3replay/garagecam.h src/b3replay/capture.h
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/garagecam.cpp -pthread -o $@
 # photohud1: photo mode's UI rendered over a picture into a PNG, offscreen (tools/native/photohud_preview.cpp); not a test
 $(BUILD)/photohud_preview: tools/native/photohud_preview.cpp $(PHOTO_SRC) src/b3replay/photohud.h src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ)
 	$(CXX) -Iinclude -Isrc/b3replay -Isrc/native $(RENDER_FLAGS) $(SDL3_CFLAGS) $(CXXFLAGS) $< $(PHOTO_SRC) src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ) -lz -o $@
@@ -411,6 +428,9 @@ $(BUILD)/test_fpspanel: tests/test_fpspanel.cpp tests/test.h src/b3replay/fpspan
 # fpsoverlay2: the FPS counter's three views rendered over a picture into a PNG, offscreen (tools/native/fpsoverlay_preview.cpp); not a test
 $(BUILD)/fpsoverlay_preview: tools/native/fpsoverlay_preview.cpp src/b3replay/fpspanel.cpp src/b3replay/fpspanel.h $(PHOTO_SRC) src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ)
 	$(CXX) -Iinclude -Isrc/b3replay -Isrc/native $(RENDER_FLAGS) $(SDL3_CFLAGS) $(CXXFLAGS) $< src/b3replay/fpspanel.cpp $(PHOTO_SRC) src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ) -lz -o $@
+# saveflow: the save notices' bubble rendered over a picture into PNGs, offscreen (tools/native/savebubble_preview.cpp); not a test
+$(BUILD)/savebubble_preview: tools/native/savebubble_preview.cpp $(PHOTO_SRC) src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ)
+	$(CXX) -Iinclude -Isrc/b3replay -Isrc/native $(RENDER_FLAGS) $(SDL3_CFLAGS) $(CXXFLAGS) $< $(PHOTO_SRC) src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ) -lz -o $@
 # online-det: the pad withheld for the PC SETTINGS page on the VBlank grid, whatever the render thread's timing (page_hold.h)
 TESTS += $(BUILD)/test_page_hold
 $(BUILD)/test_page_hold: tests/test_page_hold.cpp tests/test.h tools/native/page_hold.h
@@ -427,9 +447,13 @@ $(BUILD)/test_render_load: tests/test_render_load.cpp tests/test.h tools/native/
 TESTS += $(BUILD)/test_fast_load
 $(BUILD)/test_fast_load: tests/test_fast_load.cpp tests/test.h tools/native/fast_load.h tools/native/save_screens.h
 	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# todrace: DAY / NIGHT per race on SINGLE EVENT's track page -- the choice's lifetime rules (race_time.h)
+TESTS += $(BUILD)/test_race_time
+$(BUILD)/test_race_time: tests/test_race_time.cpp tests/test.h tools/native/race_time.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
 # ghost1 (Time Attack ghosts, remaster-features §5): the .b3ghost format, the time sync, the recorder (src/b3replay/ghost.h)
 TESTS += $(BUILD)/test_ghost
-$(BUILD)/test_ghost: tests/test_ghost.cpp tests/test.h src/b3replay/ghost.cpp src/b3replay/ghost.h src/b3replay/capture.h
+$(BUILD)/test_ghost: tests/test_ghost.cpp tests/test.h src/b3replay/ghost.cpp src/b3replay/ghost.h src/b3replay/capture.h src/b3replay/records.h
 	@mkdir -p $(BUILD)
 	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/ghost.cpp -o $@
 # speedrun1 (remaster-features §5 "Speedrun support"): the time text, the .b3split file, the tracker, the panel's rows
@@ -475,9 +499,9 @@ $(BUILD)/test_save_stats: tests/test_save_stats.cpp tests/test.h src/native/save
 	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $< $(SAVE_SRC) -o $@
 # replay1 (remaster-features §5 "Replay files"): the replay file's format, checksum, refusals, ops and folder
 TESTS += $(BUILD)/test_replay_file
-$(BUILD)/test_replay_file: tests/test_replay_file.cpp tests/test.h src/native/replay_file.h src/native/save_card.h src/native/save_formats.h $(SAVE_SRC)
+$(BUILD)/test_replay_file: tests/test_replay_file.cpp tests/test.h src/native/replay_file.h tools/native/replay_stream.h tools/native/replay_card.h src/native/save_card.h src/native/save_formats.h $(SAVE_SRC)
 	@mkdir -p $(BUILD)
-	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $< $(SAVE_SRC) -o $@
+	$(CXX) $(CPPFLAGS) -Isrc/native -Itools/native $(REQFLAGS) $(CXXFLAGS) $< $(SAVE_SRC) -pthread -o $@
 # save_tool: a save file's contents, import / export from the command line (tools/native/save_tool.cpp)
 $(BUILD)/save_tool: tools/native/save_tool.cpp src/native/save_card.h src/native/save_formats.h src/native/save_store.h src/native/save_stats.h $(SAVE_SRC)
 	@mkdir -p $(BUILD)
@@ -487,8 +511,8 @@ save_tool: $(BUILD)/save_tool
 # mac5: the mouse and typed text in the game's menus (remaster-features §8; include/b3live/menu_input.h,
 # src/b3replay/menumouse.h): records, actions, the presses' closed loop, the text mapping, hit bands, prompts, events
 TESTS += $(BUILD)/test_menu_input
-$(BUILD)/test_menu_input: tests/test_menu_input.cpp tests/test.h include/b3live/menu_input.h src/b3replay/menumouse.h src/b3replay/menumouse.cpp $(PROMPTS_DEP)
-	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/menumouse.cpp $(PROMPTS_SRC) -pthread -o $@
+$(BUILD)/test_menu_input: tests/test_menu_input.cpp tests/test.h include/b3live/menu_input.h src/b3replay/menumouse.h src/b3replay/menumouse.cpp src/b3replay/garagecam.cpp src/b3replay/garagecam.h $(PROMPTS_DEP)
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/menumouse.cpp src/b3replay/garagecam.cpp $(PROMPTS_SRC) -pthread -o $@
 # mac5 (remaster-features §8): the launcher / setup program beside the game (src/b3launcher; Windows:
 # Burnout3Launcher.exe from tools/render/build_win.sh). `make launcher` (SDL3, not part of `make test`); its logic
 # without SDL is test_launcher.
@@ -500,7 +524,7 @@ LAUNCHER_CORE_SRC := $(SHOWROOM_SRC) src/b3launcher/core.cpp src/b3launcher/spaw
                      src/b3settings/safemode.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/input_bindings.cpp $(SAVE_SRC) $(MUSIC_SRC) $(NOW_PLAYING_SRC) src/b3mod/mods.cpp src/b3mod/codemod.cpp
 LAUNCHER_SRC := $(LAUNCHER_CORE_SRC) src/b3mod/archive.cpp src/b3launcher/font.cpp src/b3launcher/draw.cpp src/b3launcher/main.cpp src/b3replay/prompts.cpp src/b3replay/glyphdraw.cpp \
                 $(REPORT_SRC) src/b3report/sysinfo.cpp $(SHOWROOM_VIEW_SRC)
-LAUNCHER_DEP := $(wildcard include/b3port/app_icon*.h) $(wildcard src/b3launcher/*.h src/b3launcher/third_party/*.h include/b3settings/*.h include/b3mod/*.h) src/native/input_keys.h src/native/input_bindings.h src/native/pad_gyro.h src/native/pad_triggers.h \
+LAUNCHER_DEP := $(wildcard include/b3port/app_icon*.h) include/b3port/file_url.h $(wildcard src/b3launcher/*.h src/b3launcher/third_party/*.h include/b3settings/*.h include/b3mod/*.h) src/native/input_keys.h src/native/input_bindings.h src/native/pad_gyro.h src/native/pad_triggers.h \
                 src/native/input_keys_sdl.h src/native/save_card.h src/native/save_formats.h src/native/save_store.h src/native/save_stats.h src/native/pcsx2_cards.h \
                 src/native/custom_music.h src/native/now_playing.h src/native/dbus_dl.h src/native/replay_file.h $(wildcard src/b3view/*.h include/b3gfx/*.h) src/b3gfx/shaders_gen.h
 # update1: the update check (src/b3launcher/update.h: versions, the API's JSON, launcher.ini's update_* keys; the
@@ -517,12 +541,21 @@ $(BUILD)/test_launcher_oneclick: tests/test_launcher_oneclick.cpp tests/test.h s
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< src/b3launcher/oneclick.cpp src/b3launcher/sign.cpp src/b3launcher/update.cpp -o $@
 TESTS += $(BUILD)/test_launcher_update
-$(BUILD)/test_launcher_update: tests/test_launcher_update.cpp tests/test.h src/b3launcher/update.h src/b3launcher/update.cpp
+$(BUILD)/test_launcher_update: tests/test_launcher_update.cpp tests/test.h src/b3launcher/update.h src/b3launcher/update.cpp include/b3port/file_url.h
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< src/b3launcher/update.cpp -o $@
 # update2: the one-click update's install step (src/b3launcher/installer.h: a release .zip / .tar.gz unpacked, checked and
 # swapped in with renames, previous-version/ and roll back). test_launcher_installer: packages written by the test
 LAUNCHER_SRC += src/b3launcher/installer.cpp
+# portable mode (1.3.0): the data folder's move between this computer's folder and <install>/appdata
+# (src/b3launcher/portable.h; the path itself: include/b3port/user_dir.h). test_portable: scratch folders, no game data
+LAUNCHER_SRC += src/b3launcher/portable.cpp
+LAUNCHER_DEP += include/b3port/user_dir.h
+PORTABLE_TEST_SRC := src/b3launcher/portable.cpp src/b3mod/archive.cpp src/b3mod/mods.cpp
+TESTS += $(BUILD)/test_portable
+$(BUILD)/test_portable: tests/test_portable.cpp tests/test.h src/b3launcher/portable.h include/b3port/user_dir.h include/b3port/fileio.h $(PORTABLE_TEST_SRC)
+	@mkdir -p $(BUILD)
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(PORTABLE_TEST_SRC) -lz -o $@
 INSTALLER_TEST_SRC := src/b3launcher/installer.cpp src/b3mod/archive.cpp src/b3mod/mods.cpp
 TESTS += $(BUILD)/test_launcher_installer
 $(BUILD)/test_launcher_installer: tests/test_launcher_installer.cpp tests/test.h src/b3launcher/installer.h include/b3mod/archive.h include/b3mod/mods.h $(INSTALLER_TEST_SRC)
@@ -571,9 +604,19 @@ $(BUILD)/test_mods: tests/test_mods.cpp tests/test.h include/b3mod/mods.h includ
 MODTOOL_SRC := $(wildcard src/b3modtool/*.cpp) src/b3mod/mods.cpp src/b3report/zip.cpp src/b3launcher/showroom.cpp   # models3c: car list / export name the cars as the showroom
 MODTOOL_DEP := $(wildcard include/b3modtool/*.h include/b3mod/*.h include/b3asset/*.h include/b3tune/*.h) include/b3report/zip.h src/b3launcher/showroom.h
 TESTS += $(BUILD)/test_modtool
-$(BUILD)/test_modtool: tests/test_modtool.cpp tests/test.h $(MODTOOL_SRC) $(MODTOOL_DEP) $(B3ASSET_OBJ)
+$(BUILD)/test_modtool: tests/test_modtool.cpp tests/test.h $(MODTOOL_SRC) $(MODTOOL_DEP) $(B3ASSET_OBJ) | $(BUILD)/b3modtool
 	@mkdir -p $(BUILD)
-	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(MODTOOL_SRC) $(B3ASSET_OBJ) -lz -o $@
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) '-DB3_MODTOOL_BIN="$(abspath $(BUILD)/b3modtool)"' $< $(MODTOOL_SRC) $(B3ASSET_OBJ) -lz -o $@
+# modsec: every car reader (read_car, car_paint_map, car_atlas_triangles, the mod tool's car_read / car_export /
+# car_import) on a synthetic car cut at every length, built with AddressSanitizer (its own compile of the sources)
+TESTS += $(BUILD)/test_car_truncation
+ASAN_FLAGS := -fsanitize=address -fno-omit-frame-pointer
+CAR_TRUNC_OBJ := $(patsubst %.cpp,$(BUILD)/asan/%.o,tests/test_car_truncation.cpp $(MODTOOL_SRC) $(B3ASSET_SRC))
+$(BUILD)/asan/%.o: %.cpp $(MODTOOL_DEP) tests/test.h
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(ASAN_FLAGS) -c $< -o $@
+$(BUILD)/test_car_truncation: $(CAR_TRUNC_OBJ) $(CHD_OBJ)
+	$(CXX) $(CXXFLAGS) $(ASAN_FLAGS) $(CAR_TRUNC_OBJ) $(CHD_OBJ) -lz -o $@
 $(BUILD)/b3modtool: tools/modding/b3modtool.cpp $(MODTOOL_SRC) $(MODTOOL_DEP) $(B3ASSET_RT_OBJ)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(MODTOOL_SRC) $(B3ASSET_RT_OBJ) -lz -o $@
@@ -620,6 +663,10 @@ $(BUILD)/model_import_check: tools/modding/model_import_check.cpp $(MODTOOL_SRC)
 $(BUILD)/track_import_check: tools/modding/track_import_check.cpp $(MODTOOL_SRC) $(MODTOOL_DEP) $(B3ASSET_OBJ)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(MODTOOL_SRC) $(B3ASSET_OBJ) -lz -o $@
+# perf4: FRAMES IN FLIGHT Auto, the warm-up list's file, RENDER SCALE's supersampling cap
+TESTS += $(BUILD)/test_perf4
+$(BUILD)/test_perf4: tests/test_perf4.cpp tests/test.h include/b3gfx/frames_auto.h include/b3gfx/render_scale.h src/b3replay/warmcache.h
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< -o $@
 # lat1: the display clock's schedule mode (src/b3replay/clock.h) on synthetic feeds
 TESTS += $(BUILD)/test_clock
 # mac3: with REQFLAGS (C++20): Apple clang's own default standard has no std::clamp (the M1's NOT BUILT)
@@ -627,8 +674,8 @@ $(BUILD)/test_clock: tests/test_clock.cpp tests/test.h src/b3replay/clock.h
 	$(CXX) -Iinclude $(REQFLAGS) $(CXXFLAGS) $< -o $@
 # inproc1 (§23): the in-process feed (include/b3live/inproc.h) into LiveFeed, against the file reader, with and without drops
 TESTS += $(BUILD)/test_inproc
-$(BUILD)/test_inproc: tests/test_inproc.cpp tests/test.h include/b3live/inproc.h include/b3live/ring.h src/b3replay/livefeed.cpp src/b3replay/live.h src/b3replay/hud.cpp src/b3replay/hud.h src/b3replay/capture.cpp src/b3replay/capture.h src/b3replay/globe.cpp src/b3replay/globe.h $(B3ASSET_OBJ)
-	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $(SDL3_CFLAGS) -Isrc/b3gfx $< src/b3replay/livefeed.cpp src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ) -lz -lpthread -o $@
+$(BUILD)/test_inproc: tests/test_inproc.cpp tests/test.h include/b3live/inproc.h include/b3live/ring.h src/b3replay/livefeed.cpp src/b3replay/garagecam.cpp src/b3replay/garagecam.h src/b3replay/live.h src/b3replay/hud.cpp src/b3replay/hud.h src/b3replay/capture.cpp src/b3replay/capture.h src/b3replay/globe.cpp src/b3replay/globe.h $(B3ASSET_OBJ)
+	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $(SDL3_CFLAGS) -Isrc/b3gfx $< src/b3replay/livefeed.cpp src/b3replay/garagecam.cpp src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ) -lz -lpthread -o $@
 $(BUILD)/b3assetdump: tools/render/b3assetdump.cpp $(B3ASSET_OBJ)
 	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(B3ASSET_OBJ) -o $@
 $(BUILD)/b3vucheck: tools/render/b3vucheck.cpp $(B3ASSET_OBJ)
@@ -692,7 +739,9 @@ ifeq ($(LINUX_RELEASE),1)
 override CXXFLAGS += -include $(abspath include/b3compat/glibc_compat.h) -static-libstdc++ -static-libgcc -Wl,--exclude-libs,ALL
 override SDL3_LIBS := -L$(SDL3_LIBDIR) -lSDL3 -Wl,--disable-new-dtags,-rpath,'$$ORIGIN'
 endif
-# The standalone's audio output (audio1, src/native/audio_device.*): SDL3 like `make render`, so not part of `make test`.
+# The standalone's audio output (audio1, src/native/audio_device.*) on SDL3's dummy driver (no sound device needed);
+# linked with SDL3 like test_panel_epoch
+TESTS += $(BUILD)/test_audio_device
 $(BUILD)/test_audio_device: tests/test_audio_device.cpp tests/test.h src/native/audio_device.cpp src/native/audio_device.h $(RWA_IOP_DEP)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(SDL3_CFLAGS) $< src/native/audio_device.cpp $(RWA_IOP_SRC) $(SDL3_LIBS) -o $@
@@ -705,7 +754,7 @@ $(B3VIEW_OBJ): RENDER_CPPFLAGS = $(SDL3_CFLAGS) -Isrc/b3gfx
 $(BUILD)/b3view: $(B3VIEW_OBJ) $(B3ASSET_OBJ)
 	$(CXX) $(CXXFLAGS) $^ $(SDL3_LIBS) -o $@
 # b3replay (docs/native-renderer.md §12): a recorded race from a scene capture in the native renderer.
-B3REPLAY_SRC := src/b3gfx/b3gfx_sdl.cpp src/b3view/scene.cpp src/b3view/carscene.cpp src/b3view/crashscene.cpp src/b3view/sun.cpp src/b3replay/capture.cpp src/b3replay/hud.cpp src/b3replay/effects.cpp src/b3replay/coronas.cpp src/b3replay/sparks.cpp src/b3replay/globe.cpp src/b3replay/view.cpp src/b3replay/trafficfade.cpp src/b3replay/splitlayout.cpp src/b3replay/live.cpp src/b3replay/livefeed.cpp src/b3replay/nativepad.cpp src/b3replay/pcpage.cpp src/b3replay/nativeaudio.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/input_bindings.cpp src/b3replay/fpspanel.cpp src/b3replay/skiphint.cpp src/b3replay/prompts.cpp src/b3replay/glyphdraw.cpp src/b3replay/menumouse.cpp src/b3replay/pcsettings.cpp src/b3settings/settings.cpp src/b3settings/safemode.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3replay/notice.cpp src/b3replay/photomode.cpp src/b3replay/photohud.cpp src/b3replay/a11y.cpp src/b3replay/ghost.cpp src/b3replay/speedrun.cpp src/b3replay/speedrunpanel.cpp src/b3replay/tuneconsole.cpp src/b3replay/carlook.cpp src/b3replay/carlookpanel.cpp $(REPORT_SRC) src/b3report/sysinfo.cpp src/b3mod/mods.cpp src/b3mod/codemod.cpp src/b3replay/modoverlay.cpp src/b3replay/main.cpp
+B3REPLAY_SRC := src/b3gfx/b3gfx_sdl.cpp src/b3view/scene.cpp src/b3view/carscene.cpp src/b3view/crashscene.cpp src/b3view/sun.cpp src/b3replay/capture.cpp src/b3replay/hud.cpp src/b3replay/effects.cpp src/b3replay/coronas.cpp src/b3replay/sparks.cpp src/b3replay/globe.cpp src/b3replay/view.cpp src/b3replay/trafficfade.cpp src/b3replay/splitlayout.cpp src/b3replay/live.cpp src/b3replay/livefeed.cpp src/b3replay/nativepad.cpp src/b3replay/pcpage.cpp src/b3replay/nativeaudio.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/input_bindings.cpp src/b3replay/fpspanel.cpp src/b3replay/skiphint.cpp src/b3replay/racetime.cpp src/b3replay/prompts.cpp src/b3replay/glyphdraw.cpp src/b3replay/menumouse.cpp src/b3replay/pcsettings.cpp src/b3settings/settings.cpp src/b3settings/safemode.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3replay/notice.cpp src/b3replay/photomode.cpp src/b3replay/garagecam.cpp src/b3replay/photohud.cpp src/b3replay/a11y.cpp src/b3replay/ghost.cpp src/b3replay/speedrun.cpp src/b3replay/speedrunpanel.cpp src/b3replay/tuneconsole.cpp src/b3replay/carlook.cpp src/b3replay/carlookpanel.cpp $(REPORT_SRC) src/b3report/sysinfo.cpp src/b3mod/mods.cpp src/b3mod/codemod.cpp src/b3replay/modoverlay.cpp src/b3replay/main.cpp
 B3REPLAY_OBJ := $(B3REPLAY_SRC:%.cpp=$(BUILD)/render/%.o)
 $(B3REPLAY_OBJ): RENDER_CPPFLAGS = $(SDL3_CFLAGS) -Isrc/b3gfx
 $(B3REPLAY_OBJ): $(wildcard src/b3replay/*.h include/b3settings/*.h include/b3report/*.h include/b3mod/*.h include/b3tune/*.h include/b3asset/discfs.h) src/native/input_keys.h src/native/input_keys_sdl.h src/native/input_bindings.h src/native/pad_gyro.h src/native/pad_triggers.h   # explicit targets: a recipe-less pattern rule cancels the implicit rule instead of adding prerequisites
@@ -765,10 +814,10 @@ shaders:
 #   other: the renderer's decoders / shading models, HUD / capture readers, settings, clocks, audio DSP, native backend
 MAC_TESTS_EXACT := test_ps2float test_fenv test_vufloat test_gtmath_ps2 test_gtmath_fast test_libm test_libm_more test_overrides \
                    test_libm_cost test_eeasm_ps2 test_eeasm_fast test_b3host test_abi
-MAC_TESTS_OTHER := test_b3asset test_hdpack test_sparkshade test_popcornshade test_hud test_capture test_livelap \
-                   test_settings test_effect_levels test_carlook test_clock test_inproc test_rwa_iop test_spu2_mixer test_b3route \
+MAC_TESTS_OTHER := test_b3asset test_hdpack test_xboximport test_carpaint test_sparkshade test_popcornshade test_hud test_capture test_livelap \
+                   test_settings test_effect_levels test_carlook test_clock test_perf4 test_inproc test_rwa_iop test_spu2_mixer test_b3route \
                    test_native_backend test_native_platform test_gameview_native test_save_card \
-                   test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_render_load test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_launcher_installer test_launcher_steam test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load
+                   test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_garagecam test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_render_load test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_launcher_installer test_portable test_launcher_steam test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load test_race_time
 MAC_TESTS := $(MAC_TESTS_EXACT) $(MAC_TESTS_OTHER)
 RUN ?=
 mac-tests-build:
@@ -796,10 +845,14 @@ gen: $(GEN)/manifest.tsv
 test:
 	@$(MAKE) --no-print-directory gen
 	@$(MAKE) --no-print-directory -j$(NPROC) all $(TESTS) $(BUILD)/b3modtool   # b3modtool: the add-on test uses the real one with a disc; all: $(TESTS) is expanded at line 49, before the render tests are added
-	@for t in $(TESTS); do echo "== $$t"; $(if $(wildcard $(GAME)/SLUS_210.50),B3_GAME_DIR="$${B3_GAME_DIR:-$(GAME)}") $(if $(SAVES),B3_SAVES_ROOT="$${B3_SAVES_ROOT:-$(SAVES)}") $$t || exit 1; done
+	@mkdir -p $(BUILD)/test-logs; rm -f $(BUILD)/test-logs/*.log
+	@$(MAKE) --no-print-directory $(patsubst $(BUILD)/%,test-run/%,$(TESTS))
+	@tests/test_summary.sh $(BUILD)/test-logs
+	@echo "== tools/render/embed_shaders.py --check (src/b3gfx/shaders_gen.h made from the current shaders)"; python3 -I tools/render/embed_shaders.py --check src/b3gfx/shaders_gen.h src/b3gfx/shaders
 	@echo "== compile-fail"; tests/compile_fail/check.sh $(CXX) $(CPPFLAGS) $(REQFLAGS)
 	@echo "== eeasm.py --selftest"; python3 -I tools/decomp2host/eeasm.py --selftest > $(BUILD)/eeasm_selftest.log
 	@echo "== tests/test_decomp2host.py"; python3 -I tests/test_decomp2host.py
+	@echo "== tools/native/check_returns.py --selftest (a fall-off is caught with -w in the flags)"; python3 -I tools/native/check_returns.py --selftest --cache $(BUILD)/check_returns/selftest -- $(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS)
 	@echo "== tools/release/make_icons.py --check (the icon files match the drawing)"; python3 -I tools/release/make_icons.py --check
 	@echo "== tools/release/make_steam_logo.py --check (the launcher's built-in logo matches docs/logo.png)"; python3 -I tools/release/make_steam_logo.py --check
 	@echo "== tools/blender/test_b3_car_tools.py"; $(if $(wildcard $(GAME)/SLUS_210.50),B3_GAME_DIR="$${B3_GAME_DIR:-$(GAME)}") python3 -I tools/blender/test_b3_car_tools.py
@@ -807,6 +860,17 @@ test:
 	@# native units' count as a watched number (report only: gen1's direct-link routing makes it fall)
 	@echo "== tools/native/decl_check.py (src/libs)"; mkdir -p $(BUILD); python3 -I tools/native/decl_check.py > $(BUILD)/decl_check.txt; s=$$?; tail -1 $(BUILD)/decl_check.txt; [ $$s -eq 0 ] || { grep -v '^decl_check:' $(BUILD)/decl_check.txt | head -20; exit $$s; }
 	@if [ -d build/gen_native/units ]; then echo "== decl_check (generated native units, report only)"; python3 -I tools/native/decl_check.py --root build/gen_native/units | tail -1 || true; fi
+
+# One test binary's run (make test): its output in $(BUILD)/test-logs/<name>.log, one line here (the whole log on a
+# failure). The binaries are independent (each its own scratch paths under build/ and the temp folder), so make's -j
+# (the default job count above) runs them side by side. TEST_ENV_<name>: what one of them needs in its environment.
+TEST_ENV_test_audio_device = LD_LIBRARY_PATH=$(SDL3_LIBDIR)/pulseaudio$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}
+test-run/%:
+	@log=$(BUILD)/test-logs/$*.log; \
+	$(if $(wildcard $(GAME)/SLUS_210.50),B3_GAME_DIR="$${B3_GAME_DIR:-$(GAME)}") $(if $(SAVES),B3_SAVES_ROOT="$${B3_SAVES_ROOT:-$(SAVES)}") $(TEST_ENV_$*) \
+	  $(BUILD)/$* > $$log 2>&1; rc=$$?; \
+	if [ $$rc != 0 ]; then echo "== $(BUILD)/$*: FAIL (exit $$rc)"; cat $$log; exit 1; fi; \
+	echo "== $(BUILD)/$*: $$(tail -1 $$log)"
 
 clean:
 	python3 -c "import shutil; shutil.rmtree('$(BUILD)', ignore_errors=True)"
@@ -910,6 +974,7 @@ NATIVE_VUBIND ?= config/vubind_native.txt
 $(NGEN)/manifest.tsv: $(NATIVE_SELECT_ALL) tools/decomp2host/decomp2host.py tools/decomp2host/eeasm.py $(NATIVE_VUBIND) config/mod_hooks.txt $(wildcard $(DECOMP)/SNAPSHOT)
 	DECOMP2HOST_CXX="$(CXX)" DECOMP2HOST_NATIVE_ROWS=1 DECOMP2HOST_T31C=1 DECOMP2HOST_VUBIND=$(NATIVE_VUBIND) DECOMP2HOST_CACHE=$(BUILD)/d2h_cache python3 -I tools/decomp2host/decomp2host.py --decomp $(DECOMP) --out $(NGEN).new --select $(NATIVE_SELECT_ALL) --keep-going --objects $(BUILD)/gen_native_ps2
 	rsync -rc --delete --out-format='gen_native: %n' $(NGEN).new/ $(NGEN)/
+	$(call check_returns_native,$(NGEN)/units)
 	touch $@
 endif
 # mac4: gen/native, regenerated hermetically (an empty gen/native.new, no DECOMP2HOST_CACHE) from $(DECOMP) and
@@ -930,9 +995,24 @@ native-bundle:
 	@# what it was generated from: the snapshot's name and its decomp commit (and the table's, when NATIVE_SNAP differs)
 	python3 -c "import os; f=lambda d: os.path.basename(os.path.normpath(d)) + ' ' + open(os.path.join(d, 'SNAPSHOT')).read().strip(); g, t = f('$(DECOMP)'), f('$(NATIVE_SNAP)'); open('$(NATIVE_BUNDLE).new/SNAPSHOT', 'w').write(g + '\n' + ('' if t == g else 'table ' + t + '\n'))"
 	python3 -I tools/native/bundle_check.py $(if $(wildcard $(RETAIL_ELF)),--elf $(RETAIL_ELF)) $(NATIVE_BUNDLE).new
+	python3 -I tools/native/check_returns.py --cache $(BUILD)/check_returns/bundle --headers $(NATIVE_BUNDLE).new/include --headers include/b3host $(NATIVE_BUNDLE).new/units -- $(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(subst -I$(GEN)/include,-I$(NATIVE_BUNDLE).new/include,$(GENFLAGS)) -DB3_BOUNCE_CANARY=1 -DB3_PS2_FLOAT=1
 	rsync -rc --delete --exclude README.md --out-format='gen/native: %n' $(NATIVE_BUNDLE).new/ $(NATIVE_BUNDLE)/
 	python3 -c "import shutil; shutil.rmtree('$(NATIVE_BUNDLE).new')"
 .PHONY: native-bundle
+# genret: no generated non-void function falls off its end (tools/native/check_returns.py: each unit compiled with
+# -Werror=return-type, which the generated units' -w hides; cached per unit by content plus the generated headers and
+# include/b3host (a removed [[noreturn]] rechecks) under build/check_returns, so a rerun compiles only changed units).
+# Hand-written code has -Werror=return-type already and the generated units change only when generated, so the
+# generation runs it (the native generation above, native-bundle, gen/decomp's rule), not `make test` (which runs its
+# selftest); `make check-returns` checks the current generations (NGEN: build/gen_native, or gen/native with
+# NATIVE_FROM=bundle; and gen/decomp). It takes make's job tokens (jobserver), so `make -j8` stays at 8 jobs; without
+# -j, or without a jobserver it can reach, it runs one compile at a time.
+check_returns_native = python3 -I tools/native/check_returns.py --cache $(BUILD)/check_returns/native$(if $(filter bundle,$(NATIVE_FROM)),-bundle) --headers $(NGEN)/include --headers include/b3host $(1) -- $(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(NGENFLAGS) -DB3_PS2_FLOAT=1
+check_returns_gen = python3 -I tools/native/check_returns.py --cache $(BUILD)/check_returns/decomp --headers $(GEN)/include --headers include/b3host $(1) -- $(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(GENFLAGS) -DB3_PS2_FLOAT=1
+check-returns: $(NGEN)/manifest.tsv $(GEN)/manifest.tsv
+	$(call check_returns_native,$(NGEN)/units)
+	$(call check_returns_gen,$(GEN)/units)
+.PHONY: check-returns
 NGEN_UNITS = $(wildcard $(NGEN)/units/*.cpp)
 NGEN_OBJ = $(patsubst $(NGEN)/units/%.cpp,$(NOBJ)/%.o,$(NGEN_UNITS))
 $(NOBJ)/%.o: $(NGEN)/units/%.cpp | $(NGEN)/manifest.tsv

@@ -554,7 +554,7 @@ void masked_hash_point(std::uint64_t poll) {
             if (prev) prev(c, chcr, madr, qwc, tadr);
             const std::uint32_t regs[4] = {chcr, madr, qwc, tadr};
             b3native::hash_dma_words(c, regs, stream,
-                [](std::uint32_t a) { std::uint32_t v = 0; std::memcpy(&v, b3host::host_pointer(a, 4), 4); return v; },
+                [](std::uint32_t a) { std::uint32_t v = 0; std::memcpy(&v, b3host::host_pointer_checked(a, 4), 4); return v; },
                 [](std::uint32_t a, std::uint32_t w, unsigned ch) {
                     if (!dma_dump || ((dma_lo || dma_hi) && (dma_poll < dma_lo || dma_poll > dma_hi))) return;
                     std::fprintf(dma_dump, "%llu %u %08X %08X\n", dma_poll, ch, a, w);
@@ -842,8 +842,19 @@ void on_crash(int sig) {
 #ifdef _WIN32
 LONG WINAPI on_crash_seh(EXCEPTION_POINTERS* e) {   // win1: SIGSEGV's counterpart (access violation, stack overflow, ...)
     std::fprintf(stdout, "crash: exception %08lX at %p\n", e->ExceptionRecord->ExceptionCode, e->ExceptionRecord->ExceptionAddress);
+    char line[200];   // hostfix: a fault in the guards around guest RAM / the scratchpad
+    if (e->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && e->ExceptionRecord->NumberParameters >= 2 &&
+        b3host::guard_overrun(reinterpret_cast<const void*>(e->ExceptionRecord->ExceptionInformation[1]), line, sizeof line))
+        std::fprintf(stdout, "crash: %s\n", line);
     on_crash(SIGSEGV);
     return EXCEPTION_EXECUTE_HANDLER;
+}
+#else
+void on_crash_info(int sig, siginfo_t* info, void*) {
+    char line[200];   // hostfix: a fault in the guards around guest RAM / the scratchpad
+    if ((sig == SIGSEGV || sig == SIGBUS) && info && b3host::guard_overrun(info->si_addr, line, sizeof line))
+        std::fprintf(stdout, "crash: %s\n", line);
+    on_crash(sig);
 }
 #endif
 
@@ -904,8 +915,8 @@ int main(int argc, char** argv) {
         ss.ss_size = alt.size();
         sigaltstack(&ss, nullptr);
         struct sigaction sa{};
-        sa.sa_handler = on_crash;
-        sa.sa_flags = SA_ONSTACK;
+        sa.sa_sigaction = on_crash_info;
+        sa.sa_flags = SA_ONSTACK | SA_SIGINFO;
         sigaction(SIGSEGV, &sa, nullptr);
         sigaction(SIGBUS, &sa, nullptr);
         sigaction(SIGABRT, &sa, nullptr);   // boot2: B3HOST_FATAL_ABORT

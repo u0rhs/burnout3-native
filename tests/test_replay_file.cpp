@@ -2,8 +2,12 @@
 // checksum, the refusals (another disc, another release, a newer format, damage), the recorder's and the player's ops,
 // the folder's names and rotation. Synthetic replays only.
 #include "replay_file.h"
+#include "replay_card.h"
+#include "replay_stream.h"
 #include "test.h"
 
+#include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 
@@ -291,6 +295,123 @@ TEST(write_read_file) {
     const auto back = read_file(d / "a.b3replay", &err);
     CHECK(back && *back == r);
     CHECK(!read_file(d / "missing.b3replay", &err) && err == "cannot be read");
+    fs::remove_all(d.parent_path());
+}
+
+// media1 (tools/native/replay_stream.h): a checkpoint's file is a whole replay that ends at that VBlank (the
+// recording itself untouched); the writer keeps the newest; a killed write's stale .tmp goes at the next rotation
+TEST(stream_checkpoints) {
+    const fs::path d = scratch("stream");
+    Replay r = sample_replay();
+    const Replay before = r;
+    const Bytes b = encode_partial(r, 1200);
+    CHECK(r == before);
+    std::string err;
+    const auto p = decode(b, &err);
+    CHECK(p && p->vblanks == 1200 && p->pads == r.pads && p->checks == r.checks && p->card_sav == r.card_sav);
+    CHECK(p && p->info_value("end") && p->info_value("end")->find("VBlank 1200") != std::string::npos);
+    const fs::path f = d / "20261119-120000.b3replay";
+    {   // the recording handed over in parts: the first checkpoint sees half of it, the second the rest
+        Replay half = r;
+        half.pads.resize(r.pads.size() / 2);
+        half.text.clear();
+        half.checks.resize(1);
+        half.options.pop_back();   // a header field that changes later (an option added after the boot)
+        StreamWriter w(f, d);
+        w.checkpoint(half, 600);
+        w.checkpoint(r, 1200);
+        w.stop();
+        CHECK(w.error().empty() && w.written() >= 1);
+    }
+    const auto got = read_file(f, &err);
+    CHECK(got && got->vblanks == 1200);   // the newest checkpoint
+    CHECK(got && *got == *p);             // equal to the whole recording encoded at once
+    CHECK(!fs::exists(f.string() + ".tmp"));
+    {   // nothing put: no file
+        StreamWriter w(d / "none.b3replay");
+    }
+    CHECK(!fs::exists(d / "none.b3replay"));
+    // a write killed half way: its .tmp, stale after a minute, removed by rotate(); a fresh one (being written) stays
+    const fs::path stale = d / "20261118-120000.b3replay.tmp", fresh = d / "20261119-130000.b3replay.tmp", mine = d / "my.b3replay.tmp";
+    for (const fs::path& t : {stale, fresh, mine}) std::ofstream(t) << "half";
+    fs::last_write_time(stale, fs::file_time_type::clock::now() - std::chrono::minutes(5));
+    fs::last_write_time(mine, fs::file_time_type::clock::now() - std::chrono::minutes(5));
+    CHECK(rotate(d, 20) == 0);
+    CHECK(!fs::exists(stale) && fs::exists(fresh) && fs::exists(mine) && fs::exists(f));
+    fs::remove_all(d.parent_path());
+}
+
+// media1 (tools/native/replay_card.h): the throwaway card's folder -- its name, the guard, the next start's sweep
+// media1: the game thread's cost of a checkpoint on a 2-hour recording (a pad change every VBlank, the worst case):
+// before, encode_partial of the whole recording; now, checkpoint() hands over the last 10 s only (the writer thread
+// encodes). The streamed file equals the recording encoded at once.
+TEST(stream_cost_two_hours) {
+    using clk = std::chrono::steady_clock;
+    const fs::path d = scratch("stream2h");
+    Recorder rec(neutral());
+    Replay& r = rec.replay();
+    r.version = "0.1.0-test+1a2b3c4d";
+    r.card = true;
+    r.card_sav = b3native::save::write_sav({save_dir()});
+    const std::uint64_t kVBlanks = 2ull * 3600 * 60;   // 432,000
+    std::vector<double> part_ms;
+    {
+        StreamWriter w(d / "20261120-000000.b3replay");
+        Report s = neutral();
+        for (std::uint64_t v = 1; v <= kVBlanks; ++v) {
+            s[5] = std::uint8_t(v * 7);   // the stick moves every VBlank
+            s[6] = std::uint8_t(v >> 3);
+            rec.sample(v, 0, s.data());
+            if (v % kCheckEvery == 0) {
+                rec.check(v, v * 0x9E3779B97F4A7C15ull);
+                if (v % (kCheckEvery * 6) == 0) rec.setting(v, "music", std::to_string(v));
+                const auto t0 = clk::now();
+                w.checkpoint(r, v);
+                part_ms.push_back(std::chrono::duration<double, std::milli>(clk::now() - t0).count());
+            }
+        }
+        w.stop();
+        CHECK(w.error().empty());
+    }
+    CHECK(r.pads.size() == kVBlanks);
+    const auto t0 = clk::now();
+    const Bytes whole = encode_partial(r, kVBlanks);   // what the game thread did at each checkpoint before
+    const double whole_ms = std::chrono::duration<double, std::milli>(clk::now() - t0).count();
+    std::sort(part_ms.begin(), part_ms.end());
+    const double median = part_ms[part_ms.size() / 2], worst = part_ms.back();
+    std::printf("    2 h recording (%zu pad ops, %zu bytes): game thread per checkpoint before %.2f ms (the last one), now median "
+                "%.3f ms, worst %.3f ms over %zu checkpoints\n", r.pads.size(), whole.size(), whole_ms, median, worst, part_ms.size());
+    CHECK(median * 20 < whole_ms);
+    std::string err;
+    const auto got = read_file(d / "20261120-000000.b3replay", &err);
+    CHECK(got && encode(*got) == whole);
+    fs::remove_all(d.parent_path());
+}
+
+TEST(replay_card_cleanup) {
+    namespace rc = b3native::replay_card;
+    std::uint64_t pid = 9;
+    CHECK(rc::folder_name(1234, 5678) == "b3port-replay-card-1234-5678");
+    CHECK(rc::parse_name("b3port-replay-card-1234-5678", &pid) && pid == 1234);
+    CHECK(rc::parse_name("b3port-replay-card-5678", &pid) && pid == 0);   // the older name
+    CHECK(!rc::parse_name("b3port-replay-card-", &pid));
+    CHECK(!rc::parse_name("b3port-replay-card-12x-5", &pid));
+    CHECK(!rc::parse_name("b3port-replay-card-0-5", &pid));
+    CHECK(!rc::parse_name("something-else", &pid));
+    const fs::path d = scratch("cards");
+    auto make = [&](const std::string& n) { fs::create_directories(d / n / "backups"); std::ofstream(d / n / "profile-1.sav") << "card"; return d / n; };
+    const fs::path dead = make(rc::folder_name(111, 1)), live = make(rc::folder_name(222, 2)), old_name = make("b3port-replay-card-77"),
+                   new_old = make("b3port-replay-card-88"), other = make("not-ours-111-1");
+    fs::last_write_time(old_name, fs::file_time_type::clock::now() - std::chrono::hours(30));
+    CHECK(rc::sweep_stale_cards(d, [](std::uint64_t p) { return p == 222; }) == 2);
+    CHECK(!fs::exists(dead) && fs::exists(live) && !fs::exists(old_name) && fs::exists(new_old) && fs::exists(other));
+    {
+        rc::CardFolder g(live);
+        CHECK(g.path() == live);
+    }
+    CHECK(!fs::exists(live));   // the guard's scope ended: gone (backups/ and all)
+    rc::CardFolder empty;
+    empty.remove();
     fs::remove_all(d.parent_path());
 }
 

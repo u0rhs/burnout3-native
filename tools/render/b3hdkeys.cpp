@@ -4,7 +4,9 @@
 //       every raster in the files (TXD directory, else a validated header scan), every palette variant, keys with the
 //       base level only and with the stored mip levels; counts of pack hits; --matched writes the hit pack paths
 //   b3hdkeys key <file> <raster offset hex> [cbp_add]   one raster's key, verbose
-//   b3hdkeys compare <pack dir> <file>...             original vs replacement mean alpha / colour per hit (pack QA)
+//   b3hdkeys compare <pack dir> <file>...             original vs replacement mean alpha / colour per hit (pack QA), and
+//                                                     how many of the pack's files a decode finds (xboximport: all)
+//   b3hdkeys import <xbox image> <game dir> <out dir> [--no-cars] [--threads n]   Import Xbox textures (b3asset/xboximport.h)
 // Game and pack data are read only; outputs go wherever the arguments point (keep them out of git).
 #include <algorithm>
 #include <cmath>
@@ -19,6 +21,7 @@
 #include "b3asset/hdpack.h"
 #include "b3asset/png.h"
 #include "b3asset/raster.h"
+#include "b3asset/xboximport.h"
 
 using namespace b3asset;
 namespace fs = std::filesystem;
@@ -78,36 +81,39 @@ int cmd_compare(int argc, char** argv) {
     const double tol = 0.08;
     GsMemory gs;
     std::size_t hits = 0, listed = 0;
+    std::set<std::string> found;   // xboximport: the pack files some decode finds (the import's check: all of them)
     for (int i = 3; i < argc; ++i) {
         std::vector<std::uint8_t> d;
         if (!read_file(argv[i], d)) continue;
-        const Bytes f{d.data(), d.size()};
-        for (std::size_t o : find_rasters(f)) {
-            RasterHeader h;
-            if (!read_raster_header(f, o, h)) continue;
-            for (int v = 0; v < std::max<int>(1, h.palettes); ++v) {
-                DecodedRaster r;
-                const std::uint32_t add = palette_cbp_add(f, o, v);
-                if (!decode_raster_clut(f, o, gs, r, add)) continue;
-                HdCandidate c;
-                const std::string* p = hd_lookup(pack, gs, r.hdr, add, &c);
-                if (!p) continue;
-                ++hits;
-                Image im;
-                if (!load_dds(*p, im)) { std::printf("  %s: DDS unreadable\n", p->c_str()); continue; }
-                double a[4], b[4];
-                means(r.levels[0], a);
-                means(im, b);
-                const double da = b[3] - a[3], dc = (std::fabs(b[0] - a[0]) + std::fabs(b[1] - a[1]) + std::fabs(b[2] - a[2])) / 3;
-                if (std::fabs(da) < tol && dc < tol) continue;
-                ++listed;
-                std::printf("%-26s %4ux%-4u %-4s pal %d tcc %d tfx %d  alpha %.3f -> %.3f  rgb %.2f %.2f %.2f -> %.2f %.2f %.2f  %s (%d:%d+%d)\n",
-                            r.hdr.name.c_str(), r.hdr.width, r.hdr.height, psm_name(r.hdr.psm()), v, int(r.hdr.tcc()), r.hdr.tfx(), a[3], b[3],
-                            a[0], a[1], a[2], b[0], b[1], b[2], fs::path(*p).filename().string().c_str(), c.level, c.first, c.count);
-            }
-        }
+        hd_each_raster(Bytes{d.data(), d.size()}, gs, [&](const HdRasterVariant& rv) {   // xboximport: the import's enumeration
+            if (!rv.decoded) return true;
+            const HdCandidate* hit = nullptr;
+            const std::string* p = nullptr;
+            for (const auto& k : rv.keys)
+                if ((p = pack.find(k.key))) { hit = &k; break; }
+            if (!p) return true;
+            ++hits;
+            found.insert(*p);
+            const DecodedRaster& r = rv.raster;
+            Image im;
+            if (!load_dds(*p, im)) { std::printf("  %s: DDS unreadable\n", p->c_str()); return true; }
+            double a[4], b[4];
+            means(r.levels[0], a);
+            means(im, b);
+            const double da = b[3] - a[3], dc = (std::fabs(b[0] - a[0]) + std::fabs(b[1] - a[1]) + std::fabs(b[2] - a[2])) / 3;
+            if (std::fabs(da) < tol && dc < tol) return true;
+            ++listed;
+            std::printf("%-26s %4ux%-4u %-4s pal %d tcc %d tfx %d  alpha %.3f -> %.3f  rgb %.2f %.2f %.2f -> %.2f %.2f %.2f  %s (%d:%d+%d)\n",
+                        r.hdr.name.c_str(), r.hdr.width, r.hdr.height, psm_name(r.hdr.psm()), rv.variant, int(r.hdr.tcc()), r.hdr.tfx(), a[3], b[3],
+                        a[0], a[1], a[2], b[0], b[1], b[2], fs::path(*p).filename().string().c_str(), hit->level, hit->first, hit->count);
+            return true;
+        });
     }
     std::printf("%zu hits, %zu differ by %.2f or more in mean alpha or colour\n", hits, listed, tol);
+    std::size_t unfound = 0;
+    for (const auto& [k, path] : pack.files)
+        if (!found.count(path) && unfound++ < 20) std::printf("  not found by any decode: %s\n", path.c_str());
+    std::printf("%zu of %zu pack files found by a decode\n", found.size(), pack.files.size());
     return 0;
 }
 
@@ -139,46 +145,46 @@ int cmd_scan(int argc, char** argv) {
     for (const auto& path : inputs) {
         std::vector<std::uint8_t> d;
         if (!read_file(path, d)) continue;
-        const auto offs = rasters_in(d);
-        if (offs.empty()) continue;
+        if (rasters_in(d).empty()) continue;
         Bytes f{d.data(), d.size()};
         std::uint64_t n = 0, nok = 0, base = 0, mip = 0, anyv = 0, nokey = 0;
-        for (std::size_t o : offs) {
-            RasterHeader h;
-            if (!read_raster_header(f, o, h)) continue;
-            ++n;
-            const int variants = std::max<int>(1, h.palettes);
-            bool any = false, any_base = false, any_mip = false, decoded = false;
-            for (int v = 0; v < variants; ++v) {
-                DecodedRaster r;
-                const std::uint32_t add = palette_cbp_add(f, o, v);
-                if (!decode_raster_clut(f, o, gs, r, add, &why)) continue;
-                decoded = true;
-                const auto cands = hd_candidate_keys(gs, r.hdr, add);
-                if (cands.empty()) { ++nokey; continue; }
-                const HdCandidate* first_hit = nullptr;
-                for (const auto& c : cands) {
-                    const std::string* p = pack.find(c.key);
-                    if (p) { hits.insert(*p); if (!first_hit) first_hit = &c; }
-                    if (keys)
-                        std::fprintf(keys, "%s\t%zx\t%s\t%d\t%d:%d+%d\t%s\t%d\n", path.c_str(), o, r.hdr.name.c_str(), v, c.level, c.first,
-                                     c.count, hd_key_name(c.key).c_str(), p != nullptr);
-                }
-                const bool b0 = first_hit && first_hit->level == 0 && first_hit->first == 0 && first_hit->count == 1;
-                any_base = any_base || b0;
-                any_mip = any_mip || (first_hit && !b0);
-                any = any || first_hit;
-                if (list)
-                    std::printf("    %-28s %4ux%-4u %-4s pal %d/%d lv %u csa %d %s %s\n", r.hdr.name.c_str(), r.hdr.width, r.hdr.height,
-                                psm_name(r.hdr.psm()), v, variants, r.hdr.levels, int(r.hdr.tex0 >> 56) & 31, hd_key_name(cands[0].key).c_str(),
-                                !first_hit ? "-" : b0 ? "HIT" : ("HIT(" + std::to_string(first_hit->level) + ":" + std::to_string(first_hit->first) + "+" +
-                                                                std::to_string(first_hit->count) + ")").c_str());
-            }
+        bool any = false, any_base = false, any_mip = false, decoded = false;
+        bool open_raster = false;
+        const auto close_raster = [&]() {   // the raster's counts, once its variants are all seen
             nok += decoded;
             base += any_base;
             mip += any_mip;
             anyv += any;
-        }
+            any = any_base = any_mip = decoded = false;
+        };
+        n = hd_each_raster(f, gs, [&](const HdRasterVariant& rv) {   // xboximport: the import's enumeration
+            if (rv.variant == 0 && open_raster) close_raster();
+            open_raster = true;
+            if (!rv.decoded) return true;
+            decoded = true;
+            const DecodedRaster& r = rv.raster;
+            const auto& cands = rv.keys;
+            if (cands.empty()) { ++nokey; return true; }
+            const HdCandidate* first_hit = nullptr;
+            for (const auto& c : cands) {
+                const std::string* p = pack.find(c.key);
+                if (p) { hits.insert(*p); if (!first_hit) first_hit = &c; }
+                if (keys)
+                    std::fprintf(keys, "%s\t%zx\t%s\t%d\t%d:%d+%d\t%s\t%d\n", path.c_str(), rv.offset, r.hdr.name.c_str(), rv.variant, c.level, c.first,
+                                 c.count, hd_key_name(c.key).c_str(), p != nullptr);
+            }
+            const bool b0 = first_hit && first_hit->level == 0 && first_hit->first == 0 && first_hit->count == 1;
+            any_base = any_base || b0;
+            any_mip = any_mip || (first_hit && !b0);
+            any = any || first_hit;
+            if (list)
+                std::printf("    %-28s %4ux%-4u %-4s pal %d/%d lv %u csa %d %s %s\n", r.hdr.name.c_str(), r.hdr.width, r.hdr.height,
+                            psm_name(r.hdr.psm()), rv.variant, rv.variants, r.hdr.levels, int(r.hdr.tex0 >> 56) & 31, hd_key_name(cands[0].key).c_str(),
+                            !first_hit ? "-" : b0 ? "HIT" : ("HIT(" + std::to_string(first_hit->level) + ":" + std::to_string(first_hit->first) + "+" +
+                                                            std::to_string(first_hit->count) + ")").c_str());
+            return true;
+        });
+        if (open_raster) close_raster();
         std::printf("%-70s rasters %4llu decoded %4llu  hit %4llu (base key %llu, mip-path key only %llu)%s\n", path.c_str(),
                     (unsigned long long)n, (unsigned long long)nok, (unsigned long long)anyv, (unsigned long long)base,
                     (unsigned long long)mip, nokey ? (" nokey " + std::to_string(nokey)).c_str() : "");
@@ -197,6 +203,29 @@ int cmd_scan(int argc, char** argv) {
     return 0;
 }
 
+// xboximport: the launcher's Import Xbox textures without the launcher (local checks; the output is the player's own)
+int cmd_import(int argc, char** argv) {
+    b3asset::xboximport::Options o;
+    for (int i = 5; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--no-cars") o.cars = false;
+        else if (a == "--threads" && i + 1 < argc) o.threads = std::atoi(argv[++i]);
+    }
+    int last = -1;
+    const auto r = b3asset::xboximport::run(argv[2], argv[3], argv[4], [&](const b3asset::xboximport::Progress& p) {
+        const int pct = p.total ? p.done * 100 / p.total : 0;
+        if (pct / 10 == last) return;
+        last = pct / 10;
+        std::fprintf(stderr, "  %s %d / %d (%s), %zu written\n", p.stage ? "building" : "reading", p.done, p.total, p.group.c_str(), p.written);
+    }, nullptr, o);
+    if (!r.ok) { std::fprintf(stderr, "import failed: %s\n", r.error.c_str()); return 1; }
+    std::printf("%zu files read, %zu keys, %zu written (%zu car paints; %zu with the PS2 alpha alone), %.1f MB, %.1f s\n", r.files, r.keys,
+                r.written, r.cars, r.alpha_ps2, double(r.bytes) / 1048576.0, r.seconds);
+    for (int i = 0; i < b3asset::xboximport::kReasons; ++i)
+        if (r.skipped[std::size_t(i)]) std::printf("  skipped, %s: %zu\n", b3asset::xboximport::reason_name(i), r.skipped[std::size_t(i)]);
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -205,6 +234,7 @@ int main(int argc, char** argv) {
     if (cmd == "key" && argc >= 4) return cmd_key(argc, argv);
     if (cmd == "scan" && argc >= 4) return cmd_scan(argc, argv);
     if (cmd == "compare" && argc >= 4) return cmd_compare(argc, argv);
-    std::fprintf(stderr, "usage: b3hdkeys xxh <file> [len...] | key <file> <offset hex> [cbp_add] | scan <pack dir> <file|dir>... [--matched out] [--list] | compare <pack dir> <file>...\n");
+    if (cmd == "import" && argc >= 5) return cmd_import(argc, argv);
+    std::fprintf(stderr, "usage: b3hdkeys xxh <file> [len...] | key <file> <offset hex> [cbp_add] | scan <pack dir> <file|dir>... [--matched out] [--list] | compare <pack dir> <file>... | import <xbox image> <game dir> <out dir> [--no-cars] [--threads n]\n");
     return 2;
 }

@@ -9,7 +9,9 @@
 # (CPPFLAGS NATIVE_FLAGS REQFLAGS NGENFLAGS, NATIVE_SRC HOST_SRC GAMEVIEW_SRC), so the Windows objects are built as
 # the Linux ones (zero-initialised locals, no access control, -ffp-contract=off, ...). -O2 without -g (the same
 # code). The tree is staged under $OUT/stage at the repo's relative layout and compiled from there.
-# Needs build/native/functions.h and build/gen_native (`make native` or `make play` first, or a copied generation).
+# The generated game code: NATIVE_FROM=bundle (or no build/native/functions.h: a bundle build's build/ has none) the
+# committed gen/native (its table/ and units/, as the Makefile's NATIVE_FROM=bundle); else build/native/functions.h and
+# build/gen_native from a decomp-mode `make native` or `make play`.
 #   tools/native/build_win.sh        JOBS=4 compiles at a time (default); FORCE=1 rebuilds every object
 #   OUT=/mnt/c/.../play1 RENDER=1 tools/native/build_win.sh
 #   STRIP=1: the programs linked with -s (no symbols: a release, tools/release/package_win.sh; a crash report's
@@ -24,11 +26,21 @@ WIN=${WIN:-$PORT/build-win}   # local.env: where the Windows toolchain (toolchai
 TC=$WIN/toolchain/mingw64
 OUT=${OUT:-$WIN/s0native}
 (cd "$TC" && sha256sum --quiet -c "$PORT/tools/toolchain/toolchain.sha256") || { echo "toolchain does not match toolchain.sha256" >&2; exit 1; }
-[ -f "$PORT/build/native/functions.h" ] || { echo "run: make native (build/native/functions.h)" >&2; exit 2; }
-[ -f "$PORT/build/gen_native/manifest.tsv" ] || { echo "run: make native (build/gen_native)" >&2; exit 2; }
+if [ -z "${NATIVE_FROM:-}" ]; then NATIVE_FROM=$([ -f "$PORT/build/native/functions.h" ] && echo decomp || echo bundle); fi
+case "$NATIVE_FROM" in
+bundle)
+    GEN_DIRS="gen/native"; UNITS=gen/native/units
+    [ -f "$PORT/gen/native/table/functions.h" ] && [ -f "$PORT/gen/native/manifest.tsv" ] || { echo "no committed gen/native (table/functions.h, manifest.tsv)" >&2; exit 2; } ;;
+decomp)
+    GEN_DIRS="build/native build/gen_native gen/native/vu0"; UNITS=build/gen_native/units
+    [ -f "$PORT/build/native/functions.h" ] || { echo "run: make native (build/native/functions.h)" >&2; exit 2; }
+    [ -f "$PORT/build/gen_native/manifest.tsv" ] || { echo "run: make native (build/gen_native)" >&2; exit 2; } ;;
+*) echo "NATIVE_FROM=$NATIVE_FROM: bundle or decomp" >&2; exit 2 ;;
+esac
+echo "build_win: generated code from $([ "$NATIVE_FROM" = bundle ] && echo "the committed gen/native" || echo "build/gen_native (decomp)")" >&2
 
-# the Makefile's variables (never `make -p`: that runs the default goal)
-mkvar() { make -s -C "$PORT" --no-print-directory CXX=g++ CXXFLAGS=-O2 --eval="b3_print_var: ; @echo \$($1)" b3_print_var; }
+# the Makefile's variables (never `make -p`: that runs the default goal), for the same NATIVE_FROM (its -I paths)
+mkvar() { make -s -C "$PORT" --no-print-directory NATIVE_FROM="$NATIVE_FROM" CXX=g++ CXXFLAGS=-O2 --eval="b3_print_var: ; @echo \$($1)" b3_print_var; }
 # mac5: -mno-ms-bitfields -- mingw-w64 lays bitfields out as MSVC does by default (a new unit at each change of the
 # declared type), the PS2 / SysV ABI packs them: the game's DMA / GIF tag bitfields came out wrong (VIF1 streams the
 # DMA model misparsed from VBlank 93 on: the race-start hang)
@@ -39,11 +51,12 @@ CHD_SRC=$(mkvar CHD_SRC)   # chd1: libchdr's C unit (b3asset/discfs.h's CHD imag
 S=$OUT/stage
 mkdir -p "$S" "$OUT/obj"
 # vu0n: gen/native/vu0 -- the committed VU0 microprograms as C++ (no VU0 interpreter in these programs: Makefile
-# VU0_INTERP stays 0 here)
-for d in include src tests tools/native build/native build/gen_native gen/native/vu0 sdk/include; do   # sdk2b: the mod API header
+# VU0_INTERP stays 0 here; the bundle's gen/native holds it)
+for d in include src tests tools/native $GEN_DIRS sdk/include; do   # sdk2b: the mod API header
     mkdir -p "$S/$d"
     rsync -a --delete "$PORT/$d/" "$S/$d/"
 done
+mkdir -p "$S/build"   # version_info.cpp (a bundle build stages nothing else under build/)
 # test builds: the version stamp (include/b3report/version.h), a generated source rewritten only when it changes
 "$PORT/tools/release/version_info.sh" "$S/build/version_info.cpp"
 WTC=$(wslpath -w "$TC")
@@ -56,7 +69,7 @@ STAMP=$OUT/obj/.stamp
 printf '%s\n' "${FLAGS[@]}" > "$OUT/obj/.flags.new"
 full=${FORCE:-0}
 if [ ! -f "$STAMP" ] || ! cmp -s "$OUT/obj/.flags.new" "$OUT/obj/.flags" 2>/dev/null; then full=1
-elif [ -n "$(find "$S/include" "$S/src" "$S/tests" "$S/tools/native" "$S/build" "$S/sdk" -name '*.h' -newer "$STAMP" -print -quit)" ]; then full=1; fi
+elif [ -n "$(find "$S/include" "$S/src" "$S/tests" "$S/tools/native" "$S/build" "$S/gen" "$S/sdk" -name '*.h' -newer "$STAMP" -print -quit 2>/dev/null)" ]; then full=1; fi
 mv "$OUT/obj/.flags.new" "$OUT/obj/.flags"
 touch "$STAMP"   # the staging time: a failed run's finished objects stay valid for the next run
 # nofallback1: native_play.o is compiled with -DB3_NATIVE_FALLBACK=$NATIVE_FALLBACK; a change of it recompiles that one
@@ -88,7 +101,7 @@ o=$OUT/obj/$(echo "${CHD_SRC%.c}" | tr / _).o; compile "$CHD_SRC" "$o"; common+=
 for t in native_boot native_play; do compile "tools/native/$t.cpp" "$OUT/obj/$t.o"; done
 compile build/version_info.cpp "$OUT/obj/version_info.o"; common+=("$OUT/obj/version_info.o")
 objs=()
-for s in "$S"/build/gen_native/units/*.cpp; do o=$OUT/obj/gen_$(basename "$s" .cpp).o; compile "build/gen_native/units/$(basename "$s")" "$o"; objs+=("$o"); done
+for s in "$S/$UNITS"/*.cpp; do o=$OUT/obj/gen_$(basename "$s" .cpp).o; compile "$UNITS/$(basename "$s")" "$o"; objs+=("$o"); done
 wait || true
 echo "compiled $compiled objects (${#objs[@]} generated units in all)" >&2
 bad=0

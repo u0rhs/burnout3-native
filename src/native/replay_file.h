@@ -49,6 +49,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
@@ -460,8 +461,7 @@ inline std::optional<Replay> read_file(const fs::path& p, std::string* error = n
 }
 
 // Written beside as "<p>.tmp", then renamed over p.
-inline bool write_file(const fs::path& p, const Replay& r, std::string* error = nullptr) {
-    const Bytes b = encode(r);
+inline bool write_bytes(const fs::path& p, const Bytes& b, std::string* error = nullptr) {
     const fs::path tmp = p.string() + ".tmp";
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
@@ -482,6 +482,7 @@ inline bool write_file(const fs::path& p, const Replay& r, std::string* error = 
     }
     return true;
 }
+inline bool write_file(const fs::path& p, const Replay& r, std::string* error = nullptr) { return write_bytes(p, encode(r), error); }
 
 // ---- compatibility ----
 struct Host {
@@ -644,12 +645,22 @@ inline bool automatic_name(const std::string& name) {
     if (tail.size() < 2 || tail[0] != '-') return false;
     return std::all_of(tail.begin() + 1, tail.end(), [](char c) { return c >= '0' && c <= '9'; });
 }
-// Deletes the oldest automatic recordings in `dir` beyond the newest `keep`; returns how many went.
+// Deletes the oldest automatic recordings in `dir` beyond the newest `keep`; returns how many went. media1: also an
+// automatic recording's leftover "<name>.tmp" more than a minute old (a session killed while it wrote a checkpoint).
 inline int rotate(const fs::path& dir, int keep = kKeepRecorded) {
     std::vector<std::string> names;
     std::error_code ec;
-    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
-        if (it->is_regular_file(ec) && automatic_name(it->path().filename().string())) names.push_back(it->path().filename().string());
+    const auto now = fs::file_time_type::clock::now();
+    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        const std::string name = it->path().filename().string();
+        if (automatic_name(name)) names.push_back(name);
+        else if (name.size() > 4 && name.compare(name.size() - 4, 4, ".tmp") == 0 && automatic_name(name.substr(0, name.size() - 4))) {
+            std::error_code tec;
+            const auto t = fs::last_write_time(it->path(), tec);
+            if (!tec && now - t > std::chrono::minutes(1)) fs::remove(it->path(), tec);
+        }
+    }
     std::sort(names.begin(), names.end());   // the stamp sorts by time
     int gone = 0;
     for (std::size_t k = 0; k + std::size_t(std::max(keep, 0)) < names.size(); ++k)

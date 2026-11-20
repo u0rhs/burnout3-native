@@ -403,6 +403,22 @@ TEST(reverb_click_tail_and_off) {
     CHECK(energy(bad, 0, bad.size()) == 0);
 }
 
+TEST(libsd_corrupt_section_table) {
+    // fsrobust: section offsets that wrapped in 32-bit sums passed the bounds checks and were read far outside the file
+    auto elf = [](std::uint32_t shoff, std::uint16_t shent, std::uint16_t shnum) {
+        std::vector<uint8_t> d(0x10000, 0);
+        d[0] = 0x7F; d[1] = 'E'; d[2] = 'L'; d[3] = 'F';
+        for (int k = 0; k < 4; ++k) d[0x20 + k] = uint8_t(shoff >> (8 * k));
+        d[0x2E] = uint8_t(shent); d[0x2F] = uint8_t(shent >> 8);
+        d[0x30] = uint8_t(shnum); d[0x31] = uint8_t(shnum >> 8);
+        return d;
+    };
+    CHECK(!b3audio::load_libsd_reverb_presets_bytes(elf(0xFFFFFF00u, 0x100, 0x100)));   // shoff + shnum * shent wraps to 0xFF00
+    std::vector<uint8_t> d = elf(0x100, 0x28, 1);   // one section; its name offset + the string table wraps
+    for (int k = 0; k < 4; ++k) d[0x100 + 0x10 + k] = uint8_t(0xFFFFFFFAu >> (8 * k));   // strtab = 0xFFFFFFFA, name 0
+    CHECK(!b3audio::load_libsd_reverb_presets_bytes(d));
+}
+
 TEST(reverb_libsd_attributes) {
     if (!presets()) return;
     Spu2MixerImpl m;

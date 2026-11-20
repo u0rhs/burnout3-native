@@ -22,6 +22,27 @@
 
 namespace b3replay {
 
+// photoblur (photo mode's motion blur): each vehicle's velocity as the ticks come, into Vehicle::motion. A vehicle's
+// velocity is its position's change over the game's timer (Tick::now; polls / 60 where it did not advance) between the
+// last two ticks in which it moved (1 to 4 polls apart;
+// a longer gap or a jump of more than 150 m/s leaves it unknown). While no vehicle moves (the game paused) every
+// velocity is held; while others move, a vehicle still for 3 ticks has stopped (0). Vehicles are told apart by their
+// guest address and model; one not seen for 10 s is forgotten.
+class VehicleMotion {
+public:
+    void apply(Tick& t);
+    void clear() { mem_.clear(); }
+private:
+    struct Mem {
+        float pos[3] = {}, vel[3] = {};
+        float now = 0;   // Tick::now (the game's timer) at `poll`
+        std::uint32_t poll = 0, seen = 0;
+        int still = 0;
+        bool known = false;
+    };
+    std::map<std::uint64_t, Mem> mem_;
+};
+
 // The ring reader: keeps the decoded ticks of the last ~30 s with absolute indices (one per received poll) and the
 // current race segment.
 class LiveFeed : public Timeline {
@@ -95,6 +116,7 @@ private:
     Seg seg_;
     std::string body_;
     bool warned_unbound_ = false;
+    VehicleMotion motion_;   // photoblur
     b3live::InprocRecord* pending_ = nullptr;   // inproc: taken, not yet decoded (oldest first)
 };
 
@@ -140,6 +162,8 @@ struct LiveOptions {
     std::string controls_path;   // remap1: --controls' file (controls.ini; native window: in the user's prefs; empty: defaults)
     std::string ghost_dir;       // ghost1 (ghost.h): where Time Attack ghosts are kept (empty: none recorded or shown)
     std::string speedrun_dir;    // speedrun1 (speedrun.h): where best times are kept (empty: this run's only, in memory)
+    bool replay_playback = false;  // media1 (--replay-playback, records.h): a replay plays: no ghost or best time written
+    std::function<std::string()> gameplay_set;   // media1 (records.h): b3mod::gameplay_set_hash of the active set ("" none)
     // mac5: safe mode (include/b3settings/safemode.h): the window says so for a few seconds and in its title
     bool safe_mode = false;
     bool safe_forced = false;   // asked for (--safe-mode), not two unclean runs
@@ -149,12 +173,15 @@ struct LiveOptions {
     // swapchain waited for before the clock is sampled. smooth: the arrival clock with `delay` and SDL's frame queue (before
     // lat1). newest: the newest tick at once, not blended.
     std::string latency = "low";
+    bool latency_auto = true;            // perf4: the latency mode is the default (no --latency, LATENCY MODE Auto): only then
+                                         // may FRAMES IN FLIGHT Auto add a second frame (a chosen Low keeps one)
     double margin_ms = 1.0;              // --margin MS: the schedule clock's least margin
     double lead = 0.0;                   // --lead T: low mode's extrapolation past the newest tick, 0..1 ticks (mac5: 0)
     float dither = 0.0f;                 // --dither (perf1, §33.8): the present pass's ordered dither, output steps (0 = off)
     double blend_ms = 0.0;               // --blend MS (perf1, §33): low mode's correction blend time constant (0 = off, the
                                          // default: measured in the renderer it made the motion worse, §33.3)
-    int frames_in_flight = 1;            // --frames-in-flight N (low / newest; 0: SDL's default 2)
+    int frames_in_flight = -1;           // --frames-in-flight N (low / newest; 0: SDL's default 2); -1: Auto, from 1 (perf4,
+                                         // include/b3gfx/frames_auto.h)
     std::string latency_log;             // --latency-log <csv> (lat1)
 };
 

@@ -22,7 +22,11 @@ All the modding pages: [README.md](README.md). Step by step, on your own disc:
 2. Press **Add mod...** and choose the mod's `.b3mod` or `.zip` file: the launcher checks it and unpacks it into its
    own folder there. An archive that would write outside that folder, holds links, is damaged or has no valid
    `mod.ini` is refused, and nothing is written. If the mod is installed already, the launcher asks before replacing
-   it. (Or unpack it yourself so that `mods/<some folder>/mod.ini` exists, then press **Look again**.)
+   it. **Add folder...** does the same for a mod's folder (copied in). A pack of the game's own folders (`PVEH`,
+   `TRACKS`, `DATA`, ... at its top, or in its one top folder) with no `mod.ini` is offered as a file-replacement
+   mod: after you say yes, its folders go into the new mod's `data` folder and the launcher writes a `mod.ini` for it
+   ([mod-format.md](mod-format.md), "Archives"). (Or unpack it yourself so that `mods/<some folder>/mod.ini` exists,
+   then press **Look again**.)
 3. **Turn on** the mods you want. New mods are off.
 4. Order them with **Move up / Move down**: when two mods have the same file, the one higher in the list wins. The
    page counts those files at the top ("Conflicts"), and each mod's card lists the files where it wins over another
@@ -48,7 +52,7 @@ one of its requirements ends the run with a message (exit code 2).
 
 **Mods that contain code.** A mod whose card says "Contains code" carries a library the game runs as a program on your
 PC. When you turn such a mod on (or start the game with it on), the launcher asks once whether you allow its code;
-allow code only from people you trust, ideally with its source. A new version of the library is asked about again.
+allow code only from people you trust, ideally with its source. A change to any library in the mod is asked about again.
 Its settings, if it has any, are on PC SETTINGS > MODS in the game and under its card on the Mods page; the card also
 says whether it loaded at the last start, and why not (for example when two mods change the same game function).
 

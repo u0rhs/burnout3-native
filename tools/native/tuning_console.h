@@ -12,7 +12,7 @@
 //   - edits (the console, a script, or a replay's recorded events): written at a VBlank boundary (vblank(), from
 //     native_play's VBlank hook), to every live variable with the edit's key, and kept for the session: a later
 //     registration of that key gets it after the preset.
-// Installed only when the console is on (PC SETTINGS > INTERFACE > DEVELOPER MODS, --tuning on), a mod has a preset,
+// Installed only when the console is on (PC SETTINGS > MODS > DEVELOPER MODS, --tuning on), a mod has a preset,
 // a script edits (--tune), or a recording being played has tuning edits. Otherwise nothing is wrapped: the game runs
 // exactly as without this file.
 //
@@ -171,7 +171,7 @@ inline std::vector<b3tune::Preset> tuning_presets(const b3mod::Overlay& mods) {
     }
     return out;
 }
-// PC SETTINGS > INTERFACE > DEVELOPER MODS as a window run starts: the renderer's settings file (--settings in its
+// PC SETTINGS > MODS > DEVELOPER MODS as a window run starts: the renderer's settings file (--settings in its
 // arguments, else <user data folder>/pc_settings.ini, as the renderer picks it; B3_NO_USER_SETTINGS: none). native_play
 // reads it itself: the renderer loads it only once its window runs, after the table is sealed.
 // The pc_settings.ini a run's renderer reads: --settings in its arguments, else the preferences folder's (none with

@@ -299,6 +299,7 @@ bool corona_quad(const Camera& cam, const CoronaSlot& s, CoronaQuad& q, float as
 
 void Coronas::draw(b3gfx::Device& dev, const Camera& cam, const CoronaArrays& arrays, const b3gfx::TextureId tex[3],
                    std::vector<b3gfx::DrawItem>& out, CoronaStats* stats, float aspect) {
+    if (dev.resource_epoch() != epoch_) { clear(); epoch_ = dev.resource_epoch(); }   // ids from before a clear_resources
     // CB3EffectsManager::RenderPostFogEffects 0x261E00: arrays 0, 1, 2 (RenderDynamicArray 0x3073A0), one batch each
     for (int a = 0; a < 3; ++a) {
         verts_.clear();
@@ -339,6 +340,7 @@ void Coronas::draw(b3gfx::Device& dev, const Camera& cam, const CoronaArrays& ar
         d.gs_alpha = 0x68;                    // (Cs - 0) FIX + Cd
         d.blend_fix = 1.0f;                   // FIX 0x80
         d.clamp_uv = true;
+        d.night_glow = true;                  // night mode: lights stay bright
         out.push_back(d);
     }
 }

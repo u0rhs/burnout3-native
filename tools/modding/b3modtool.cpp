@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <clocale>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -41,6 +42,7 @@
 #include <vector>
 
 #include "b3asset/discfs.h"
+#include "b3port/fileio.h"
 #include "b3asset/gs_memory.h"
 #include "b3asset/preview.h"
 #include "b3mod/mods.h"
@@ -98,21 +100,22 @@ int fail(const std::string& m) { std::fflush(stdout); std::fprintf(stderr, "b3mo
 
 bool load(const std::string& p, Buf& b) { return read_host_file(p, b); }
 
-// the output must not be one of the inputs (or the disc)
+// the output must not be one of the inputs (or the disc); the paths as UTF-8
 bool same_file(const std::string& a, const std::string& b) {
     std::error_code ec;
-    return fs::exists(a, ec) && fs::exists(b, ec) && fs::equivalent(a, b, ec);
+    const fs::path pa = b3mod::path_from_utf8(a), pb = b3mod::path_from_utf8(b);
+    return fs::exists(pa, ec) && fs::exists(pb, ec) && fs::equivalent(pa, pb, ec);
 }
 
 int cmd_list(const std::string& d, const std::string& pat) {
-    if (!disc::is_dir(d)) return fail(d + ": not a disc folder or image");
+    if (!disc::is_dir(b3mod::path_from_utf8(d))) return fail(d + ": not a disc folder or image");
     std::uint64_t n = 0, bytes = 0;
     for (const DiscFile& f : disc_files(d)) {
         if (!pat.empty() && !glob_match(pat, f.key)) continue;
         std::uint8_t head[16] = {};
         disc::File df;
         std::size_t got = 0;
-        if (df.open(f.path)) { const std::int64_t r = df.read_at(0, head, sizeof head); got = r > 0 ? std::size_t(r) : 0; }
+        if (df.open(b3mod::path_from_utf8(f.path))) { const std::int64_t r = df.read_at(0, head, sizeof head); got = r > 0 ? std::size_t(r) : 0; }
         const std::string kind = file_kind(f.key, head, got);
         std::printf("%12llu  %-18s %s\n", (unsigned long long)f.size, kind.empty() ? "-" : kind.c_str(), f.key.c_str());
         ++n;
@@ -123,13 +126,13 @@ int cmd_list(const std::string& d, const std::string& pat) {
 }
 
 int cmd_extract(const std::string& d, const std::string& pat, const std::string& out) {
-    if (!disc::is_dir(d)) return fail(d + ": not a disc folder or image");
+    if (!disc::is_dir(b3mod::path_from_utf8(d))) return fail(d + ": not a disc folder or image");
     std::uint64_t n = 0, bytes = 0;
     for (const DiscFile& f : disc_files(d)) {
         if (!glob_match(pat, f.key)) continue;
         Buf b;
         if (!load(f.path, b)) return fail("cannot read " + f.key);
-        const std::string dst = b3mod::path_utf8(fs::path(out) / b3mod::path_from_utf8(f.key));
+        const std::string dst = b3mod::path_utf8(b3mod::path_from_utf8(out) / b3mod::path_from_utf8(f.key));
         if (same_file(dst, f.path)) return fail(dst + " is the disc's own file");
         std::string why;
         if (!write_host_file(dst, b, &why)) return fail(why);
@@ -166,9 +169,9 @@ int cmd_txd_export(const std::string& p, const std::string& out) {
     if (!load(p, b)) return fail("cannot read " + p);
     FileSet fsx;
     std::string why;
-    if (!txd_export(b, fs::path(p).filename().string(), fsx, &why)) return fail(p + ": " + why);
+    if (!txd_export(b, b3mod::path_utf8(b3mod::path_from_utf8(p).filename()), fsx, &why)) return fail(p + ": " + why);
     for (const auto& [name, bytes] : fsx)
-        if (!write_host_file(b3mod::path_utf8(fs::path(out) / name), bytes, &why)) return fail(why);
+        if (!write_host_file(b3mod::path_utf8(b3mod::path_from_utf8(out) / name), bytes, &why)) return fail(why);
     std::printf("txd export: %zu files into %s (edit the PNGs at their size; then txd import)\n", fsx.size(), out.c_str());
     return 0;
 }
@@ -179,7 +182,7 @@ int cmd_txd_import(const std::string& orig, const std::string& dir, const std::s
     if (!load(orig, b)) return fail("cannot read " + orig);
     FileSet in;
     std::error_code ec;
-    for (const auto& e : fs::directory_iterator(dir, ec)) {
+    for (const auto& e : fs::directory_iterator(b3mod::path_from_utf8(dir), ec)) {
         if (!e.is_regular_file()) continue;
         const std::string name = b3mod::path_utf8(e.path().filename());
         if (to_upper_ascii(name).size() < 4 || to_upper_ascii(name).substr(name.size() - 4) != ".PNG") continue;
@@ -201,12 +204,13 @@ int cmd_txd_import(const std::string& orig, const std::string& dir, const std::s
 }
 
 int cmd_strings_export(const std::string& p, const std::string& out) {
+    if (same_file(p, out)) return fail("the output would replace the input: name another file");
     Buf b;
     if (!load(p, b)) return fail("cannot read " + p);
     StringTable t;
     std::string why;
     if (!read_strings(b, t, &why)) return fail(p + ": " + why);
-    const std::string text = strings_to_text(t, fs::path(p).filename().string());
+    const std::string text = strings_to_text(t, b3mod::path_utf8(b3mod::path_from_utf8(p).filename()));
     if (!write_host_file(out, Buf(text.begin(), text.end()), &why)) return fail(why);
     std::printf("strings export: %zu strings -> %s\n", t.s.size(), out.c_str());
     return 0;
@@ -231,6 +235,7 @@ int cmd_strings_import(const std::string& orig, const std::string& txt, const st
 }
 
 int cmd_diff(const std::string& a, const std::string& b, const std::string& out) {
+    if (same_file(a, out) || same_file(b, out)) return fail("the output would replace an input: name another file");
     Buf x, y;
     if (!load(a, x)) return fail("cannot read " + a);
     if (!load(b, y)) return fail("cannot read " + b);
@@ -278,7 +283,7 @@ int cmd_verify(const std::string& mod, const std::string& game, const VerifyOpti
 
 int cmd_pack(const std::string& dir, const std::string& out, const std::string& game, const VerifyOptions& opt, bool force) {
     std::error_code ec;
-    if (!fs::is_directory(dir, ec)) return fail(dir + ": not a folder");
+    if (!fs::is_directory(b3mod::path_from_utf8(dir), ec)) return fail(dir + ": not a folder");
     VerifyReport r;
     verify_mod(dir, game, r, opt);
     game_hint(game);
@@ -303,6 +308,7 @@ bool load_names(const std::string& extra, VdbNames& n) {
 }
 
 int cmd_vdb_export(const std::string& p, const std::string& out, const std::string& names_file) {
+    if (same_file(p, out) || (!names_file.empty() && same_file(names_file, out))) return fail("the output would replace an input: name another file");
     VdbNames names;
     if (!load_names(names_file, names)) return 1;
     Buf b;
@@ -311,7 +317,7 @@ int cmd_vdb_export(const std::string& p, const std::string& out, const std::stri
     std::string why;
     if (!read_vdb(b, v, &why)) return fail(p + ": " + why);
     VdbTextStats st;
-    const std::string text = vdb_to_text(v, names, fs::path(p).filename().string(), &st);
+    const std::string text = vdb_to_text(v, names, b3mod::path_utf8(b3mod::path_from_utf8(p).filename()), &st);
     Buf check;
     Vdb back;
     if (!vdb_from_text(text, names, back, &why) || !write_vdb(back, check, &why) || check != b)
@@ -377,7 +383,7 @@ int cmd_audio_list(const std::string& p) {
     Buf b;
     AudioFile af;
     if (!load_audio(p, b, af)) return 1;
-    std::fputs(audio_index(af, fs::path(p).filename().string()).c_str(), stdout);
+    std::fputs(audio_index(af, b3mod::path_utf8(b3mod::path_from_utf8(p).filename())).c_str(), stdout);
     return 0;
 }
 
@@ -387,9 +393,9 @@ int cmd_audio_export(const std::string& p, const std::string& out) {
     if (!load_audio(p, b, af)) return 1;
     std::string why;
     for (const AudioItem& it : af.items)
-        if (!write_host_file(b3mod::path_utf8(fs::path(out) / (audio_item_stem(af, it) + ".wav")), write_wav(audio_decode(b, af, it)), &why)) return fail(why);
-    const std::string idx = audio_index(af, fs::path(p).filename().string());
-    if (!write_host_file(b3mod::path_utf8(fs::path(out) / "audio.txt"), Buf(idx.begin(), idx.end()), &why)) return fail(why);
+        if (!write_host_file(b3mod::path_utf8(b3mod::path_from_utf8(out) / (audio_item_stem(af, it) + ".wav")), write_wav(audio_decode(b, af, it)), &why)) return fail(why);
+    const std::string idx = audio_index(af, b3mod::path_utf8(b3mod::path_from_utf8(p).filename()));
+    if (!write_host_file(b3mod::path_utf8(b3mod::path_from_utf8(out) / "audio.txt"), Buf(idx.begin(), idx.end()), &why)) return fail(why);
     std::printf("audio export: %zu WAV files and audio.txt into %s (the game's audio: for editing on this PC, never for sharing)\n", af.items.size(),
                 out.c_str());
     return 0;
@@ -413,7 +419,7 @@ int cmd_audio_import(const std::string& orig, const std::string& dir, const std:
     if (!load_audio(orig, b, af)) return 1;
     std::map<std::pair<std::size_t, std::size_t>, std::string> wavs;
     std::error_code ec;
-    for (const auto& e : fs::directory_iterator(dir, ec)) {
+    for (const auto& e : fs::directory_iterator(b3mod::path_from_utf8(dir), ec)) {
         if (!e.is_regular_file()) continue;
         std::size_t i = 0, s = 0;
         const std::string name = b3mod::path_utf8(e.path().filename());
@@ -795,7 +801,7 @@ void roundtrip_audio(const DiscFile& f, AudioCensus& cs, AudioCensus& cb) {
 }
 
 int cmd_roundtrip(const std::string& d, const std::string& kind) {
-    if (!disc::is_dir(d)) return fail(d + ": not a disc folder or image");
+    if (!disc::is_dir(b3mod::path_from_utf8(d))) return fail(d + ": not a disc folder or image");
     if (kind == "rasters") {
         std::map<std::string, EmbeddedCensus> by_kind;
         for (const DiscFile& f : disc_files(d)) roundtrip_embedded(f, by_kind);
@@ -824,7 +830,7 @@ int cmd_roundtrip(const std::string& d, const std::string& kind) {
         std::uint8_t head[16] = {};
         disc::File df;
         std::size_t got = 0;
-        if (df.open(f.path)) { const std::int64_t r = df.read_at(0, head, sizeof head); got = r > 0 ? std::size_t(r) : 0; }
+        if (df.open(b3mod::path_from_utf8(f.path))) { const std::int64_t r = df.read_at(0, head, sizeof head); got = r > 0 ? std::size_t(r) : 0; }
         const std::string k = file_kind(f.key, head, got);
         if (k == "txd" && do_txd) roundtrip_txd(f, ct);
         if (k == "strings" && do_str) roundtrip_strings(f, cs);
@@ -896,7 +902,7 @@ bool write_set(const FileSet& fsx, const std::string& dir, std::string& check, s
             else if (!gltf_check(doc, bin->second, errors, &st)) check = errors.front() + (errors.size() > 1 ? " (+" + std::to_string(errors.size() - 1) + " more)" : "");
             else check = "ok";
         }
-        if (!write_host_file(b3mod::path_utf8(fs::path(dir) / name), bytes, why)) return false;
+        if (!write_host_file(b3mod::path_utf8(b3mod::path_from_utf8(dir) / name), bytes, why)) return false;
     }
     return true;
 }
@@ -908,7 +914,7 @@ std::string bounds_text(const ExportReport& r) {
 }
 
 int cmd_car_list(const std::string& d) {
-    if (!disc::is_dir(d)) return fail(d + ": not a disc folder or image");
+    if (!disc::is_dir(b3mod::path_from_utf8(d))) return fail(d + ": not a disc folder or image");
     std::string note;
     const auto cars = car_list(d, true, &note);
     std::size_t player = 0, traffic = 0;
@@ -927,7 +933,7 @@ int cmd_car_list(const std::string& d) {
 }
 
 int cmd_car_export(const std::string& d, const std::string& car, const std::string& out, int lod, bool obj, int paint) {
-    if (!disc::is_dir(d)) return fail(d + ": not a disc folder or image");
+    if (!disc::is_dir(b3mod::path_from_utf8(d))) return fail(d + ": not a disc folder or image");
     std::string note;
     const auto cars = car_list(d, true, &note);
     std::vector<CarListEntry> pick;
@@ -959,7 +965,7 @@ int cmd_car_export(const std::string& d, const std::string& car, const std::stri
         ExportReport r;
         std::string why, check;
         if (!car_export(b, stem, o, fsx, &r, &why)) { std::printf("%-20s FAILED: %s\n", c.key.c_str(), why.c_str()); continue; }
-        const std::string dir = pick.size() > 1 ? b3mod::path_utf8(fs::path(out) / stem) : out;
+        const std::string dir = pick.size() > 1 ? b3mod::path_utf8(b3mod::path_from_utf8(out) / stem) : out;
         if (!write_set(fsx, dir, check, &why)) return fail(why);
         ++ok;
         valid += obj || check == "ok";
@@ -977,7 +983,7 @@ int cmd_car_export(const std::string& d, const std::string& car, const std::stri
 // car import <disc> <model.gltf | model.glb | export folder> <mod folder | out.BGV> [--sidecar <file>] (part 3c);
 // car check: the same with `out` empty, nothing written (the Blender add-on's Check button, tools/blender/b3_car_tools)
 int cmd_car_import(const std::string& d, const std::string& model_arg, const std::string& out, std::string sidecar) {
-    if (!disc::is_dir(d)) return fail(d + ": not a disc folder or image");
+    if (!disc::is_dir(b3mod::path_from_utf8(d))) return fail(d + ": not a disc folder or image");
     std::error_code ec;
     auto ends_with = [](std::string s, const char* e) {
         s = to_upper_ascii(s);
@@ -1076,14 +1082,14 @@ int cmd_car_import(const std::string& d, const std::string& model_arg, const std
 }
 
 int cmd_track_list(const std::string& d) {
-    if (!disc::is_dir(d)) return fail(d + ": not a disc folder or image");
+    if (!disc::is_dir(b3mod::path_from_utf8(d))) return fail(d + ": not a disc folder or image");
     const auto routes = route_list(d);
     for (const RouteEntry& r : routes) {
         std::uint8_t h[0x60] = {};
         disc::File f;
         int units = 0;
-        if (f.open(r.static_path) && f.read_at(0, h, sizeof h) == std::int64_t(sizeof h)) units = std::int16_t(h[0x54] | h[0x55] << 8);
-        const bool streamed = !r.streamed_path.empty() && disc::file_size(r.streamed_path) > 0;
+        if (f.open(b3mod::path_from_utf8(r.static_path)) && f.read_at(0, h, sizeof h) == std::int64_t(sizeof h)) units = std::int16_t(h[0x54] | h[0x55] << 8);
+        const bool streamed = !r.streamed_path.empty() && disc::file_size(b3mod::path_from_utf8(r.streamed_path)) > 0;
         std::printf("%-18s %4d sections%s%s\n", r.key.c_str(), streamed ? units : 0, streamed ? "" : r.streamed_path.empty() ? " (no STREAMED.DAT)" : " (STREAMED.DAT is empty)",
                     r.enviro_path.empty() ? " (no ENVIRO.DAT)" : "");
     }
@@ -1092,7 +1098,7 @@ int cmd_track_list(const std::string& d) {
 }
 
 int cmd_track_export(const std::string& d, const std::string& route, const std::string& out, int section, bool obj) {
-    if (!disc::is_dir(d)) return fail(d + ": not a disc folder or image");
+    if (!disc::is_dir(b3mod::path_from_utf8(d))) return fail(d + ": not a disc folder or image");
     const auto routes = route_list(d);
     std::vector<RouteEntry> pick;
     std::string k = to_upper_ascii(route);
@@ -1121,7 +1127,7 @@ int cmd_track_export(const std::string& d, const std::string& route, const std::
         std::string why, check;
         const auto t0 = std::chrono::steady_clock::now();
         if (!track_export(st, sm, en, stem, o, fsx, &r, &why)) { std::printf("%-18s FAILED: %s\n", rt.key.c_str(), why.c_str()); continue; }
-        const std::string dir = pick.size() > 1 ? b3mod::path_utf8(fs::path(out) / stem) : out;
+        const std::string dir = pick.size() > 1 ? b3mod::path_utf8(b3mod::path_from_utf8(out) / stem) : out;
         if (!write_set(fsx, dir, check, &why)) return fail(why);
         ++ok;
         valid += obj || check == "ok";
@@ -1139,7 +1145,7 @@ int cmd_track_export(const std::string& d, const std::string& route, const std::
 // track import <disc> <model.gltf | model.glb | export folder> <mod folder | out.b3mod> [--sidecar <file>] (part 3c);
 // track check: the same with `out` empty, nothing written
 int cmd_track_import(const std::string& d, const std::string& model_arg, const std::string& out, std::string sidecar, bool restrip) {
-    if (!disc::is_dir(d)) return fail(d + ": not a disc folder or image");
+    if (!disc::is_dir(b3mod::path_from_utf8(d))) return fail(d + ": not a disc folder or image");
     std::error_code ec;
     auto ends_with = [](std::string s, const char* e) {
         s = to_upper_ascii(s);
@@ -1254,6 +1260,7 @@ int cmd_track_import(const std::string& d, const std::string& model_arg, const s
 
 
 int cmd_preview(const std::string& gltf, const std::string& png, float yaw, float pitch, const std::string& skip) {
+    if (same_file(gltf, png)) return fail("the output would replace the model: name another file");
     std::vector<std::string> sk;
     for (std::size_t a = 0; a <= skip.size();) {
         const std::size_t b = std::min(skip.find(',', a), skip.size());
@@ -1276,7 +1283,30 @@ int cmd_preview(const std::string& gltf, const std::string& png, float yaw, floa
 
 }  // namespace
 
+#ifdef _WIN32
+#ifndef _WINDOWS_   // (kernel32, as wincon.h declares them; <windows.h> is not included here)
+extern "C" __declspec(dllimport) int __stdcall SetConsoleOutputCP(unsigned int code_page);
+extern "C" __declspec(dllimport) unsigned int __stdcall GetConsoleOutputCP(void);
+#endif
+namespace {
+unsigned int g_console_cp = 0;   // the console's output code page before this run (put back at exit)
+void restore_console_cp() {
+    if (g_console_cp) SetConsoleOutputCP(g_console_cp);
+}
+}  // namespace
+#endif
+
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    // modsec (review): the messages are UTF-8 (paths with any characters): the console shows them as such for this run
+    g_console_cp = GetConsoleOutputCP();
+    if (g_console_cp && g_console_cp != 65001u && SetConsoleOutputCP(65001u)) std::atexit(&restore_console_cp);
+    else g_console_cp = 0;
+    // modsec: the arguments as UTF-8 (the wide command line, as native_play); every path the tool opens goes through
+    // b3mod::path_from_utf8. A C runtime that has a UTF-8 locale (UCRT) is also given it, for any narrow file call left
+    std::setlocale(LC_CTYPE, ".UTF-8");
+    b3io::utf8_args(argc, argv);
+#endif
     std::vector<std::string> a, flags;
     std::string game, names, base, sidecar, lod_s = "all", format = "gltf", section_s = "all", paint_s = "0", yaw_s = "35", pitch_s = "20", skip_s;
     for (int i = 1; i < argc; ++i) {

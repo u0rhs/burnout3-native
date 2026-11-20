@@ -106,6 +106,7 @@
 // feed and waits (B3PORT_RENDER_WAIT_MS, default 120000) for the renderer to finish its shots and summaries.
 #include "b3live/ring.h"
 #include "b3gameview/gameview.h"
+#include "grab_block.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -294,7 +295,8 @@ std::uint8_t u8(std::uint32_t a) { Scene& s = scene(); return ram(a, 1) ? (s.ram
 std::uint16_t u16(std::uint32_t a) { return std::uint16_t(u8(a) | (u8(a + 1) << 8)); }
 
 // Captures [a, a+n) (widened to 16-byte blocks): appends the runs of blocks that differ from the shadow. `host`: the
-// bytes come from a host buffer (16-aligned a and n) instead of guest memory (the HUD region, hud_capture.cpp).
+// bytes come from a host buffer of n bytes instead of guest memory (the HUD region, hud_capture.cpp; the split screen's
+// view-1 copy): only its n bytes are read, a partial last block is padded with 0 (grab_block.h).
 void grab(std::uint32_t a, std::uint32_t n, const std::uint8_t* host = nullptr) {
     Scene& s = scene();
     const std::uint32_t lo = a & ~15U, hi = (a + n + 15U) & ~15U;
@@ -314,7 +316,7 @@ void grab(std::uint32_t a, std::uint32_t n, const std::uint8_t* host = nullptr) 
         Scene::Page& pg = *page;
         const std::uint32_t off = b & (kPage - 1);
         std::uint8_t now[16];
-        if (host != nullptr) std::memcpy(now, host + (b - lo), 16);
+        if (host != nullptr) b3gv::grab_block(host, a, n, b, now);
         else if (s.ram) std::memcpy(now, s.ram + b, 16);
         else for (std::uint32_t k = 0; k < 16; ++k) now[k] = s.read(s.memory, b + k);
         const bool same = pg.valid[off / 16] && std::memcmp(pg.bytes + off, now, 16) == 0;

@@ -12,6 +12,7 @@
 
 #include "update.h"
 
+#include <atomic>
 #include <cstddef>
 #include <string>
 
@@ -20,9 +21,10 @@ namespace b3launcher::update {
 // GET `url` (https only) with this User-Agent and `Accept: application/vnd.github+json`; `timeout_ms` bounds the
 // connection and the whole answer; a body over `max_bytes` fails. Blocks: run it on a thread of its own.
 // 1.1: `download` asks for a file (a release asset: Accept: application/octet-stream, no API version header) instead of
-// the API's JSON.
+// the API's JSON. robust2: the connection (name lookup, connect, TLS) is bounded by min(`timeout_ms`, 15 s); `cancel`
+// (when set, checked while the answer comes, at least once a second) stops the request: !ok, error "cancelled".
 Response https_get(const std::string& url, const std::string& user_agent, int timeout_ms = 8000, std::size_t max_bytes = std::size_t(1) << 20,
-                   bool download = false);
+                   bool download = false, const std::atomic<bool>* cancel = nullptr);
 
 }  // namespace b3launcher::update
 

@@ -1,4 +1,6 @@
 // Minimal test harness (no dependencies): TEST(name) { CHECK(...); } and a main that runs them all.
+// A case that ran no checks (it returned early: no game data, no retail ELF, ...) or called t::skip(why) is reported
+// SKIPPED, not ok; it does not fail the run ("N tests, C checks, F failures, S skipped"; make test sums them up).
 #ifndef B3_TESTS_TEST_H
 #define B3_TESTS_TEST_H
 
@@ -6,6 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <functional>
 #include <string>
 #include <vector>
@@ -15,6 +18,10 @@ struct Case { const char* name; std::function<void()> fn; };
 inline std::vector<Case>& cases() { static std::vector<Case> c; return c; }
 inline int& failures() { static int f = 0; return f; }
 inline int& checks() { static int c = 0; return c; }
+inline int& skips() { static int s = 0; return s; }
+inline bool& skipping() { static bool b = false; return b; }
+// The running case did not run what it is for (say why): SKIPPED in the summary
+inline void skip(const std::string& why) { skipping() = true; std::printf("    (skipped: %s)\n", why.c_str()); }
 struct Reg { Reg(const char* n, std::function<void()> f) { cases().push_back({n, std::move(f)}); } };
 inline void fail(const char* file, int line, const std::string& what) {
     ++failures();
@@ -33,12 +40,23 @@ inline float bitsf(std::uint32_t b) { float f; std::memcpy(&f, &b, 4); return f;
 #define CHECK_THROWS(stmt) do { ++t::checks(); bool thrown_ = false; try { stmt; } catch (...) { thrown_ = true; } \
     if (!thrown_) t::fail(__FILE__, __LINE__, "expected an exception: " #stmt); } while (0)
 
-#define TEST_MAIN(title) int main() { \
-    std::printf("%s\n", title); \
-    for (auto& c : t::cases()) { const int before = t::failures(); \
-        try { c.fn(); } catch (const std::exception& e) { t::fail(__FILE__, __LINE__, std::string("exception: ") + e.what()); } \
-        std::printf("  %-44s %s\n", c.name, t::failures() == before ? "ok" : "FAILED"); } \
-    std::printf("%zu tests, %d checks, %d failures\n", t::cases().size(), t::checks(), t::failures()); \
-    return t::failures() ? 1 : 0; }
+namespace t {
+// Runs every case; the exit code (1: a failure)
+inline int run_all(const char* title) {
+    std::printf("%s\n", title);
+    for (auto& c : cases()) {
+        const int before = failures(), checks_before = checks();
+        skipping() = false;
+        try { c.fn(); } catch (const std::exception& e) { fail(__FILE__, __LINE__, std::string("exception: ") + e.what()); }
+        const bool skipped = failures() == before && (skipping() || checks() == checks_before);
+        if (skipped) ++skips();
+        std::printf("  %-44s %s\n", c.name, failures() != before ? "FAILED" : skipped ? "SKIPPED" : "ok");
+    }
+    std::printf("%zu tests, %d checks, %d failures, %d skipped\n", cases().size(), checks(), failures(), skips());
+    return failures() ? 1 : 0;
+}
+}  // namespace t
+
+#define TEST_MAIN(title) int main() { return t::run_all(title); }
 
 #endif

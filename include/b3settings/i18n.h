@@ -14,6 +14,29 @@ struct Entry { const char* en; const char* text; };
 struct Table { const char* code; const Entry* entries; std::size_t count; };
 
 inline constexpr Entry kFR[] = {   // French
+    {"VOICES", "VOIX"},   // 1.3.0 VOICES
+    {"The Crash FM DJ and the race training's narrator.", "Le DJ de Crash FM et le narrateur de l'entraînement."},   // 1.3.0 VOICES
+    {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Langue : ils parlent la LANGUE choisie (le français, l'allemand, l'italien et l'espagnol ont les leurs ; l'anglais britannique, le néerlandais et le suédois ont les voix anglaises, comme sur leurs disques)."},   // 1.3.0 VOICES
+    {"The training's narration is on your disc already; the DJ's lines need importing (the DJ VOICE rows of the launcher).", "La narration de l'entraînement est déjà sur votre disque ; les répliques du DJ doivent être importées (lignes VOIX DU DJ du lanceur)."},   // 1.3.0 VOICES
+    {"English: the US voices, with the menus in your language.", "English : les voix américaines, avec les menus dans votre langue."},   // 1.3.0 VOICES
+    {"TRAINING VIDEOS: {}", "VIDÉOS D'ENTRAÎNEMENT : {}"},   // 1.3.0 VOICES
+    {"Copying the training videos from the disc.", "Copie des vidéos d'entraînement depuis le disque."},   // 1.3.0 VOICES
+    {"Imported: the race training videos in this language are on this PC.", "Importé : les vidéos d'entraînement dans cette langue sont sur ce PC."},   // 1.3.0 VOICES
+    {"Remove deletes them; the training then shows the English pictures.", "Retirer les supprime ; l'entraînement montre alors les images anglaises."},   // 1.3.0 VOICES
+    {"Copies the race training videos' pictures in this language (their on-screen text) from the chosen disc to this PC, once.", "Copie une fois les images des vidéos d'entraînement dans cette langue (leur texte à l'écran) du disque choisi vers ce PC."},   // 1.3.0 VOICES
+    {"Without them the training shows the English pictures with the narration in your language.", "Sans elles, l'entraînement montre les images anglaises avec la narration dans votre langue."},   // 1.3.0 VOICES
+    {"Its DJ voices (about 300 MB a language) and race training videos (about 130 MB a language) can then be imported in the rows below.", "Ses voix du DJ (environ 300 Mo par langue) et ses vidéos d'entraînement (environ 130 Mo par langue) peuvent ensuite être importées dans les lignes ci-dessous."},   // 1.3.0 VOICES
+    {"Language", "Langue"},   // 1.3.0 DJ VOICE
+    {"DJ VOICE: {}", "VOIX DU DJ : {}"},   // 1.3.0 DJ VOICE
+    {"Cancel ({} %)", "Annuler ({} %)"},   // 1.3.0 DJ VOICE
+    {"Remove ({} MB)", "Retirer ({} Mo)"},   // 1.3.0 DJ VOICE
+    {"Import ({} MB)", "Importer ({} Mo)"},   // 1.3.0 DJ VOICE
+    {"Copying the DJ's lines from the disc.", "Copie des répliques du DJ depuis le disque."},   // 1.3.0 DJ VOICE
+    {"Cancel stops it and keeps nothing.", "Annuler l'arrête et ne garde rien."},   // 1.3.0 DJ VOICE
+    {"Imported: the DJ's lines in this language are on this PC.", "Importé : les répliques du DJ dans cette langue sont sur ce PC."},   // 1.3.0 DJ VOICE
+    {"Remove deletes them; the DJ is then English.", "Retirer les supprime ; le DJ est alors en anglais."},   // 1.3.0 DJ VOICE
+    {"Copies the DJ's lines in this language from the chosen disc to this PC, once.", "Copie une fois les répliques du DJ dans cette langue du disque choisi vers ce PC."},   // 1.3.0 DJ VOICE
+    {"Needs {} MB of free space.", "Nécessite {} Mo d'espace libre."},   // 1.3.0 DJ VOICE
     {"Not available on macOS: it has no public way for a game to read what another app is playing.", "Non disponible sous macOS : aucun moyen public ne permet à un jeu de savoir ce qu'une autre application joue."},
     {"Shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the EA TRAX popup when the song changes.", "Affiche le morceau joué par une autre application (Spotify, un navigateur, tout lecteur présent dans les commandes multimédias du système) dans la fenêtre EA TRAX quand le morceau change."},
     {"Its sound stays in that app: turn RADIO VOLUME down in Driver Details to hear only it.", "Le son reste dans cette application : baisser VOLUME RADIO dans Détails pilote pour n'entendre que lui."},
@@ -68,6 +91,7 @@ inline constexpr Entry kFR[] = {   // French
     {"How far Low mode looks past the newest game tick.", "Jusqu'où le mode Faible anticipe au-delà du dernier tick du jeu."},
     {"FRAMES IN FLIGHT", "IMAGES EN FILE D'ATTENTE"},
     {"Frames the GPU may queue: 1 is the most direct, more can be smoother.", "Images que le GPU peut mettre en file : 1 est le plus direct, davantage peut être plus fluide."},
+    {"Auto: 1, or 2 while the graphics card holds the frame rate below its target (with LATENCY MODE Auto).", "Auto : 1, ou 2 tant que la carte graphique maintient la fréquence d'images sous sa cible (avec MODE DE LATENCE Auto)."},
     {"GRAPHICS", "GRAPHISMES"},
     {"IMAGE", "IMAGE"},
     {"ANTI-ALIASING", "ANTICRÉNELAGE"},
@@ -85,6 +109,8 @@ inline constexpr Entry kFR[] = {   // French
     {"How large the 3D picture is drawn, as a share of the window, then scaled up.", "Taille de l'image 3D dessinée, en proportion de la fenêtre, puis agrandie."},
     {"Lower is faster on a weak graphics chip; the HUD and menus stay sharp.", "Plus bas est plus rapide sur une puce graphique faible ; le HUD et les menus restent nets."},
     {"100% is the normal picture.", "100% correspond à l'image normale."},
+    {"Above 100%, it is drawn larger and scaled down: smoother edges and finer detail, for a large cost.", "Au-dessus de 100%, elle est dessinée plus grande puis réduite : des bords plus lisses et des détails plus fins, pour un coût élevé."},
+    {"150% and 200% want a graphics card with plenty of memory.", "150% et 200% demandent une carte graphique avec beaucoup de mémoire."},
     {"DITHER", "TRAMAGE"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Un motif fin qui masque les paliers des dégradés doux, comme le ciel."},
     {"None", "Aucun"},
@@ -251,6 +277,8 @@ inline constexpr Entry kFR[] = {   // French
     {"CAR SERIES ON L1 / R1", "SÉRIES VOITURES SUR L1 / R1"},
     {"On: in the car select, the shoulder buttons (L1 / R1, LB / RB, or their keys) change the car series as Left / Right do, and show beside the series arrows.", "Activé : dans la sélection de voiture, les boutons de tranche (L1 / R1, LB / RB, ou leurs touches) changent la série de voitures comme Gauche / Droite, et s'affichent à côté des flèches de série."},
     {"Changes the input the game gets; Off is the original.", "Modifie les commandes reçues par le jeu ; Désactivé correspond à l'original."},
+    {"GARAGE CAMERA", "CAMÉRA DU GARAGE"},
+    {"On: on the car pages (car select, your garage), the right stick or a mouse drag on the car turns the view around the car; a second after you let go, the car spins on its own again.", "Activé : sur les pages de voitures (sélection de voiture, votre garage), le stick droit ou un glisser de la souris sur la voiture fait tourner la vue autour de la voiture ; une seconde après l'avoir relâché, la voiture tourne de nouveau toute seule."},
     {"ANALOG TRIGGERS", "GÂCHETTES ANALOGIQUES"},
     {"On: a trigger set to accelerate or brake works gradually, like a pedal (light pressure, light throttle).", "Activé : une gâchette réglée pour accélérer ou freiner agit progressivement, comme une pédale (pression légère, accélération légère)."},
     {"Both triggers together still powerslide.", "Les deux gâchettes ensemble déclenchent toujours un dérapage contrôlé."},
@@ -397,6 +425,12 @@ inline constexpr Entry kFR[] = {   // French
     {"Photo mode: the next blur level, round to the first.", "Mode photo : le niveau de flou suivant, puis retour au premier."},
     {"PHOTO: FOCUS ON CAR / CENTRE", "PHOTO : MISE AU POINT VOITURE / CENTRE"},
     {"Photo mode: focus on the car or the middle of the screen.", "Mode photo : faire la mise au point sur la voiture ou sur le centre de l'écran."},
+    {"PHOTO: MOTION BLUR", "PHOTO : FLOU DE MOUVEMENT"},
+    {"Photo mode: the motion blur's next mode: off, tracking, panning, static.", "Mode photo : le mode de flou de mouvement suivant : désactivé, suivi, filé, fixe."},
+    {"PHOTO: FASTER SHUTTER", "PHOTO : OBTURATION PLUS RAPIDE"},
+    {"Photo mode: a shorter exposure, less motion blur.", "Mode photo : une pose plus courte, moins de flou de mouvement."},
+    {"PHOTO: SLOWER SHUTTER", "PHOTO : OBTURATION PLUS LENTE"},
+    {"Photo mode: a longer exposure, more motion blur.", "Mode photo : une pose plus longue, plus de flou de mouvement."},
     {"PHOTO: GAME CAMERA", "PHOTO : CAMÉRA DU JEU"},
     {"Photo mode: back to the game's camera view.", "Mode photo : revenir à la vue de la caméra du jeu."},
     {"PHOTO: HELP", "PHOTO : AIDE"},
@@ -538,7 +572,7 @@ inline constexpr Entry kFR[] = {   // French
     {"Start the game, or start it in safe mode with its settings turned down.", "Lancer le jeu, ou le lancer en mode sans échec avec ses réglages réduits."},
     {"The game's own PC settings: the same rows as SETTINGS in the game, saved to the same file.", "Les paramètres PC du jeu : les mêmes lignes que PARAMÈTRES dans le jeu, enregistrées dans le même fichier."},
     {"A PCSX2 texture replacement folder for Burnout 3, used from the next start.", "Un dossier de textures de remplacement PCSX2 pour Burnout 3, utilisé dès le prochain démarrage."},
-    {"Your own music on the game's radio: the same settings as SETTINGS > INTERFACE > MUSIC in the game.", "Votre propre musique sur la radio du jeu : les mêmes réglages que PARAMÈTRES > INTERFACE > MUSIQUE dans le jeu."},
+    {"Your own music on the game's radio: the same settings as SETTINGS > AUDIO > MUSIC in the game.", "Votre propre musique sur la radio du jeu : les mêmes réglages que PARAMÈTRES > AUDIO > MUSIQUE dans le jeu."},
     {"Mods in the mods folder: which are on, and their order.", "Les mods du dossier mods : lesquels sont activés, et leur ordre."},
     {"Your disc and its files are never changed.", "Votre disque et ses fichiers ne sont jamais modifiés."},
     {"Your Burnout 3 disc (NTSC-U, SLUS-21050): its image, or a folder with its contents.", "Votre disque Burnout 3 (NTSC-U, SLUS-21050) : son image, ou un dossier avec son contenu."},
@@ -546,7 +580,7 @@ inline constexpr Entry kFR[] = {   // French
     {"The game saves by itself.", "Le jeu sauvegarde de lui-même."},
     {"Each profile's stats as the game saved them, and local achievements worked out from them.", "Les statistiques de chaque profil telles que le jeu les a sauvegardées, et les succès locaux qui en découlent."},
     {"Every player car on your disc in 3D on a turntable, with the game's name for it.", "Chaque voiture jouable de votre disque en 3D sur un plateau tournant, avec le nom que lui donne le jeu."},
-    {"Your recorded sessions, played back exactly as they were played (SETTINGS > INTERFACE > RECORD REPLAYS).", "Vos sessions enregistrées, rejouées exactement comme elles ont été jouées (PARAMÈTRES > INTERFACE > ENREGISTRER LES REPLAYS)."},
+    {"Your recorded sessions, played back exactly as they were played (SETTINGS > GAME > MODES > RECORD REPLAYS).", "Vos sessions enregistrées, rejouées exactement comme elles ont été jouées (PARAMÈTRES > JEU > MODES > ENREGISTRER LES REPLAYS)."},
     {"Connected controllers, live, and the keyboard as the game maps it.", "Les manettes connectées, en direct, et le clavier tel que le jeu le traduit."},
     {"Who made this port, and the people and projects it stands on.", "Qui a créé ce portage, et les personnes et projets sur lesquels il s'appuie."},
     {"Read with notes:", "Lu avec des remarques :"},
@@ -673,7 +707,7 @@ inline constexpr Entry kFR[] = {   // French
     {"Your settings file stays as it is.", "Votre fichier de réglages reste tel quel."},
     {"Start the game directly next time (skip this launcher):", "Lancer directement le jeu la prochaine fois (sans ce lanceur) :"},
     {"On: starting the launcher starts the game at once, with these settings, saves, mods and music.", "Activé : démarrer le lanceur lance aussitôt le jeu, avec ces réglages, sauvegardes, mods et musique."},
-    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > INTERFACE.", "Pour revoir le lanceur, maintenir Shift (ou Back / Select sur une manette) pendant le démarrage, ou réactiver LANCEUR AU DÉMARRAGE dans PARAMÈTRES > INTERFACE du jeu."},
+    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > GAME > STARTING AND LOADING.", "Pour revoir le lanceur, maintenir Shift (ou Back / Select sur une manette) pendant le démarrage, ou réactiver LANCEUR AU DÉMARRAGE dans PARAMÈTRES > JEU > DÉMARRAGE ET CHARGEMENT du jeu."},
     {"Game data", "Données du jeu"},
     {"Set it on the Game Data page.", "À définir sur la page Données du jeu."},
     {"Game program", "Programme du jeu"},
@@ -803,7 +837,7 @@ inline constexpr Entry kFR[] = {   // French
     {"ALBUM", "ALBUM"},
     {"Your songs play through the game's radio: its RADIO VOLUME, its shuffle setting and the EA TRAX popup with each song's title, artist and album from its tags.", "Vos morceaux passent par la radio du jeu : son VOLUME RADIO, son réglage de lecture aléatoire et la fenêtre EA TRAX avec le titre, l'artiste et l'album de chaque morceau tirés de ses tags."},
     {"The game reads the folder when its next song starts.", "Le jeu lit le dossier quand son prochain morceau commence."},
-    {"In the game these are SETTINGS > INTERFACE > MUSIC: a change in either place shows in the other.", "Dans le jeu, c'est PARAMÈTRES > INTERFACE > MUSIQUE : un changement à un endroit apparaît à l'autre."},
+    {"In the game these are SETTINGS > AUDIO > MUSIC: a change in either place shows in the other.", "Dans le jeu, c'est PARAMÈTRES > AUDIO > MUSIQUE : un changement à un endroit apparaît à l'autre."},
     {"OTHER MUSIC APPS shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the same popup; its sound stays in that app.", "AUTRES APPLIS DE MUSIQUE affiche le morceau joué par une autre application (Spotify, un navigateur, tout lecteur présent dans les commandes multimédias du système) dans la même fenêtre ; le son reste dans cette application."},
     {"None installed.", "Aucun installé."},
     {"Put each mod in its own folder in the mods folder (a folder with a mod.ini), then Look again.", "Placer chaque mod dans son propre dossier dans le dossier mods (un dossier avec un mod.ini), puis Actualiser."},
@@ -827,7 +861,7 @@ inline constexpr Entry kFR[] = {   // French
     {"Developer mods: Off", "Mods développeur : Désactivé"},
     {"For mod authors: code mods that say [code] platform = yes may then change the game's platform layer (the kernel, the disc and pad drivers).", "Pour les auteurs de mods : les mods de code qui indiquent [code] platform = yes peuvent alors modifier la couche plateforme du jeu (le noyau, les pilotes du disque et des manettes)."},
     {"Leave it off unless a mod's author asks for it.", "Le laisser désactivé sauf si l'auteur d'un mod le demande."},
-    {"Developer mods on (also PC SETTINGS > INTERFACE > DEVELOPER MODS).", "Mods développeur activés (aussi dans PARAMÈTRES PC > INTERFACE > MODS DÉVELOPPEUR)."},
+    {"Developer mods on (also PC SETTINGS > MODS > DEVELOPER MODS).", "Mods développeur activés (aussi dans PARAMÈTRES PC > MODS > MODS DÉVELOPPEUR)."},
     {"Developer mods off.", "Mods développeur désactivés."},
     {"|  version", "|  version"},
     {"|  api", "|  api"},
@@ -970,7 +1004,7 @@ inline constexpr Entry kFR[] = {   // French
     {"A replay file is small: copy it to keep it (a renamed one is never removed) or to send it; it plays on any PC with this release of the port and the same disc.", "Un fichier replay est petit : le copier pour le garder (un fichier renommé n'est jamais supprimé) ou pour l'envoyer ; il se lit sur tout PC avec cette version du portage et le même disque."},
     {"Recording: On", "Enregistrement : Activé"},
     {"Recording: Off", "Enregistrement : Désactivé"},
-    {"RECORD REPLAYS (also in the game's SETTINGS > INTERFACE).", "ENREGISTRER LES REPLAYS (aussi dans PARAMÈTRES > INTERFACE du jeu)."},
+    {"RECORD REPLAYS (also in the game's SETTINGS > GAME > MODES).", "ENREGISTRER LES REPLAYS (aussi dans PARAMÈTRES > JEU > MODES du jeu)."},
     {"On: each session, from the start of the game to its end, is kept here.", "Activé : chaque session, du lancement du jeu à sa fermeture, est conservée ici."},
     {"Each session of the game is recorded from its start to its end and kept here (the newest 20).", "Chaque session du jeu est enregistrée du lancement à la fermeture et conservée ici (les 20 plus récentes)."},
     {"Turn recording on to keep your sessions here; they play back exactly as you played them.", "Activer l'enregistrement pour conserver vos sessions ici ; elles se rejouent exactement comme vous les avez jouées."},
@@ -1030,7 +1064,7 @@ inline constexpr Entry kFR[] = {   // French
     {"Controls", "Commandes"},
     {"Which key or controller input gives each PS2 button, per player.", "Quelle touche ou entrée de manette donne chaque bouton PS2, par joueur."},
     {"The game reads the same buttons as before: only the input behind each one changes.", "Le jeu lit les mêmes boutons qu'avant : seule l'entrée derrière chacun change."},
-    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > INTERFACE > CONTROLS).", "Enregistré dans controls.ini ; le jeu le lit à son démarrage (dans le jeu : PARAMÈTRES > INTERFACE > COMMANDES)."},
+    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > CONTROLS > BINDINGS).", "Enregistré dans controls.ini ; le jeu le lit à son démarrage (dans le jeu : PARAMÈTRES > COMMANDES > AFFECTATIONS)."},
     {"Whose controls.", "Le joueur dont les commandes sont affichées."},
     {"Device", "Périphérique"},
     {"Keys for", "Touches pour"},
@@ -1306,7 +1340,7 @@ inline constexpr Entry kFR[] = {   // French
     {"Heavyweight", "Poids lourd"},
     {"COMPACT TYPE 1", "COMPACT TYPE 1"},
     {"DATA/GLOBALUS.BIN", "DATA/GLOBALUS.BIN"},
-    {"CAR", "CAR"},
+    {"CAR", "VOITURE"},   // settingsui
     {"BGV", "BGV"},
     {"TRACKS/US/C3_V1", "TRACKS/US/C3_V1"},
     {"move", "déplacer"},
@@ -1413,6 +1447,24 @@ inline constexpr Entry kFR[] = {   // French
     {"MSAA {}x", "MSAA {}x"},
     {"Steam", "Steam"},   // issue #8: Add to Steam
     {"Add to Steam", "Ajouter à Steam"},
+    {"Two data folders", "Deux dossiers de données"},
+    {"Steam's Flatpak can reach the data folder you use outside Steam, but the sandbox's own folder holds saves too, so it stays in use: {}.", "Le Steam de Flatpak peut accéder au dossier de données utilisé en dehors de Steam, mais le dossier propre du bac à sable contient aussi des sauvegardes, il reste donc utilisé : {}."},
+    {"To use the other one from Steam, copy what you want to keep from the sandbox's folder into ~/.local/share/b3port/native, then delete the sandbox's folder.", "Pour utiliser l'autre depuis Steam, copier ce qu'il faut garder du dossier du bac à sable dans ~/.local/share/b3port/native, puis supprimer le dossier du bac à sable."},
+    {"Sandbox settings left behind", "Réglages du bac à sable laissés de côté"},
+    {"Steam's Flatpak can now reach the data folder you use outside Steam, so the launcher and the game use it: {}.", "Le Steam de Flatpak peut maintenant accéder au dossier de données utilisé en dehors de Steam : le lanceur et le jeu l'utilisent donc : {}."},
+    {"The settings written earlier in the sandbox's own folder stay there, unused (the sandbox's folder holds no save): {}.", "Les réglages écrits auparavant dans le dossier propre du bac à sable y restent, inutilisés (ce dossier ne contient aucune sauvegarde) : {}."},
+    {"Stops the download.", "Arrête le téléchargement."},
+    {"Nothing is installed; your current version stays as it is.", "Rien n'est installé ; la version actuelle reste telle quelle."},
+    {"Update cancelled.", "Mise à jour annulée."},
+    {"An update is being installed: wait for it to finish (or cancel it).", "Une mise à jour est en cours d'installation : attendre qu'elle se termine (ou l'annuler)."},
+    {"The update {} is downloaded and checked, but its disk image did not open.", "La mise à jour {} est téléchargée et vérifiée, mais son image disque ne s'est pas ouverte."},
+    {"Open it yourself ({}), then quit and drag the app to Applications.", "L'ouvrir soi-même ({}), puis quitter et glisser l'app dans Applications."},
+    {"macOS runs this app from a temporary copy, because it was opened where it was downloaded.", "macOS lance cette app depuis une copie temporaire, car elle a été ouverte là où elle a été téléchargée."},
+    {"Move the app to Applications (drag it there in Finder), open it from there, then press Add to Steam again.", "Déplacer l'app dans Applications (la glisser dans le Finder), l'ouvrir depuis là, puis appuyer de nouveau sur Ajouter à Steam."},
+    {"Flatpak's Steam needs to see this folder and your data folder: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Le Steam de Flatpak doit voir ce dossier et votre dossier de données : flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
+    {"Started from Steam's Flatpak", "Lancé depuis le Steam de Flatpak"},
+    {"Steam's Flatpak runs the game in its own sandbox, so the launcher and the game keep their settings, saves and mods in a folder of their own: {}.", "Le Steam de Flatpak lance le jeu dans son propre bac à sable : le lanceur et le jeu gardent donc leurs réglages, sauvegardes et mods dans un dossier à part : {}."},
+    {"To use the same data as outside Steam, run this once in a terminal, then start the game from Steam again: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Pour utiliser les mêmes données qu'en dehors de Steam, lancer une fois ceci dans un terminal, puis relancer le jeu depuis Steam : flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
     {"Adding...", "Ajout..."},
     {"Adding to Steam...", "Ajout à Steam..."},
     {"Big Picture and the Steam Deck then show it with its own pictures.", "Big Picture et le Steam Deck l'affichent alors avec ses propres images."},
@@ -1439,8 +1491,9 @@ inline constexpr Entry kFR[] = {   // French
     {"Cannot find the launcher's own program file, so it cannot be added.", "Impossible de trouver le fichier du lanceur lui-même : il ne peut pas être ajouté."},
     {"Steam is running.", "Steam est ouvert."},
     {"Close Steam, then press Add to Steam again: Steam rewrites its list of games when it closes.", "Fermer Steam, puis appuyer de nouveau sur Ajouter à Steam : Steam réécrit sa liste de jeux en se fermant."},
-    {"On a Steam Deck, do this in Desktop Mode: exit Steam from its icon in the taskbar first.", "Sur un Steam Deck, le faire en mode Bureau : quitter d'abord Steam depuis son icône dans la barre des tâches."},
-    {"Flatpak's Steam needs to see this folder: flatpak override --user --filesystem={} com.valvesoftware.Steam", "Le Steam de Flatpak doit voir ce dossier : flatpak override --user --filesystem={} com.valvesoftware.Steam"},
+    {"Right-click the Steam icon by the clock and choose Exit.", "Faire un clic droit sur l'icône de Steam près de l'horloge et choisir Quitter."},
+    {"In the menu bar: Steam > Quit Steam.", "Dans la barre des menus : Steam > Quitter Steam."},
+    {"On a Steam Deck: right-click the Steam icon in the taskbar (bottom right) and choose Exit Steam, then press Add to Steam again.", "Sur un Steam Deck : faire un clic droit sur l'icône de Steam dans la barre des tâches (en bas à droite) et choisir Quitter Steam, puis appuyer de nouveau sur Ajouter à Steam."},
     {"The next Add to Steam uses the port's own pictures.", "Le prochain Ajouter à Steam utilise les images du portage."},
     {"Steam was not found on this computer.", "Steam est introuvable sur cet ordinateur."},
     {"Install Steam and sign in once, then press Add to Steam again.", "Installer Steam et s'y connecter une fois, puis appuyer de nouveau sur Ajouter à Steam."},
@@ -1459,12 +1512,59 @@ inline constexpr Entry kFR[] = {   // French
     {"Choose a cover picture for Steam (PNG or JPEG)", "Choisir une image de couverture pour Steam (PNG ou JPEG)"},
     {"Choose a background picture for Steam (PNG or JPEG)", "Choisir une image de fond pour Steam (PNG ou JPEG)"},
     {"Choose a logo picture for Steam (PNG or JPEG)", "Choisir une image de logo pour Steam (PNG ou JPEG)"},
-    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > INTERFACE > CONTROLS; the launcher's Controls page)
+    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > CONTROLS > BINDINGS; the launcher's Controls page)
     {"CONTROLLER LAYOUT", "DISPOSITION MANETTE"},
     {"BUTTONS FOR", "BOUTONS POUR"},
     {"Layout", "Disposition"},
     {"Buttons for", "Boutons pour"},
     {"Custom", "Personnalisée"},
+    {"CAR PAINT", "PEINTURE DE LA VOITURE"},   // carpaint
+    {"PAINT RED", "PEINTURE ROUGE"},   // carpaint
+    {"PAINT GREEN", "PEINTURE VERT"},   // carpaint
+    {"PAINT BLUE", "PEINTURE BLEU"},   // carpaint
+    {"DECALS", "AUTOCOLLANTS"},   // carpaint
+    {"Custom: your car in your own colour (the three rows below) instead of the paint picked in the car select.", "Personnalisée : votre voiture dans votre propre couleur (les trois lignes ci-dessous) au lieu de la peinture choisie à la sélection de voiture."},   // carpaint
+    {"Cars with one fixed livery keep it.", "Les voitures à livrée unique la gardent."},   // carpaint
+    {"Drawn only: the game, replays and saves keep the car select's paint.", "Visuel uniquement : le jeu, les replays et les sauvegardes gardent la peinture de la sélection de voiture."},   // carpaint
+    {"The custom paint's colour, 0 to 255 for each of red, green and blue.", "La couleur de la peinture personnalisée, de 0 à 255 pour le rouge, le vert et le bleu."},   // carpaint
+    {"Off: your car without its logos, numbers and stripes, in plain paint; lights, grilles and wheels stay.", "Désactivé : votre voiture sans ses logos, numéros et bandes, en peinture unie ; feux, grilles et roues restent."},   // carpaint
+    {"FINISH", "FINITION"},
+    {"Gloss", "Brillant"},
+    {"Metallic", "Métallisé"},
+    {"Pearl", "Nacré"},
+    {"PLAYER 2 CAR PAINT", "PEINTURE DE LA VOITURE DU JOUEUR 2"},
+    {"P2 CAR PAINT", "PEINTURE J2"},
+    {"P2 PAINT RED", "PEINTURE J2 ROUGE"},
+    {"P2 PAINT GREEN", "PEINTURE J2 VERT"},
+    {"P2 PAINT BLUE", "PEINTURE J2 BLEU"},
+    {"P2 DECALS", "AUTOCOLLANTS J2"},
+    {"The paint's finish on both players' cars.", "La finition de la peinture des voitures des deux joueurs."},
+    {"Gloss: the game's.", "Brillant : celle du jeu."},
+    {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Métallisé : un reflet plus fort dans la couleur de la peinture, avec des paillettes qui scintillent à la lumière."},
+    {"Pearl: the colour shifts as the car turns to the light.", "Nacré : la couleur change quand la voiture tourne face à la lumière."},
+    {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "La voiture du joueur 2 en écran partagé : Personnalisée l'affiche dans la couleur des trois lignes ci-dessous au lieu de la peinture choisie dans la sélection de voiture."},
+    {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Désactivé : la voiture du joueur 2 sans ses logos, numéros et bandes, en peinture unie."},
+    {"LIGHTING", "ÉCLAIRAGE"},   // night
+    {"TIME OF DAY", "MOMENT DE LA JOURNÉE"},   // night
+    {"Day", "Jour"},   // night
+    {"Night", "Nuit"},   // night
+    {"TIME OF DAY PER RACE", "MOMENT DE LA JOURNÉE PAR COURSE"},   // todrace
+    {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Pages du circuit (épreuve simple, multijoueur) : Par défaut, Jour ou Nuit pour la prochaine course."},   // todrace
+    {"Time of day: {}", "Moment de la journée : {}"},   // todrace
+    {"Default ({})", "Par défaut ({})"},   // todrace
+    {"MOON", "LUNE"},   // night
+    {"SURFACE DETAIL", "DÉTAIL DES SURFACES"},   // night
+    {"AMBIENT OCCLUSION", "OCCLUSION AMBIANTE"},   // night
+    {"Night: every race after dark, with a night sky, the cars' lights on and headlight beams on the road.", "Nuit : chaque course de nuit, avec un ciel nocturne, les feux des voitures allumés et des faisceaux de phares sur la route."},   // night
+    {"The moon in the night sky, and its cool light on the cars, the road and the walls facing it.", "La lune dans le ciel nocturne, et sa lumière froide sur les voitures, la route et les murs tournés vers elle."},   // night
+    {"Relief and sheen on the road, kerbs and walls from their textures, lit by the sun or the moon.", "Relief et reflets sur la route, les bordures et les murs d'après leurs textures, éclairés par le soleil ou la lune."},   // night
+    {"Soft contact shadows under the cars and along walls and kerbs.", "Des ombres de contact douces sous les voitures et le long des murs et des bordures."},   // night
+    {"Draws the scene twice: for fast graphics cards.", "Dessine la scène deux fois : pour les cartes graphiques rapides."},   // night
+    {"SUN SHADOWS", "OMBRES DU SOLEIL"},   // sunshadow
+    {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "De vraies ombres des voitures sur la route, projetées par le soleil ou, la nuit, par la lune."},   // sunshadow
+    {"None in tunnels and under bridges.", "Aucune dans les tunnels et sous les ponts."},   // sunshadow
+    {"Sharper with ANTI-ALIASING at 4x or more.", "Plus nettes avec l'ANTICRÉNELAGE à 4x ou plus."},   // sunshadow
+    {"It lights the road's relief too, a small extra cost even with SURFACE DETAIL off.", "Elle éclaire aussi le relief de la route, un petit coût en plus même avec DÉTAIL DES SURFACES désactivé."},   // night
     {"Auto: Xbox controller", "Auto : manette Xbox"},
     {"Auto: PlayStation controller", "Auto : manette PlayStation"},
     {"Auto: Nintendo, Xbox layout", "Auto : Nintendo, disposition Xbox"},
@@ -1473,12 +1573,314 @@ inline constexpr Entry kFR[] = {   // French
     {"Which buttons do what on this player's controller.", "Quel bouton fait quoi sur la manette de ce joueur."},
     {"Auto: the layout of the controller's console, picked again when the controller changes: a PlayStation controller gets the PS2 game's, any other controller the original Xbox game's.", "Auto : la disposition de la console de la manette, choisie à nouveau quand la manette change : une manette PlayStation reçoit celle du jeu PS2, toute autre manette celle du jeu Xbox d'origine."},
     {"Xbox, PlayStation: that layout on any controller.", "Xbox, PlayStation : cette disposition sur n'importe quelle manette."},
+    {"Nintendo: the Xbox layout by label, A confirms and boosts, B goes back and is the Crashbreaker.", "Nintendo : la disposition Xbox selon le nom des boutons, A valide et active le boost, B revient en arrière et déclenche le Crashbreaker."},
     {"Custom: your own bindings in the rows below.", "Personnalisée : vos propres attributions dans les lignes ci-dessous."},
     {"Changing a binding below makes it Custom.", "Modifier une attribution ci-dessous passe en Personnalisée."},
     {"A button can do one thing while you drive and another in the menus (on the Xbox layout A boosts, and confirms in a menu).", "Un bouton peut faire une chose en conduite et une autre dans les menus (sur la disposition Xbox, A active le boost, et valide dans un menu)."},
+    // polish122: the CONTROLS change notes (in the game: LAST CHANGE; the launcher's Controls page)
+    {"KEYBOARD", "CLAVIER"},
+    {"DRIVING", "CONDUITE"},
+    {"MENUS", "MENUS"},
+    {"SHORTCUTS", "RACCOURCIS"},
+    {"ALL CONTROLS RESET TO DEFAULTS", "TOUTES LES COMMANDES RÉTABLIES PAR DÉFAUT"},
+    {"PRESS RESET ALL CONTROLS AGAIN TO PUT EVERYTHING BACK (ANY OTHER ROW CANCELS)", "APPUYER À NOUVEAU SUR TOUT RÉTABLIR PAR DÉFAUT POUR TOUT RÉTABLIR (TOUTE AUTRE LIGNE ANNULE)"},
+    {"(this run only)", "(cette session uniquement)"},
+    {"(NOT SAVED: {})", "(NON ENREGISTRÉ : {})"},
+    {"{}: saved (the game reads it at its next start).", "{} : enregistré (le jeu le lit à son prochain démarrage)."},
+    {"controller layout", "disposition manette"},
+    {"gyro steering", "direction gyroscopique"},
+    {"gyro axis", "axe du gyroscope"},
+    {"gyro sensitivity", "sensibilité du gyroscope"},
+    {"gyro dead zone", "zone morte du gyroscope"},
+    {"gyro recentre button", "bouton de recentrage du gyroscope"},
+    {"keyboard reset to the defaults", "clavier rétabli par défaut"},
+    {"controller reset to the defaults", "manette rétablie par défaut"},
+    {"AUDIO", "AUDIO"},   // settingsui
+    {"GAME", "JEU"},   // settingsui
+    {"LAYOUT", "DISPOSITION"},   // settingsui
+    {"SMOOTHNESS", "FLUIDITÉ"},   // settingsui
+    {"TEXTURES", "TEXTURES"},   // settingsui
+    {"CAR LOOK", "ASPECT DES VOITURES"},   // settingsui
+    {"GARAGE", "GARAGE"},   // settingsui
+    {"FEEDBACK", "RETOUR HAPTIQUE"},   // settingsui
+    {"BINDINGS", "AFFECTATIONS"},   // settingsui
+    {"GYRO", "GYROSCOPE"},   // settingsui
+    {"MODES", "MODES"},   // settingsui
+    {"LANGUAGE AND UNITS", "LANGUE ET UNITÉS"},   // settingsui
+    {"STARTING AND LOADING", "DÉMARRAGE ET CHARGEMENT"},   // settingsui
+    {"COLOUR", "COULEUR"},   // settingsui
+    {"P2 COLOUR", "COULEUR J2"},   // settingsui
+    {"Red", "Rouge"},   // settingsui
+    {"Orange", "Orange"},   // settingsui
+    {"Yellow", "Jaune"},   // settingsui
+    {"Green", "Vert"},   // settingsui
+    {"Blue", "Bleu"},   // settingsui
+    {"Purple", "Violet"},   // settingsui
+    {"Pink", "Rose"},   // settingsui
+    {"White", "Blanc"},   // settingsui
+    {"Silver", "Argent"},   // settingsui
+    {"A ready colour: sets the three rows below and turns the custom paint on.", "Une couleur toute prête : règle les trois lignes ci-dessous et active la peinture personnalisée."},   // settingsui
+    {"Custom: the colour of the rows below.", "Personnalisée : la couleur des lignes ci-dessous."},   // settingsui
+    {"VOLUMES AND DJ", "VOLUMES ET DJ"},   // settingsui
+    {"The game's own sound: RADIO VOLUME, the effects, the speech and the DJ are in DRIVER DETAILS > SETTINGS > AUDIO.", "Le son du jeu : VOLUME RADIO, les effets, les voix et le DJ sont dans DÉTAILS PILOTE > PARAMÈTRES > AUDIO."},   // settingsui
+    {"BOOST HOLD OR TOGGLE", "BOOST MAINTENU OU BASCULE"},   // settingsui
+    {"Boost by holding the button, or press once to boost and again to stop: CONTROLS > DRIVING > BOOST.", "Booster en maintenant le bouton, ou appuyer une fois pour booster et encore pour arrêter : COMMANDES > CONDUITE > BOOST."},   // settingsui
+    {"BUTTONS AND KEYS", "BOUTONS ET TOUCHES"},   // settingsui
+    {"The launcher's Controllers page: test your controllers, and change the buttons and keys of both players, the shortcuts and the gyro steering.", "La page Manettes du lanceur : tester les manettes, et changer les boutons et touches des deux joueurs, les raccourcis et la direction gyroscopique."},   // settingsui
+    {"The launcher's Music page: your own music folder, the playlist, its volume and other music apps.", "La page Musique du lanceur : votre dossier de musique, la playlist, son volume et les autres applications de musique."},   // settingsui
+    {"The launcher's HD Textures page: choose the pack's folder, get the pack, or stop using it.", "La page Textures HD du lanceur : choisir le dossier du pack, obtenir le pack, ou ne plus l'utiliser."},   // settingsui
+    {"CHANGE", "CHANGER"},   // settingsui
+    {"CHOOSE", "CHOISIR"},   // settingsui
+    {"CLOSE AND SAVE", "FERMER ET ENREGISTRER"},   // settingsui
+    {"SECTION", "SECTION"},   // settingsui
+    {"REBIND", "RÉAFFECTER"},   // settingsui
+    {"ADD", "AJOUTER"},   // settingsui
+    {"REMOVE", "RETIRER"},   // settingsui
+    {"DEFAULT", "PAR DÉFAUT"},   // settingsui
+    {"CLICK", "CLIC"},   // settingsui
+    {"WHEEL", "MOLETTE"},   // settingsui
+    {"SCROLL", "DÉFILER"},   // settingsui
+    {"RIGHT CLICK", "CLIC DROIT"},   // settingsui
+    {"CLOSE", "FERMER"},   // settingsui
+    {"MOVE", "DÉPLACER"},   // settingsui
+    {"Kept: the menus need one input that confirms and one that goes back.", "Conservé : les menus ont besoin d'une entrée qui valide et d'une qui revient en arrière."},   // settingsui
+    {"Go back", "Retour"},   // settingsui
+    {"Bug report...", "Rapport de bug..."},   // settingsui
+    {"Make a bug report?", "Créer un rapport de bug ?"},   // settingsui
+    {"Make report", "Créer le rapport"},   // settingsui
+    {"With my save", "Avec ma sauvegarde"},   // settingsui
+    {"Click a row twice to open it", "Cliquer deux fois sur une ligne pour l'ouvrir"},   // settingsui
+    {"LAUNCHER", "LANCEUR"},   // settingsui
+    {"TEST", "TEST"},   // settingsui
+    {"Left stick", "Stick gauche"},   // settingsui
+    {"built {}", "compilé le {}"},   // settingsui
+    {"Burnout 3 native port, a test build", "portage natif de Burnout 3, une version de test"},   // settingsui
+    {"{} preset", "préréglage {}"},   // settingsui
+    {"fullscreen", "plein écran"},   // settingsui
+    {"window", "fenêtre"},   // settingsui
+    {"no MSAA", "sans MSAA"},   // settingsui
+    {"{} fps limit", "limite de {} i/s"},   // settingsui
+    {"no HD pack", "sans pack HD"},   // settingsui
+    {"HD pack", "pack HD"},   // settingsui
+    {"HD pack off", "pack HD désactivé"},   // settingsui
+    {"saved {}", "enregistré le {}"},   // settingsui
+    {"(an older profile-{} folder: read, and saved as a .sav at the first save)", "(un ancien dossier profile-{} : lu, et enregistré en .sav à la première sauvegarde)"},   // settingsui
+    {"An older profile-{} folder (read; saved as a .sav at the first save)", "Un ancien dossier profile-{} (lu ; enregistré en .sav à la première sauvegarde)"},   // settingsui
+    {"Released {}", "Publiée le {}"},   // settingsui
+    {"Last checked {}", "Dernière vérification : {}"},   // settingsui
+    {"Version {}", "Version {}"},   // settingsui
+    {"Not checked for updates yet", "Pas encore de recherche de mise à jour"},   // settingsui
+    {"Checking for updates...", "Recherche de mises à jour..."},   // settingsui
+    {"Update check off (Settings > Launcher)", "Recherche de mises à jour désactivée (Paramètres > Lanceur)"},   // settingsui
+    {"Update available: {}", "Mise à jour disponible : {}"},   // settingsui
+    {"Up to date ({} is the latest release)", "À jour ({} est la dernière version)"},   // settingsui
+    {"Up to date (no release published yet)", "À jour (aucune version publiée pour l'instant)"},   // settingsui
+    {"Couldn't check for updates ({})", "Impossible de rechercher les mises à jour ({})"},   // settingsui
+    {"Installed: {}", "Installés : {}"},   // settingsui
+    {"on: {}", "activés : {}"},   // settingsui
+    {"gold", "or"},   // settingsui
+    {"silver", "argent"},   // settingsui
+    {"bronze", "bronze"},   // settingsui
+    {"Paint {}", "Peinture {}"},   // settingsui
+    {"NOT SET", "NON DÉFINI"},   // settingsui
+    {"Not saved: {}", "Non enregistré : {}"},   // settingsui
+    // item 11: a pack of the game's files without a mod.ini
+    {"Install as a file-replacement mod?", "Installer comme mod de remplacement de fichiers ?"},
+    {"This pack has no mod.ini.", "Ce pack n'a pas de mod.ini."},
+    {"Install it as a file-replacement mod named {}?", "L'installer comme mod de remplacement de fichiers nommé {} ?"},
+    {"Its files replace the game's files of the same names; it has no code, so nothing in it runs.", "Ses fichiers remplacent les fichiers du jeu de mêmes noms ; il ne contient pas de code, donc rien ne s'y exécute."},
+    {"A mod.ini is written for it, and it starts off.", "Un mod.ini est écrit pour lui, et il démarre désactivé."},
+    {"Install", "Installer"},
+    {"Not a mod", "Pas un mod"},
+    {"{} was not installed; nothing was written.", "{} n'a pas été installé ; rien n'a été écrit."},
+    {"It has no mod.ini, and no folders of the game's own (DATA, PVEH, TRACKS, SOUND, OVID) to install as replacement files.", "Il n'a pas de mod.ini, ni de dossiers du jeu (DATA, PVEH, TRACKS, SOUND, OVID) à installer comme fichiers de remplacement."},
+    {"A mod.ini is the small text file at the top of a mod that names it: its id, name and version.", "Un mod.ini est le petit fichier texte en haut d'un mod qui le nomme : son identifiant, son nom et sa version."},
+    {"Add folder...", "Ajouter un dossier..."},
+    {"Installs a mod from a folder: copied into its own folder in the mods folder.", "Installe un mod depuis un dossier : copié dans son propre dossier dans le dossier mods."},
+    {"A pack of the game's own files without a mod.ini (its DATA, PVEH or TRACKS folders) can be installed as a file-replacement mod.", "Un pack de fichiers du jeu sans mod.ini (ses dossiers DATA, PVEH ou TRACKS) peut être installé comme mod de remplacement de fichiers."},
+    {"Add a mod: choose its folder (a mod, or a pack of the game's files)", "Ajouter un mod : choisir son dossier (un mod, ou un pack de fichiers du jeu)"},
+    {"Open the mod's folder, then Start: it is copied into the mods folder.", "Ouvrir le dossier du mod, puis Start : il est copié dans le dossier mods."},
+    {"Set aside file {}?", "Mettre de côté le fichier {} ?"},   // saveflow
+    {"The game can't play profile-{}.sav.", "Le jeu ne peut pas lire profile-{}.sav."},   // saveflow
+    {"Why: {}.", "Raison : {}."},   // saveflow
+    {"It is renamed in the save folder (kept, not deleted) and the file starts empty: the game makes a new profile at its first save.", "Il est renommé dans le dossier de sauvegarde (conservé, pas supprimé) et le fichier repart vide : le jeu crée un nouveau profil à sa première sauvegarde."},   // saveflow
+    {"Quit the game first if it is running.", "Quitter d'abord le jeu s'il est lancé."},   // saveflow
+    {"Set aside", "Mettre de côté"},   // saveflow
+    {"Set aside as {}.", "Mis de côté sous le nom {}."},   // saveflow
+    {"The game starts this file fresh.", "Le jeu repart de zéro avec ce fichier."},   // saveflow
+    {"Cannot set it aside: {}", "Impossible de le mettre de côté : {}"},   // saveflow
+    {"Can't be played: damaged or unreadable", "Illisible : endommagé ou impossible à lire"},   // saveflow
+    {"Set aside file {} and start fresh...", "Mettre de côté le fichier {} et repartir de zéro..."},   // saveflow
+    {"Renames profile-{}.sav in the save folder (kept, not deleted) so that the game starts this file empty.", "Renomme profile-{}.sav dans le dossier de sauvegarde (conservé, pas supprimé) pour que le jeu reparte de ce fichier vide."},   // saveflow
+    {"SAVED", "SAUVEGARDÉ"},   // saveflow
+    {"SAVE FAILED", "ÉCHEC DE LA SAUVEGARDE"},   // saveflow
+    {"YOUR LAST SAVE IS KEPT", "VOTRE DERNIÈRE SAUVEGARDE EST CONSERVÉE"},   // saveflow
+    {"RETRYING", "NOUVEL ESSAI"},   // saveflow
+    {"SAVED AGAIN TO PROFILE {}", "DE NOUVEAU SAUVEGARDÉ DANS LE PROFIL {}"},   // saveflow
+    {"NOT SAVED", "NON SAUVEGARDÉ"},   // saveflow
+    {"CAN'T READ {}", "IMPOSSIBLE DE LIRE {}"},   // saveflow
+    {"PROGRESS WON'T BE SAVED THIS SESSION", "LA PROGRESSION NE SERA PAS SAUVEGARDÉE CETTE SESSION"},   // saveflow
+    {"THE LAUNCHER'S SAVES PAGE CAN SET IT ASIDE", "LA PAGE SAUVEGARDES DU LANCEUR PEUT LE METTRE DE CÔTÉ"},   // saveflow
+    {"{} CHANGED OUTSIDE THE GAME", "{} A ÉTÉ MODIFIÉ HORS DU JEU"},   // saveflow
+    {"SAVED TO {}", "SAUVEGARDÉ DANS {}"},   // saveflow
+    {"A SAVE WAS IMPORTED: RESTART THE GAME TO PLAY IT", "UNE SAUVEGARDE A ÉTÉ IMPORTÉE : REDÉMARRER LE JEU POUR LA JOUER"},   // saveflow
+    {"SAVE WARNING", "AVERTISSEMENT DE SAUVEGARDE"},   // saveflow
+    {"ANOTHER GAME ON THIS COMPUTER USES THIS SAVE FOLDER", "UN AUTRE JEU SUR CET ORDINATEUR UTILISE CE DOSSIER DE SAUVEGARDE"},   // saveflow
+    {"PLAY ONE AT A TIME", "NE JOUER QUE SUR UN SEUL À LA FOIS"},   // saveflow
+    {"Progress from {} was saved beside it, because the file changed while the game was running.", "Une progression du {} a été sauvegardée à côté, car le fichier a changé pendant que le jeu tournait."},   // saveflow
+    {"Use it", "L'utiliser"},   // saveflow
+    {"Leave it", "La laisser"},   // saveflow
+    {"Makes it this file's save; the current one is kept as a backup (.bak and backups).", "En fait la sauvegarde de ce fichier ; l'actuelle est conservée en copie (.bak et backups)."},   // saveflow
+    {"Hides this line; the file stays in the save folder.", "Masque cette ligne ; le fichier reste dans le dossier de sauvegarde."},   // saveflow
+    {"Use the progress from {}?", "Utiliser la progression du {} ?"},   // saveflow
+    {"It replaces profile-{}.sav.", "Elle remplace profile-{}.sav."},   // saveflow
+    {"The current one is kept as profile-{}.sav.bak and in backups.", "L'actuelle est conservée en profile-{}.sav.bak et dans backups."},   // saveflow
+    {"Now using the progress from {}.", "Progression du {} utilisée."},   // saveflow
+    {"Cannot use it: {}", "Impossible de l'utiliser : {}"},   // saveflow
+    // xboximport (1.3.0): Import Xbox textures
+    {"XBOX TEXTURES", "TEXTURES XBOX"},
+    {"The textures imported from your Xbox disc in the launcher, below your own HD pack and the mods' packs.", "Les textures importées depuis votre disque Xbox dans le lanceur, sous votre propre pack HD et les packs des mods."},
+    {"Used while HD TEXTURES is on.", "Utilisées quand TEXTURES HD est activé."},
+    {"Xbox textures", "Textures Xbox"},
+    {"Builds a texture pack on this computer from your own Xbox disc image of the game (.iso or .xiso).", "Crée un pack de textures sur cet ordinateur à partir de votre propre image disque Xbox du jeu (.iso ou .xiso)."},
+    {"It is a small improvement: some building fronts, signs and car paint are somewhat sharper.", "C'est une petite amélioration : certaines façades, enseignes et peintures de voiture sont un peu plus nettes."},
+    {"An HD texture pack looks far better; this is for players who want to use their Xbox disc.", "Un pack de textures HD est bien plus beau ; ceci est pour les joueurs qui veulent utiliser leur disque Xbox."},
+    {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Rien n'est téléchargé ni partagé, et votre propre pack HD et les packs des mods passent toujours en premier."},
+    {"Not imported.", "Non importées."},
+    {"{} textures imported.", "{} textures importées."},
+    {"Size: {} MB.", "Taille : {} Mo."},
+    {"From: {}.", "Depuis : {}."},
+    {"Made by an older version: import again for the newest result.", "Créées par une ancienne version : importer à nouveau pour le meilleur résultat."},
+    {"XBOX TEXTURES is off.", "TEXTURES XBOX est désactivé."},
+    {"HD TEXTURES is off.", "TEXTURES HD est désactivé."},
+    {"Import Xbox textures...", "Importer les textures Xbox..."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso).", "Choisir votre image disque Xbox du jeu (.iso ou .xiso)."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso)", "Choisir votre image disque Xbox du jeu (.iso ou .xiso)"},
+    {"The import runs on this computer in about a minute.", "L'importation se fait sur cet ordinateur en une minute environ."},
+    {"Deletes the imported textures (your disc image is not touched).", "Supprime les textures importées (votre image disque n'est pas modifiée)."},
+    {"Disc images here: A on one imports its textures.", "Images disque ici : A sur l'une d'elles importe ses textures."},
+    {"No disc images here: open the folder that holds your Xbox disc image.", "Aucune image disque ici : ouvrir le dossier qui contient votre image disque Xbox."},
+    {"Xbox disc images (*.iso, *.xiso)", "Images disque Xbox (*.iso, *.xiso)"},
+    {"Importing Xbox textures", "Importation des textures Xbox"},
+    {"Reading the game's files: {}.", "Lecture des fichiers du jeu : {}."},
+    {"Building the textures: {}.", "Création des textures : {}."},
+    {"Textures written: {}.", "Textures écrites : {}."},
+    {"Cancelling...", "Annulation..."},
+    {"Import cancelled: nothing was changed.", "Importation annulée : rien n'a été modifié."},
+    {"The import failed.", "L'importation a échoué."},
+    {"Remove the Xbox textures?", "Retirer les textures Xbox ?"},
+    {"The imported textures are deleted.", "Les textures importées sont supprimées."},
+    {"You can import them again from your disc at any time.", "Vous pouvez les importer à nouveau depuis votre disque à tout moment."},
+    {"The Xbox textures were removed.", "Les textures Xbox ont été retirées."},
+    {"Cannot open the disc image.", "Impossible d'ouvrir l'image disque."},
+    {"Not an Xbox disc image (no XDVDFS volume in it).", "Ce n'est pas une image disque Xbox (aucun volume XDVDFS)."},
+    {"This Xbox disc image is not Burnout 3: Takedown.", "Cette image disque Xbox n'est pas Burnout 3: Takedown."},
+    {"The game's files were not found (choose the game's folder first).", "Les fichiers du jeu sont introuvables (choisir d'abord le dossier du jeu)."},
+    {"Not enough free space (about 200 MB needed).", "Espace libre insuffisant (environ 200 Mo nécessaires)."},
+    {"Could not read the disc or write the textures (is the drive full?).", "Impossible de lire le disque ou d'écrire les textures (le disque est-il plein ?)."},
+    {"No Xbox texture matched the game's (a different version of the game?).", "Aucune texture Xbox ne correspond à celles du jeu (une autre version du jeu ?)."},
+    {"Could not replace the earlier import (a file in it is open?).", "Impossible de remplacer l'importation précédente (un de ses fichiers est-il ouvert ?)."},
+    {"Could not move the textures into place.", "Impossible de mettre les textures en place."},
+    {"Out of memory while reading the disc image (a damaged image?).", "Mémoire insuffisante pendant la lecture de l'image disque (une image endommagée ?)."},
+    {"The import stopped: {}.", "L'importation s'est arrêtée : {}."},
+    {"The import stopped: an unknown error.", "L'importation s'est arrêtée : une erreur inconnue."},
+    // portable mode (1.3.0)
+    {"PORTABLE MODE", "MODE PORTABLE"},
+    {"On: everything the port keeps for you (settings, saves, mods, logs, replays) is in a folder called appdata beside the launcher, so the game can be carried on a USB stick.", "Activé : tout ce que le portage conserve pour vous (réglages, sauvegardes, mods, journaux, replays) se trouve dans un dossier appelé appdata à côté du lanceur, pour emporter le jeu sur une clé USB."},
+    {"Off: in this computer's user folder.", "Désactivé : dans le dossier utilisateur de cet ordinateur."},
+    {"The launcher moves your data now: it is copied and checked first, and the old folder is kept until the game has started from the new one.", "Le lanceur déplace vos données maintenant : elles sont d'abord copiées et vérifiées, et l'ancien dossier est gardé jusqu'à ce que le jeu ait démarré depuis le nouveau."},
+    {"The launcher moves your data at its next start (it asks first).", "Le lanceur déplace vos données à son prochain démarrage (il demande d'abord)."},
+    {"The install folder cannot be written by you: move the game to a folder of your own to use portable mode.", "Vous ne pouvez pas écrire dans le dossier d'installation : déplacez le jeu dans un dossier à vous pour utiliser le mode portable."},
+    {"The game is running: close it first.", "Le jeu est en cours : fermez-le d'abord."},
+    {"A data folder was given when the launcher was started (--pref), so this does not apply.", "Un dossier de données a été indiqué au démarrage du lanceur (--pref), cela ne s'applique donc pas."},
+    {"The launcher's own folder is not known.", "Le dossier du lanceur est inconnu."},
+    {"Data folder", "Dossier de données"},
+    {"In use", "Utilisé"},
+    {"Old copy", "Ancienne copie"},
+    {"Remove the old copy...", "Supprimer l'ancienne copie..."},
+    {"Deletes the folder your data was moved from (asks first).", "Supprime le dossier d'où vos données ont été déplacées (demande d'abord)."},
+    {"Your data in use is not touched.", "Vos données utilisées ne sont pas touchées."},
+    {"Start the game once from the new folder first: the old copy stays until then.", "Démarrez d'abord le jeu une fois depuis le nouveau dossier : l'ancienne copie reste jusque-là."},
+    {"portable: the appdata folder beside the launcher", "portable : le dossier appdata à côté du lanceur"},
+    {"It cannot be written: settings and saves are not kept.", "Impossible d'y écrire : les réglages et les sauvegardes ne sont pas conservés."},
+    {"portable", "portable"},
+    {"Moving your data", "Déplacement de vos données"},
+    {"Putting it in place.", "Mise en place."},
+    {"Copying: {} MB.", "Copie : {} Mo."},
+    {"Checking the copy: {} MB.", "Vérification de la copie : {} Mo."},
+    {"Nothing is removed until the copy is checked.", "Rien n'est supprimé avant que la copie soit vérifiée."},
+    {"Your data was not moved", "Vos données n'ont pas été déplacées"},
+    {"Nothing was changed: your data is where it was.", "Rien n'a changé : vos données sont là où elles étaient."},
+    {"Cancelled: nothing was moved.", "Annulé : rien n'a été déplacé."},
+    {"Not moved: {}.", "Non déplacées : {}."},
+    {"Your data is now in {}.", "Vos données sont maintenant dans {}."},
+    {"The old copy is kept in {}.", "L'ancienne copie est gardée dans {}."},
+    {"The data that was in this computer's folder is kept in {}.", "Les données qui étaient dans le dossier de cet ordinateur sont gardées dans {}."},
+    {"Once the game has started from the new folder, the launcher offers to remove the old copy.", "Une fois le jeu démarré depuis le nouveau dossier, le lanceur propose de supprimer l'ancienne copie."},
+    {"Portable mode is on.", "Le mode portable est activé."},
+    {"Portable mode is off.", "Le mode portable est désactivé."},
+    {"Portable mode is on", "Le mode portable est activé"},
+    {"Portable mode is off", "Le mode portable est désactivé"},
+    {"Portable mode", "Mode portable"},
+    {"Cannot move your data: {}.", "Impossible de déplacer vos données : {}."},
+    {"Not enough free space", "Pas assez d'espace libre"},
+    {"Your data needs {} MB where it goes.", "Vos données ont besoin de {} Mo à leur destination."},
+    {"Free there: {} MB.", "Libre à cet endroit : {} Mo."},
+    {"Turn portable mode on?", "Activer le mode portable ?"},
+    {"Turn portable mode off?", "Désactiver le mode portable ?"},
+    {"Your settings, saves and everything else the port keeps for you are copied into the appdata folder beside the launcher, checked file by file, and used from then on.", "Vos réglages, sauvegardes et tout ce que le portage conserve pour vous sont copiés dans le dossier appdata à côté du lanceur, vérifiés fichier par fichier, puis utilisés à partir de là."},
+    {"Your data is copied from the appdata folder into this computer's user folder, checked file by file, and used from then on.", "Vos données sont copiées du dossier appdata vers le dossier utilisateur de cet ordinateur, vérifiées fichier par fichier, puis utilisées à partir de là."},
+    {"The old folder is kept under a dated name until the game has started from the new one.", "L'ancien dossier est gardé sous un nom daté jusqu'à ce que le jeu ait démarré depuis le nouveau."},
+    {"The appdata folder is kept beside the launcher under a dated name until the game has started from the new one.", "Le dossier appdata est gardé à côté du lanceur sous un nom daté jusqu'à ce que le jeu ait démarré depuis le nouveau."},
+    {"Your save folder is one you chose elsewhere (the Saves page): it is not moved.", "Votre dossier de sauvegardes est un dossier choisi ailleurs (page Sauvegardes) : il n'est pas déplacé."},
+    {"This computer's user folder already holds data from an earlier time.", "Le dossier utilisateur de cet ordinateur contient déjà des données d'une autre fois."},
+    {"Choose which to keep: the other is set aside under a dated name, never mixed.", "Choisissez lesquelles garder : les autres sont mises de côté sous un nom daté, jamais mélangées."},
+    {"Portable data", "Données portables"},
+    {"This computer's data", "Données de cet ordinateur"},
+    {"Move my data", "Déplacer mes données"},
+    {"Move it back", "Les remettre"},
+    {"Remove the old copy", "Supprimer l'ancienne copie"},
+    {"Keep it", "La garder"},
+    {"Remove the old copy?", "Supprimer l'ancienne copie ?"},
+    {"The game has started from your data's new folder, and the old copy is still in {}.", "Le jeu a démarré depuis le nouveau dossier de vos données, et l'ancienne copie est toujours dans {}."},
+    {"The data set aside is in {}.", "Les données mises de côté sont dans {}."},
+    {"Remove it to free the space, or keep it.", "Supprimez-la pour libérer de la place, ou gardez-la."},
+    {"The old copy was removed.", "L'ancienne copie a été supprimée."},
+    {"Not all of the old copy could be removed: {}.", "L'ancienne copie n'a pas pu être entièrement supprimée : {}."},
+    {"Your data is being moved: wait for it to finish (or cancel it).", "Vos données sont en cours de déplacement : attendez la fin (ou annulez)."},
+    {"The launcher opened because portable mode needs your answer.", "Le lanceur s'est ouvert car le mode portable attend votre réponse."},
+    {"B3PORT_USER_DIR is set to a data folder of your choice, so this does not apply.", "B3PORT_USER_DIR désigne un dossier de données de votre choix, cela ne s'applique donc pas."},   // portable mode
+    {"Your data folder cannot be written (a write-protected drive?): settings and saves will not be kept.", "Impossible d'écrire dans votre dossier de données (un lecteur protégé en écriture ?) : les réglages et les sauvegardes ne seront pas conservés."},   // portable mode
+    {"THE LAUNCHER IS MOVING YOUR DATA", "LE LANCEUR DÉPLACE VOS DONNÉES"},   // portable mode
+    {"QUIT AND START AGAIN WHEN IT IS DONE", "QUITTEZ ET RELANCEZ QUAND C'EST FINI"},   // portable mode
+    {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "IMPOSSIBLE D'ÉCRIRE DANS LE DOSSIER DE DONNÉES PORTABLE"},   // portable mode
+    {"SAVES AND SETTINGS WON'T BE KEPT", "SAUVEGARDES ET RÉGLAGES NE SERONT PAS CONSERVÉS"},   // portable mode
 };
 
 inline constexpr Entry kGE[] = {   // German
+    {"VOICES", "STIMMEN"},   // 1.3.0 VOICES
+    {"The Crash FM DJ and the race training's narrator.", "Der DJ von Crash FM und der Sprecher des Renntrainings."},   // 1.3.0 VOICES
+    {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Sprache: Sie sprechen die gewählte SPRACHE (Französisch, Deutsch, Italienisch und Spanisch haben eigene; britisches Englisch, Niederländisch und Schwedisch haben die englischen Stimmen, wie auf ihren Discs)."},   // 1.3.0 VOICES
+    {"The training's narration is on your disc already; the DJ's lines need importing (the DJ VOICE rows of the launcher).", "Der Trainingssprecher ist schon auf deiner Disc; die Sätze des DJs müssen importiert werden (die Zeilen DJ-STIMME im Launcher)."},   // 1.3.0 VOICES
+    {"English: the US voices, with the menus in your language.", "English: die US-Stimmen, mit den Menüs in deiner Sprache."},   // 1.3.0 VOICES
+    {"TRAINING VIDEOS: {}", "TRAININGSVIDEOS: {}"},   // 1.3.0 VOICES
+    {"Copying the training videos from the disc.", "Die Trainingsvideos werden von der Disc kopiert."},   // 1.3.0 VOICES
+    {"Imported: the race training videos in this language are on this PC.", "Importiert: Die Trainingsvideos in dieser Sprache sind auf diesem PC."},   // 1.3.0 VOICES
+    {"Remove deletes them; the training then shows the English pictures.", "Entfernen löscht sie; das Training zeigt dann die englischen Bilder."},   // 1.3.0 VOICES
+    {"Copies the race training videos' pictures in this language (their on-screen text) from the chosen disc to this PC, once.", "Kopiert die Bilder der Trainingsvideos in dieser Sprache (ihren Text im Bild) einmalig von der gewählten Disc auf diesen PC."},   // 1.3.0 VOICES
+    {"Without them the training shows the English pictures with the narration in your language.", "Ohne sie zeigt das Training die englischen Bilder mit dem Sprecher in deiner Sprache."},   // 1.3.0 VOICES
+    {"Its DJ voices (about 300 MB a language) and race training videos (about 130 MB a language) can then be imported in the rows below.", "Ihre DJ-Stimmen (etwa 300 MB je Sprache) und Trainingsvideos (etwa 130 MB je Sprache) lassen sich danach in den Zeilen unten importieren."},   // 1.3.0 VOICES
+    {"Language", "Sprache"},   // 1.3.0 DJ VOICE
+    {"DJ VOICE: {}", "DJ-STIMME: {}"},   // 1.3.0 DJ VOICE
+    {"Cancel ({} %)", "Abbrechen ({} %)"},   // 1.3.0 DJ VOICE
+    {"Remove ({} MB)", "Entfernen ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Import ({} MB)", "Importieren ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Copying the DJ's lines from the disc.", "Die Sätze des DJs werden von der Disc kopiert."},   // 1.3.0 DJ VOICE
+    {"Cancel stops it and keeps nothing.", "Abbrechen beendet es und behält nichts."},   // 1.3.0 DJ VOICE
+    {"Imported: the DJ's lines in this language are on this PC.", "Importiert: Die Sätze des DJs in dieser Sprache sind auf diesem PC."},   // 1.3.0 DJ VOICE
+    {"Remove deletes them; the DJ is then English.", "Entfernen löscht sie; der DJ ist dann englisch."},   // 1.3.0 DJ VOICE
+    {"Copies the DJ's lines in this language from the chosen disc to this PC, once.", "Kopiert die Sätze des DJs in dieser Sprache einmalig von der gewählten Disc auf diesen PC."},   // 1.3.0 DJ VOICE
+    {"Needs {} MB of free space.", "Braucht {} MB freien Speicherplatz."},   // 1.3.0 DJ VOICE
     {"Not available on macOS: it has no public way for a game to read what another app is playing.", "Unter macOS nicht verfügbar: Dort gibt es keinen öffentlichen Weg, über den ein Spiel auslesen kann, was eine andere App abspielt."},
     {"Shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the EA TRAX popup when the song changes.", "Zeigt den Song, den eine andere App abspielt (Spotify, ein Browser, jeder Player in der Mediensteuerung des Systems), bei jedem Songwechsel im EA TRAX-Popup an."},
     {"Its sound stays in that app: turn RADIO VOLUME down in Driver Details to hear only it.", "Der Ton bleibt in dieser App: RADIOLAUTSTÄRKE unter Fahrerinfo herunterregeln, um nur ihn zu hören."},
@@ -1533,6 +1935,7 @@ inline constexpr Entry kGE[] = {   // German
     {"How far Low mode looks past the newest game tick.", "Wie weit der Modus Niedrig über den neuesten Spieltick hinausblickt."},
     {"FRAMES IN FLIGHT", "GEPUFFERTE BILDER"},
     {"Frames the GPU may queue: 1 is the most direct, more can be smoother.", "Bilder, die die GPU vorhalten darf: 1 ist am direktesten, mehr kann flüssiger sein."},
+    {"Auto: 1, or 2 while the graphics card holds the frame rate below its target (with LATENCY MODE Auto).", "Auto: 1, oder 2, solange die Grafikkarte die Bildrate unter ihrem Ziel hält (mit LATENZMODUS Auto)."},
     {"GRAPHICS", "GRAFIK"},
     {"IMAGE", "BILD"},
     {"ANTI-ALIASING", "KANTENGLÄTTUNG"},
@@ -1550,6 +1953,8 @@ inline constexpr Entry kGE[] = {   // German
     {"How large the 3D picture is drawn, as a share of the window, then scaled up.", "Wie groß das 3D-Bild gezeichnet wird, als Anteil am Fenster, danach hochskaliert."},
     {"Lower is faster on a weak graphics chip; the HUD and menus stay sharp.", "Niedriger ist schneller auf einem schwachen Grafikchip; HUD und Menüs bleiben scharf."},
     {"100% is the normal picture.", "100% ist das normale Bild."},
+    {"Above 100%, it is drawn larger and scaled down: smoother edges and finer detail, for a large cost.", "Über 100% wird es größer gezeichnet und herunterskaliert: glattere Kanten und feinere Details, mit hohem Aufwand."},
+    {"150% and 200% want a graphics card with plenty of memory.", "150% und 200% brauchen eine Grafikkarte mit viel Speicher."},
     {"DITHER", "DITHERING"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Ein feines Muster, das die Stufen in weichen Verläufen wie dem Himmel verbirgt."},
     {"None", "Keines"},
@@ -1716,6 +2121,8 @@ inline constexpr Entry kGE[] = {   // German
     {"CAR SERIES ON L1 / R1", "FAHRZEUGSERIE AUF L1 / R1"},
     {"On: in the car select, the shoulder buttons (L1 / R1, LB / RB, or their keys) change the car series as Left / Right do, and show beside the series arrows.", "An: In der Fahrzeugauswahl wechseln die Schultertasten (L1 / R1, LB / RB oder ihre Tasten) die Fahrzeugserie wie Links / Rechts und erscheinen neben den Serienpfeilen."},
     {"Changes the input the game gets; Off is the original.", "Ändert die Eingaben, die das Spiel erhält; Aus ist das Original."},
+    {"GARAGE CAMERA", "GARAGEN-KAMERA"},
+    {"On: on the car pages (car select, your garage), the right stick or a mouse drag on the car turns the view around the car; a second after you let go, the car spins on its own again.", "An: Auf den Fahrzeugseiten (Fahrzeugauswahl, deine Garage) dreht der rechte Stick oder Ziehen mit der Maus auf dem Auto die Ansicht um das Auto; eine Sekunde nach dem Loslassen dreht sich das Auto wieder von selbst."},
     {"ANALOG TRIGGERS", "ANALOGE TRIGGER"},
     {"On: a trigger set to accelerate or brake works gradually, like a pedal (light pressure, light throttle).", "An: Ein Trigger für Gas oder Bremse wirkt stufenlos wie ein Pedal (leichter Druck, wenig Gas)."},
     {"Both triggers together still powerslide.", "Beide Trigger zusammen lösen weiterhin einen Powerslide aus."},
@@ -1862,6 +2269,12 @@ inline constexpr Entry kGE[] = {   // German
     {"Photo mode: the next blur level, round to the first.", "Fotomodus: die nächste Unschärfestufe, danach wieder die erste."},
     {"PHOTO: FOCUS ON CAR / CENTRE", "FOTO: FOKUS AUTO / MITTE"},
     {"Photo mode: focus on the car or the middle of the screen.", "Fotomodus: auf das Auto oder die Bildschirmmitte fokussieren."},
+    {"PHOTO: MOTION BLUR", "FOTO: BEWEGUNGSUNSCHÄRFE"},
+    {"Photo mode: the motion blur's next mode: off, tracking, panning, static.", "Fotomodus: der nächste Modus der Bewegungsunschärfe: aus, mitfahrend, mitgezogen, statisch."},
+    {"PHOTO: FASTER SHUTTER", "FOTO: KÜRZERE VERSCHLUSSZEIT"},
+    {"Photo mode: a shorter exposure, less motion blur.", "Fotomodus: kürzere Belichtung, weniger Bewegungsunschärfe."},
+    {"PHOTO: SLOWER SHUTTER", "FOTO: LÄNGERE VERSCHLUSSZEIT"},
+    {"Photo mode: a longer exposure, more motion blur.", "Fotomodus: längere Belichtung, mehr Bewegungsunschärfe."},
     {"PHOTO: GAME CAMERA", "FOTO: SPIELKAMERA"},
     {"Photo mode: back to the game's camera view.", "Fotomodus: zurück zur Kameraansicht des Spiels."},
     {"PHOTO: HELP", "FOTO: HILFE"},
@@ -2003,7 +2416,7 @@ inline constexpr Entry kGE[] = {   // German
     {"Start the game, or start it in safe mode with its settings turned down.", "Das Spiel starten oder im abgesicherten Modus mit reduzierten Einstellungen starten."},
     {"The game's own PC settings: the same rows as SETTINGS in the game, saved to the same file.", "Die eigenen PC-Einstellungen des Spiels: dieselben Zeilen wie unter OPTIONEN im Spiel, in derselben Datei gespeichert."},
     {"A PCSX2 texture replacement folder for Burnout 3, used from the next start.", "Ein PCSX2-Texturersatzordner für Burnout 3, ab dem nächsten Start verwendet."},
-    {"Your own music on the game's radio: the same settings as SETTINGS > INTERFACE > MUSIC in the game.", "Eigene Musik im Radio des Spiels: dieselben Einstellungen wie unter OPTIONEN > OBERFLÄCHE > MUSIK im Spiel."},
+    {"Your own music on the game's radio: the same settings as SETTINGS > AUDIO > MUSIC in the game.", "Eigene Musik im Radio des Spiels: dieselben Einstellungen wie unter OPTIONEN > AUDIO > MUSIK im Spiel."},
     {"Mods in the mods folder: which are on, and their order.", "Mods im Mod-Ordner: welche aktiv sind und in welcher Reihenfolge."},
     {"Your disc and its files are never changed.", "Die Disc und ihre Dateien werden nie verändert."},
     {"Your Burnout 3 disc (NTSC-U, SLUS-21050): its image, or a folder with its contents.", "Die eigene Burnout 3-Disc (NTSC-U, SLUS-21050): ihr Image oder ein Ordner mit ihrem Inhalt."},
@@ -2011,7 +2424,7 @@ inline constexpr Entry kGE[] = {   // German
     {"The game saves by itself.", "Das Spiel speichert automatisch."},
     {"Each profile's stats as the game saved them, and local achievements worked out from them.", "Die Statistiken jedes Profils, wie das Spiel sie gespeichert hat, und daraus ermittelte lokale Erfolge."},
     {"Every player car on your disc in 3D on a turntable, with the game's name for it.", "Jedes Spielerauto auf der Disc in 3D auf einer Drehscheibe, mit seinem Namen aus dem Spiel."},
-    {"Your recorded sessions, played back exactly as they were played (SETTINGS > INTERFACE > RECORD REPLAYS).", "Aufgezeichnete Sitzungen, exakt so abgespielt, wie sie gespielt wurden (OPTIONEN > OBERFLÄCHE > WIEDERHOLUNGEN AUFZEICHNEN)."},
+    {"Your recorded sessions, played back exactly as they were played (SETTINGS > GAME > MODES > RECORD REPLAYS).", "Aufgezeichnete Sitzungen, exakt so abgespielt, wie sie gespielt wurden (OPTIONEN > SPIEL > MODI > WIEDERHOLUNGEN AUFZEICHNEN)."},
     {"Connected controllers, live, and the keyboard as the game maps it.", "Verbundene Controller, live, und die Tastatur, wie das Spiel sie belegt."},
     {"Who made this port, and the people and projects it stands on.", "Wer diesen Port gemacht hat und auf welchen Personen und Projekten er aufbaut."},
     {"Read with notes:", "Mit Hinweisen gelesen:"},
@@ -2138,7 +2551,7 @@ inline constexpr Entry kGE[] = {   // German
     {"Your settings file stays as it is.", "Die Einstellungsdatei bleibt unverändert."},
     {"Start the game directly next time (skip this launcher):", "Das Spiel nächstes Mal direkt starten (diesen Launcher überspringen):"},
     {"On: starting the launcher starts the game at once, with these settings, saves, mods and music.", "An: Der Launcher startet das Spiel sofort, mit diesen Einstellungen, Spielständen, Mods und Musik."},
-    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > INTERFACE.", "Um den Launcher wieder zu sehen, beim Start Shift (oder Back / Select am Controller) halten oder LAUNCHER BEIM START ÖFFNEN im Spiel unter OPTIONEN > OBERFLÄCHE wieder einschalten."},
+    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > GAME > STARTING AND LOADING.", "Um den Launcher wieder zu sehen, beim Start Shift (oder Back / Select am Controller) halten oder LAUNCHER BEIM START ÖFFNEN im Spiel unter OPTIONEN > SPIEL > START UND LADEN wieder einschalten."},
     {"Game data", "Spieldaten"},
     {"Set it on the Game Data page.", "Auf der Seite Spieldaten festlegen."},
     {"Game program", "Spielprogramm"},
@@ -2268,7 +2681,7 @@ inline constexpr Entry kGE[] = {   // German
     {"ALBUM", "ALBUM"},
     {"Your songs play through the game's radio: its RADIO VOLUME, its shuffle setting and the EA TRAX popup with each song's title, artist and album from its tags.", "Eigene Songs laufen über das Radio des Spiels: seine RADIOLAUTSTÄRKE, seine Zufallswiedergabe-Einstellung und das EA TRAX-Popup mit Titel, Interpret und Album jedes Songs aus seinen Tags."},
     {"The game reads the folder when its next song starts.", "Das Spiel liest den Ordner, wenn sein nächster Song beginnt."},
-    {"In the game these are SETTINGS > INTERFACE > MUSIC: a change in either place shows in the other.", "Im Spiel sind das OPTIONEN > OBERFLÄCHE > MUSIK: Eine Änderung an einer Stelle zeigt sich auch an der anderen."},
+    {"In the game these are SETTINGS > AUDIO > MUSIC: a change in either place shows in the other.", "Im Spiel sind das OPTIONEN > AUDIO > MUSIK: Eine Änderung an einer Stelle zeigt sich auch an der anderen."},
     {"OTHER MUSIC APPS shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the same popup; its sound stays in that app.", "ANDERE MUSIK-APPS zeigt den Song, den eine andere App abspielt (Spotify, ein Browser, jeder Player in der Mediensteuerung des Systems), im selben Popup; der Ton bleibt in dieser App."},
     {"None installed.", "Keine installiert."},
     {"Put each mod in its own folder in the mods folder (a folder with a mod.ini), then Look again.", "Jede Mod in einen eigenen Ordner im Mod-Ordner legen (ein Ordner mit einer mod.ini), dann Neu suchen."},
@@ -2292,7 +2705,7 @@ inline constexpr Entry kGE[] = {   // German
     {"Developer mods: Off", "Entwickler-Mods: Aus"},
     {"For mod authors: code mods that say [code] platform = yes may then change the game's platform layer (the kernel, the disc and pad drivers).", "Für Mod-Autoren: Code-Mods mit [code] platform = yes dürfen dann die Plattformschicht des Spiels ändern (Kernel, Disc- und Pad-Treiber)."},
     {"Leave it off unless a mod's author asks for it.", "Ausgeschaltet lassen, außer der Autor einer Mod bittet darum."},
-    {"Developer mods on (also PC SETTINGS > INTERFACE > DEVELOPER MODS).", "Entwickler-Mods an (auch unter PC-OPTIONEN > OBERFLÄCHE > ENTWICKLER-MODS)."},
+    {"Developer mods on (also PC SETTINGS > MODS > DEVELOPER MODS).", "Entwickler-Mods an (auch unter PC-OPTIONEN > MODS > ENTWICKLER-MODS)."},
     {"Developer mods off.", "Entwickler-Mods aus."},
     {"|  version", "|  Version"},
     {"|  api", "|  api"},
@@ -2435,7 +2848,7 @@ inline constexpr Entry kGE[] = {   // German
     {"A replay file is small: copy it to keep it (a renamed one is never removed) or to send it; it plays on any PC with this release of the port and the same disc.", "Eine Wiederholungsdatei ist klein: Zum Behalten kopieren (eine umbenannte wird nie entfernt) oder zum Verschicken; sie läuft auf jedem PC mit dieser Version des Ports und derselben Disc."},
     {"Recording: On", "Aufzeichnung: An"},
     {"Recording: Off", "Aufzeichnung: Aus"},
-    {"RECORD REPLAYS (also in the game's SETTINGS > INTERFACE).", "WIEDERHOLUNGEN AUFZEICHNEN (auch im Spiel unter OPTIONEN > OBERFLÄCHE)."},
+    {"RECORD REPLAYS (also in the game's SETTINGS > GAME > MODES).", "WIEDERHOLUNGEN AUFZEICHNEN (auch im Spiel unter OPTIONEN > SPIEL > MODI)."},
     {"On: each session, from the start of the game to its end, is kept here.", "An: Jede Sitzung wird vom Spielstart bis zum Ende hier gespeichert."},
     {"Each session of the game is recorded from its start to its end and kept here (the newest 20).", "Jede Sitzung des Spiels wird vom Start bis zum Ende aufgezeichnet und hier gespeichert (die neuesten 20)."},
     {"Turn recording on to keep your sessions here; they play back exactly as you played them.", "Aufzeichnung einschalten, um Sitzungen hier zu behalten; sie werden exakt so abgespielt, wie sie gespielt wurden."},
@@ -2495,7 +2908,7 @@ inline constexpr Entry kGE[] = {   // German
     {"Controls", "Steuerung"},
     {"Which key or controller input gives each PS2 button, per player.", "Welche Taste oder Controller-Eingabe jede PS2-Taste auslöst, pro Spieler."},
     {"The game reads the same buttons as before: only the input behind each one changes.", "Das Spiel liest dieselben Tasten wie zuvor: Nur die Eingabe dahinter ändert sich."},
-    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > INTERFACE > CONTROLS).", "Gespeichert in controls.ini; das Spiel liest sie beim Start (im Spiel: OPTIONEN > OBERFLÄCHE > STEUERUNG)."},
+    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > CONTROLS > BINDINGS).", "Gespeichert in controls.ini; das Spiel liest sie beim Start (im Spiel: OPTIONEN > STEUERUNG > BELEGUNG)."},
     {"Whose controls.", "Wessen Steuerung."},
     {"Device", "Gerät"},
     {"Keys for", "Tasten für"},
@@ -2771,7 +3184,7 @@ inline constexpr Entry kGE[] = {   // German
     {"Heavyweight", "Schwergewicht"},
     {"COMPACT TYPE 1", "COMPACT TYPE 1"},
     {"DATA/GLOBALUS.BIN", "DATA/GLOBALUS.BIN"},
-    {"CAR", "CAR"},
+    {"CAR", "AUTO"},   // settingsui
     {"BGV", "BGV"},
     {"TRACKS/US/C3_V1", "TRACKS/US/C3_V1"},
     {"move", "bewegen"},
@@ -2878,6 +3291,24 @@ inline constexpr Entry kGE[] = {   // German
     {"MSAA {}x", "MSAA {}x"},
     {"Steam", "Steam"},   // issue #8: Add to Steam
     {"Add to Steam", "Zu Steam hinzufügen"},
+    {"Two data folders", "Zwei Datenordner"},
+    {"Steam's Flatpak can reach the data folder you use outside Steam, but the sandbox's own folder holds saves too, so it stays in use: {}.", "Das Steam aus Flatpak kann den Datenordner erreichen, der außerhalb von Steam verwendet wird, aber der eigene Ordner der Sandbox enthält ebenfalls Spielstände und bleibt daher in Verwendung: {}."},
+    {"To use the other one from Steam, copy what you want to keep from the sandbox's folder into ~/.local/share/b3port/native, then delete the sandbox's folder.", "Um den anderen aus Steam zu nutzen, das Behaltenswerte aus dem Ordner der Sandbox nach ~/.local/share/b3port/native kopieren und dann den Ordner der Sandbox löschen."},
+    {"Sandbox settings left behind", "Einstellungen der Sandbox zurückgelassen"},
+    {"Steam's Flatpak can now reach the data folder you use outside Steam, so the launcher and the game use it: {}.", "Das Steam aus Flatpak kann jetzt den Datenordner erreichen, der außerhalb von Steam verwendet wird, daher nutzen Launcher und Spiel ihn: {}."},
+    {"The settings written earlier in the sandbox's own folder stay there, unused (the sandbox's folder holds no save): {}.", "Die zuvor im eigenen Ordner der Sandbox geschriebenen Einstellungen bleiben dort, ungenutzt (dieser Ordner enthält keinen Spielstand): {}."},
+    {"Stops the download.", "Bricht den Download ab."},
+    {"Nothing is installed; your current version stays as it is.", "Nichts wird installiert; die aktuelle Version bleibt, wie sie ist."},
+    {"Update cancelled.", "Update abgebrochen."},
+    {"An update is being installed: wait for it to finish (or cancel it).", "Ein Update wird installiert: warten, bis es fertig ist (oder es abbrechen)."},
+    {"The update {} is downloaded and checked, but its disk image did not open.", "Das Update {} ist heruntergeladen und geprüft, aber sein Disk-Image wurde nicht geöffnet."},
+    {"Open it yourself ({}), then quit and drag the app to Applications.", "Es selbst öffnen ({}), dann beenden und die App nach Programme ziehen."},
+    {"macOS runs this app from a temporary copy, because it was opened where it was downloaded.", "macOS startet diese App aus einer vorübergehenden Kopie, weil sie dort geöffnet wurde, wohin sie heruntergeladen wurde."},
+    {"Move the app to Applications (drag it there in Finder), open it from there, then press Add to Steam again.", "Die App nach Programme verschieben (im Finder dorthin ziehen), sie von dort öffnen und dann erneut Zu Steam hinzufügen drücken."},
+    {"Flatpak's Steam needs to see this folder and your data folder: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Das Steam aus Flatpak muss diesen Ordner und Ihren Datenordner sehen: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
+    {"Started from Steam's Flatpak", "Aus dem Steam-Flatpak gestartet"},
+    {"Steam's Flatpak runs the game in its own sandbox, so the launcher and the game keep their settings, saves and mods in a folder of their own: {}.", "Das Steam aus Flatpak startet das Spiel in seiner eigenen Sandbox, daher behalten Launcher und Spiel ihre Einstellungen, Spielstände und Mods in einem eigenen Ordner: {}."},
+    {"To use the same data as outside Steam, run this once in a terminal, then start the game from Steam again: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Um dieselben Daten wie außerhalb von Steam zu nutzen, dies einmal in einem Terminal ausführen und das Spiel dann erneut aus Steam starten: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
     {"Adding...", "Wird hinzugefügt..."},
     {"Adding to Steam...", "Wird zu Steam hinzugefügt..."},
     {"Big Picture and the Steam Deck then show it with its own pictures.", "Big Picture und das Steam Deck zeigen es dann mit eigenen Bildern."},
@@ -2904,8 +3335,9 @@ inline constexpr Entry kGE[] = {   // German
     {"Cannot find the launcher's own program file, so it cannot be added.", "Die Programmdatei des Launchers selbst wurde nicht gefunden, daher kann er nicht hinzugefügt werden."},
     {"Steam is running.", "Steam läuft."},
     {"Close Steam, then press Add to Steam again: Steam rewrites its list of games when it closes.", "Steam beenden, dann erneut Zu Steam hinzufügen drücken: Steam schreibt seine Spieleliste beim Beenden neu."},
-    {"On a Steam Deck, do this in Desktop Mode: exit Steam from its icon in the taskbar first.", "Auf einem Steam Deck im Desktop-Modus: Steam zuerst über sein Symbol in der Taskleiste beenden."},
-    {"Flatpak's Steam needs to see this folder: flatpak override --user --filesystem={} com.valvesoftware.Steam", "Das Steam aus Flatpak muss diesen Ordner sehen: flatpak override --user --filesystem={} com.valvesoftware.Steam"},
+    {"Right-click the Steam icon by the clock and choose Exit.", "Mit der rechten Maustaste auf das Steam-Symbol neben der Uhr klicken und Beenden wählen."},
+    {"In the menu bar: Steam > Quit Steam.", "In der Menüleiste: Steam > Steam beenden."},
+    {"On a Steam Deck: right-click the Steam icon in the taskbar (bottom right) and choose Exit Steam, then press Add to Steam again.", "Auf einem Steam Deck: mit der rechten Maustaste auf das Steam-Symbol in der Taskleiste (unten rechts) klicken und Steam beenden wählen, dann erneut Zu Steam hinzufügen drücken."},
     {"The next Add to Steam uses the port's own pictures.", "Das nächste Zu Steam hinzufügen verwendet die Bilder des Ports."},
     {"Steam was not found on this computer.", "Steam wurde auf diesem Computer nicht gefunden."},
     {"Install Steam and sign in once, then press Add to Steam again.", "Steam installieren und sich einmal anmelden, dann erneut Zu Steam hinzufügen drücken."},
@@ -2924,12 +3356,59 @@ inline constexpr Entry kGE[] = {   // German
     {"Choose a cover picture for Steam (PNG or JPEG)", "Ein Coverbild für Steam wählen (PNG oder JPEG)"},
     {"Choose a background picture for Steam (PNG or JPEG)", "Ein Hintergrundbild für Steam wählen (PNG oder JPEG)"},
     {"Choose a logo picture for Steam (PNG or JPEG)", "Ein Logobild für Steam wählen (PNG oder JPEG)"},
-    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > INTERFACE > CONTROLS; the launcher's Controls page)
+    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > CONTROLS > BINDINGS; the launcher's Controls page)
     {"CONTROLLER LAYOUT", "CONTROLLER-BELEGUNG"},
     {"BUTTONS FOR", "KNÖPFE FÜR"},
     {"Layout", "Belegung"},
     {"Buttons for", "Knöpfe für"},
     {"Custom", "Eigene"},
+    {"CAR PAINT", "LACKIERUNG"},   // carpaint
+    {"PAINT RED", "LACK ROT"},   // carpaint
+    {"PAINT GREEN", "LACK GRÜN"},   // carpaint
+    {"PAINT BLUE", "LACK BLAU"},   // carpaint
+    {"DECALS", "AUFKLEBER"},   // carpaint
+    {"Custom: your car in your own colour (the three rows below) instead of the paint picked in the car select.", "Eigene: dein Auto in deiner eigenen Farbe (die drei Zeilen darunter) statt der in der Fahrzeugwahl gewählten Lackierung."},   // carpaint
+    {"Cars with one fixed livery keep it.", "Autos mit nur einer festen Lackierung behalten sie."},   // carpaint
+    {"Drawn only: the game, replays and saves keep the car select's paint.", "Nur Darstellung: Spiel, Wiederholungen und Spielstände behalten die Lackierung aus der Fahrzeugwahl."},   // carpaint
+    {"The custom paint's colour, 0 to 255 for each of red, green and blue.", "Die Farbe der eigenen Lackierung, 0 bis 255 für Rot, Grün und Blau."},   // carpaint
+    {"Off: your car without its logos, numbers and stripes, in plain paint; lights, grilles and wheels stay.", "Aus: dein Auto ohne Logos, Nummern und Streifen, einfarbig lackiert; Lichter, Kühlergrill und Räder bleiben."},   // carpaint
+    {"FINISH", "LACKEFFEKT"},
+    {"Gloss", "Glanz"},
+    {"Metallic", "Metallic"},
+    {"Pearl", "Perlmutt"},
+    {"PLAYER 2 CAR PAINT", "LACKIERUNG SPIELER 2"},
+    {"P2 CAR PAINT", "LACKIERUNG S2"},
+    {"P2 PAINT RED", "LACK S2 ROT"},
+    {"P2 PAINT GREEN", "LACK S2 GRÜN"},
+    {"P2 PAINT BLUE", "LACK S2 BLAU"},
+    {"P2 DECALS", "AUFKLEBER S2"},
+    {"The paint's finish on both players' cars.", "Der Lackeffekt auf den Autos beider Spieler."},
+    {"Gloss: the game's.", "Glanz: der des Spiels."},
+    {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metallic: eine stärkere Spiegelung in der Farbe des Lacks, mit funkelnden Flocken im Licht."},
+    {"Pearl: the colour shifts as the car turns to the light.", "Perlmutt: die Farbe verändert sich, wenn sich das Auto zum Licht dreht."},
+    {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "Das Auto von Spieler 2 im geteilten Bildschirm: Eigene zeigt es in der Farbe der drei Zeilen darunter statt in der Lackierung aus der Fahrzeugwahl."},
+    {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Aus: das Auto von Spieler 2 ohne Logos, Nummern und Streifen, einfarbig lackiert."},
+    {"LIGHTING", "BELEUCHTUNG"},   // night
+    {"TIME OF DAY", "TAGESZEIT"},   // night
+    {"Day", "Tag"},   // night
+    {"Night", "Nacht"},   // night
+    {"TIME OF DAY PER RACE", "TAGESZEIT PRO RENNEN"},   // todrace
+    {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Streckenseiten (Einzelrennen, Mehrspieler): Standard, Tag oder Nacht für das nächste Rennen."},   // todrace
+    {"Time of day: {}", "Tageszeit: {}"},   // todrace
+    {"Default ({})", "Standard ({})"},   // todrace
+    {"MOON", "MOND"},   // night
+    {"SURFACE DETAIL", "OBERFLÄCHENDETAIL"},   // night
+    {"AMBIENT OCCLUSION", "UMGEBUNGSVERDECKUNG"},   // night
+    {"Night: every race after dark, with a night sky, the cars' lights on and headlight beams on the road.", "Nacht: jedes Rennen bei Dunkelheit, mit Nachthimmel, eingeschalteten Fahrzeuglichtern und Scheinwerferkegeln auf der Straße."},   // night
+    {"The moon in the night sky, and its cool light on the cars, the road and the walls facing it.", "Der Mond am Nachthimmel und sein kühles Licht auf den Autos, der Straße und den ihm zugewandten Mauern."},   // night
+    {"Relief and sheen on the road, kerbs and walls from their textures, lit by the sun or the moon.", "Relief und Glanz auf Straße, Randsteinen und Mauern aus ihren Texturen, beleuchtet von Sonne oder Mond."},   // night
+    {"Soft contact shadows under the cars and along walls and kerbs.", "Weiche Kontaktschatten unter den Autos und entlang von Mauern und Randsteinen."},   // night
+    {"Draws the scene twice: for fast graphics cards.", "Zeichnet die Szene zweimal: für schnelle Grafikkarten."},   // night
+    {"SUN SHADOWS", "SONNENSCHATTEN"},   // sunshadow
+    {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Echte Schatten der Autos auf der Straße, geworfen von der Sonne oder nachts vom Mond."},   // sunshadow
+    {"None in tunnels and under bridges.", "Keine in Tunneln und unter Brücken."},   // sunshadow
+    {"Sharper with ANTI-ALIASING at 4x or more.", "Schärfer mit KANTENGLÄTTUNG ab 4x."},   // sunshadow
+    {"It lights the road's relief too, a small extra cost even with SURFACE DETAIL off.", "Er beleuchtet auch das Relief der Straße, ein kleiner Mehraufwand auch bei ausgeschaltetem OBERFLÄCHENDETAIL."},   // night
     {"Auto: Xbox controller", "Auto: Xbox-Controller"},
     {"Auto: PlayStation controller", "Auto: PlayStation-Controller"},
     {"Auto: Nintendo, Xbox layout", "Auto: Nintendo, Xbox-Belegung"},
@@ -2938,12 +3417,314 @@ inline constexpr Entry kGE[] = {   // German
     {"Which buttons do what on this player's controller.", "Welche Taste auf dem Controller dieses Spielers was tut."},
     {"Auto: the layout of the controller's console, picked again when the controller changes: a PlayStation controller gets the PS2 game's, any other controller the original Xbox game's.", "Auto: die Belegung der Konsole des Controllers, neu gewählt, wenn der Controller wechselt: ein PlayStation-Controller bekommt die des PS2-Spiels, jeder andere Controller die des ursprünglichen Xbox-Spiels."},
     {"Xbox, PlayStation: that layout on any controller.", "Xbox, PlayStation: diese Belegung auf jedem Controller."},
+    {"Nintendo: the Xbox layout by label, A confirms and boosts, B goes back and is the Crashbreaker.", "Nintendo: die Xbox-Belegung nach Tastenbeschriftung, A bestätigt und gibt Boost, B geht zurück und ist der Crashbreaker."},
     {"Custom: your own bindings in the rows below.", "Eigene: die eigene Belegung in den Zeilen darunter."},
     {"Changing a binding below makes it Custom.", "Eine Belegung darunter zu ändern schaltet auf Eigene."},
     {"A button can do one thing while you drive and another in the menus (on the Xbox layout A boosts, and confirms in a menu).", "Eine Taste kann beim Fahren etwas anderes tun als in den Menüs (in der Xbox-Belegung gibt A Boost und bestätigt im Menü)."},
+    // polish122: the CONTROLS change notes (in the game: LAST CHANGE; the launcher's Controls page)
+    {"KEYBOARD", "TASTATUR"},
+    {"DRIVING", "FAHREN"},
+    {"MENUS", "MENÜS"},
+    {"SHORTCUTS", "TASTENKÜRZEL"},
+    {"ALL CONTROLS RESET TO DEFAULTS", "GESAMTE STEUERUNG AUF STANDARD ZURÜCKGESETZT"},
+    {"PRESS RESET ALL CONTROLS AGAIN TO PUT EVERYTHING BACK (ANY OTHER ROW CANCELS)", "STEUERUNG ZURÜCKSETZEN NOCH EINMAL DRÜCKEN, UM ALLES ZURÜCKZUSETZEN (JEDE ANDERE ZEILE BRICHT AB)"},
+    {"(this run only)", "(nur für diesen Start)"},
+    {"(NOT SAVED: {})", "(NICHT GESPEICHERT: {})"},
+    {"{}: saved (the game reads it at its next start).", "{}: gespeichert (das Spiel liest es beim nächsten Start)."},
+    {"controller layout", "Controller-Belegung"},
+    {"gyro steering", "Gyro-Lenkung"},
+    {"gyro axis", "Gyro-Achse"},
+    {"gyro sensitivity", "Gyro-Empfindlichkeit"},
+    {"gyro dead zone", "Gyro-Totzone"},
+    {"gyro recentre button", "Gyro-Zentriertaste"},
+    {"keyboard reset to the defaults", "Tastatur auf Standard zurückgesetzt"},
+    {"controller reset to the defaults", "Controller auf Standard zurückgesetzt"},
+    {"AUDIO", "AUDIO"},   // settingsui
+    {"GAME", "SPIEL"},   // settingsui
+    {"LAYOUT", "LAYOUT"},   // settingsui
+    {"SMOOTHNESS", "FLÜSSIGKEIT"},   // settingsui
+    {"TEXTURES", "TEXTUREN"},   // settingsui
+    {"CAR LOOK", "AUTO-OPTIK"},   // settingsui
+    {"GARAGE", "GARAGE"},   // settingsui
+    {"FEEDBACK", "FEEDBACK"},   // settingsui
+    {"BINDINGS", "BELEGUNG"},   // settingsui
+    {"GYRO", "GYRO"},   // settingsui
+    {"MODES", "MODI"},   // settingsui
+    {"LANGUAGE AND UNITS", "SPRACHE UND EINHEITEN"},   // settingsui
+    {"STARTING AND LOADING", "START UND LADEN"},   // settingsui
+    {"COLOUR", "FARBE"},   // settingsui
+    {"P2 COLOUR", "FARBE S2"},   // settingsui
+    {"Red", "Rot"},   // settingsui
+    {"Orange", "Orange"},   // settingsui
+    {"Yellow", "Gelb"},   // settingsui
+    {"Green", "Grün"},   // settingsui
+    {"Blue", "Blau"},   // settingsui
+    {"Purple", "Lila"},   // settingsui
+    {"Pink", "Rosa"},   // settingsui
+    {"White", "Weiß"},   // settingsui
+    {"Silver", "Silber"},   // settingsui
+    {"A ready colour: sets the three rows below and turns the custom paint on.", "Eine fertige Farbe: setzt die drei Zeilen darunter und schaltet die eigene Lackierung ein."},   // settingsui
+    {"Custom: the colour of the rows below.", "Eigene: die Farbe der Zeilen darunter."},   // settingsui
+    {"VOLUMES AND DJ", "LAUTSTÄRKE UND DJ"},   // settingsui
+    {"The game's own sound: RADIO VOLUME, the effects, the speech and the DJ are in DRIVER DETAILS > SETTINGS > AUDIO.", "Der Ton des Spiels: RADIOLAUTSTÄRKE, die Effekte, die Sprache und der DJ sind unter FAHRERINFO > OPTIONEN > AUDIO."},   // settingsui
+    {"BOOST HOLD OR TOGGLE", "BOOST HALTEN ODER UMSCHALTEN"},   // settingsui
+    {"Boost by holding the button, or press once to boost and again to stop: CONTROLS > DRIVING > BOOST.", "Boosten, solange die Taste gehalten wird, oder einmal drücken zum Boosten und noch einmal zum Aufhören: STEUERUNG > FAHREN > BOOST."},   // settingsui
+    {"BUTTONS AND KEYS", "TASTEN UND KNÖPFE"},   // settingsui
+    {"The launcher's Controllers page: test your controllers, and change the buttons and keys of both players, the shortcuts and the gyro steering.", "Die Seite Controller des Launchers: die Controller testen und die Tasten und Knöpfe beider Spieler, die Kurzbefehle und die Gyro-Lenkung ändern."},   // settingsui
+    {"The launcher's Music page: your own music folder, the playlist, its volume and other music apps.", "Die Seite Musik des Launchers: dein eigener Musikordner, die Wiedergabeliste, ihre Lautstärke und andere Musik-Apps."},   // settingsui
+    {"The launcher's HD Textures page: choose the pack's folder, get the pack, or stop using it.", "Die Seite HD-Texturen des Launchers: den Ordner des Pakets wählen, das Paket holen oder es nicht mehr verwenden."},   // settingsui
+    {"CHANGE", "ÄNDERN"},   // settingsui
+    {"CHOOSE", "WÄHLEN"},   // settingsui
+    {"CLOSE AND SAVE", "SCHLIESSEN UND SPEICHERN"},   // settingsui
+    {"SECTION", "ABSCHNITT"},   // settingsui
+    {"REBIND", "NEU BELEGEN"},   // settingsui
+    {"ADD", "HINZUFÜGEN"},   // settingsui
+    {"REMOVE", "ENTFERNEN"},   // settingsui
+    {"DEFAULT", "STANDARD"},   // settingsui
+    {"CLICK", "KLICK"},   // settingsui
+    {"WHEEL", "MAUSRAD"},   // settingsui
+    {"SCROLL", "BLÄTTERN"},   // settingsui
+    {"RIGHT CLICK", "RECHTSKLICK"},   // settingsui
+    {"CLOSE", "SCHLIESSEN"},   // settingsui
+    {"MOVE", "BEWEGEN"},   // settingsui
+    {"Kept: the menus need one input that confirms and one that goes back.", "Behalten: Die Menüs brauchen eine Eingabe zum Bestätigen und eine zum Zurückgehen."},   // settingsui
+    {"Go back", "Zurück"},   // settingsui
+    {"Bug report...", "Fehlerbericht..."},   // settingsui
+    {"Make a bug report?", "Fehlerbericht erstellen?"},   // settingsui
+    {"Make report", "Bericht erstellen"},   // settingsui
+    {"With my save", "Mit meinem Spielstand"},   // settingsui
+    {"Click a row twice to open it", "Zum Öffnen eine Zeile zweimal anklicken"},   // settingsui
+    {"LAUNCHER", "LAUNCHER"},   // settingsui
+    {"TEST", "TEST"},   // settingsui
+    {"Left stick", "Linker Stick"},   // settingsui
+    {"built {}", "erstellt am {}"},   // settingsui
+    {"Burnout 3 native port, a test build", "nativer Burnout-3-Port, eine Testversion"},   // settingsui
+    {"{} preset", "Stufe {}"},   // settingsui
+    {"fullscreen", "Vollbild"},   // settingsui
+    {"window", "Fenster"},   // settingsui
+    {"no MSAA", "kein MSAA"},   // settingsui
+    {"{} fps limit", "auf {} FPS begrenzt"},   // settingsui
+    {"no HD pack", "kein HD-Pack"},   // settingsui
+    {"HD pack", "HD-Pack"},   // settingsui
+    {"HD pack off", "HD-Pack aus"},   // settingsui
+    {"saved {}", "gespeichert am {}"},   // settingsui
+    {"(an older profile-{} folder: read, and saved as a .sav at the first save)", "(ein älterer Ordner profile-{}: gelesen und beim ersten Speichern als .sav gespeichert)"},   // settingsui
+    {"An older profile-{} folder (read; saved as a .sav at the first save)", "Ein älterer Ordner profile-{} (gelesen; beim ersten Speichern als .sav gespeichert)"},   // settingsui
+    {"Released {}", "Veröffentlicht am {}"},   // settingsui
+    {"Last checked {}", "Zuletzt geprüft: {}"},   // settingsui
+    {"Version {}", "Version {}"},   // settingsui
+    {"Not checked for updates yet", "Noch nicht nach Updates gesucht"},   // settingsui
+    {"Checking for updates...", "Suche nach Updates..."},   // settingsui
+    {"Update check off (Settings > Launcher)", "Update-Suche aus (Einstellungen > Launcher)"},   // settingsui
+    {"Update available: {}", "Update verfügbar: {}"},   // settingsui
+    {"Up to date ({} is the latest release)", "Aktuell ({} ist die neueste Version)"},   // settingsui
+    {"Up to date (no release published yet)", "Aktuell (noch keine Version veröffentlicht)"},   // settingsui
+    {"Couldn't check for updates ({})", "Konnte nicht nach Updates suchen ({})"},   // settingsui
+    {"Installed: {}", "Installiert: {}"},   // settingsui
+    {"on: {}", "an: {}"},   // settingsui
+    {"gold", "Gold"},   // settingsui
+    {"silver", "Silber"},   // settingsui
+    {"bronze", "Bronze"},   // settingsui
+    {"Paint {}", "Lackierung {}"},   // settingsui
+    {"NOT SET", "NICHT BELEGT"},   // settingsui
+    {"Not saved: {}", "Nicht gespeichert: {}"},   // settingsui
+    // item 11: a pack of the game's files without a mod.ini
+    {"Install as a file-replacement mod?", "Als Dateiersatz-Mod installieren?"},
+    {"This pack has no mod.ini.", "Dieses Paket hat keine mod.ini."},
+    {"Install it as a file-replacement mod named {}?", "Als Dateiersatz-Mod mit dem Namen {} installieren?"},
+    {"Its files replace the game's files of the same names; it has no code, so nothing in it runs.", "Seine Dateien ersetzen die gleichnamigen Dateien des Spiels; es enthält keinen Code, also wird nichts daraus ausgeführt."},
+    {"A mod.ini is written for it, and it starts off.", "Dafür wird eine mod.ini geschrieben, und die Mod ist zunächst aus."},
+    {"Install", "Installieren"},
+    {"Not a mod", "Keine Mod"},
+    {"{} was not installed; nothing was written.", "{} wurde nicht installiert; es wurde nichts geschrieben."},
+    {"It has no mod.ini, and no folders of the game's own (DATA, PVEH, TRACKS, SOUND, OVID) to install as replacement files.", "Es hat keine mod.ini und keine Ordner des Spiels (DATA, PVEH, TRACKS, SOUND, OVID), die als Ersatzdateien installiert werden könnten."},
+    {"A mod.ini is the small text file at the top of a mod that names it: its id, name and version.", "Eine mod.ini ist die kleine Textdatei oben in einer Mod, die sie benennt: ihre ID, ihr Name und ihre Version."},
+    {"Add folder...", "Ordner hinzufügen..."},
+    {"Installs a mod from a folder: copied into its own folder in the mods folder.", "Installiert eine Mod aus einem Ordner: in einen eigenen Ordner im Mod-Ordner kopiert."},
+    {"A pack of the game's own files without a mod.ini (its DATA, PVEH or TRACKS folders) can be installed as a file-replacement mod.", "Ein Paket mit Dateien des Spiels ohne mod.ini (seine Ordner DATA, PVEH oder TRACKS) kann als Dateiersatz-Mod installiert werden."},
+    {"Add a mod: choose its folder (a mod, or a pack of the game's files)", "Mod hinzufügen: ihren Ordner wählen (eine Mod oder ein Paket mit Dateien des Spiels)"},
+    {"Open the mod's folder, then Start: it is copied into the mods folder.", "Den Ordner der Mod öffnen, dann Start: Er wird in den Mod-Ordner kopiert."},
+    {"Set aside file {}?", "Datei {} beiseitelegen?"},   // saveflow
+    {"The game can't play profile-{}.sav.", "Das Spiel kann profile-{}.sav nicht spielen."},   // saveflow
+    {"Why: {}.", "Grund: {}."},   // saveflow
+    {"It is renamed in the save folder (kept, not deleted) and the file starts empty: the game makes a new profile at its first save.", "Sie wird im Speicherordner umbenannt (behalten, nicht gelöscht) und die Datei beginnt leer: Das Spiel legt beim ersten Speichern ein neues Profil an."},   // saveflow
+    {"Quit the game first if it is running.", "Das Spiel vorher beenden, falls es läuft."},   // saveflow
+    {"Set aside", "Beiseitelegen"},   // saveflow
+    {"Set aside as {}.", "Beiseitegelegt als {}."},   // saveflow
+    {"The game starts this file fresh.", "Das Spiel beginnt diese Datei neu."},   // saveflow
+    {"Cannot set it aside: {}", "Beiseitelegen nicht möglich: {}"},   // saveflow
+    {"Can't be played: damaged or unreadable", "Nicht spielbar: beschädigt oder unlesbar"},   // saveflow
+    {"Set aside file {} and start fresh...", "Datei {} beiseitelegen und neu beginnen..."},   // saveflow
+    {"Renames profile-{}.sav in the save folder (kept, not deleted) so that the game starts this file empty.", "Benennt profile-{}.sav im Speicherordner um (behalten, nicht gelöscht), damit das Spiel diese Datei leer beginnt."},   // saveflow
+    {"SAVED", "GESPEICHERT"},   // saveflow
+    {"SAVE FAILED", "SPEICHERN FEHLGESCHLAGEN"},   // saveflow
+    {"YOUR LAST SAVE IS KEPT", "DEIN LETZTER SPIELSTAND BLEIBT ERHALTEN"},   // saveflow
+    {"RETRYING", "NEUER VERSUCH"},   // saveflow
+    {"SAVED AGAIN TO PROFILE {}", "WIEDER IN PROFIL {} GESPEICHERT"},   // saveflow
+    {"NOT SAVED", "NICHT GESPEICHERT"},   // saveflow
+    {"CAN'T READ {}", "{} IST NICHT LESBAR"},   // saveflow
+    {"PROGRESS WON'T BE SAVED THIS SESSION", "DER FORTSCHRITT WIRD IN DIESER SITZUNG NICHT GESPEICHERT"},   // saveflow
+    {"THE LAUNCHER'S SAVES PAGE CAN SET IT ASIDE", "DIE SEITE SPIELSTÄNDE IM LAUNCHER KANN SIE BEISEITELEGEN"},   // saveflow
+    {"{} CHANGED OUTSIDE THE GAME", "{} WURDE AUSSERHALB DES SPIELS GEÄNDERT"},   // saveflow
+    {"SAVED TO {}", "GESPEICHERT IN {}"},   // saveflow
+    {"A SAVE WAS IMPORTED: RESTART THE GAME TO PLAY IT", "EIN SPIELSTAND WURDE IMPORTIERT: DAS SPIEL NEU STARTEN, UM IHN ZU SPIELEN"},   // saveflow
+    {"SAVE WARNING", "SPEICHERWARNUNG"},   // saveflow
+    {"ANOTHER GAME ON THIS COMPUTER USES THIS SAVE FOLDER", "EIN ANDERES SPIEL AUF DIESEM COMPUTER NUTZT DIESEN SPEICHERORDNER"},   // saveflow
+    {"PLAY ONE AT A TIME", "NUR AUF EINEM GLEICHZEITIG SPIELEN"},   // saveflow
+    {"Progress from {} was saved beside it, because the file changed while the game was running.", "Ein Fortschritt vom {} wurde daneben gespeichert, weil sich die Datei änderte, während das Spiel lief."},   // saveflow
+    {"Use it", "Verwenden"},   // saveflow
+    {"Leave it", "Belassen"},   // saveflow
+    {"Makes it this file's save; the current one is kept as a backup (.bak and backups).", "Macht ihn zum Spielstand dieser Datei; der aktuelle bleibt als Sicherung erhalten (.bak und backups)."},   // saveflow
+    {"Hides this line; the file stays in the save folder.", "Blendet diese Zeile aus; die Datei bleibt im Speicherordner."},   // saveflow
+    {"Use the progress from {}?", "Den Fortschritt vom {} verwenden?"},   // saveflow
+    {"It replaces profile-{}.sav.", "Er ersetzt profile-{}.sav."},   // saveflow
+    {"The current one is kept as profile-{}.sav.bak and in backups.", "Der aktuelle bleibt als profile-{}.sav.bak und in backups erhalten."},   // saveflow
+    {"Now using the progress from {}.", "Der Fortschritt vom {} wird jetzt verwendet."},   // saveflow
+    {"Cannot use it: {}", "Verwenden nicht möglich: {}"},   // saveflow
+    // xboximport (1.3.0): Import Xbox textures
+    {"XBOX TEXTURES", "XBOX-TEXTUREN"},
+    {"The textures imported from your Xbox disc in the launcher, below your own HD pack and the mods' packs.", "Die im Launcher von deiner Xbox-Disc importierten Texturen, unter deinem eigenen HD-Paket und den Paketen der Mods."},
+    {"Used while HD TEXTURES is on.", "Verwendet, solange HD-TEXTUREN an ist."},
+    {"Xbox textures", "Xbox-Texturen"},
+    {"Builds a texture pack on this computer from your own Xbox disc image of the game (.iso or .xiso).", "Erstellt auf diesem Computer ein Texturpaket aus deinem eigenen Xbox-Disc-Image des Spiels (.iso oder .xiso)."},
+    {"It is a small improvement: some building fronts, signs and car paint are somewhat sharper.", "Es ist eine kleine Verbesserung: einige Gebäudefassaden, Schilder und Autolackierungen sind etwas schärfer."},
+    {"An HD texture pack looks far better; this is for players who want to use their Xbox disc.", "Ein HD-Texturpaket sieht weit besser aus; dies ist für Spieler, die ihre Xbox-Disc verwenden möchten."},
+    {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Nichts wird heruntergeladen oder geteilt, und dein eigenes HD-Paket und die Pakete der Mods haben weiter Vorrang."},
+    {"Not imported.", "Nicht importiert."},
+    {"{} textures imported.", "{} Texturen importiert."},
+    {"Size: {} MB.", "Größe: {} MB."},
+    {"From: {}.", "Aus: {}."},
+    {"Made by an older version: import again for the newest result.", "Von einer älteren Version erstellt: erneut importieren für das beste Ergebnis."},
+    {"XBOX TEXTURES is off.", "XBOX-TEXTUREN ist aus."},
+    {"HD TEXTURES is off.", "HD-TEXTUREN ist aus."},
+    {"Import Xbox textures...", "Xbox-Texturen importieren..."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso).", "Wähle dein Xbox-Disc-Image des Spiels (.iso oder .xiso)."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso)", "Wähle dein Xbox-Disc-Image des Spiels (.iso oder .xiso)"},
+    {"The import runs on this computer in about a minute.", "Der Import läuft auf diesem Computer und dauert etwa eine Minute."},
+    {"Deletes the imported textures (your disc image is not touched).", "Löscht die importierten Texturen (dein Disc-Image bleibt unverändert)."},
+    {"Disc images here: A on one imports its textures.", "Disc-Images hier: A auf einem importiert seine Texturen."},
+    {"No disc images here: open the folder that holds your Xbox disc image.", "Keine Disc-Images hier: öffne den Ordner mit deinem Xbox-Disc-Image."},
+    {"Xbox disc images (*.iso, *.xiso)", "Xbox-Disc-Images (*.iso, *.xiso)"},
+    {"Importing Xbox textures", "Xbox-Texturen werden importiert"},
+    {"Reading the game's files: {}.", "Spieldateien werden gelesen: {}."},
+    {"Building the textures: {}.", "Texturen werden erstellt: {}."},
+    {"Textures written: {}.", "Geschriebene Texturen: {}."},
+    {"Cancelling...", "Wird abgebrochen..."},
+    {"Import cancelled: nothing was changed.", "Import abgebrochen: nichts wurde geändert."},
+    {"The import failed.", "Der Import ist fehlgeschlagen."},
+    {"Remove the Xbox textures?", "Xbox-Texturen entfernen?"},
+    {"The imported textures are deleted.", "Die importierten Texturen werden gelöscht."},
+    {"You can import them again from your disc at any time.", "Du kannst sie jederzeit erneut von deiner Disc importieren."},
+    {"The Xbox textures were removed.", "Die Xbox-Texturen wurden entfernt."},
+    {"Cannot open the disc image.", "Das Disc-Image kann nicht geöffnet werden."},
+    {"Not an Xbox disc image (no XDVDFS volume in it).", "Kein Xbox-Disc-Image (kein XDVDFS-Volume darin)."},
+    {"This Xbox disc image is not Burnout 3: Takedown.", "Dieses Xbox-Disc-Image ist nicht Burnout 3: Takedown."},
+    {"The game's files were not found (choose the game's folder first).", "Die Dateien des Spiels wurden nicht gefunden (wähle zuerst den Ordner des Spiels)."},
+    {"Not enough free space (about 200 MB needed).", "Nicht genug freier Speicher (etwa 200 MB nötig)."},
+    {"Could not read the disc or write the textures (is the drive full?).", "Die Disc konnte nicht gelesen oder die Texturen nicht geschrieben werden (ist das Laufwerk voll?)."},
+    {"No Xbox texture matched the game's (a different version of the game?).", "Keine Xbox-Textur passt zu denen des Spiels (eine andere Version des Spiels?)."},
+    {"Could not replace the earlier import (a file in it is open?).", "Der frühere Import konnte nicht ersetzt werden (ist eine Datei darin geöffnet?)."},
+    {"Could not move the textures into place.", "Die Texturen konnten nicht an ihren Platz verschoben werden."},
+    {"Out of memory while reading the disc image (a damaged image?).", "Zu wenig Speicher beim Lesen des Disc-Images (ein beschädigtes Image?)."},
+    {"The import stopped: {}.", "Der Import wurde abgebrochen: {}."},
+    {"The import stopped: an unknown error.", "Der Import wurde abgebrochen: ein unbekannter Fehler."},
+    // portable mode (1.3.0)
+    {"PORTABLE MODE", "PORTABLER MODUS"},
+    {"On: everything the port keeps for you (settings, saves, mods, logs, replays) is in a folder called appdata beside the launcher, so the game can be carried on a USB stick.", "An: Alles, was die Portierung für dich speichert (Einstellungen, Spielstände, Mods, Protokolle, Replays), liegt in einem Ordner namens appdata neben dem Launcher, sodass das Spiel auf einem USB-Stick mitgenommen werden kann."},
+    {"Off: in this computer's user folder.", "Aus: im Benutzerordner dieses Computers."},
+    {"The launcher moves your data now: it is copied and checked first, and the old folder is kept until the game has started from the new one.", "Der Launcher verschiebt deine Daten jetzt: Sie werden zuerst kopiert und geprüft, und der alte Ordner bleibt erhalten, bis das Spiel aus dem neuen gestartet ist."},
+    {"The launcher moves your data at its next start (it asks first).", "Der Launcher verschiebt deine Daten bei seinem nächsten Start (er fragt vorher)."},
+    {"The install folder cannot be written by you: move the game to a folder of your own to use portable mode.", "Du kannst nicht in den Installationsordner schreiben: Verschiebe das Spiel in einen eigenen Ordner, um den portablen Modus zu nutzen."},
+    {"The game is running: close it first.", "Das Spiel läuft: Schließe es zuerst."},
+    {"A data folder was given when the launcher was started (--pref), so this does not apply.", "Beim Start des Launchers wurde ein Datenordner angegeben (--pref), daher gilt dies nicht."},
+    {"The launcher's own folder is not known.", "Der Ordner des Launchers ist nicht bekannt."},
+    {"Data folder", "Datenordner"},
+    {"In use", "In Gebrauch"},
+    {"Old copy", "Alte Kopie"},
+    {"Remove the old copy...", "Alte Kopie entfernen..."},
+    {"Deletes the folder your data was moved from (asks first).", "Löscht den Ordner, aus dem deine Daten verschoben wurden (fragt vorher)."},
+    {"Your data in use is not touched.", "Deine verwendeten Daten bleiben unberührt."},
+    {"Start the game once from the new folder first: the old copy stays until then.", "Starte das Spiel zuerst einmal aus dem neuen Ordner: Die alte Kopie bleibt bis dahin."},
+    {"portable: the appdata folder beside the launcher", "portabel: der Ordner appdata neben dem Launcher"},
+    {"It cannot be written: settings and saves are not kept.", "Er ist nicht beschreibbar: Einstellungen und Spielstände werden nicht gespeichert."},
+    {"portable", "portabel"},
+    {"Moving your data", "Deine Daten werden verschoben"},
+    {"Putting it in place.", "Wird an seinen Platz gebracht."},
+    {"Copying: {} MB.", "Kopieren: {} MB."},
+    {"Checking the copy: {} MB.", "Kopie wird geprüft: {} MB."},
+    {"Nothing is removed until the copy is checked.", "Nichts wird entfernt, bevor die Kopie geprüft ist."},
+    {"Your data was not moved", "Deine Daten wurden nicht verschoben"},
+    {"Nothing was changed: your data is where it was.", "Nichts wurde geändert: Deine Daten sind dort, wo sie waren."},
+    {"Cancelled: nothing was moved.", "Abgebrochen: Nichts wurde verschoben."},
+    {"Not moved: {}.", "Nicht verschoben: {}."},
+    {"Your data is now in {}.", "Deine Daten sind jetzt in {}."},
+    {"The old copy is kept in {}.", "Die alte Kopie bleibt in {}."},
+    {"The data that was in this computer's folder is kept in {}.", "Die Daten, die im Ordner dieses Computers waren, bleiben in {}."},
+    {"Once the game has started from the new folder, the launcher offers to remove the old copy.", "Sobald das Spiel aus dem neuen Ordner gestartet ist, bietet der Launcher an, die alte Kopie zu entfernen."},
+    {"Portable mode is on.", "Der portable Modus ist an."},
+    {"Portable mode is off.", "Der portable Modus ist aus."},
+    {"Portable mode is on", "Der portable Modus ist an"},
+    {"Portable mode is off", "Der portable Modus ist aus"},
+    {"Portable mode", "Portabler Modus"},
+    {"Cannot move your data: {}.", "Deine Daten können nicht verschoben werden: {}."},
+    {"Not enough free space", "Nicht genug freier Speicher"},
+    {"Your data needs {} MB where it goes.", "Deine Daten brauchen {} MB am Ziel."},
+    {"Free there: {} MB.", "Dort frei: {} MB."},
+    {"Turn portable mode on?", "Portablen Modus einschalten?"},
+    {"Turn portable mode off?", "Portablen Modus ausschalten?"},
+    {"Your settings, saves and everything else the port keeps for you are copied into the appdata folder beside the launcher, checked file by file, and used from then on.", "Deine Einstellungen, Spielstände und alles andere, was die Portierung für dich speichert, werden in den Ordner appdata neben dem Launcher kopiert, Datei für Datei geprüft und ab dann verwendet."},
+    {"Your data is copied from the appdata folder into this computer's user folder, checked file by file, and used from then on.", "Deine Daten werden aus dem Ordner appdata in den Benutzerordner dieses Computers kopiert, Datei für Datei geprüft und ab dann verwendet."},
+    {"The old folder is kept under a dated name until the game has started from the new one.", "Der alte Ordner bleibt unter einem Namen mit Datum erhalten, bis das Spiel aus dem neuen gestartet ist."},
+    {"The appdata folder is kept beside the launcher under a dated name until the game has started from the new one.", "Der Ordner appdata bleibt neben dem Launcher unter einem Namen mit Datum erhalten, bis das Spiel aus dem neuen gestartet ist."},
+    {"Your save folder is one you chose elsewhere (the Saves page): it is not moved.", "Dein Spielstandordner ist einer, den du anderswo gewählt hast (Seite Spielstände): Er wird nicht verschoben."},
+    {"This computer's user folder already holds data from an earlier time.", "Der Benutzerordner dieses Computers enthält bereits Daten von früher."},
+    {"Choose which to keep: the other is set aside under a dated name, never mixed.", "Wähle, welche du behalten willst: Die anderen werden unter einem Namen mit Datum beiseitegelegt, nie vermischt."},
+    {"Portable data", "Portable Daten"},
+    {"This computer's data", "Daten dieses Computers"},
+    {"Move my data", "Meine Daten verschieben"},
+    {"Move it back", "Zurück verschieben"},
+    {"Remove the old copy", "Alte Kopie entfernen"},
+    {"Keep it", "Behalten"},
+    {"Remove the old copy?", "Alte Kopie entfernen?"},
+    {"The game has started from your data's new folder, and the old copy is still in {}.", "Das Spiel ist aus dem neuen Ordner deiner Daten gestartet, und die alte Kopie ist noch in {}."},
+    {"The data set aside is in {}.", "Die beiseitegelegten Daten sind in {}."},
+    {"Remove it to free the space, or keep it.", "Entferne sie, um Platz zu schaffen, oder behalte sie."},
+    {"The old copy was removed.", "Die alte Kopie wurde entfernt."},
+    {"Not all of the old copy could be removed: {}.", "Die alte Kopie konnte nicht ganz entfernt werden: {}."},
+    {"Your data is being moved: wait for it to finish (or cancel it).", "Deine Daten werden verschoben: Warte, bis es fertig ist (oder brich ab)."},
+    {"The launcher opened because portable mode needs your answer.", "Der Launcher hat sich geöffnet, weil der portable Modus deine Antwort braucht."},
+    {"B3PORT_USER_DIR is set to a data folder of your choice, so this does not apply.", "B3PORT_USER_DIR verweist auf einen Datenordner deiner Wahl, daher gilt dies nicht."},   // portable mode
+    {"Your data folder cannot be written (a write-protected drive?): settings and saves will not be kept.", "Dein Datenordner ist nicht beschreibbar (ein schreibgeschütztes Laufwerk?): Einstellungen und Spielstände werden nicht gespeichert."},   // portable mode
+    {"THE LAUNCHER IS MOVING YOUR DATA", "DER LAUNCHER VERSCHIEBT DEINE DATEN"},   // portable mode
+    {"QUIT AND START AGAIN WHEN IT IS DONE", "BEENDEN UND NEU STARTEN, WENN ER FERTIG IST"},   // portable mode
+    {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "DER PORTABLE DATENORDNER IST NICHT BESCHREIBBAR"},   // portable mode
+    {"SAVES AND SETTINGS WON'T BE KEPT", "SPIELSTÄNDE UND EINSTELLUNGEN WERDEN NICHT GESPEICHERT"},   // portable mode
 };
 
 inline constexpr Entry kIT[] = {   // Italian
+    {"VOICES", "VOCI"},   // 1.3.0 VOICES
+    {"The Crash FM DJ and the race training's narrator.", "Il DJ di Crash FM e il narratore dell'allenamento."},   // 1.3.0 VOICES
+    {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Lingua: parlano la LINGUA scelta (francese, tedesco, italiano e spagnolo hanno le proprie; inglese britannico, olandese e svedese hanno le voci inglesi, come sui loro dischi)."},   // 1.3.0 VOICES
+    {"The training's narration is on your disc already; the DJ's lines need importing (the DJ VOICE rows of the launcher).", "La narrazione dell'allenamento è già sul tuo disco; le battute del DJ vanno importate (le righe VOCE DEL DJ del launcher)."},   // 1.3.0 VOICES
+    {"English: the US voices, with the menus in your language.", "English: le voci americane, con i menu nella tua lingua."},   // 1.3.0 VOICES
+    {"TRAINING VIDEOS: {}", "VIDEO DI ALLENAMENTO: {}"},   // 1.3.0 VOICES
+    {"Copying the training videos from the disc.", "Copia dei video di allenamento dal disco in corso."},   // 1.3.0 VOICES
+    {"Imported: the race training videos in this language are on this PC.", "Importato: i video di allenamento in questa lingua sono su questo PC."},   // 1.3.0 VOICES
+    {"Remove deletes them; the training then shows the English pictures.", "Rimuovi li elimina; l'allenamento mostra allora le immagini inglesi."},   // 1.3.0 VOICES
+    {"Copies the race training videos' pictures in this language (their on-screen text) from the chosen disc to this PC, once.", "Copia una volta le immagini dei video di allenamento in questa lingua (il loro testo a schermo) dal disco scelto a questo PC."},   // 1.3.0 VOICES
+    {"Without them the training shows the English pictures with the narration in your language.", "Senza di esse l'allenamento mostra le immagini inglesi con la narrazione nella tua lingua."},   // 1.3.0 VOICES
+    {"Its DJ voices (about 300 MB a language) and race training videos (about 130 MB a language) can then be imported in the rows below.", "Le sue voci del DJ (circa 300 MB per lingua) e i video di allenamento (circa 130 MB per lingua) si possono poi importare nelle righe qui sotto."},   // 1.3.0 VOICES
+    {"Language", "Lingua"},   // 1.3.0 DJ VOICE
+    {"DJ VOICE: {}", "VOCE DEL DJ: {}"},   // 1.3.0 DJ VOICE
+    {"Cancel ({} %)", "Annulla ({} %)"},   // 1.3.0 DJ VOICE
+    {"Remove ({} MB)", "Rimuovi ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Import ({} MB)", "Importa ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Copying the DJ's lines from the disc.", "Copia delle battute del DJ dal disco in corso."},   // 1.3.0 DJ VOICE
+    {"Cancel stops it and keeps nothing.", "Annulla la interrompe e non conserva nulla."},   // 1.3.0 DJ VOICE
+    {"Imported: the DJ's lines in this language are on this PC.", "Importato: le battute del DJ in questa lingua sono su questo PC."},   // 1.3.0 DJ VOICE
+    {"Remove deletes them; the DJ is then English.", "Rimuovi le elimina; il DJ torna in inglese."},   // 1.3.0 DJ VOICE
+    {"Copies the DJ's lines in this language from the chosen disc to this PC, once.", "Copia una volta le battute del DJ in questa lingua dal disco scelto a questo PC."},   // 1.3.0 DJ VOICE
+    {"Needs {} MB of free space.", "Richiede {} MB di spazio libero."},   // 1.3.0 DJ VOICE
     {"Not available on macOS: it has no public way for a game to read what another app is playing.", "Non disponibile su macOS: non offre a un gioco un modo pubblico per leggere cosa riproduce un'altra app."},
     {"Shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the EA TRAX popup when the song changes.", "Mostra il brano riprodotto da un'altra app (Spotify, un browser, qualsiasi lettore nei controlli multimediali del sistema) nel popup EA TRAX quando il brano cambia."},
     {"Its sound stays in that app: turn RADIO VOLUME down in Driver Details to hear only it.", "Il suo audio resta in quell'app: per sentire solo quello, abbassare VOLUME RADIO in Dettagli pilota."},
@@ -2998,6 +3779,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"How far Low mode looks past the newest game tick.", "Quanto la modalità Bassa guarda oltre il tick di gioco più recente."},
     {"FRAMES IN FLIGHT", "FOTOGRAMMI IN CODA"},
     {"Frames the GPU may queue: 1 is the most direct, more can be smoother.", "Fotogrammi che la GPU può accodare: 1 è il più diretto, valori maggiori possono essere più fluidi."},
+    {"Auto: 1, or 2 while the graphics card holds the frame rate below its target (with LATENCY MODE Auto).", "Auto: 1, oppure 2 finché la scheda grafica tiene la frequenza dei fotogrammi sotto l'obiettivo (con MODALITÀ LATENZA Auto)."},
     {"GRAPHICS", "GRAFICA"},
     {"IMAGE", "IMMAGINE"},
     {"ANTI-ALIASING", "ANTI-ALIASING"},
@@ -3015,6 +3797,8 @@ inline constexpr Entry kIT[] = {   // Italian
     {"How large the 3D picture is drawn, as a share of the window, then scaled up.", "Quanto è grande l'immagine 3D disegnata, in proporzione alla finestra, prima di essere ingrandita."},
     {"Lower is faster on a weak graphics chip; the HUD and menus stay sharp.", "Più basso è più veloce su un chip grafico debole; HUD e menu restano nitidi."},
     {"100% is the normal picture.", "100% è l'immagine normale."},
+    {"Above 100%, it is drawn larger and scaled down: smoother edges and finer detail, for a large cost.", "Sopra il 100% viene disegnata più grande e poi ridotta: bordi più lisci e dettagli più fini, a un costo elevato."},
+    {"150% and 200% want a graphics card with plenty of memory.", "150% e 200% richiedono una scheda grafica con molta memoria."},
     {"DITHER", "DITHERING"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Un motivo fine che nasconde i gradini nelle sfumature uniformi come il cielo."},
     {"None", "Nessuno"},
@@ -3181,6 +3965,8 @@ inline constexpr Entry kIT[] = {   // Italian
     {"CAR SERIES ON L1 / R1", "SERIE AUTO SU L1 / R1"},
     {"On: in the car select, the shoulder buttons (L1 / R1, LB / RB, or their keys) change the car series as Left / Right do, and show beside the series arrows.", "Sì: nella selezione auto, i pulsanti dorsali (L1 / R1, LB / RB o i relativi tasti) cambiano la serie di auto come Sinistra / Destra e appaiono accanto alle frecce della serie."},
     {"Changes the input the game gets; Off is the original.", "Cambia i comandi che riceve il gioco; No è l'originale."},
+    {"GARAGE CAMERA", "TELECAMERA GARAGE"},
+    {"On: on the car pages (car select, your garage), the right stick or a mouse drag on the car turns the view around the car; a second after you let go, the car spins on its own again.", "Sì: nelle pagine delle auto (selezione auto, il tuo garage), la levetta destra o un trascinamento del mouse sull'auto fa ruotare la visuale attorno all'auto; un secondo dopo averla rilasciata, l'auto torna a girare da sola."},
     {"ANALOG TRIGGERS", "GRILLETTI ANALOGICI"},
     {"On: a trigger set to accelerate or brake works gradually, like a pedal (light pressure, light throttle).", "Sì: un grilletto impostato per accelerare o frenare agisce in modo graduale, come un pedale (pressione leggera, gas leggero)."},
     {"Both triggers together still powerslide.", "Entrambi i grilletti insieme eseguono comunque la derapata."},
@@ -3327,6 +4113,12 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Photo mode: the next blur level, round to the first.", "Modalità foto: il livello di sfocatura successivo, poi di nuovo il primo."},
     {"PHOTO: FOCUS ON CAR / CENTRE", "FOTO: FUOCO AUTO / CENTRO"},
     {"Photo mode: focus on the car or the middle of the screen.", "Modalità foto: metti a fuoco l'auto o il centro dello schermo."},
+    {"PHOTO: MOTION BLUR", "FOTO: SFOCATURA DI MOVIMENTO"},
+    {"Photo mode: the motion blur's next mode: off, tracking, panning, static.", "Modalità foto: la modalità successiva della sfocatura di movimento: disattivata, inseguimento, panning, fissa."},
+    {"PHOTO: FASTER SHUTTER", "FOTO: OTTURATORE PIÙ RAPIDO"},
+    {"Photo mode: a shorter exposure, less motion blur.", "Modalità foto: un'esposizione più breve, meno sfocatura di movimento."},
+    {"PHOTO: SLOWER SHUTTER", "FOTO: OTTURATORE PIÙ LENTO"},
+    {"Photo mode: a longer exposure, more motion blur.", "Modalità foto: un'esposizione più lunga, più sfocatura di movimento."},
     {"PHOTO: GAME CAMERA", "FOTO: VISUALE DI GIOCO"},
     {"Photo mode: back to the game's camera view.", "Modalità foto: torna alla visuale della telecamera del gioco."},
     {"PHOTO: HELP", "FOTO: AIUTO"},
@@ -3468,7 +4260,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Start the game, or start it in safe mode with its settings turned down.", "Avvia il gioco, oppure avvialo in modalità sicura con le impostazioni ridotte."},
     {"The game's own PC settings: the same rows as SETTINGS in the game, saved to the same file.", "Le impostazioni PC del gioco: le stesse voci di IMPOSTAZIONI nel gioco, salvate nello stesso file."},
     {"A PCSX2 texture replacement folder for Burnout 3, used from the next start.", "Una cartella di texture sostitutive di PCSX2 per Burnout 3, usata dal prossimo avvio."},
-    {"Your own music on the game's radio: the same settings as SETTINGS > INTERFACE > MUSIC in the game.", "La propria musica sulla radio del gioco: le stesse impostazioni di IMPOSTAZIONI > INTERFACCIA > MUSICA nel gioco."},
+    {"Your own music on the game's radio: the same settings as SETTINGS > AUDIO > MUSIC in the game.", "La propria musica sulla radio del gioco: le stesse impostazioni di IMPOSTAZIONI > AUDIO > MUSICA nel gioco."},
     {"Mods in the mods folder: which are on, and their order.", "Le mod nella cartella mod: quali sono attive e il loro ordine."},
     {"Your disc and its files are never changed.", "Il disco e i suoi file non vengono mai modificati."},
     {"Your Burnout 3 disc (NTSC-U, SLUS-21050): its image, or a folder with its contents.", "Il disco di Burnout 3 (NTSC-U, SLUS-21050): la sua immagine o una cartella con il suo contenuto."},
@@ -3476,7 +4268,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"The game saves by itself.", "Il gioco salva automaticamente."},
     {"Each profile's stats as the game saved them, and local achievements worked out from them.", "Le statistiche di ogni profilo come le ha salvate il gioco, e gli obiettivi locali ricavati da esse."},
     {"Every player car on your disc in 3D on a turntable, with the game's name for it.", "Ogni auto giocabile del disco in 3D su una piattaforma girevole, con il nome che le dà il gioco."},
-    {"Your recorded sessions, played back exactly as they were played (SETTINGS > INTERFACE > RECORD REPLAYS).", "Le sessioni registrate, riprodotte esattamente come sono state giocate (IMPOSTAZIONI > INTERFACCIA > REGISTRA REPLAY)."},
+    {"Your recorded sessions, played back exactly as they were played (SETTINGS > GAME > MODES > RECORD REPLAYS).", "Le sessioni registrate, riprodotte esattamente come sono state giocate (IMPOSTAZIONI > GIOCO > MODALITÀ > REGISTRA REPLAY)."},
     {"Connected controllers, live, and the keyboard as the game maps it.", "I controller collegati, in tempo reale, e la tastiera come la mappa il gioco."},
     {"Who made this port, and the people and projects it stands on.", "Chi ha realizzato questo port, e le persone e i progetti su cui si basa."},
     {"Read with notes:", "Letto con note:"},
@@ -3603,7 +4395,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Your settings file stays as it is.", "Il file delle impostazioni resta invariato."},
     {"Start the game directly next time (skip this launcher):", "Avviare direttamente il gioco la prossima volta (saltando questo launcher):"},
     {"On: starting the launcher starts the game at once, with these settings, saves, mods and music.", "Sì: avviando il launcher si avvia subito il gioco, con queste impostazioni, salvataggi, mod e musica."},
-    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > INTERFACE.", "Per rivedere il launcher, tenere premuto Shift (o Back / Select su un controller) durante l'avvio, oppure riattivare APRI IL LAUNCHER ALL'AVVIO in IMPOSTAZIONI > INTERFACCIA del gioco."},
+    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > GAME > STARTING AND LOADING.", "Per rivedere il launcher, tenere premuto Shift (o Back / Select su un controller) durante l'avvio, oppure riattivare APRI IL LAUNCHER ALL'AVVIO in IMPOSTAZIONI > GIOCO > AVVIO E CARICAMENTO del gioco."},
     {"Game data", "Dati di gioco"},
     {"Set it on the Game Data page.", "Impostarli nella pagina Dati di gioco."},
     {"Game program", "Programma del gioco"},
@@ -3733,7 +4525,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"ALBUM", "ALBUM"},
     {"Your songs play through the game's radio: its RADIO VOLUME, its shuffle setting and the EA TRAX popup with each song's title, artist and album from its tags.", "I propri brani passano per la radio del gioco: il suo VOLUME RADIO, la sua impostazione di riproduzione casuale e il popup EA TRAX con titolo, artista e album di ogni brano dai suoi tag."},
     {"The game reads the folder when its next song starts.", "Il gioco legge la cartella all'inizio del brano successivo."},
-    {"In the game these are SETTINGS > INTERFACE > MUSIC: a change in either place shows in the other.", "Nel gioco queste sono IMPOSTAZIONI > INTERFACCIA > MUSICA: una modifica in un punto appare anche nell'altro."},
+    {"In the game these are SETTINGS > AUDIO > MUSIC: a change in either place shows in the other.", "Nel gioco queste sono IMPOSTAZIONI > AUDIO > MUSICA: una modifica in un punto appare anche nell'altro."},
     {"OTHER MUSIC APPS shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the same popup; its sound stays in that app.", "ALTRE APP MUSICALI mostra il brano riprodotto da un'altra app (Spotify, un browser, qualsiasi lettore nei controlli multimediali del sistema) nello stesso popup; il suo audio resta in quell'app."},
     {"None installed.", "Nessuna installata."},
     {"Put each mod in its own folder in the mods folder (a folder with a mod.ini), then Look again.", "Mettere ogni mod in una propria cartella dentro la cartella mod (una cartella con un mod.ini), poi Ricontrolla."},
@@ -3757,7 +4549,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Developer mods: Off", "Mod sviluppo: No"},
     {"For mod authors: code mods that say [code] platform = yes may then change the game's platform layer (the kernel, the disc and pad drivers).", "Per gli autori di mod: le mod di codice che dichiarano [code] platform = yes possono allora modificare il livello di piattaforma del gioco (il kernel, i driver del disco e del controller)."},
     {"Leave it off unless a mod's author asks for it.", "Lasciarlo disattivato a meno che l'autore di una mod non lo chieda."},
-    {"Developer mods on (also PC SETTINGS > INTERFACE > DEVELOPER MODS).", "Mod sviluppo attive (anche in IMPOSTAZIONI PC > INTERFACCIA > MOD SVILUPPO)."},
+    {"Developer mods on (also PC SETTINGS > MODS > DEVELOPER MODS).", "Mod sviluppo attive (anche in IMPOSTAZIONI PC > MOD > MOD SVILUPPO)."},
     {"Developer mods off.", "Mod sviluppo disattivate."},
     {"|  version", "|  versione"},
     {"|  api", "|  api"},
@@ -3900,7 +4692,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"A replay file is small: copy it to keep it (a renamed one is never removed) or to send it; it plays on any PC with this release of the port and the same disc.", "Un file replay è piccolo: copiarlo per conservarlo (uno rinominato non viene mai rimosso) o per inviarlo; si riproduce su qualsiasi PC con questa release del port e lo stesso disco."},
     {"Recording: On", "Registrazione: Sì"},
     {"Recording: Off", "Registrazione: No"},
-    {"RECORD REPLAYS (also in the game's SETTINGS > INTERFACE).", "REGISTRA REPLAY (anche in IMPOSTAZIONI > INTERFACCIA del gioco)."},
+    {"RECORD REPLAYS (also in the game's SETTINGS > GAME > MODES).", "REGISTRA REPLAY (anche in IMPOSTAZIONI > GIOCO > MODALITÀ del gioco)."},
     {"On: each session, from the start of the game to its end, is kept here.", "Sì: ogni sessione, dall'avvio del gioco alla sua chiusura, viene conservata qui."},
     {"Each session of the game is recorded from its start to its end and kept here (the newest 20).", "Ogni sessione di gioco viene registrata dall'avvio alla chiusura e conservata qui (le 20 più recenti)."},
     {"Turn recording on to keep your sessions here; they play back exactly as you played them.", "Attivare la registrazione per conservare qui le sessioni; vengono riprodotte esattamente come sono state giocate."},
@@ -3960,7 +4752,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Controls", "Comandi"},
     {"Which key or controller input gives each PS2 button, per player.", "Quale tasto o comando del controller corrisponde a ogni pulsante PS2, per giocatore."},
     {"The game reads the same buttons as before: only the input behind each one changes.", "Il gioco legge gli stessi pulsanti di prima: cambia solo il comando dietro ciascuno."},
-    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > INTERFACE > CONTROLS).", "Salvato in controls.ini; il gioco lo legge all'avvio (nel gioco: IMPOSTAZIONI > INTERFACCIA > COMANDI)."},
+    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > CONTROLS > BINDINGS).", "Salvato in controls.ini; il gioco lo legge all'avvio (nel gioco: IMPOSTAZIONI > COMANDI > ASSEGNAZIONI)."},
     {"Whose controls.", "Di chi sono i comandi."},
     {"Device", "Dispositivo"},
     {"Keys for", "Tasti per"},
@@ -4236,7 +5028,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Heavyweight", "Heavyweight"},
     {"COMPACT TYPE 1", "COMPACT TYPE 1"},
     {"DATA/GLOBALUS.BIN", "DATA/GLOBALUS.BIN"},
-    {"CAR", "CAR"},
+    {"CAR", "AUTO"},   // settingsui
     {"BGV", "BGV"},
     {"TRACKS/US/C3_V1", "TRACKS/US/C3_V1"},
     {"move", "sposta"},
@@ -4343,6 +5135,24 @@ inline constexpr Entry kIT[] = {   // Italian
     {"MSAA {}x", "MSAA {}x"},
     {"Steam", "Steam"},   // issue #8: Add to Steam
     {"Add to Steam", "Aggiungi a Steam"},
+    {"Two data folders", "Due cartelle di dati"},
+    {"Steam's Flatpak can reach the data folder you use outside Steam, but the sandbox's own folder holds saves too, so it stays in use: {}.", "Lo Steam di Flatpak può raggiungere la cartella dei dati usata fuori da Steam, ma anche la cartella della sandbox contiene salvataggi, quindi resta in uso: {}."},
+    {"To use the other one from Steam, copy what you want to keep from the sandbox's folder into ~/.local/share/b3port/native, then delete the sandbox's folder.", "Per usare l'altra da Steam, copiare ciò che si vuole tenere dalla cartella della sandbox in ~/.local/share/b3port/native, poi eliminare la cartella della sandbox."},
+    {"Sandbox settings left behind", "Impostazioni della sandbox lasciate indietro"},
+    {"Steam's Flatpak can now reach the data folder you use outside Steam, so the launcher and the game use it: {}.", "Lo Steam di Flatpak ora può raggiungere la cartella dei dati usata fuori da Steam, quindi il launcher e il gioco la usano: {}."},
+    {"The settings written earlier in the sandbox's own folder stay there, unused (the sandbox's folder holds no save): {}.", "Le impostazioni scritte prima nella cartella della sandbox restano lì, inutilizzate (quella cartella non contiene salvataggi): {}."},
+    {"Stops the download.", "Interrompe il download."},
+    {"Nothing is installed; your current version stays as it is.", "Non viene installato nulla; la versione attuale resta com'è."},
+    {"Update cancelled.", "Aggiornamento annullato."},
+    {"An update is being installed: wait for it to finish (or cancel it).", "È in corso l'installazione di un aggiornamento: attendere che finisca (o annullarlo)."},
+    {"The update {} is downloaded and checked, but its disk image did not open.", "L'aggiornamento {} è scaricato e verificato, ma la sua immagine disco non si è aperta."},
+    {"Open it yourself ({}), then quit and drag the app to Applications.", "Aprirla manualmente ({}), poi uscire e trascinare l'app in Applicazioni."},
+    {"macOS runs this app from a temporary copy, because it was opened where it was downloaded.", "macOS avvia questa app da una copia temporanea, perché è stata aperta nel punto in cui è stata scaricata."},
+    {"Move the app to Applications (drag it there in Finder), open it from there, then press Add to Steam again.", "Spostare l'app in Applicazioni (trascinarla lì nel Finder), aprirla da lì, poi premere di nuovo Aggiungi a Steam."},
+    {"Flatpak's Steam needs to see this folder and your data folder: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Lo Steam di Flatpak deve poter vedere questa cartella e la cartella dei dati: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
+    {"Started from Steam's Flatpak", "Avviato dallo Steam di Flatpak"},
+    {"Steam's Flatpak runs the game in its own sandbox, so the launcher and the game keep their settings, saves and mods in a folder of their own: {}.", "Lo Steam di Flatpak avvia il gioco nella propria sandbox, quindi il launcher e il gioco tengono impostazioni, salvataggi e mod in una cartella a parte: {}."},
+    {"To use the same data as outside Steam, run this once in a terminal, then start the game from Steam again: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Per usare gli stessi dati di fuori da Steam, eseguire una volta questo comando in un terminale, poi riavviare il gioco da Steam: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
     {"Adding...", "Aggiunta..."},
     {"Adding to Steam...", "Aggiunta a Steam..."},
     {"Big Picture and the Steam Deck then show it with its own pictures.", "Big Picture e lo Steam Deck lo mostrano poi con le sue immagini."},
@@ -4369,8 +5179,9 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Cannot find the launcher's own program file, so it cannot be added.", "Impossibile trovare il file del launcher stesso, quindi non può essere aggiunto."},
     {"Steam is running.", "Steam è in esecuzione."},
     {"Close Steam, then press Add to Steam again: Steam rewrites its list of games when it closes.", "Chiudere Steam, poi premere di nuovo Aggiungi a Steam: Steam riscrive il suo elenco di giochi quando si chiude."},
-    {"On a Steam Deck, do this in Desktop Mode: exit Steam from its icon in the taskbar first.", "Su uno Steam Deck, farlo in modalità Desktop: prima uscire da Steam dalla sua icona nella barra delle applicazioni."},
-    {"Flatpak's Steam needs to see this folder: flatpak override --user --filesystem={} com.valvesoftware.Steam", "Lo Steam di Flatpak deve poter vedere questa cartella: flatpak override --user --filesystem={} com.valvesoftware.Steam"},
+    {"Right-click the Steam icon by the clock and choose Exit.", "Fare clic con il tasto destro sull'icona di Steam vicino all'orologio e scegliere Esci."},
+    {"In the menu bar: Steam > Quit Steam.", "Nella barra dei menu: Steam > Esci da Steam."},
+    {"On a Steam Deck: right-click the Steam icon in the taskbar (bottom right) and choose Exit Steam, then press Add to Steam again.", "Su uno Steam Deck: fare clic con il tasto destro sull'icona di Steam nella barra delle applicazioni (in basso a destra) e scegliere Esci da Steam, poi premere di nuovo Aggiungi a Steam."},
     {"The next Add to Steam uses the port's own pictures.", "Il prossimo Aggiungi a Steam usa le immagini del port."},
     {"Steam was not found on this computer.", "Steam non è stato trovato su questo computer."},
     {"Install Steam and sign in once, then press Add to Steam again.", "Installare Steam e accedere una volta, poi premere di nuovo Aggiungi a Steam."},
@@ -4389,12 +5200,59 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Choose a cover picture for Steam (PNG or JPEG)", "Scegli un'immagine di copertina per Steam (PNG o JPEG)"},
     {"Choose a background picture for Steam (PNG or JPEG)", "Scegli un'immagine di sfondo per Steam (PNG o JPEG)"},
     {"Choose a logo picture for Steam (PNG or JPEG)", "Scegli un'immagine del logo per Steam (PNG o JPEG)"},
-    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > INTERFACE > CONTROLS; the launcher's Controls page)
+    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > CONTROLS > BINDINGS; the launcher's Controls page)
     {"CONTROLLER LAYOUT", "LAYOUT CONTROLLER"},
     {"BUTTONS FOR", "PULSANTI PER"},
     {"Layout", "Layout"},
     {"Buttons for", "Pulsanti per"},
     {"Custom", "Personalizzato"},
+    {"CAR PAINT", "VERNICE AUTO"},   // carpaint
+    {"PAINT RED", "VERNICE ROSSO"},   // carpaint
+    {"PAINT GREEN", "VERNICE VERDE"},   // carpaint
+    {"PAINT BLUE", "VERNICE BLU"},   // carpaint
+    {"DECALS", "ADESIVI"},   // carpaint
+    {"Custom: your car in your own colour (the three rows below) instead of the paint picked in the car select.", "Personalizzato: la tua auto nel tuo colore (le tre righe qui sotto) invece della vernice scelta nella selezione auto."},   // carpaint
+    {"Cars with one fixed livery keep it.", "Le auto con una sola livrea fissa la mantengono."},   // carpaint
+    {"Drawn only: the game, replays and saves keep the car select's paint.", "Solo visivo: il gioco, i replay e i salvataggi mantengono la vernice della selezione auto."},   // carpaint
+    {"The custom paint's colour, 0 to 255 for each of red, green and blue.", "Il colore della vernice personalizzata, da 0 a 255 per rosso, verde e blu."},   // carpaint
+    {"Off: your car without its logos, numbers and stripes, in plain paint; lights, grilles and wheels stay.", "Disattivato: la tua auto senza loghi, numeri e strisce, in tinta unita; luci, griglie e ruote restano."},   // carpaint
+    {"FINISH", "FINITURA"},
+    {"Gloss", "Lucido"},
+    {"Metallic", "Metallizzato"},
+    {"Pearl", "Perlato"},
+    {"PLAYER 2 CAR PAINT", "VERNICE AUTO GIOCATORE 2"},
+    {"P2 CAR PAINT", "VERNICE G2"},
+    {"P2 PAINT RED", "VERNICE G2 ROSSO"},
+    {"P2 PAINT GREEN", "VERNICE G2 VERDE"},
+    {"P2 PAINT BLUE", "VERNICE G2 BLU"},
+    {"P2 DECALS", "ADESIVI G2"},
+    {"The paint's finish on both players' cars.", "La finitura della vernice sulle auto di entrambi i giocatori."},
+    {"Gloss: the game's.", "Lucido: quella del gioco."},
+    {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metallizzato: un riflesso più forte nel colore della vernice, con scaglie che brillano alla luce."},
+    {"Pearl: the colour shifts as the car turns to the light.", "Perlato: il colore cambia quando l'auto gira verso la luce."},
+    {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "L'auto del giocatore 2 a schermo diviso: Personalizzato la mostra nel colore delle tre voci sotto invece della vernice scelta nella selezione auto."},
+    {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Disattivato: l'auto del giocatore 2 senza loghi, numeri e strisce, in tinta unita."},
+    {"LIGHTING", "ILLUMINAZIONE"},   // night
+    {"TIME OF DAY", "ORA DEL GIORNO"},   // night
+    {"Day", "Giorno"},   // night
+    {"Night", "Notte"},   // night
+    {"TIME OF DAY PER RACE", "ORA DEL GIORNO PER GARA"},   // todrace
+    {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Pagine del circuito (evento singolo, multigiocatore): Predefinito, Giorno o Notte per la prossima gara."},   // todrace
+    {"Time of day: {}", "Ora del giorno: {}"},   // todrace
+    {"Default ({})", "Predefinito ({})"},   // todrace
+    {"MOON", "LUNA"},   // night
+    {"SURFACE DETAIL", "DETTAGLIO SUPERFICI"},   // night
+    {"AMBIENT OCCLUSION", "OCCLUSIONE AMBIENTALE"},   // night
+    {"Night: every race after dark, with a night sky, the cars' lights on and headlight beams on the road.", "Notte: ogni gara al buio, con un cielo notturno, le luci delle auto accese e i fasci dei fari sulla strada."},   // night
+    {"The moon in the night sky, and its cool light on the cars, the road and the walls facing it.", "La luna nel cielo notturno, e la sua luce fredda sulle auto, sulla strada e sui muri rivolti verso di lei."},   // night
+    {"Relief and sheen on the road, kerbs and walls from their textures, lit by the sun or the moon.", "Rilievo e lucentezza su strada, cordoli e muri dalle loro texture, illuminati dal sole o dalla luna."},   // night
+    {"Soft contact shadows under the cars and along walls and kerbs.", "Morbide ombre di contatto sotto le auto e lungo muri e cordoli."},   // night
+    {"Draws the scene twice: for fast graphics cards.", "Disegna la scena due volte: per schede grafiche veloci."},   // night
+    {"SUN SHADOWS", "OMBRE DEL SOLE"},   // sunshadow
+    {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Vere ombre delle auto sulla strada, proiettate dal sole o, di notte, dalla luna."},   // sunshadow
+    {"None in tunnels and under bridges.", "Nessuna nelle gallerie e sotto i ponti."},   // sunshadow
+    {"Sharper with ANTI-ALIASING at 4x or more.", "Più nitide con l'ANTI-ALIASING a 4x o più."},   // sunshadow
+    {"It lights the road's relief too, a small extra cost even with SURFACE DETAIL off.", "Illumina anche il rilievo della strada, un piccolo costo in più anche con DETTAGLIO SUPERFICI disattivato."},   // night
     {"Auto: Xbox controller", "Auto: controller Xbox"},
     {"Auto: PlayStation controller", "Auto: controller PlayStation"},
     {"Auto: Nintendo, Xbox layout", "Auto: Nintendo, layout Xbox"},
@@ -4403,12 +5261,314 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Which buttons do what on this player's controller.", "Quale pulsante fa cosa sul controller di questo giocatore."},
     {"Auto: the layout of the controller's console, picked again when the controller changes: a PlayStation controller gets the PS2 game's, any other controller the original Xbox game's.", "Auto: il layout della console del controller, scelto di nuovo quando il controller cambia: un controller PlayStation riceve quello del gioco PS2, ogni altro controller quello del gioco Xbox originale."},
     {"Xbox, PlayStation: that layout on any controller.", "Xbox, PlayStation: quel layout su qualsiasi controller."},
+    {"Nintendo: the Xbox layout by label, A confirms and boosts, B goes back and is the Crashbreaker.", "Nintendo: il layout Xbox secondo il nome dei pulsanti, A conferma e dà il boost, B torna indietro ed è il Crashbreaker."},
     {"Custom: your own bindings in the rows below.", "Personalizzato: le tue assegnazioni nelle voci sotto."},
     {"Changing a binding below makes it Custom.", "Cambiare un'assegnazione qui sotto passa a Personalizzato."},
     {"A button can do one thing while you drive and another in the menus (on the Xbox layout A boosts, and confirms in a menu).", "Un pulsante può fare una cosa durante la guida e un'altra nei menu (nel layout Xbox A dà il boost e conferma in un menu)."},
+    // polish122: the CONTROLS change notes (in the game: LAST CHANGE; the launcher's Controls page)
+    {"KEYBOARD", "TASTIERA"},
+    {"DRIVING", "GUIDA"},
+    {"MENUS", "MENU"},
+    {"SHORTCUTS", "SCORCIATOIE"},
+    {"ALL CONTROLS RESET TO DEFAULTS", "TUTTI I COMANDI RIPRISTINATI AI PREDEFINITI"},
+    {"PRESS RESET ALL CONTROLS AGAIN TO PUT EVERYTHING BACK (ANY OTHER ROW CANCELS)", "PREMI DI NUOVO RIPRISTINA TUTTI I COMANDI PER RIPRISTINARE TUTTO (QUALSIASI ALTRA RIGA ANNULLA)"},
+    {"(this run only)", "(solo per questa sessione)"},
+    {"(NOT SAVED: {})", "(NON SALVATO: {})"},
+    {"{}: saved (the game reads it at its next start).", "{}: salvato (il gioco lo legge al prossimo avvio)."},
+    {"controller layout", "layout controller"},
+    {"gyro steering", "sterzo giroscopico"},
+    {"gyro axis", "asse giroscopio"},
+    {"gyro sensitivity", "sensibilità giroscopio"},
+    {"gyro dead zone", "zona morta giroscopio"},
+    {"gyro recentre button", "tasto per ricentrare il giroscopio"},
+    {"keyboard reset to the defaults", "tastiera ripristinata ai predefiniti"},
+    {"controller reset to the defaults", "controller ripristinato ai predefiniti"},
+    {"AUDIO", "AUDIO"},   // settingsui
+    {"GAME", "GIOCO"},   // settingsui
+    {"LAYOUT", "DISPOSIZIONE"},   // settingsui
+    {"SMOOTHNESS", "FLUIDITÀ"},   // settingsui
+    {"TEXTURES", "TEXTURE"},   // settingsui
+    {"CAR LOOK", "ASPETTO AUTO"},   // settingsui
+    {"GARAGE", "GARAGE"},   // settingsui
+    {"FEEDBACK", "FEEDBACK"},   // settingsui
+    {"BINDINGS", "ASSEGNAZIONI"},   // settingsui
+    {"GYRO", "GIROSCOPIO"},   // settingsui
+    {"MODES", "MODALITÀ"},   // settingsui
+    {"LANGUAGE AND UNITS", "LINGUA E UNITÀ"},   // settingsui
+    {"STARTING AND LOADING", "AVVIO E CARICAMENTO"},   // settingsui
+    {"COLOUR", "COLORE"},   // settingsui
+    {"P2 COLOUR", "COLORE G2"},   // settingsui
+    {"Red", "Rosso"},   // settingsui
+    {"Orange", "Arancione"},   // settingsui
+    {"Yellow", "Giallo"},   // settingsui
+    {"Green", "Verde"},   // settingsui
+    {"Blue", "Blu"},   // settingsui
+    {"Purple", "Viola"},   // settingsui
+    {"Pink", "Rosa"},   // settingsui
+    {"White", "Bianco"},   // settingsui
+    {"Silver", "Argento"},   // settingsui
+    {"A ready colour: sets the three rows below and turns the custom paint on.", "Un colore pronto: imposta le tre righe qui sotto e attiva la vernice personalizzata."},   // settingsui
+    {"Custom: the colour of the rows below.", "Personalizzato: il colore delle righe qui sotto."},   // settingsui
+    {"VOLUMES AND DJ", "VOLUMI E DJ"},   // settingsui
+    {"The game's own sound: RADIO VOLUME, the effects, the speech and the DJ are in DRIVER DETAILS > SETTINGS > AUDIO.", "Il suono del gioco: VOLUME RADIO, gli effetti, il parlato e il DJ sono in DETTAGLI PILOTA > IMPOSTAZIONI > AUDIO."},   // settingsui
+    {"BOOST HOLD OR TOGGLE", "BOOST TENUTO O ALTERNATO"},   // settingsui
+    {"Boost by holding the button, or press once to boost and again to stop: CONTROLS > DRIVING > BOOST.", "Boost tenendo premuto il tasto, oppure premere una volta per il boost e di nuovo per fermarlo: COMANDI > GUIDA > BOOST."},   // settingsui
+    {"BUTTONS AND KEYS", "TASTI E PULSANTI"},   // settingsui
+    {"The launcher's Controllers page: test your controllers, and change the buttons and keys of both players, the shortcuts and the gyro steering.", "La pagina Controller del launcher: provare i controller e cambiare i tasti e i pulsanti di entrambi i giocatori, le scorciatoie e lo sterzo giroscopico."},   // settingsui
+    {"The launcher's Music page: your own music folder, the playlist, its volume and other music apps.", "La pagina Musica del launcher: la tua cartella di musica, la playlist, il suo volume e le altre app di musica."},   // settingsui
+    {"The launcher's HD Textures page: choose the pack's folder, get the pack, or stop using it.", "La pagina Texture HD del launcher: scegliere la cartella del pacchetto, ottenere il pacchetto o smettere di usarlo."},   // settingsui
+    {"CHANGE", "CAMBIA"},   // settingsui
+    {"CHOOSE", "SCEGLI"},   // settingsui
+    {"CLOSE AND SAVE", "CHIUDI E SALVA"},   // settingsui
+    {"SECTION", "SEZIONE"},   // settingsui
+    {"REBIND", "RIASSEGNA"},   // settingsui
+    {"ADD", "AGGIUNGI"},   // settingsui
+    {"REMOVE", "RIMUOVI"},   // settingsui
+    {"DEFAULT", "PREDEFINITO"},   // settingsui
+    {"CLICK", "CLIC"},   // settingsui
+    {"WHEEL", "ROTELLINA"},   // settingsui
+    {"SCROLL", "SCORRI"},   // settingsui
+    {"RIGHT CLICK", "CLIC DESTRO"},   // settingsui
+    {"CLOSE", "CHIUDI"},   // settingsui
+    {"MOVE", "SPOSTA"},   // settingsui
+    {"Kept: the menus need one input that confirms and one that goes back.", "Mantenuto: i menu hanno bisogno di un comando che conferma e di uno che torna indietro."},   // settingsui
+    {"Go back", "Indietro"},   // settingsui
+    {"Bug report...", "Segnalazione bug..."},   // settingsui
+    {"Make a bug report?", "Creare una segnalazione bug?"},   // settingsui
+    {"Make report", "Crea la segnalazione"},   // settingsui
+    {"With my save", "Con il mio salvataggio"},   // settingsui
+    {"Click a row twice to open it", "Fare clic due volte su una riga per aprirla"},   // settingsui
+    {"LAUNCHER", "LAUNCHER"},   // settingsui
+    {"TEST", "TEST"},   // settingsui
+    {"Left stick", "Levetta sinistra"},   // settingsui
+    {"built {}", "compilato il {}"},   // settingsui
+    {"Burnout 3 native port, a test build", "port nativo di Burnout 3, una versione di prova"},   // settingsui
+    {"{} preset", "preset {}"},   // settingsui
+    {"fullscreen", "schermo intero"},   // settingsui
+    {"window", "finestra"},   // settingsui
+    {"no MSAA", "senza MSAA"},   // settingsui
+    {"{} fps limit", "limite di {} fps"},   // settingsui
+    {"no HD pack", "nessun pack HD"},   // settingsui
+    {"HD pack", "pack HD"},   // settingsui
+    {"HD pack off", "pack HD disattivato"},   // settingsui
+    {"saved {}", "salvato il {}"},   // settingsui
+    {"(an older profile-{} folder: read, and saved as a .sav at the first save)", "(una vecchia cartella profile-{}: letta, e salvata come .sav al primo salvataggio)"},   // settingsui
+    {"An older profile-{} folder (read; saved as a .sav at the first save)", "Una vecchia cartella profile-{} (letta; salvata come .sav al primo salvataggio)"},   // settingsui
+    {"Released {}", "Pubblicata il {}"},   // settingsui
+    {"Last checked {}", "Ultimo controllo: {}"},   // settingsui
+    {"Version {}", "Versione {}"},   // settingsui
+    {"Not checked for updates yet", "Aggiornamenti non ancora controllati"},   // settingsui
+    {"Checking for updates...", "Controllo degli aggiornamenti..."},   // settingsui
+    {"Update check off (Settings > Launcher)", "Controllo aggiornamenti disattivato (Impostazioni > Launcher)"},   // settingsui
+    {"Update available: {}", "Aggiornamento disponibile: {}"},   // settingsui
+    {"Up to date ({} is the latest release)", "Aggiornato ({} è l'ultima versione)"},   // settingsui
+    {"Up to date (no release published yet)", "Aggiornato (nessuna versione ancora pubblicata)"},   // settingsui
+    {"Couldn't check for updates ({})", "Impossibile controllare gli aggiornamenti ({})"},   // settingsui
+    {"Installed: {}", "Installate: {}"},   // settingsui
+    {"on: {}", "attive: {}"},   // settingsui
+    {"gold", "oro"},   // settingsui
+    {"silver", "argento"},   // settingsui
+    {"bronze", "bronzo"},   // settingsui
+    {"Paint {}", "Vernice {}"},   // settingsui
+    {"NOT SET", "NON ASSEGNATO"},   // settingsui
+    {"Not saved: {}", "Non salvato: {}"},   // settingsui
+    // item 11: a pack of the game's files without a mod.ini
+    {"Install as a file-replacement mod?", "Installare come mod di sostituzione file?"},
+    {"This pack has no mod.ini.", "Questo pacchetto non ha un mod.ini."},
+    {"Install it as a file-replacement mod named {}?", "Installarlo come mod di sostituzione file con il nome {}?"},
+    {"Its files replace the game's files of the same names; it has no code, so nothing in it runs.", "I suoi file sostituiscono i file del gioco con lo stesso nome; non contiene codice, quindi non viene eseguito nulla."},
+    {"A mod.ini is written for it, and it starts off.", "Viene scritto un mod.ini per esso, e parte disattivata."},
+    {"Install", "Installa"},
+    {"Not a mod", "Non è una mod"},
+    {"{} was not installed; nothing was written.", "{} non è stato installato; non è stato scritto nulla."},
+    {"It has no mod.ini, and no folders of the game's own (DATA, PVEH, TRACKS, SOUND, OVID) to install as replacement files.", "Non ha un mod.ini, né cartelle del gioco (DATA, PVEH, TRACKS, SOUND, OVID) da installare come file sostitutivi."},
+    {"A mod.ini is the small text file at the top of a mod that names it: its id, name and version.", "Un mod.ini è il piccolo file di testo in cima a una mod che le dà un nome: il suo id, nome e versione."},
+    {"Add folder...", "Aggiungi cartella..."},
+    {"Installs a mod from a folder: copied into its own folder in the mods folder.", "Installa una mod da una cartella: copiata in una propria cartella nella cartella mod."},
+    {"A pack of the game's own files without a mod.ini (its DATA, PVEH or TRACKS folders) can be installed as a file-replacement mod.", "Un pacchetto di file del gioco senza mod.ini (le sue cartelle DATA, PVEH o TRACKS) può essere installato come mod di sostituzione file."},
+    {"Add a mod: choose its folder (a mod, or a pack of the game's files)", "Aggiungi una mod: scegli la sua cartella (una mod, o un pacchetto di file del gioco)"},
+    {"Open the mod's folder, then Start: it is copied into the mods folder.", "Apri la cartella della mod, poi Start: viene copiata nella cartella mod."},
+    {"Set aside file {}?", "Mettere da parte il file {}?"},   // saveflow
+    {"The game can't play profile-{}.sav.", "Il gioco non può usare profile-{}.sav."},   // saveflow
+    {"Why: {}.", "Motivo: {}."},   // saveflow
+    {"It is renamed in the save folder (kept, not deleted) and the file starts empty: the game makes a new profile at its first save.", "Viene rinominato nella cartella dei salvataggi (conservato, non eliminato) e il file riparte vuoto: il gioco crea un nuovo profilo al primo salvataggio."},   // saveflow
+    {"Quit the game first if it is running.", "Chiudere prima il gioco se è in esecuzione."},   // saveflow
+    {"Set aside", "Metti da parte"},   // saveflow
+    {"Set aside as {}.", "Messo da parte come {}."},   // saveflow
+    {"The game starts this file fresh.", "Il gioco riparte da zero con questo file."},   // saveflow
+    {"Cannot set it aside: {}", "Impossibile metterlo da parte: {}"},   // saveflow
+    {"Can't be played: damaged or unreadable", "Non utilizzabile: danneggiato o illeggibile"},   // saveflow
+    {"Set aside file {} and start fresh...", "Metti da parte il file {} e ricomincia..."},   // saveflow
+    {"Renames profile-{}.sav in the save folder (kept, not deleted) so that the game starts this file empty.", "Rinomina profile-{}.sav nella cartella dei salvataggi (conservato, non eliminato) perché il gioco riparta da questo file vuoto."},   // saveflow
+    {"SAVED", "SALVATO"},   // saveflow
+    {"SAVE FAILED", "SALVATAGGIO NON RIUSCITO"},   // saveflow
+    {"YOUR LAST SAVE IS KEPT", "IL TUO ULTIMO SALVATAGGIO È CONSERVATO"},   // saveflow
+    {"RETRYING", "NUOVO TENTATIVO"},   // saveflow
+    {"SAVED AGAIN TO PROFILE {}", "DI NUOVO SALVATO NEL PROFILO {}"},   // saveflow
+    {"NOT SAVED", "NON SALVATO"},   // saveflow
+    {"CAN'T READ {}", "IMPOSSIBILE LEGGERE {}"},   // saveflow
+    {"PROGRESS WON'T BE SAVED THIS SESSION", "I PROGRESSI NON SARANNO SALVATI IN QUESTA SESSIONE"},   // saveflow
+    {"THE LAUNCHER'S SAVES PAGE CAN SET IT ASIDE", "LA PAGINA SALVATAGGI DEL LAUNCHER PUÒ METTERLO DA PARTE"},   // saveflow
+    {"{} CHANGED OUTSIDE THE GAME", "{} È STATO MODIFICATO FUORI DAL GIOCO"},   // saveflow
+    {"SAVED TO {}", "SALVATO IN {}"},   // saveflow
+    {"A SAVE WAS IMPORTED: RESTART THE GAME TO PLAY IT", "È STATO IMPORTATO UN SALVATAGGIO: RIAVVIARE IL GIOCO PER USARLO"},   // saveflow
+    {"SAVE WARNING", "AVVISO DI SALVATAGGIO"},   // saveflow
+    {"ANOTHER GAME ON THIS COMPUTER USES THIS SAVE FOLDER", "UN ALTRO GIOCO SU QUESTO COMPUTER USA QUESTA CARTELLA DEI SALVATAGGI"},   // saveflow
+    {"PLAY ONE AT A TIME", "GIOCARE SU UNO ALLA VOLTA"},   // saveflow
+    {"Progress from {} was saved beside it, because the file changed while the game was running.", "I progressi del {} sono stati salvati accanto, perché il file è cambiato mentre il gioco era in esecuzione."},   // saveflow
+    {"Use it", "Usali"},   // saveflow
+    {"Leave it", "Lasciali"},   // saveflow
+    {"Makes it this file's save; the current one is kept as a backup (.bak and backups).", "Li rende il salvataggio di questo file; quello attuale resta come copia (.bak e backups)."},   // saveflow
+    {"Hides this line; the file stays in the save folder.", "Nasconde questa riga; il file resta nella cartella dei salvataggi."},   // saveflow
+    {"Use the progress from {}?", "Usare i progressi del {}?"},   // saveflow
+    {"It replaces profile-{}.sav.", "Sostituiscono profile-{}.sav."},   // saveflow
+    {"The current one is kept as profile-{}.sav.bak and in backups.", "Quello attuale resta come profile-{}.sav.bak e in backups."},   // saveflow
+    {"Now using the progress from {}.", "Ora si usano i progressi del {}."},   // saveflow
+    {"Cannot use it: {}", "Impossibile usarli: {}"},   // saveflow
+    // xboximport (1.3.0): Import Xbox textures
+    {"XBOX TEXTURES", "TEXTURE XBOX"},
+    {"The textures imported from your Xbox disc in the launcher, below your own HD pack and the mods' packs.", "Le texture importate dal tuo disco Xbox nel launcher, sotto il tuo pacchetto HD e i pacchetti delle mod."},
+    {"Used while HD TEXTURES is on.", "Usate mentre TEXTURE HD è attivo."},
+    {"Xbox textures", "Texture Xbox"},
+    {"Builds a texture pack on this computer from your own Xbox disc image of the game (.iso or .xiso).", "Crea un pacchetto di texture su questo computer dalla tua immagine disco Xbox del gioco (.iso o .xiso)."},
+    {"It is a small improvement: some building fronts, signs and car paint are somewhat sharper.", "È un piccolo miglioramento: alcune facciate, insegne e verniciature delle auto sono un po' più nitide."},
+    {"An HD texture pack looks far better; this is for players who want to use their Xbox disc.", "Un pacchetto di texture HD è molto migliore; questo è per i giocatori che vogliono usare il loro disco Xbox."},
+    {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Nulla viene scaricato o condiviso, e il tuo pacchetto HD e i pacchetti delle mod hanno sempre la precedenza."},
+    {"Not imported.", "Non importate."},
+    {"{} textures imported.", "{} texture importate."},
+    {"Size: {} MB.", "Dimensione: {} MB."},
+    {"From: {}.", "Da: {}."},
+    {"Made by an older version: import again for the newest result.", "Create da una versione precedente: importa di nuovo per il risultato migliore."},
+    {"XBOX TEXTURES is off.", "TEXTURE XBOX è disattivato."},
+    {"HD TEXTURES is off.", "TEXTURE HD è disattivato."},
+    {"Import Xbox textures...", "Importa texture Xbox..."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso).", "Scegli la tua immagine disco Xbox del gioco (.iso o .xiso)."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso)", "Scegli la tua immagine disco Xbox del gioco (.iso o .xiso)"},
+    {"The import runs on this computer in about a minute.", "L'importazione avviene su questo computer in circa un minuto."},
+    {"Deletes the imported textures (your disc image is not touched).", "Elimina le texture importate (la tua immagine disco non viene toccata)."},
+    {"Disc images here: A on one imports its textures.", "Immagini disco qui: A su una importa le sue texture."},
+    {"No disc images here: open the folder that holds your Xbox disc image.", "Nessuna immagine disco qui: apri la cartella che contiene la tua immagine disco Xbox."},
+    {"Xbox disc images (*.iso, *.xiso)", "Immagini disco Xbox (*.iso, *.xiso)"},
+    {"Importing Xbox textures", "Importazione delle texture Xbox"},
+    {"Reading the game's files: {}.", "Lettura dei file del gioco: {}."},
+    {"Building the textures: {}.", "Creazione delle texture: {}."},
+    {"Textures written: {}.", "Texture scritte: {}."},
+    {"Cancelling...", "Annullamento..."},
+    {"Import cancelled: nothing was changed.", "Importazione annullata: non è stato cambiato nulla."},
+    {"The import failed.", "L'importazione non è riuscita."},
+    {"Remove the Xbox textures?", "Rimuovere le texture Xbox?"},
+    {"The imported textures are deleted.", "Le texture importate vengono eliminate."},
+    {"You can import them again from your disc at any time.", "Puoi importarle di nuovo dal tuo disco in qualsiasi momento."},
+    {"The Xbox textures were removed.", "Le texture Xbox sono state rimosse."},
+    {"Cannot open the disc image.", "Impossibile aprire l'immagine disco."},
+    {"Not an Xbox disc image (no XDVDFS volume in it).", "Non è un'immagine disco Xbox (nessun volume XDVDFS)."},
+    {"This Xbox disc image is not Burnout 3: Takedown.", "Questa immagine disco Xbox non è Burnout 3: Takedown."},
+    {"The game's files were not found (choose the game's folder first).", "I file del gioco non sono stati trovati (scegli prima la cartella del gioco)."},
+    {"Not enough free space (about 200 MB needed).", "Spazio libero insufficiente (servono circa 200 MB)."},
+    {"Could not read the disc or write the textures (is the drive full?).", "Impossibile leggere il disco o scrivere le texture (l'unità è piena?)."},
+    {"No Xbox texture matched the game's (a different version of the game?).", "Nessuna texture Xbox corrisponde a quelle del gioco (un'altra versione del gioco?)."},
+    {"Could not replace the earlier import (a file in it is open?).", "Impossibile sostituire l'importazione precedente (un suo file è aperto?)."},
+    {"Could not move the textures into place.", "Impossibile spostare le texture al loro posto."},
+    {"Out of memory while reading the disc image (a damaged image?).", "Memoria esaurita durante la lettura dell'immagine disco (un'immagine danneggiata?)."},
+    {"The import stopped: {}.", "L'importazione si è interrotta: {}."},
+    {"The import stopped: an unknown error.", "L'importazione si è interrotta: un errore sconosciuto."},
+    // portable mode (1.3.0)
+    {"PORTABLE MODE", "MODALITÀ PORTATILE"},
+    {"On: everything the port keeps for you (settings, saves, mods, logs, replays) is in a folder called appdata beside the launcher, so the game can be carried on a USB stick.", "Attiva: tutto ciò che il port conserva per te (impostazioni, salvataggi, mod, log, replay) si trova in una cartella chiamata appdata accanto al launcher, così il gioco può stare su una chiavetta USB."},
+    {"Off: in this computer's user folder.", "Disattiva: nella cartella utente di questo computer."},
+    {"The launcher moves your data now: it is copied and checked first, and the old folder is kept until the game has started from the new one.", "Il launcher sposta i tuoi dati ora: vengono prima copiati e verificati, e la vecchia cartella resta finché il gioco non è partito dalla nuova."},
+    {"The launcher moves your data at its next start (it asks first).", "Il launcher sposta i tuoi dati al suo prossimo avvio (prima chiede)."},
+    {"The install folder cannot be written by you: move the game to a folder of your own to use portable mode.", "Non puoi scrivere nella cartella di installazione: sposta il gioco in una cartella tua per usare la modalità portatile."},
+    {"The game is running: close it first.", "Il gioco è in esecuzione: chiudilo prima."},
+    {"A data folder was given when the launcher was started (--pref), so this does not apply.", "All'avvio del launcher è stata indicata una cartella dati (--pref), quindi questo non si applica."},
+    {"The launcher's own folder is not known.", "La cartella del launcher non è nota."},
+    {"Data folder", "Cartella dati"},
+    {"In use", "In uso"},
+    {"Old copy", "Vecchia copia"},
+    {"Remove the old copy...", "Rimuovi la vecchia copia..."},
+    {"Deletes the folder your data was moved from (asks first).", "Elimina la cartella da cui sono stati spostati i tuoi dati (prima chiede)."},
+    {"Your data in use is not touched.", "I dati in uso non vengono toccati."},
+    {"Start the game once from the new folder first: the old copy stays until then.", "Avvia prima il gioco una volta dalla nuova cartella: la vecchia copia resta fino ad allora."},
+    {"portable: the appdata folder beside the launcher", "portatile: la cartella appdata accanto al launcher"},
+    {"It cannot be written: settings and saves are not kept.", "Non è scrivibile: impostazioni e salvataggi non vengono conservati."},
+    {"portable", "portatile"},
+    {"Moving your data", "Spostamento dei dati"},
+    {"Putting it in place.", "Messa in posizione."},
+    {"Copying: {} MB.", "Copia: {} MB."},
+    {"Checking the copy: {} MB.", "Verifica della copia: {} MB."},
+    {"Nothing is removed until the copy is checked.", "Nulla viene rimosso finché la copia non è verificata."},
+    {"Your data was not moved", "I tuoi dati non sono stati spostati"},
+    {"Nothing was changed: your data is where it was.", "Non è cambiato nulla: i tuoi dati sono dov'erano."},
+    {"Cancelled: nothing was moved.", "Annullato: non è stato spostato nulla."},
+    {"Not moved: {}.", "Non spostati: {}."},
+    {"Your data is now in {}.", "I tuoi dati ora sono in {}."},
+    {"The old copy is kept in {}.", "La vecchia copia è conservata in {}."},
+    {"The data that was in this computer's folder is kept in {}.", "I dati che erano nella cartella di questo computer sono conservati in {}."},
+    {"Once the game has started from the new folder, the launcher offers to remove the old copy.", "Una volta avviato il gioco dalla nuova cartella, il launcher propone di rimuovere la vecchia copia."},
+    {"Portable mode is on.", "La modalità portatile è attiva."},
+    {"Portable mode is off.", "La modalità portatile è disattivata."},
+    {"Portable mode is on", "La modalità portatile è attiva"},
+    {"Portable mode is off", "La modalità portatile è disattivata"},
+    {"Portable mode", "Modalità portatile"},
+    {"Cannot move your data: {}.", "Impossibile spostare i tuoi dati: {}."},
+    {"Not enough free space", "Spazio libero insufficiente"},
+    {"Your data needs {} MB where it goes.", "I tuoi dati richiedono {} MB nella destinazione."},
+    {"Free there: {} MB.", "Libero lì: {} MB."},
+    {"Turn portable mode on?", "Attivare la modalità portatile?"},
+    {"Turn portable mode off?", "Disattivare la modalità portatile?"},
+    {"Your settings, saves and everything else the port keeps for you are copied into the appdata folder beside the launcher, checked file by file, and used from then on.", "Le tue impostazioni, i salvataggi e tutto ciò che il port conserva per te vengono copiati nella cartella appdata accanto al launcher, verificati file per file e usati da quel momento."},
+    {"Your data is copied from the appdata folder into this computer's user folder, checked file by file, and used from then on.", "I tuoi dati vengono copiati dalla cartella appdata nella cartella utente di questo computer, verificati file per file e usati da quel momento."},
+    {"The old folder is kept under a dated name until the game has started from the new one.", "La vecchia cartella è conservata con un nome datato finché il gioco non è partito dalla nuova."},
+    {"The appdata folder is kept beside the launcher under a dated name until the game has started from the new one.", "La cartella appdata è conservata accanto al launcher con un nome datato finché il gioco non è partito dalla nuova."},
+    {"Your save folder is one you chose elsewhere (the Saves page): it is not moved.", "La tua cartella dei salvataggi è una scelta altrove (pagina Salvataggi): non viene spostata."},
+    {"This computer's user folder already holds data from an earlier time.", "La cartella utente di questo computer contiene già dati di un'altra volta."},
+    {"Choose which to keep: the other is set aside under a dated name, never mixed.", "Scegli quali tenere: gli altri vengono messi da parte con un nome datato, mai mescolati."},
+    {"Portable data", "Dati portatili"},
+    {"This computer's data", "Dati di questo computer"},
+    {"Move my data", "Sposta i miei dati"},
+    {"Move it back", "Riportali indietro"},
+    {"Remove the old copy", "Rimuovi la vecchia copia"},
+    {"Keep it", "Tienila"},
+    {"Remove the old copy?", "Rimuovere la vecchia copia?"},
+    {"The game has started from your data's new folder, and the old copy is still in {}.", "Il gioco è partito dalla nuova cartella dei tuoi dati, e la vecchia copia è ancora in {}."},
+    {"The data set aside is in {}.", "I dati messi da parte sono in {}."},
+    {"Remove it to free the space, or keep it.", "Rimuovila per liberare spazio, oppure tienila."},
+    {"The old copy was removed.", "La vecchia copia è stata rimossa."},
+    {"Not all of the old copy could be removed: {}.", "Non è stato possibile rimuovere tutta la vecchia copia: {}."},
+    {"Your data is being moved: wait for it to finish (or cancel it).", "I tuoi dati sono in fase di spostamento: attendi che finisca (o annulla)."},
+    {"The launcher opened because portable mode needs your answer.", "Il launcher si è aperto perché la modalità portatile attende la tua risposta."},
+    {"B3PORT_USER_DIR is set to a data folder of your choice, so this does not apply.", "B3PORT_USER_DIR indica una cartella dati a tua scelta, quindi questo non si applica."},   // portable mode
+    {"Your data folder cannot be written (a write-protected drive?): settings and saves will not be kept.", "Non è possibile scrivere nella tua cartella dati (un'unità protetta da scrittura?): impostazioni e salvataggi non verranno conservati."},   // portable mode
+    {"THE LAUNCHER IS MOVING YOUR DATA", "IL LAUNCHER STA SPOSTANDO I TUOI DATI"},   // portable mode
+    {"QUIT AND START AGAIN WHEN IT IS DONE", "ESCI E RIAVVIA QUANDO HA FINITO"},   // portable mode
+    {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "LA CARTELLA DATI PORTATILE NON È SCRIVIBILE"},   // portable mode
+    {"SAVES AND SETTINGS WON'T BE KEPT", "SALVATAGGI E IMPOSTAZIONI NON VERRANNO CONSERVATI"},   // portable mode
 };
 
 inline constexpr Entry kSP[] = {   // Spanish
+    {"VOICES", "VOCES"},   // 1.3.0 VOICES
+    {"The Crash FM DJ and the race training's narrator.", "El DJ de Crash FM y el narrador del entrenamiento."},   // 1.3.0 VOICES
+    {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Idioma: hablan el IDIOMA elegido (el francés, el alemán, el italiano y el español tienen las suyas; el inglés británico, el neerlandés y el sueco tienen las voces inglesas, como en sus discos)."},   // 1.3.0 VOICES
+    {"The training's narration is on your disc already; the DJ's lines need importing (the DJ VOICE rows of the launcher).", "La narración del entrenamiento ya está en tu disco; las frases del DJ hay que importarlas (las filas VOZ DEL DJ del lanzador)."},   // 1.3.0 VOICES
+    {"English: the US voices, with the menus in your language.", "English: las voces estadounidenses, con los menús en tu idioma."},   // 1.3.0 VOICES
+    {"TRAINING VIDEOS: {}", "VÍDEOS DE ENTRENAMIENTO: {}"},   // 1.3.0 VOICES
+    {"Copying the training videos from the disc.", "Copiando los vídeos de entrenamiento desde el disco."},   // 1.3.0 VOICES
+    {"Imported: the race training videos in this language are on this PC.", "Importado: los vídeos de entrenamiento en este idioma están en este PC."},   // 1.3.0 VOICES
+    {"Remove deletes them; the training then shows the English pictures.", "Quitar los borra; el entrenamiento muestra entonces las imágenes inglesas."},   // 1.3.0 VOICES
+    {"Copies the race training videos' pictures in this language (their on-screen text) from the chosen disc to this PC, once.", "Copia una vez las imágenes de los vídeos de entrenamiento en este idioma (su texto en pantalla) del disco elegido a este PC."},   // 1.3.0 VOICES
+    {"Without them the training shows the English pictures with the narration in your language.", "Sin ellas, el entrenamiento muestra las imágenes inglesas con la narración en tu idioma."},   // 1.3.0 VOICES
+    {"Its DJ voices (about 300 MB a language) and race training videos (about 130 MB a language) can then be imported in the rows below.", "Sus voces del DJ (unos 300 MB por idioma) y sus vídeos de entrenamiento (unos 130 MB por idioma) se pueden importar después en las filas de abajo."},   // 1.3.0 VOICES
+    {"Language", "Idioma"},   // 1.3.0 DJ VOICE
+    {"DJ VOICE: {}", "VOZ DEL DJ: {}"},   // 1.3.0 DJ VOICE
+    {"Cancel ({} %)", "Cancelar ({} %)"},   // 1.3.0 DJ VOICE
+    {"Remove ({} MB)", "Quitar ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Import ({} MB)", "Importar ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Copying the DJ's lines from the disc.", "Copiando las frases del DJ desde el disco."},   // 1.3.0 DJ VOICE
+    {"Cancel stops it and keeps nothing.", "Cancelar la detiene y no conserva nada."},   // 1.3.0 DJ VOICE
+    {"Imported: the DJ's lines in this language are on this PC.", "Importado: las frases del DJ en este idioma están en este PC."},   // 1.3.0 DJ VOICE
+    {"Remove deletes them; the DJ is then English.", "Quitar las borra; el DJ pasa a ser el inglés."},   // 1.3.0 DJ VOICE
+    {"Copies the DJ's lines in this language from the chosen disc to this PC, once.", "Copia una vez las frases del DJ en este idioma del disco elegido a este PC."},   // 1.3.0 DJ VOICE
+    {"Needs {} MB of free space.", "Necesita {} MB de espacio libre."},   // 1.3.0 DJ VOICE
     {"Not available on macOS: it has no public way for a game to read what another app is playing.", "No disponible en macOS: no ofrece una forma pública de que un juego lea lo que reproduce otra aplicación."},
     {"Shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the EA TRAX popup when the song changes.", "Muestra la canción que reproduce otra aplicación (Spotify, un navegador, cualquier reproductor de los controles multimedia del sistema) en la ventana emergente de EA TRAX cuando cambia la canción."},
     {"Its sound stays in that app: turn RADIO VOLUME down in Driver Details to hear only it.", "Su sonido sigue en esa aplicación: con VOLUMEN DE LA RADIO al mínimo en Datos del piloto solo se oye esa."},
@@ -4463,6 +5623,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"How far Low mode looks past the newest game tick.", "Hasta dónde se adelanta el modo Bajo respecto al último tick del juego."},
     {"FRAMES IN FLIGHT", "FOTOGRAMAS EN COLA"},
     {"Frames the GPU may queue: 1 is the most direct, more can be smoother.", "Fotogramas que la GPU puede encolar: 1 es lo más directo, más puede ser más fluido."},
+    {"Auto: 1, or 2 while the graphics card holds the frame rate below its target (with LATENCY MODE Auto).", "Auto: 1, o 2 mientras la tarjeta gráfica mantenga la tasa de fotogramas por debajo de su objetivo (con MODO DE LATENCIA Auto)."},
     {"GRAPHICS", "GRÁFICOS"},
     {"IMAGE", "IMAGEN"},
     {"ANTI-ALIASING", "ANTI-ALIASING"},
@@ -4480,6 +5641,8 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"How large the 3D picture is drawn, as a share of the window, then scaled up.", "El tamaño al que se dibuja la imagen 3D, como proporción de la ventana, antes de ampliarla."},
     {"Lower is faster on a weak graphics chip; the HUD and menus stay sharp.", "Un valor más bajo es más rápido en una gráfica poco potente; el HUD y los menús siguen nítidos."},
     {"100% is the normal picture.", "100% es la imagen normal."},
+    {"Above 100%, it is drawn larger and scaled down: smoother edges and finer detail, for a large cost.", "Por encima del 100% se dibuja más grande y se reduce: bordes más suaves y más detalle, con un coste alto."},
+    {"150% and 200% want a graphics card with plenty of memory.", "150% y 200% necesitan una tarjeta gráfica con mucha memoria."},
     {"DITHER", "TRAMADO"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Un patrón fino que oculta los escalones de los degradados suaves, como el cielo."},
     {"None", "Ninguno"},
@@ -4646,6 +5809,8 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"CAR SERIES ON L1 / R1", "SERIE DE COCHES CON L1 / R1"},
     {"On: in the car select, the shoulder buttons (L1 / R1, LB / RB, or their keys) change the car series as Left / Right do, and show beside the series arrows.", "Activado: en la selección de coche, los botones superiores (L1 / R1, LB / RB, o sus teclas) cambian la serie de coches como Izquierda / Derecha, y se muestran junto a las flechas de serie."},
     {"Changes the input the game gets; Off is the original.", "Cambia la entrada que recibe el juego; Desactivado es el original."},
+    {"GARAGE CAMERA", "CÁMARA DEL GARAJE"},
+    {"On: on the car pages (car select, your garage), the right stick or a mouse drag on the car turns the view around the car; a second after you let go, the car spins on its own again.", "Activado: en las páginas de coches (selección de coche, tu garaje), el stick derecho o arrastrar el ratón sobre el coche gira la vista alrededor del coche; un segundo después de soltarlo, el coche vuelve a girar solo."},
     {"ANALOG TRIGGERS", "GATILLOS ANALÓGICOS"},
     {"On: a trigger set to accelerate or brake works gradually, like a pedal (light pressure, light throttle).", "Activado: un gatillo asignado a acelerar o frenar funciona de forma gradual, como un pedal (presión ligera, aceleración ligera)."},
     {"Both triggers together still powerslide.", "Pulsar ambos gatillos a la vez sigue provocando un derrape."},
@@ -4792,6 +5957,12 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Photo mode: the next blur level, round to the first.", "Modo foto: el siguiente nivel de desenfoque, y de vuelta al primero."},
     {"PHOTO: FOCUS ON CAR / CENTRE", "FOTO: ENFOQUE COCHE / CENTRO"},
     {"Photo mode: focus on the car or the middle of the screen.", "Modo foto: enfocar el coche o el centro de la pantalla."},
+    {"PHOTO: MOTION BLUR", "FOTO: DESENFOQUE DE MOVIMIENTO"},
+    {"Photo mode: the motion blur's next mode: off, tracking, panning, static.", "Modo foto: el siguiente modo del desenfoque de movimiento: desactivado, seguimiento, barrido, fijo."},
+    {"PHOTO: FASTER SHUTTER", "FOTO: OBTURADOR MÁS RÁPIDO"},
+    {"Photo mode: a shorter exposure, less motion blur.", "Modo foto: una exposición más corta, menos desenfoque de movimiento."},
+    {"PHOTO: SLOWER SHUTTER", "FOTO: OBTURADOR MÁS LENTO"},
+    {"Photo mode: a longer exposure, more motion blur.", "Modo foto: una exposición más larga, más desenfoque de movimiento."},
     {"PHOTO: GAME CAMERA", "FOTO: CÁMARA DEL JUEGO"},
     {"Photo mode: back to the game's camera view.", "Modo foto: volver a la vista de la cámara del juego."},
     {"PHOTO: HELP", "FOTO: AYUDA"},
@@ -4933,7 +6104,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Start the game, or start it in safe mode with its settings turned down.", "Iniciar el juego, o iniciarlo en modo seguro con los ajustes reducidos."},
     {"The game's own PC settings: the same rows as SETTINGS in the game, saved to the same file.", "Los ajustes de PC del propio juego: las mismas filas que AJUSTES en el juego, guardadas en el mismo archivo."},
     {"A PCSX2 texture replacement folder for Burnout 3, used from the next start.", "Una carpeta de texturas de reemplazo de PCSX2 para Burnout 3, usada desde el siguiente inicio."},
-    {"Your own music on the game's radio: the same settings as SETTINGS > INTERFACE > MUSIC in the game.", "Música propia en la radio del juego: los mismos ajustes que AJUSTES > INTERFAZ > MÚSICA en el juego."},
+    {"Your own music on the game's radio: the same settings as SETTINGS > AUDIO > MUSIC in the game.", "Música propia en la radio del juego: los mismos ajustes que AJUSTES > AUDIO > MÚSICA en el juego."},
     {"Mods in the mods folder: which are on, and their order.", "Mods de la carpeta de mods: cuáles están activados y su orden."},
     {"Your disc and its files are never changed.", "El disco y sus archivos nunca se modifican."},
     {"Your Burnout 3 disc (NTSC-U, SLUS-21050): its image, or a folder with its contents.", "El disco de Burnout 3 (NTSC-U, SLUS-21050): su imagen, o una carpeta con su contenido."},
@@ -4941,7 +6112,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"The game saves by itself.", "El juego guarda automáticamente."},
     {"Each profile's stats as the game saved them, and local achievements worked out from them.", "Las estadísticas de cada perfil tal como las guardó el juego, y logros locales calculados a partir de ellas."},
     {"Every player car on your disc in 3D on a turntable, with the game's name for it.", "Todos los coches jugables del disco en 3D sobre una plataforma giratoria, con el nombre que les da el juego."},
-    {"Your recorded sessions, played back exactly as they were played (SETTINGS > INTERFACE > RECORD REPLAYS).", "Las sesiones grabadas, reproducidas exactamente como se jugaron (AJUSTES > INTERFAZ > GRABAR REPETICIONES)."},
+    {"Your recorded sessions, played back exactly as they were played (SETTINGS > GAME > MODES > RECORD REPLAYS).", "Las sesiones grabadas, reproducidas exactamente como se jugaron (AJUSTES > JUEGO > MODOS > GRABAR REPETICIONES)."},
     {"Connected controllers, live, and the keyboard as the game maps it.", "Mandos conectados, en directo, y el teclado tal como lo asigna el juego."},
     {"Who made this port, and the people and projects it stands on.", "Quién ha hecho este port, y las personas y proyectos en los que se basa."},
     {"Read with notes:", "Leído con notas:"},
@@ -5068,7 +6239,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Your settings file stays as it is.", "El archivo de ajustes se queda como está."},
     {"Start the game directly next time (skip this launcher):", "Iniciar el juego directamente la próxima vez (sin este lanzador):"},
     {"On: starting the launcher starts the game at once, with these settings, saves, mods and music.", "Activado: al abrir el lanzador se inicia el juego directamente, con estos ajustes, partidas, mods y música."},
-    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > INTERFACE.", "Para volver a ver el lanzador, mantener pulsado Shift (o Back / Select en un mando) durante el inicio, o volver a activar ABRIR EL LANZADOR AL INICIO en AJUSTES > INTERFAZ del juego."},
+    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > GAME > STARTING AND LOADING.", "Para volver a ver el lanzador, mantener pulsado Shift (o Back / Select en un mando) durante el inicio, o volver a activar ABRIR EL LANZADOR AL INICIO en AJUSTES > JUEGO > INICIO Y CARGA del juego."},
     {"Game data", "Datos del juego"},
     {"Set it on the Game Data page.", "Se indica en la página Datos del juego."},
     {"Game program", "Programa del juego"},
@@ -5198,7 +6369,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"ALBUM", "ÁLBUM"},
     {"Your songs play through the game's radio: its RADIO VOLUME, its shuffle setting and the EA TRAX popup with each song's title, artist and album from its tags.", "Las canciones propias suenan a través de la radio del juego: su VOLUMEN DE LA RADIO, su ajuste de reproducción aleatoria y la ventana emergente de EA TRAX con el título, el artista y el álbum de cada canción según sus etiquetas."},
     {"The game reads the folder when its next song starts.", "El juego lee la carpeta cuando empieza su siguiente canción."},
-    {"In the game these are SETTINGS > INTERFACE > MUSIC: a change in either place shows in the other.", "En el juego son AJUSTES > INTERFAZ > MÚSICA: un cambio en cualquiera de los dos sitios se refleja en el otro."},
+    {"In the game these are SETTINGS > AUDIO > MUSIC: a change in either place shows in the other.", "En el juego son AJUSTES > AUDIO > MÚSICA: un cambio en cualquiera de los dos sitios se refleja en el otro."},
     {"OTHER MUSIC APPS shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the same popup; its sound stays in that app.", "OTRAS APPS DE MÚSICA muestra la canción que reproduce otra aplicación (Spotify, un navegador, cualquier reproductor de los controles multimedia del sistema) en la misma ventana emergente; su sonido sigue en esa aplicación."},
     {"None installed.", "Ninguno instalado."},
     {"Put each mod in its own folder in the mods folder (a folder with a mod.ini), then Look again.", "Poner cada mod en su propia carpeta dentro de la carpeta de mods (una carpeta con un mod.ini) y luego pulsar Volver a buscar."},
@@ -5222,7 +6393,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Developer mods: Off", "Mods de desarrollo: Desactivado"},
     {"For mod authors: code mods that say [code] platform = yes may then change the game's platform layer (the kernel, the disc and pad drivers).", "Para autores de mods: los mods de código que indiquen [code] platform = yes pueden entonces cambiar la capa de plataforma del juego (el kernel, los controladores de disco y de mando)."},
     {"Leave it off unless a mod's author asks for it.", "Dejarlo desactivado salvo que lo pida el autor de un mod."},
-    {"Developer mods on (also PC SETTINGS > INTERFACE > DEVELOPER MODS).", "Mods de desarrollo activados (también en AJUSTES DE PC > INTERFAZ > MODS DE DESARROLLO)."},
+    {"Developer mods on (also PC SETTINGS > MODS > DEVELOPER MODS).", "Mods de desarrollo activados (también en AJUSTES DE PC > MODS > MODS DE DESARROLLO)."},
     {"Developer mods off.", "Mods de desarrollo desactivados."},
     {"|  version", "|  versión"},
     {"|  api", "|  api"},
@@ -5365,7 +6536,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"A replay file is small: copy it to keep it (a renamed one is never removed) or to send it; it plays on any PC with this release of the port and the same disc.", "Un archivo de repetición es pequeño: copiarlo para conservarlo (uno renombrado nunca se elimina) o para enviarlo; se reproduce en cualquier PC con esta versión del port y el mismo disco."},
     {"Recording: On", "Grabación: Activada"},
     {"Recording: Off", "Grabación: Desactivada"},
-    {"RECORD REPLAYS (also in the game's SETTINGS > INTERFACE).", "GRABAR REPETICIONES (también en AJUSTES > INTERFAZ del juego)."},
+    {"RECORD REPLAYS (also in the game's SETTINGS > GAME > MODES).", "GRABAR REPETICIONES (también en AJUSTES > JUEGO > MODOS del juego)."},
     {"On: each session, from the start of the game to its end, is kept here.", "Activado: cada sesión, desde el inicio del juego hasta su cierre, se guarda aquí."},
     {"Each session of the game is recorded from its start to its end and kept here (the newest 20).", "Cada sesión del juego se graba desde su inicio hasta su cierre y se guarda aquí (las 20 más recientes)."},
     {"Turn recording on to keep your sessions here; they play back exactly as you played them.", "Activar la grabación para guardar aquí las sesiones; se reproducen exactamente como se jugaron."},
@@ -5425,7 +6596,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Controls", "Controles"},
     {"Which key or controller input gives each PS2 button, per player.", "Qué tecla o entrada de mando da cada botón de PS2, por jugador."},
     {"The game reads the same buttons as before: only the input behind each one changes.", "El juego lee los mismos botones que antes: solo cambia la entrada detrás de cada uno."},
-    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > INTERFACE > CONTROLS).", "Guardado en controls.ini; el juego lo lee al iniciarse (en el juego: AJUSTES > INTERFAZ > CONTROLES)."},
+    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > CONTROLS > BINDINGS).", "Guardado en controls.ini; el juego lo lee al iniciarse (en el juego: AJUSTES > CONTROLES > ASIGNACIONES)."},
     {"Whose controls.", "De quién son los controles."},
     {"Device", "Dispositivo"},
     {"Keys for", "Teclas para"},
@@ -5701,7 +6872,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Heavyweight", "Peso pesado"},
     {"COMPACT TYPE 1", "COMPACT TYPE 1"},
     {"DATA/GLOBALUS.BIN", "DATA/GLOBALUS.BIN"},
-    {"CAR", "CAR"},
+    {"CAR", "COCHE"},   // settingsui
     {"BGV", "BGV"},
     {"TRACKS/US/C3_V1", "TRACKS/US/C3_V1"},
     {"move", "mover"},
@@ -5808,6 +6979,24 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"MSAA {}x", "MSAA {}x"},
     {"Steam", "Steam"},   // issue #8: Add to Steam
     {"Add to Steam", "Añadir a Steam"},
+    {"Two data folders", "Dos carpetas de datos"},
+    {"Steam's Flatpak can reach the data folder you use outside Steam, but the sandbox's own folder holds saves too, so it stays in use: {}.", "El Steam de Flatpak puede acceder a la carpeta de datos que usas fuera de Steam, pero la carpeta propia del entorno aislado también tiene partidas, así que sigue en uso: {}."},
+    {"To use the other one from Steam, copy what you want to keep from the sandbox's folder into ~/.local/share/b3port/native, then delete the sandbox's folder.", "Para usar la otra desde Steam, copia lo que quieras conservar de la carpeta del entorno aislado en ~/.local/share/b3port/native y luego borra la carpeta del entorno aislado."},
+    {"Sandbox settings left behind", "Ajustes del entorno aislado sin usar"},
+    {"Steam's Flatpak can now reach the data folder you use outside Steam, so the launcher and the game use it: {}.", "El Steam de Flatpak ya puede acceder a la carpeta de datos que usas fuera de Steam, así que el lanzador y el juego la usan: {}."},
+    {"The settings written earlier in the sandbox's own folder stay there, unused (the sandbox's folder holds no save): {}.", "Los ajustes escritos antes en la carpeta propia del entorno aislado siguen ahí, sin usar (esa carpeta no tiene partidas): {}."},
+    {"Stops the download.", "Detiene la descarga."},
+    {"Nothing is installed; your current version stays as it is.", "No se instala nada; la versión actual se queda como está."},
+    {"Update cancelled.", "Actualización cancelada."},
+    {"An update is being installed: wait for it to finish (or cancel it).", "Se está instalando una actualización: espera a que termine (o cancélala)."},
+    {"The update {} is downloaded and checked, but its disk image did not open.", "La actualización {} está descargada y comprobada, pero su imagen de disco no se abrió."},
+    {"Open it yourself ({}), then quit and drag the app to Applications.", "Ábrela tú mismo ({}), luego sal y arrastra la app a Aplicaciones."},
+    {"macOS runs this app from a temporary copy, because it was opened where it was downloaded.", "macOS ejecuta esta app desde una copia temporal, porque se abrió donde se descargó."},
+    {"Move the app to Applications (drag it there in Finder), open it from there, then press Add to Steam again.", "Mueve la app a Aplicaciones (arrástrala allí en el Finder), ábrela desde allí y pulsa de nuevo Añadir a Steam."},
+    {"Flatpak's Steam needs to see this folder and your data folder: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "El Steam de Flatpak debe poder ver esta carpeta y tu carpeta de datos: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
+    {"Started from Steam's Flatpak", "Iniciado desde el Steam de Flatpak"},
+    {"Steam's Flatpak runs the game in its own sandbox, so the launcher and the game keep their settings, saves and mods in a folder of their own: {}.", "El Steam de Flatpak ejecuta el juego en su propio entorno aislado, así que el lanzador y el juego guardan sus ajustes, partidas y mods en una carpeta aparte: {}."},
+    {"To use the same data as outside Steam, run this once in a terminal, then start the game from Steam again: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Para usar los mismos datos que fuera de Steam, ejecuta esto una vez en un terminal y vuelve a iniciar el juego desde Steam: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
     {"Adding...", "Añadiendo..."},
     {"Adding to Steam...", "Añadiendo a Steam..."},
     {"Big Picture and the Steam Deck then show it with its own pictures.", "Big Picture y la Steam Deck lo muestran entonces con sus propias imágenes."},
@@ -5834,8 +7023,9 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Cannot find the launcher's own program file, so it cannot be added.", "No se encuentra el archivo del propio lanzador, así que no se puede añadir."},
     {"Steam is running.", "Steam está abierto."},
     {"Close Steam, then press Add to Steam again: Steam rewrites its list of games when it closes.", "Cerrar Steam y volver a pulsar Añadir a Steam: Steam reescribe su lista de juegos al cerrarse."},
-    {"On a Steam Deck, do this in Desktop Mode: exit Steam from its icon in the taskbar first.", "En una Steam Deck, hacerlo en el modo escritorio: primero salir de Steam desde su icono en la barra de tareas."},
-    {"Flatpak's Steam needs to see this folder: flatpak override --user --filesystem={} com.valvesoftware.Steam", "El Steam de Flatpak debe poder ver esta carpeta: flatpak override --user --filesystem={} com.valvesoftware.Steam"},
+    {"Right-click the Steam icon by the clock and choose Exit.", "Hacer clic derecho en el icono de Steam junto al reloj y elegir Salir."},
+    {"In the menu bar: Steam > Quit Steam.", "En la barra de menús: Steam > Salir de Steam."},
+    {"On a Steam Deck: right-click the Steam icon in the taskbar (bottom right) and choose Exit Steam, then press Add to Steam again.", "En una Steam Deck: hacer clic derecho en el icono de Steam de la barra de tareas (abajo a la derecha), elegir Salir de Steam y volver a pulsar Añadir a Steam."},
     {"The next Add to Steam uses the port's own pictures.", "El próximo Añadir a Steam usa las imágenes del port."},
     {"Steam was not found on this computer.", "No se ha encontrado Steam en este ordenador."},
     {"Install Steam and sign in once, then press Add to Steam again.", "Instalar Steam e iniciar sesión una vez; después volver a pulsar Añadir a Steam."},
@@ -5854,12 +7044,59 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Choose a cover picture for Steam (PNG or JPEG)", "Elegir una imagen de portada para Steam (PNG o JPEG)"},
     {"Choose a background picture for Steam (PNG or JPEG)", "Elegir una imagen de fondo para Steam (PNG o JPEG)"},
     {"Choose a logo picture for Steam (PNG or JPEG)", "Elegir una imagen de logotipo para Steam (PNG o JPEG)"},
-    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > INTERFACE > CONTROLS; the launcher's Controls page)
+    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > CONTROLS > BINDINGS; the launcher's Controls page)
     {"CONTROLLER LAYOUT", "DISPOSICIÓN DEL MANDO"},
     {"BUTTONS FOR", "BOTONES PARA"},
     {"Layout", "Disposición"},
     {"Buttons for", "Botones para"},
     {"Custom", "Personalizada"},
+    {"CAR PAINT", "PINTURA DEL COCHE"},   // carpaint
+    {"PAINT RED", "PINTURA ROJO"},   // carpaint
+    {"PAINT GREEN", "PINTURA VERDE"},   // carpaint
+    {"PAINT BLUE", "PINTURA AZUL"},   // carpaint
+    {"DECALS", "ADHESIVOS"},   // carpaint
+    {"Custom: your car in your own colour (the three rows below) instead of the paint picked in the car select.", "Personalizada: tu coche en tu propio color (las tres filas de abajo) en lugar de la pintura elegida en la selección de coche."},   // carpaint
+    {"Cars with one fixed livery keep it.", "Los coches con una sola decoración fija la conservan."},   // carpaint
+    {"Drawn only: the game, replays and saves keep the car select's paint.", "Solo visual: el juego, las repeticiones y las partidas guardadas conservan la pintura de la selección de coche."},   // carpaint
+    {"The custom paint's colour, 0 to 255 for each of red, green and blue.", "El color de la pintura personalizada, de 0 a 255 para rojo, verde y azul."},   // carpaint
+    {"Off: your car without its logos, numbers and stripes, in plain paint; lights, grilles and wheels stay.", "Desactivado: tu coche sin logotipos, números ni franjas, en pintura lisa; luces, rejillas y ruedas se mantienen."},   // carpaint
+    {"FINISH", "ACABADO"},
+    {"Gloss", "Brillo"},
+    {"Metallic", "Metalizado"},
+    {"Pearl", "Perlado"},
+    {"PLAYER 2 CAR PAINT", "PINTURA DEL COCHE DEL JUGADOR 2"},
+    {"P2 CAR PAINT", "PINTURA J2"},
+    {"P2 PAINT RED", "PINTURA J2 ROJO"},
+    {"P2 PAINT GREEN", "PINTURA J2 VERDE"},
+    {"P2 PAINT BLUE", "PINTURA J2 AZUL"},
+    {"P2 DECALS", "ADHESIVOS J2"},
+    {"The paint's finish on both players' cars.", "El acabado de la pintura en los coches de ambos jugadores."},
+    {"Gloss: the game's.", "Brillo: el del juego."},
+    {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metalizado: un reflejo más fuerte del color de la pintura, con escamas que brillan con la luz."},
+    {"Pearl: the colour shifts as the car turns to the light.", "Perlado: el color cambia cuando el coche gira hacia la luz."},
+    {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "El coche del jugador 2 en pantalla dividida: Personalizada lo muestra en el color de las tres filas de abajo en lugar de la pintura elegida en la selección de coche."},
+    {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Desactivado: el coche del jugador 2 sin logotipos, números ni franjas, en pintura lisa."},
+    {"LIGHTING", "ILUMINACIÓN"},   // night
+    {"TIME OF DAY", "HORA DEL DÍA"},   // night
+    {"Day", "Día"},   // night
+    {"Night", "Noche"},   // night
+    {"TIME OF DAY PER RACE", "HORA DEL DÍA POR CARRERA"},   // todrace
+    {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Páginas del circuito (evento individual, multijugador): Predeterminado, Día o Noche para la próxima carrera."},   // todrace
+    {"Time of day: {}", "Hora del día: {}"},   // todrace
+    {"Default ({})", "Predeterminado ({})"},   // todrace
+    {"MOON", "LUNA"},   // night
+    {"SURFACE DETAIL", "DETALLE DE SUPERFICIES"},   // night
+    {"AMBIENT OCCLUSION", "OCLUSIÓN AMBIENTAL"},   // night
+    {"Night: every race after dark, with a night sky, the cars' lights on and headlight beams on the road.", "Noche: cada carrera a oscuras, con un cielo nocturno, las luces de los coches encendidas y los haces de los faros en la carretera."},   // night
+    {"The moon in the night sky, and its cool light on the cars, the road and the walls facing it.", "La luna en el cielo nocturno, y su luz fría sobre los coches, la carretera y los muros que la miran."},   // night
+    {"Relief and sheen on the road, kerbs and walls from their textures, lit by the sun or the moon.", "Relieve y brillo en la carretera, los bordillos y los muros a partir de sus texturas, iluminados por el sol o la luna."},   // night
+    {"Soft contact shadows under the cars and along walls and kerbs.", "Suaves sombras de contacto bajo los coches y a lo largo de muros y bordillos."},   // night
+    {"Draws the scene twice: for fast graphics cards.", "Dibuja la escena dos veces: para tarjetas gráficas rápidas."},   // night
+    {"SUN SHADOWS", "SOMBRAS DEL SOL"},   // sunshadow
+    {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Sombras reales de los coches sobre la carretera, proyectadas por el sol o, de noche, por la luna."},   // sunshadow
+    {"None in tunnels and under bridges.", "Ninguna en túneles ni bajo puentes."},   // sunshadow
+    {"Sharper with ANTI-ALIASING at 4x or more.", "Más nítidas con el ANTI-ALIASING a 4x o más."},   // sunshadow
+    {"It lights the road's relief too, a small extra cost even with SURFACE DETAIL off.", "También ilumina el relieve de la carretera, un pequeño coste extra incluso con DETALLE DE SUPERFICIES desactivado."},   // night
     {"Auto: Xbox controller", "Auto: mando de Xbox"},
     {"Auto: PlayStation controller", "Auto: mando de PlayStation"},
     {"Auto: Nintendo, Xbox layout", "Auto: Nintendo, disposición Xbox"},
@@ -5868,12 +7105,314 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Which buttons do what on this player's controller.", "Qué hace cada botón en el mando de este jugador."},
     {"Auto: the layout of the controller's console, picked again when the controller changes: a PlayStation controller gets the PS2 game's, any other controller the original Xbox game's.", "Auto: la disposición de la consola del mando, elegida de nuevo cuando cambia el mando: un mando de PlayStation recibe la del juego de PS2, cualquier otro mando la del juego original de Xbox."},
     {"Xbox, PlayStation: that layout on any controller.", "Xbox, PlayStation: esa disposición en cualquier mando."},
+    {"Nintendo: the Xbox layout by label, A confirms and boosts, B goes back and is the Crashbreaker.", "Nintendo: la disposición Xbox según el nombre de los botones, A confirma y da boost, B vuelve atrás y es el Crashbreaker."},
     {"Custom: your own bindings in the rows below.", "Personalizada: las asignaciones propias en las filas de abajo."},
     {"Changing a binding below makes it Custom.", "Cambiar una asignación de abajo pasa a Personalizada."},
     {"A button can do one thing while you drive and another in the menus (on the Xbox layout A boosts, and confirms in a menu).", "Un botón puede hacer una cosa al conducir y otra en los menús (en la disposición Xbox, A da boost, y confirma en un menú)."},
+    // polish122: the CONTROLS change notes (in the game: LAST CHANGE; the launcher's Controls page)
+    {"KEYBOARD", "TECLADO"},
+    {"DRIVING", "CONDUCCIÓN"},
+    {"MENUS", "MENÚS"},
+    {"SHORTCUTS", "ATAJOS"},
+    {"ALL CONTROLS RESET TO DEFAULTS", "TODOS LOS CONTROLES RESTABLECIDOS A LOS VALORES PREDETERMINADOS"},
+    {"PRESS RESET ALL CONTROLS AGAIN TO PUT EVERYTHING BACK (ANY OTHER ROW CANCELS)", "PULSA RESTABLECER TODO OTRA VEZ PARA RESTABLECERLO TODO (CUALQUIER OTRA FILA LO CANCELA)"},
+    {"(this run only)", "(solo en esta sesión)"},
+    {"(NOT SAVED: {})", "(NO GUARDADO: {})"},
+    {"{}: saved (the game reads it at its next start).", "{}: guardado (el juego lo lee en su próximo inicio)."},
+    {"controller layout", "disposición del mando"},
+    {"gyro steering", "dirección giroscópica"},
+    {"gyro axis", "eje del giroscopio"},
+    {"gyro sensitivity", "sensibilidad del giroscopio"},
+    {"gyro dead zone", "zona muerta del giroscopio"},
+    {"gyro recentre button", "botón para recentrar el giroscopio"},
+    {"keyboard reset to the defaults", "teclado restablecido a los valores predeterminados"},
+    {"controller reset to the defaults", "mando restablecido a los valores predeterminados"},
+    {"AUDIO", "AUDIO"},   // settingsui
+    {"GAME", "JUEGO"},   // settingsui
+    {"LAYOUT", "DISPOSICIÓN"},   // settingsui
+    {"SMOOTHNESS", "FLUIDEZ"},   // settingsui
+    {"TEXTURES", "TEXTURAS"},   // settingsui
+    {"CAR LOOK", "ASPECTO DEL COCHE"},   // settingsui
+    {"GARAGE", "GARAJE"},   // settingsui
+    {"FEEDBACK", "VIBRACIÓN"},   // settingsui
+    {"BINDINGS", "ASIGNACIONES"},   // settingsui
+    {"GYRO", "GIROSCOPIO"},   // settingsui
+    {"MODES", "MODOS"},   // settingsui
+    {"LANGUAGE AND UNITS", "IDIOMA Y UNIDADES"},   // settingsui
+    {"STARTING AND LOADING", "INICIO Y CARGA"},   // settingsui
+    {"COLOUR", "COLOR"},   // settingsui
+    {"P2 COLOUR", "COLOR J2"},   // settingsui
+    {"Red", "Rojo"},   // settingsui
+    {"Orange", "Naranja"},   // settingsui
+    {"Yellow", "Amarillo"},   // settingsui
+    {"Green", "Verde"},   // settingsui
+    {"Blue", "Azul"},   // settingsui
+    {"Purple", "Morado"},   // settingsui
+    {"Pink", "Rosa"},   // settingsui
+    {"White", "Blanco"},   // settingsui
+    {"Silver", "Plata"},   // settingsui
+    {"A ready colour: sets the three rows below and turns the custom paint on.", "Un color listo: ajusta las tres filas de abajo y activa la pintura personalizada."},   // settingsui
+    {"Custom: the colour of the rows below.", "Personalizada: el color de las filas de abajo."},   // settingsui
+    {"VOLUMES AND DJ", "VOLÚMENES Y DJ"},   // settingsui
+    {"The game's own sound: RADIO VOLUME, the effects, the speech and the DJ are in DRIVER DETAILS > SETTINGS > AUDIO.", "El sonido del juego: VOLUMEN DE LA RADIO, los efectos, las voces y el DJ están en DATOS DEL PILOTO > AJUSTES > AUDIO."},   // settingsui
+    {"BOOST HOLD OR TOGGLE", "TURBO MANTENER O ALTERNAR"},   // settingsui
+    {"Boost by holding the button, or press once to boost and again to stop: CONTROLS > DRIVING > BOOST.", "Turbo manteniendo el botón, o pulsar una vez para el turbo y otra para pararlo: CONTROLES > CONDUCCIÓN > TURBO."},   // settingsui
+    {"BUTTONS AND KEYS", "BOTONES Y TECLAS"},   // settingsui
+    {"The launcher's Controllers page: test your controllers, and change the buttons and keys of both players, the shortcuts and the gyro steering.", "La página Mandos del lanzador: probar los mandos y cambiar los botones y teclas de ambos jugadores, los atajos y la dirección por giroscopio."},   // settingsui
+    {"The launcher's Music page: your own music folder, the playlist, its volume and other music apps.", "La página Música del lanzador: tu carpeta de música, la lista, su volumen y otras aplicaciones de música."},   // settingsui
+    {"The launcher's HD Textures page: choose the pack's folder, get the pack, or stop using it.", "La página Texturas HD del lanzador: elegir la carpeta del paquete, conseguir el paquete o dejar de usarlo."},   // settingsui
+    {"CHANGE", "CAMBIAR"},   // settingsui
+    {"CHOOSE", "ELEGIR"},   // settingsui
+    {"CLOSE AND SAVE", "CERRAR Y GUARDAR"},   // settingsui
+    {"SECTION", "SECCIÓN"},   // settingsui
+    {"REBIND", "REASIGNAR"},   // settingsui
+    {"ADD", "AÑADIR"},   // settingsui
+    {"REMOVE", "QUITAR"},   // settingsui
+    {"DEFAULT", "PREDETERMINADO"},   // settingsui
+    {"CLICK", "CLIC"},   // settingsui
+    {"WHEEL", "RUEDA"},   // settingsui
+    {"SCROLL", "DESPLAZAR"},   // settingsui
+    {"RIGHT CLICK", "CLIC DERECHO"},   // settingsui
+    {"CLOSE", "CERRAR"},   // settingsui
+    {"MOVE", "MOVER"},   // settingsui
+    {"Kept: the menus need one input that confirms and one that goes back.", "Se mantiene: los menús necesitan una entrada que confirme y otra que vuelva atrás."},   // settingsui
+    {"Go back", "Atrás"},   // settingsui
+    {"Bug report...", "Informe de errores..."},   // settingsui
+    {"Make a bug report?", "¿Crear un informe de errores?"},   // settingsui
+    {"Make report", "Crear el informe"},   // settingsui
+    {"With my save", "Con mi partida"},   // settingsui
+    {"Click a row twice to open it", "Haz clic dos veces en una fila para abrirla"},   // settingsui
+    {"LAUNCHER", "LANZADOR"},   // settingsui
+    {"TEST", "PRUEBA"},   // settingsui
+    {"Left stick", "Stick izquierdo"},   // settingsui
+    {"built {}", "compilado el {}"},   // settingsui
+    {"Burnout 3 native port, a test build", "port nativo de Burnout 3, una versión de prueba"},   // settingsui
+    {"{} preset", "perfil {}"},   // settingsui
+    {"fullscreen", "pantalla completa"},   // settingsui
+    {"window", "ventana"},   // settingsui
+    {"no MSAA", "sin MSAA"},   // settingsui
+    {"{} fps limit", "límite de {} fps"},   // settingsui
+    {"no HD pack", "sin pack HD"},   // settingsui
+    {"HD pack", "pack HD"},   // settingsui
+    {"HD pack off", "pack HD desactivado"},   // settingsui
+    {"saved {}", "guardado el {}"},   // settingsui
+    {"(an older profile-{} folder: read, and saved as a .sav at the first save)", "(una carpeta profile-{} antigua: leída, y guardada como .sav en el primer guardado)"},   // settingsui
+    {"An older profile-{} folder (read; saved as a .sav at the first save)", "Una carpeta profile-{} antigua (leída; guardada como .sav en el primer guardado)"},   // settingsui
+    {"Released {}", "Publicada el {}"},   // settingsui
+    {"Last checked {}", "Última comprobación: {}"},   // settingsui
+    {"Version {}", "Versión {}"},   // settingsui
+    {"Not checked for updates yet", "Aún no se han buscado actualizaciones"},   // settingsui
+    {"Checking for updates...", "Buscando actualizaciones..."},   // settingsui
+    {"Update check off (Settings > Launcher)", "Búsqueda de actualizaciones desactivada (Ajustes > Lanzador)"},   // settingsui
+    {"Update available: {}", "Actualización disponible: {}"},   // settingsui
+    {"Up to date ({} is the latest release)", "Actualizado ({} es la última versión)"},   // settingsui
+    {"Up to date (no release published yet)", "Actualizado (aún no hay ninguna versión publicada)"},   // settingsui
+    {"Couldn't check for updates ({})", "No se pudieron buscar actualizaciones ({})"},   // settingsui
+    {"Installed: {}", "Instalados: {}"},   // settingsui
+    {"on: {}", "activados: {}"},   // settingsui
+    {"gold", "oro"},   // settingsui
+    {"silver", "plata"},   // settingsui
+    {"bronze", "bronce"},   // settingsui
+    {"Paint {}", "Pintura {}"},   // settingsui
+    {"NOT SET", "SIN ASIGNAR"},   // settingsui
+    {"Not saved: {}", "No guardado: {}"},   // settingsui
+    // item 11: a pack of the game's files without a mod.ini
+    {"Install as a file-replacement mod?", "¿Instalar como mod de sustitución de archivos?"},
+    {"This pack has no mod.ini.", "Este paquete no tiene mod.ini."},
+    {"Install it as a file-replacement mod named {}?", "¿Instalarlo como mod de sustitución de archivos con el nombre {}?"},
+    {"Its files replace the game's files of the same names; it has no code, so nothing in it runs.", "Sus archivos sustituyen a los archivos del juego con el mismo nombre; no tiene código, así que no se ejecuta nada de él."},
+    {"A mod.ini is written for it, and it starts off.", "Se escribe un mod.ini para él, y empieza desactivado."},
+    {"Install", "Instalar"},
+    {"Not a mod", "No es un mod"},
+    {"{} was not installed; nothing was written.", "{} no se ha instalado; no se ha escrito nada."},
+    {"It has no mod.ini, and no folders of the game's own (DATA, PVEH, TRACKS, SOUND, OVID) to install as replacement files.", "No tiene mod.ini ni carpetas del propio juego (DATA, PVEH, TRACKS, SOUND, OVID) que instalar como archivos de sustitución."},
+    {"A mod.ini is the small text file at the top of a mod that names it: its id, name and version.", "Un mod.ini es el pequeño archivo de texto en la parte superior de un mod que le da nombre: su id, nombre y versión."},
+    {"Add folder...", "Añadir carpeta..."},
+    {"Installs a mod from a folder: copied into its own folder in the mods folder.", "Instala un mod desde una carpeta: se copia en su propia carpeta dentro de la carpeta de mods."},
+    {"A pack of the game's own files without a mod.ini (its DATA, PVEH or TRACKS folders) can be installed as a file-replacement mod.", "Un paquete de archivos del juego sin mod.ini (sus carpetas DATA, PVEH o TRACKS) se puede instalar como mod de sustitución de archivos."},
+    {"Add a mod: choose its folder (a mod, or a pack of the game's files)", "Añadir un mod: elige su carpeta (un mod, o un paquete de archivos del juego)"},
+    {"Open the mod's folder, then Start: it is copied into the mods folder.", "Abre la carpeta del mod y pulsa Start: se copia en la carpeta de mods."},
+    {"Set aside file {}?", "¿Apartar el archivo {}?"},   // saveflow
+    {"The game can't play profile-{}.sav.", "El juego no puede usar profile-{}.sav."},   // saveflow
+    {"Why: {}.", "Motivo: {}."},   // saveflow
+    {"It is renamed in the save folder (kept, not deleted) and the file starts empty: the game makes a new profile at its first save.", "Se renombra en la carpeta de guardado (se conserva, no se borra) y el archivo empieza vacío: el juego crea un perfil nuevo al guardar por primera vez."},   // saveflow
+    {"Quit the game first if it is running.", "Cierra antes el juego si está abierto."},   // saveflow
+    {"Set aside", "Apartar"},   // saveflow
+    {"Set aside as {}.", "Apartado como {}."},   // saveflow
+    {"The game starts this file fresh.", "El juego empieza de cero con este archivo."},   // saveflow
+    {"Cannot set it aside: {}", "No se puede apartar: {}"},   // saveflow
+    {"Can't be played: damaged or unreadable", "No se puede usar: dañado o ilegible"},   // saveflow
+    {"Set aside file {} and start fresh...", "Apartar el archivo {} y empezar de cero..."},   // saveflow
+    {"Renames profile-{}.sav in the save folder (kept, not deleted) so that the game starts this file empty.", "Renombra profile-{}.sav en la carpeta de guardado (se conserva, no se borra) para que el juego empiece este archivo vacío."},   // saveflow
+    {"SAVED", "GUARDADO"},   // saveflow
+    {"SAVE FAILED", "ERROR AL GUARDAR"},   // saveflow
+    {"YOUR LAST SAVE IS KEPT", "TU ÚLTIMA PARTIDA GUARDADA SE CONSERVA"},   // saveflow
+    {"RETRYING", "REINTENTANDO"},   // saveflow
+    {"SAVED AGAIN TO PROFILE {}", "GUARDADO DE NUEVO EN EL PERFIL {}"},   // saveflow
+    {"NOT SAVED", "NO GUARDADO"},   // saveflow
+    {"CAN'T READ {}", "NO SE PUEDE LEER {}"},   // saveflow
+    {"PROGRESS WON'T BE SAVED THIS SESSION", "EL PROGRESO NO SE GUARDARÁ EN ESTA SESIÓN"},   // saveflow
+    {"THE LAUNCHER'S SAVES PAGE CAN SET IT ASIDE", "LA PÁGINA PARTIDAS DEL LANZADOR PUEDE APARTARLO"},   // saveflow
+    {"{} CHANGED OUTSIDE THE GAME", "{} SE HA CAMBIADO FUERA DEL JUEGO"},   // saveflow
+    {"SAVED TO {}", "GUARDADO EN {}"},   // saveflow
+    {"A SAVE WAS IMPORTED: RESTART THE GAME TO PLAY IT", "SE HA IMPORTADO UNA PARTIDA: REINICIA EL JUEGO PARA JUGARLA"},   // saveflow
+    {"SAVE WARNING", "AVISO DE GUARDADO"},   // saveflow
+    {"ANOTHER GAME ON THIS COMPUTER USES THIS SAVE FOLDER", "OTRO JUEGO EN ESTE ORDENADOR USA ESTA CARPETA DE GUARDADO"},   // saveflow
+    {"PLAY ONE AT A TIME", "JUEGA EN UNO A LA VEZ"},   // saveflow
+    {"Progress from {} was saved beside it, because the file changed while the game was running.", "El progreso del {} se guardó al lado, porque el archivo cambió mientras el juego estaba abierto."},   // saveflow
+    {"Use it", "Usarlo"},   // saveflow
+    {"Leave it", "Dejarlo"},   // saveflow
+    {"Makes it this file's save; the current one is kept as a backup (.bak and backups).", "Lo convierte en la partida de este archivo; la actual se conserva como copia (.bak y backups)."},   // saveflow
+    {"Hides this line; the file stays in the save folder.", "Oculta esta línea; el archivo sigue en la carpeta de guardado."},   // saveflow
+    {"Use the progress from {}?", "¿Usar el progreso del {}?"},   // saveflow
+    {"It replaces profile-{}.sav.", "Sustituye a profile-{}.sav."},   // saveflow
+    {"The current one is kept as profile-{}.sav.bak and in backups.", "La actual se conserva como profile-{}.sav.bak y en backups."},   // saveflow
+    {"Now using the progress from {}.", "Ahora se usa el progreso del {}."},   // saveflow
+    {"Cannot use it: {}", "No se puede usar: {}"},   // saveflow
+    // xboximport (1.3.0): Import Xbox textures
+    {"XBOX TEXTURES", "TEXTURAS XBOX"},
+    {"The textures imported from your Xbox disc in the launcher, below your own HD pack and the mods' packs.", "Las texturas importadas de tu disco de Xbox en el lanzador, por debajo de tu propio paquete HD y de los paquetes de los mods."},
+    {"Used while HD TEXTURES is on.", "Se usan mientras TEXTURAS HD está activado."},
+    {"Xbox textures", "Texturas de Xbox"},
+    {"Builds a texture pack on this computer from your own Xbox disc image of the game (.iso or .xiso).", "Crea un paquete de texturas en este ordenador a partir de tu propia imagen de disco de Xbox del juego (.iso o .xiso)."},
+    {"It is a small improvement: some building fronts, signs and car paint are somewhat sharper.", "Es una mejora pequeña: algunas fachadas, carteles y pinturas de coche se ven algo más nítidos."},
+    {"An HD texture pack looks far better; this is for players who want to use their Xbox disc.", "Un paquete de texturas HD se ve mucho mejor; esto es para quienes quieren usar su disco de Xbox."},
+    {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "No se descarga ni se comparte nada, y tu propio paquete HD y los paquetes de los mods siguen teniendo prioridad."},
+    {"Not imported.", "No importadas."},
+    {"{} textures imported.", "{} texturas importadas."},
+    {"Size: {} MB.", "Tamaño: {} MB."},
+    {"From: {}.", "De: {}."},
+    {"Made by an older version: import again for the newest result.", "Creadas por una versión anterior: vuelve a importar para obtener el mejor resultado."},
+    {"XBOX TEXTURES is off.", "TEXTURAS XBOX está desactivado."},
+    {"HD TEXTURES is off.", "TEXTURAS HD está desactivado."},
+    {"Import Xbox textures...", "Importar texturas de Xbox..."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso).", "Elige tu imagen de disco de Xbox del juego (.iso o .xiso)."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso)", "Elige tu imagen de disco de Xbox del juego (.iso o .xiso)"},
+    {"The import runs on this computer in about a minute.", "La importación se hace en este ordenador en un minuto aproximadamente."},
+    {"Deletes the imported textures (your disc image is not touched).", "Borra las texturas importadas (tu imagen de disco no se toca)."},
+    {"Disc images here: A on one imports its textures.", "Imágenes de disco aquí: A sobre una importa sus texturas."},
+    {"No disc images here: open the folder that holds your Xbox disc image.", "No hay imágenes de disco aquí: abre la carpeta que contiene tu imagen de disco de Xbox."},
+    {"Xbox disc images (*.iso, *.xiso)", "Imágenes de disco de Xbox (*.iso, *.xiso)"},
+    {"Importing Xbox textures", "Importando texturas de Xbox"},
+    {"Reading the game's files: {}.", "Leyendo los archivos del juego: {}."},
+    {"Building the textures: {}.", "Creando las texturas: {}."},
+    {"Textures written: {}.", "Texturas escritas: {}."},
+    {"Cancelling...", "Cancelando..."},
+    {"Import cancelled: nothing was changed.", "Importación cancelada: no se ha cambiado nada."},
+    {"The import failed.", "La importación ha fallado."},
+    {"Remove the Xbox textures?", "¿Quitar las texturas de Xbox?"},
+    {"The imported textures are deleted.", "Las texturas importadas se borran."},
+    {"You can import them again from your disc at any time.", "Puedes volver a importarlas desde tu disco en cualquier momento."},
+    {"The Xbox textures were removed.", "Se han quitado las texturas de Xbox."},
+    {"Cannot open the disc image.", "No se puede abrir la imagen de disco."},
+    {"Not an Xbox disc image (no XDVDFS volume in it).", "No es una imagen de disco de Xbox (no contiene un volumen XDVDFS)."},
+    {"This Xbox disc image is not Burnout 3: Takedown.", "Esta imagen de disco de Xbox no es Burnout 3: Takedown."},
+    {"The game's files were not found (choose the game's folder first).", "No se encontraron los archivos del juego (elige primero la carpeta del juego)."},
+    {"Not enough free space (about 200 MB needed).", "No hay espacio libre suficiente (se necesitan unos 200 MB)."},
+    {"Could not read the disc or write the textures (is the drive full?).", "No se pudo leer el disco ni escribir las texturas (¿está lleno el disco?)."},
+    {"No Xbox texture matched the game's (a different version of the game?).", "Ninguna textura de Xbox coincide con las del juego (¿otra versión del juego?)."},
+    {"Could not replace the earlier import (a file in it is open?).", "No se pudo sustituir la importación anterior (¿hay un archivo suyo abierto?)."},
+    {"Could not move the textures into place.", "No se pudieron colocar las texturas en su sitio."},
+    {"Out of memory while reading the disc image (a damaged image?).", "Sin memoria al leer la imagen de disco (¿una imagen dañada?)."},
+    {"The import stopped: {}.", "La importación se ha detenido: {}."},
+    {"The import stopped: an unknown error.", "La importación se ha detenido: un error desconocido."},
+    // portable mode (1.3.0)
+    {"PORTABLE MODE", "MODO PORTÁTIL"},
+    {"On: everything the port keeps for you (settings, saves, mods, logs, replays) is in a folder called appdata beside the launcher, so the game can be carried on a USB stick.", "Activado: todo lo que el port guarda para ti (ajustes, partidas guardadas, mods, registros, repeticiones) está en una carpeta llamada appdata junto al lanzador, para llevar el juego en una memoria USB."},
+    {"Off: in this computer's user folder.", "Desactivado: en la carpeta de usuario de este ordenador."},
+    {"The launcher moves your data now: it is copied and checked first, and the old folder is kept until the game has started from the new one.", "El lanzador mueve tus datos ahora: primero se copian y se comprueban, y la carpeta antigua se conserva hasta que el juego haya arrancado desde la nueva."},
+    {"The launcher moves your data at its next start (it asks first).", "El lanzador mueve tus datos en su próximo inicio (antes pregunta)."},
+    {"The install folder cannot be written by you: move the game to a folder of your own to use portable mode.", "No puedes escribir en la carpeta de instalación: mueve el juego a una carpeta tuya para usar el modo portátil."},
+    {"The game is running: close it first.", "El juego se está ejecutando: ciérralo primero."},
+    {"A data folder was given when the launcher was started (--pref), so this does not apply.", "Se indicó una carpeta de datos al iniciar el lanzador (--pref), así que esto no se aplica."},
+    {"The launcher's own folder is not known.", "No se conoce la carpeta del lanzador."},
+    {"Data folder", "Carpeta de datos"},
+    {"In use", "En uso"},
+    {"Old copy", "Copia antigua"},
+    {"Remove the old copy...", "Eliminar la copia antigua..."},
+    {"Deletes the folder your data was moved from (asks first).", "Borra la carpeta de la que se movieron tus datos (antes pregunta)."},
+    {"Your data in use is not touched.", "Tus datos en uso no se tocan."},
+    {"Start the game once from the new folder first: the old copy stays until then.", "Inicia primero el juego una vez desde la nueva carpeta: la copia antigua se queda hasta entonces."},
+    {"portable: the appdata folder beside the launcher", "portátil: la carpeta appdata junto al lanzador"},
+    {"It cannot be written: settings and saves are not kept.", "No se puede escribir en ella: los ajustes y las partidas no se guardan."},
+    {"portable", "portátil"},
+    {"Moving your data", "Moviendo tus datos"},
+    {"Putting it in place.", "Colocándolos en su sitio."},
+    {"Copying: {} MB.", "Copiando: {} MB."},
+    {"Checking the copy: {} MB.", "Comprobando la copia: {} MB."},
+    {"Nothing is removed until the copy is checked.", "No se elimina nada hasta que la copia esté comprobada."},
+    {"Your data was not moved", "Tus datos no se han movido"},
+    {"Nothing was changed: your data is where it was.", "No ha cambiado nada: tus datos están donde estaban."},
+    {"Cancelled: nothing was moved.", "Cancelado: no se ha movido nada."},
+    {"Not moved: {}.", "No movidos: {}."},
+    {"Your data is now in {}.", "Tus datos están ahora en {}."},
+    {"The old copy is kept in {}.", "La copia antigua se conserva en {}."},
+    {"The data that was in this computer's folder is kept in {}.", "Los datos que había en la carpeta de este ordenador se conservan en {}."},
+    {"Once the game has started from the new folder, the launcher offers to remove the old copy.", "Cuando el juego haya arrancado desde la nueva carpeta, el lanzador ofrecerá eliminar la copia antigua."},
+    {"Portable mode is on.", "El modo portátil está activado."},
+    {"Portable mode is off.", "El modo portátil está desactivado."},
+    {"Portable mode is on", "El modo portátil está activado"},
+    {"Portable mode is off", "El modo portátil está desactivado"},
+    {"Portable mode", "Modo portátil"},
+    {"Cannot move your data: {}.", "No se pueden mover tus datos: {}."},
+    {"Not enough free space", "No hay suficiente espacio libre"},
+    {"Your data needs {} MB where it goes.", "Tus datos necesitan {} MB en su destino."},
+    {"Free there: {} MB.", "Libre allí: {} MB."},
+    {"Turn portable mode on?", "¿Activar el modo portátil?"},
+    {"Turn portable mode off?", "¿Desactivar el modo portátil?"},
+    {"Your settings, saves and everything else the port keeps for you are copied into the appdata folder beside the launcher, checked file by file, and used from then on.", "Tus ajustes, partidas guardadas y todo lo demás que el port guarda para ti se copian en la carpeta appdata junto al lanzador, se comprueban archivo por archivo y se usan desde entonces."},
+    {"Your data is copied from the appdata folder into this computer's user folder, checked file by file, and used from then on.", "Tus datos se copian de la carpeta appdata a la carpeta de usuario de este ordenador, se comprueban archivo por archivo y se usan desde entonces."},
+    {"The old folder is kept under a dated name until the game has started from the new one.", "La carpeta antigua se conserva con un nombre con fecha hasta que el juego haya arrancado desde la nueva."},
+    {"The appdata folder is kept beside the launcher under a dated name until the game has started from the new one.", "La carpeta appdata se conserva junto al lanzador con un nombre con fecha hasta que el juego haya arrancado desde la nueva."},
+    {"Your save folder is one you chose elsewhere (the Saves page): it is not moved.", "Tu carpeta de partidas es una que elegiste en otro lugar (página Partidas): no se mueve."},
+    {"This computer's user folder already holds data from an earlier time.", "La carpeta de usuario de este ordenador ya contiene datos de otra vez."},
+    {"Choose which to keep: the other is set aside under a dated name, never mixed.", "Elige cuáles conservar: los otros se apartan con un nombre con fecha, nunca se mezclan."},
+    {"Portable data", "Datos portátiles"},
+    {"This computer's data", "Datos de este ordenador"},
+    {"Move my data", "Mover mis datos"},
+    {"Move it back", "Devolverlos"},
+    {"Remove the old copy", "Eliminar la copia antigua"},
+    {"Keep it", "Conservarla"},
+    {"Remove the old copy?", "¿Eliminar la copia antigua?"},
+    {"The game has started from your data's new folder, and the old copy is still in {}.", "El juego ha arrancado desde la nueva carpeta de tus datos, y la copia antigua sigue en {}."},
+    {"The data set aside is in {}.", "Los datos apartados están en {}."},
+    {"Remove it to free the space, or keep it.", "Elimínala para liberar espacio, o consérvala."},
+    {"The old copy was removed.", "La copia antigua se ha eliminado."},
+    {"Not all of the old copy could be removed: {}.", "No se pudo eliminar toda la copia antigua: {}."},
+    {"Your data is being moved: wait for it to finish (or cancel it).", "Tus datos se están moviendo: espera a que termine (o cancela)."},
+    {"The launcher opened because portable mode needs your answer.", "El lanzador se abrió porque el modo portátil necesita tu respuesta."},
+    {"B3PORT_USER_DIR is set to a data folder of your choice, so this does not apply.", "B3PORT_USER_DIR indica una carpeta de datos de tu elección, así que esto no se aplica."},   // portable mode
+    {"Your data folder cannot be written (a write-protected drive?): settings and saves will not be kept.", "No se puede escribir en tu carpeta de datos (¿una unidad protegida contra escritura?): los ajustes y las partidas no se guardarán."},   // portable mode
+    {"THE LAUNCHER IS MOVING YOUR DATA", "EL LANZADOR ESTÁ MOVIENDO TUS DATOS"},   // portable mode
+    {"QUIT AND START AGAIN WHEN IT IS DONE", "SAL Y VUELVE A EMPEZAR CUANDO TERMINE"},   // portable mode
+    {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "NO SE PUEDE ESCRIBIR EN LA CARPETA DE DATOS PORTÁTIL"},   // portable mode
+    {"SAVES AND SETTINGS WON'T BE KEPT", "LAS PARTIDAS Y LOS AJUSTES NO SE GUARDARÁN"},   // portable mode
 };
 
 inline constexpr Entry kDU[] = {   // Dutch
+    {"VOICES", "STEMMEN"},   // 1.3.0 VOICES
+    {"The Crash FM DJ and the race training's narrator.", "De DJ van Crash FM en de verteller van de racetraining."},   // 1.3.0 VOICES
+    {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Taal: ze spreken de gekozen TAAL (Frans, Duits, Italiaans en Spaans hebben eigen stemmen; Brits-Engels, Nederlands en Zweeds hebben de Engelse stemmen, zoals op hun schijven)."},   // 1.3.0 VOICES
+    {"The training's narration is on your disc already; the DJ's lines need importing (the DJ VOICE rows of the launcher).", "De verteller van de training staat al op je schijf; de teksten van de DJ moet je importeren (de rijen DJ-STEM van de launcher)."},   // 1.3.0 VOICES
+    {"English: the US voices, with the menus in your language.", "English: de Amerikaanse stemmen, met de menu's in je eigen taal."},   // 1.3.0 VOICES
+    {"TRAINING VIDEOS: {}", "TRAININGSVIDEO'S: {}"},   // 1.3.0 VOICES
+    {"Copying the training videos from the disc.", "De trainingsvideo's worden van de schijf gekopieerd."},   // 1.3.0 VOICES
+    {"Imported: the race training videos in this language are on this PC.", "Geïmporteerd: de trainingsvideo's in deze taal staan op deze pc."},   // 1.3.0 VOICES
+    {"Remove deletes them; the training then shows the English pictures.", "Verwijderen wist ze; de training toont dan de Engelse beelden."},   // 1.3.0 VOICES
+    {"Copies the race training videos' pictures in this language (their on-screen text) from the chosen disc to this PC, once.", "Kopieert de beelden van de trainingsvideo's in deze taal (hun tekst in beeld) eenmalig van de gekozen schijf naar deze pc."},   // 1.3.0 VOICES
+    {"Without them the training shows the English pictures with the narration in your language.", "Zonder ze toont de training de Engelse beelden met de verteller in je eigen taal."},   // 1.3.0 VOICES
+    {"Its DJ voices (about 300 MB a language) and race training videos (about 130 MB a language) can then be imported in the rows below.", "De DJ-stemmen (ongeveer 300 MB per taal) en trainingsvideo's (ongeveer 130 MB per taal) kun je daarna importeren in de rijen hieronder."},   // 1.3.0 VOICES
+    {"Language", "Taal"},   // 1.3.0 DJ VOICE
+    {"DJ VOICE: {}", "DJ-STEM: {}"},   // 1.3.0 DJ VOICE
+    {"Cancel ({} %)", "Annuleren ({} %)"},   // 1.3.0 DJ VOICE
+    {"Remove ({} MB)", "Verwijderen ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Import ({} MB)", "Importeren ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Copying the DJ's lines from the disc.", "De teksten van de DJ worden van de schijf gekopieerd."},   // 1.3.0 DJ VOICE
+    {"Cancel stops it and keeps nothing.", "Annuleren stopt het en bewaart niets."},   // 1.3.0 DJ VOICE
+    {"Imported: the DJ's lines in this language are on this PC.", "Geïmporteerd: de teksten van de DJ in deze taal staan op deze pc."},   // 1.3.0 DJ VOICE
+    {"Remove deletes them; the DJ is then English.", "Verwijderen wist ze; de DJ is dan Engels."},   // 1.3.0 DJ VOICE
+    {"Copies the DJ's lines in this language from the chosen disc to this PC, once.", "Kopieert de teksten van de DJ in deze taal eenmalig van de gekozen schijf naar deze pc."},   // 1.3.0 DJ VOICE
+    {"Needs {} MB of free space.", "Heeft {} MB vrije ruimte nodig."},   // 1.3.0 DJ VOICE
     {"Not available on macOS: it has no public way for a game to read what another app is playing.", "Niet beschikbaar op macOS: daar kan een spel niet op een openbare manier uitlezen wat een andere app afspeelt."},
     {"Shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the EA TRAX popup when the song changes.", "Toont het nummer dat een andere app afspeelt (Spotify, een browser, elke speler in de mediabediening van het systeem) in de EA TRAX-pop-up wanneer het nummer wisselt."},
     {"Its sound stays in that app: turn RADIO VOLUME down in Driver Details to hear only it.", "Het geluid blijft in die app: zet RADIOVOLUME lager in Rijdergegevens om alleen dat te horen."},
@@ -5928,6 +7467,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"How far Low mode looks past the newest game tick.", "Hoe ver de modus Laag vooruitkijkt voorbij de nieuwste speltick."},
     {"FRAMES IN FLIGHT", "FRAMES IN DE WACHTRIJ"},
     {"Frames the GPU may queue: 1 is the most direct, more can be smoother.", "Frames die de GPU in de wachtrij mag zetten: 1 is het meest direct, meer kan vloeiender zijn."},
+    {"Auto: 1, or 2 while the graphics card holds the frame rate below its target (with LATENCY MODE Auto).", "Auto: 1, of 2 zolang de grafische kaart de framerate onder het doel houdt (met LATENTIEMODUS Auto)."},
     {"GRAPHICS", "GRAFISCH"},
     {"IMAGE", "BEELD"},
     {"ANTI-ALIASING", "ANTI-ALIASING"},
@@ -5945,6 +7485,8 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"How large the 3D picture is drawn, as a share of the window, then scaled up.", "Hoe groot het 3D-beeld wordt getekend, als deel van het venster, en daarna opgeschaald."},
     {"Lower is faster on a weak graphics chip; the HUD and menus stay sharp.", "Lager is sneller op een zwakke grafische chip; de HUD en menu's blijven scherp."},
     {"100% is the normal picture.", "100% is het normale beeld."},
+    {"Above 100%, it is drawn larger and scaled down: smoother edges and finer detail, for a large cost.", "Boven 100% wordt het groter getekend en verkleind: gladdere randen en fijner detail, tegen hoge kosten."},
+    {"150% and 200% want a graphics card with plenty of memory.", "150% en 200% vragen een grafische kaart met veel geheugen."},
     {"DITHER", "DITHER"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Een fijn patroon dat de stappen in vloeiende kleurverlopen zoals de lucht verbergt."},
     {"None", "Geen"},
@@ -6111,6 +7653,8 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"CAR SERIES ON L1 / R1", "AUTOSERIE OP L1 / R1"},
     {"On: in the car select, the shoulder buttons (L1 / R1, LB / RB, or their keys) change the car series as Left / Right do, and show beside the series arrows.", "Aan: bij de autokeuze wisselen de schouderknoppen (L1 / R1, LB / RB, of hun toetsen) de autoserie zoals Links / Rechts doen, en ze verschijnen naast de seriepijlen."},
     {"Changes the input the game gets; Off is the original.", "Verandert de invoer die het spel krijgt; Uit is het origineel."},
+    {"GARAGE CAMERA", "GARAGECAMERA"},
+    {"On: on the car pages (car select, your garage), the right stick or a mouse drag on the car turns the view around the car; a second after you let go, the car spins on its own again.", "Aan: op de autopagina's (autokeuze, je garage) draait de rechterstick of slepen met de muis over de auto het beeld rond de auto; een seconde na het loslaten draait de auto weer vanzelf."},
     {"ANALOG TRIGGERS", "ANALOGE TRIGGERS"},
     {"On: a trigger set to accelerate or brake works gradually, like a pedal (light pressure, light throttle).", "Aan: een trigger die op gas geven of remmen staat, werkt geleidelijk, zoals een pedaal (lichte druk, beetje gas)."},
     {"Both triggers together still powerslide.", "Beide triggers samen geven nog steeds een powerslide."},
@@ -6257,6 +7801,12 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Photo mode: the next blur level, round to the first.", "Fotomodus: het volgende vervagingsniveau, daarna weer het eerste."},
     {"PHOTO: FOCUS ON CAR / CENTRE", "FOTO: FOCUS AUTO / MIDDEN"},
     {"Photo mode: focus on the car or the middle of the screen.", "Fotomodus: scherpstellen op de auto of het midden van het scherm."},
+    {"PHOTO: MOTION BLUR", "FOTO: BEWEGINGSONSCHERPTE"},
+    {"Photo mode: the motion blur's next mode: off, tracking, panning, static.", "Fotomodus: de volgende modus van de bewegingsonscherpte: uit, meerijdend, meetrekkend, statisch."},
+    {"PHOTO: FASTER SHUTTER", "FOTO: KORTERE SLUITERTIJD"},
+    {"Photo mode: a shorter exposure, less motion blur.", "Fotomodus: een kortere belichting, minder bewegingsonscherpte."},
+    {"PHOTO: SLOWER SHUTTER", "FOTO: LANGERE SLUITERTIJD"},
+    {"Photo mode: a longer exposure, more motion blur.", "Fotomodus: een langere belichting, meer bewegingsonscherpte."},
     {"PHOTO: GAME CAMERA", "FOTO: SPELCAMERA"},
     {"Photo mode: back to the game's camera view.", "Fotomodus: terug naar het camerabeeld van het spel."},
     {"PHOTO: HELP", "FOTO: HULP"},
@@ -6398,7 +7948,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Start the game, or start it in safe mode with its settings turned down.", "Start het spel, of start het in veilige modus met lagere instellingen."},
     {"The game's own PC settings: the same rows as SETTINGS in the game, saved to the same file.", "De eigen pc-instellingen van het spel: dezelfde rijen als INSTELLINGEN in het spel, opgeslagen in hetzelfde bestand."},
     {"A PCSX2 texture replacement folder for Burnout 3, used from the next start.", "Een PCSX2-map met vervangende texturen voor Burnout 3, gebruikt vanaf de volgende start."},
-    {"Your own music on the game's radio: the same settings as SETTINGS > INTERFACE > MUSIC in the game.", "Je eigen muziek op de radio van het spel: dezelfde instellingen als INSTELLINGEN > INTERFACE > MUZIEK in het spel."},
+    {"Your own music on the game's radio: the same settings as SETTINGS > AUDIO > MUSIC in the game.", "Je eigen muziek op de radio van het spel: dezelfde instellingen als INSTELLINGEN > AUDIO > MUZIEK in het spel."},
     {"Mods in the mods folder: which are on, and their order.", "Mods in de modmap: welke aan staan, en hun volgorde."},
     {"Your disc and its files are never changed.", "Je schijf en de bestanden ervan worden nooit gewijzigd."},
     {"Your Burnout 3 disc (NTSC-U, SLUS-21050): its image, or a folder with its contents.", "Je Burnout 3-schijf (NTSC-U, SLUS-21050): de schijfkopie ervan, of een map met de inhoud."},
@@ -6406,7 +7956,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"The game saves by itself.", "Het spel slaat zelf op."},
     {"Each profile's stats as the game saved them, and local achievements worked out from them.", "De statistieken van elk profiel zoals het spel ze heeft opgeslagen, en lokale prestaties die eruit worden afgeleid."},
     {"Every player car on your disc in 3D on a turntable, with the game's name for it.", "Elke spelersauto op je schijf in 3D op een draaischijf, met de naam die het spel ervoor gebruikt."},
-    {"Your recorded sessions, played back exactly as they were played (SETTINGS > INTERFACE > RECORD REPLAYS).", "Je opgenomen sessies, precies afgespeeld zoals ze werden gespeeld (INSTELLINGEN > INTERFACE > REPLAYS OPNEMEN)."},
+    {"Your recorded sessions, played back exactly as they were played (SETTINGS > GAME > MODES > RECORD REPLAYS).", "Je opgenomen sessies, precies afgespeeld zoals ze werden gespeeld (INSTELLINGEN > SPEL > MODI > REPLAYS OPNEMEN)."},
     {"Connected controllers, live, and the keyboard as the game maps it.", "Aangesloten controllers, live, en het toetsenbord zoals het spel het indeelt."},
     {"Who made this port, and the people and projects it stands on.", "Wie deze port heeft gemaakt, en de mensen en projecten waarop hij steunt."},
     {"Read with notes:", "Gelezen met opmerkingen:"},
@@ -6533,7 +8083,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Your settings file stays as it is.", "Je instellingenbestand blijft zoals het is."},
     {"Start the game directly next time (skip this launcher):", "Het spel de volgende keer direct starten (deze launcher overslaan):"},
     {"On: starting the launcher starts the game at once, with these settings, saves, mods and music.", "Aan: het starten van de launcher start meteen het spel, met deze instellingen, opslag, mods en muziek."},
-    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > INTERFACE.", "Om de launcher weer te zien, houd je Shift (of Back / Select op een controller) ingedrukt tijdens het starten, of zet je LAUNCHER OPENEN BIJ START weer aan in INSTELLINGEN > INTERFACE van het spel."},
+    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > GAME > STARTING AND LOADING.", "Om de launcher weer te zien, houd je Shift (of Back / Select op een controller) ingedrukt tijdens het starten, of zet je LAUNCHER OPENEN BIJ START weer aan in INSTELLINGEN > SPEL > STARTEN EN LADEN van het spel."},
     {"Game data", "Speldata"},
     {"Set it on the Game Data page.", "Stel het in op de pagina Speldata."},
     {"Game program", "Spelprogramma"},
@@ -6663,7 +8213,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"ALBUM", "ALBUM"},
     {"Your songs play through the game's radio: its RADIO VOLUME, its shuffle setting and the EA TRAX popup with each song's title, artist and album from its tags.", "Je nummers spelen via de radio van het spel: het RADIOVOLUME, de shuffle-instelling en de EA TRAX-pop-up met de titel, artiest en het album van elk nummer uit de tags."},
     {"The game reads the folder when its next song starts.", "Het spel leest de map wanneer het volgende nummer begint."},
-    {"In the game these are SETTINGS > INTERFACE > MUSIC: a change in either place shows in the other.", "In het spel is dit INSTELLINGEN > INTERFACE > MUZIEK: een wijziging op de ene plek is ook op de andere te zien."},
+    {"In the game these are SETTINGS > AUDIO > MUSIC: a change in either place shows in the other.", "In het spel is dit INSTELLINGEN > AUDIO > MUZIEK: een wijziging op de ene plek is ook op de andere te zien."},
     {"OTHER MUSIC APPS shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the same popup; its sound stays in that app.", "ANDERE MUZIEK-APPS toont het nummer dat een andere app afspeelt (Spotify, een browser, elke speler in de mediabediening van het systeem) in dezelfde pop-up; het geluid blijft in die app."},
     {"None installed.", "Geen geïnstalleerd."},
     {"Put each mod in its own folder in the mods folder (a folder with a mod.ini), then Look again.", "Zet elke mod in een eigen map in de modmap (een map met een mod.ini) en kies daarna Opnieuw kijken."},
@@ -6687,7 +8237,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Developer mods: Off", "Ontwikkelaarsmods: Uit"},
     {"For mod authors: code mods that say [code] platform = yes may then change the game's platform layer (the kernel, the disc and pad drivers).", "Voor modmakers: codemods met [code] platform = yes mogen dan de platformlaag van het spel wijzigen (de kernel, de schijf- en controllerdrivers)."},
     {"Leave it off unless a mod's author asks for it.", "Laat het uit, tenzij de maker van een mod erom vraagt."},
-    {"Developer mods on (also PC SETTINGS > INTERFACE > DEVELOPER MODS).", "Ontwikkelaarsmods aan (ook PC-INSTELLINGEN > INTERFACE > ONTWIKKELAARSMODS)."},
+    {"Developer mods on (also PC SETTINGS > MODS > DEVELOPER MODS).", "Ontwikkelaarsmods aan (ook PC-INSTELLINGEN > MODS > ONTWIKKELAARSMODS)."},
     {"Developer mods off.", "Ontwikkelaarsmods uit."},
     {"|  version", "|  versie"},
     {"|  api", "|  api"},
@@ -6830,7 +8380,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"A replay file is small: copy it to keep it (a renamed one is never removed) or to send it; it plays on any PC with this release of the port and the same disc.", "Een replaybestand is klein: kopieer het om het te bewaren (een hernoemd bestand wordt nooit verwijderd) of te versturen; het speelt af op elke pc met deze release van de port en dezelfde schijf."},
     {"Recording: On", "Opnemen: Aan"},
     {"Recording: Off", "Opnemen: Uit"},
-    {"RECORD REPLAYS (also in the game's SETTINGS > INTERFACE).", "REPLAYS OPNEMEN (ook in INSTELLINGEN > INTERFACE van het spel)."},
+    {"RECORD REPLAYS (also in the game's SETTINGS > GAME > MODES).", "REPLAYS OPNEMEN (ook in INSTELLINGEN > SPEL > MODI van het spel)."},
     {"On: each session, from the start of the game to its end, is kept here.", "Aan: elke sessie, van de start van het spel tot het einde, wordt hier bewaard."},
     {"Each session of the game is recorded from its start to its end and kept here (the newest 20).", "Elke sessie van het spel wordt van begin tot eind opgenomen en hier bewaard (de nieuwste 20)."},
     {"Turn recording on to keep your sessions here; they play back exactly as you played them.", "Zet opnemen aan om je sessies hier te bewaren; ze spelen precies af zoals je ze speelde."},
@@ -6890,7 +8440,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Controls", "Besturing"},
     {"Which key or controller input gives each PS2 button, per player.", "Welke toets of controllerinvoer elke PS2-knop geeft, per speler."},
     {"The game reads the same buttons as before: only the input behind each one changes.", "Het spel leest dezelfde knoppen als voorheen: alleen de invoer achter elke knop verandert."},
-    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > INTERFACE > CONTROLS).", "Opgeslagen in controls.ini; het spel leest het bij de start (in het spel: INSTELLINGEN > INTERFACE > BESTURING)."},
+    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > CONTROLS > BINDINGS).", "Opgeslagen in controls.ini; het spel leest het bij de start (in het spel: INSTELLINGEN > BESTURING > TOEWIJZINGEN)."},
     {"Whose controls.", "Van wie de besturing is."},
     {"Device", "Apparaat"},
     {"Keys for", "Toetsen voor"},
@@ -7166,7 +8716,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Heavyweight", "Heavyweight"},
     {"COMPACT TYPE 1", "COMPACT TYPE 1"},
     {"DATA/GLOBALUS.BIN", "DATA/GLOBALUS.BIN"},
-    {"CAR", "CAR"},
+    {"CAR", "AUTO"},   // settingsui
     {"BGV", "BGV"},
     {"TRACKS/US/C3_V1", "TRACKS/US/C3_V1"},
     {"move", "bewegen"},
@@ -7273,6 +8823,24 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"MSAA {}x", "MSAA {}x"},
     {"Steam", "Steam"},   // issue #8: Add to Steam
     {"Add to Steam", "Aan Steam toevoegen"},
+    {"Two data folders", "Twee gegevensmappen"},
+    {"Steam's Flatpak can reach the data folder you use outside Steam, but the sandbox's own folder holds saves too, so it stays in use: {}.", "Steam via Flatpak kan de gegevensmap bereiken die je buiten Steam gebruikt, maar de eigen map van de sandbox bevat ook opslagbestanden, dus die blijft in gebruik: {}."},
+    {"To use the other one from Steam, copy what you want to keep from the sandbox's folder into ~/.local/share/b3port/native, then delete the sandbox's folder.", "Om de andere vanuit Steam te gebruiken, kopieer wat je wilt houden uit de map van de sandbox naar ~/.local/share/b3port/native en verwijder daarna de map van de sandbox."},
+    {"Sandbox settings left behind", "Instellingen van de sandbox achtergelaten"},
+    {"Steam's Flatpak can now reach the data folder you use outside Steam, so the launcher and the game use it: {}.", "Steam via Flatpak kan nu de gegevensmap bereiken die je buiten Steam gebruikt, dus de launcher en het spel gebruiken die: {}."},
+    {"The settings written earlier in the sandbox's own folder stay there, unused (the sandbox's folder holds no save): {}.", "De instellingen die eerder in de eigen map van de sandbox zijn geschreven, blijven daar ongebruikt staan (die map bevat geen opslagbestand): {}."},
+    {"Stops the download.", "Stopt de download."},
+    {"Nothing is installed; your current version stays as it is.", "Er wordt niets geïnstalleerd; je huidige versie blijft zoals hij is."},
+    {"Update cancelled.", "Update geannuleerd."},
+    {"An update is being installed: wait for it to finish (or cancel it).", "Er wordt een update geïnstalleerd: wacht tot die klaar is (of annuleer hem)."},
+    {"The update {} is downloaded and checked, but its disk image did not open.", "De update {} is gedownload en gecontroleerd, maar de schijfkopie ging niet open."},
+    {"Open it yourself ({}), then quit and drag the app to Applications.", "Open hem zelf ({}), sluit dan af en sleep de app naar Apps."},
+    {"macOS runs this app from a temporary copy, because it was opened where it was downloaded.", "macOS start deze app vanuit een tijdelijke kopie, omdat hij geopend is op de plek waar hij is gedownload."},
+    {"Move the app to Applications (drag it there in Finder), open it from there, then press Add to Steam again.", "Verplaats de app naar Apps (sleep hem erheen in de Finder), open hem van daaruit en druk dan opnieuw op Aan Steam toevoegen."},
+    {"Flatpak's Steam needs to see this folder and your data folder: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Steam via Flatpak moet deze map en je gegevensmap kunnen zien: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
+    {"Started from Steam's Flatpak", "Gestart vanuit Steam via Flatpak"},
+    {"Steam's Flatpak runs the game in its own sandbox, so the launcher and the game keep their settings, saves and mods in a folder of their own: {}.", "Steam via Flatpak start het spel in een eigen sandbox, dus de launcher en het spel bewaren hun instellingen, opslagbestanden en mods in een eigen map: {}."},
+    {"To use the same data as outside Steam, run this once in a terminal, then start the game from Steam again: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Om dezelfde gegevens te gebruiken als buiten Steam, voer dit één keer uit in een terminal en start het spel daarna opnieuw vanuit Steam: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
     {"Adding...", "Toevoegen..."},
     {"Adding to Steam...", "Toevoegen aan Steam..."},
     {"Big Picture and the Steam Deck then show it with its own pictures.", "Big Picture en de Steam Deck tonen het dan met eigen afbeeldingen."},
@@ -7299,8 +8867,9 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Cannot find the launcher's own program file, so it cannot be added.", "Het programmabestand van de launcher zelf is niet gevonden, dus hij kan niet worden toegevoegd."},
     {"Steam is running.", "Steam draait."},
     {"Close Steam, then press Add to Steam again: Steam rewrites its list of games when it closes.", "Sluit Steam af en druk dan opnieuw op Aan Steam toevoegen: Steam schrijft zijn lijst met games opnieuw weg bij het afsluiten."},
-    {"On a Steam Deck, do this in Desktop Mode: exit Steam from its icon in the taskbar first.", "Op een Steam Deck doe je dit in de bureaubladmodus: sluit Steam eerst af via het pictogram in de taakbalk."},
-    {"Flatpak's Steam needs to see this folder: flatpak override --user --filesystem={} com.valvesoftware.Steam", "Steam via Flatpak moet deze map kunnen zien: flatpak override --user --filesystem={} com.valvesoftware.Steam"},
+    {"Right-click the Steam icon by the clock and choose Exit.", "Klik met de rechtermuisknop op het Steam-pictogram bij de klok en kies Afsluiten."},
+    {"In the menu bar: Steam > Quit Steam.", "In de menubalk: Steam > Stop Steam."},
+    {"On a Steam Deck: right-click the Steam icon in the taskbar (bottom right) and choose Exit Steam, then press Add to Steam again.", "Op een Steam Deck: klik met de rechtermuisknop op het Steam-pictogram in de taakbalk (rechtsonder), kies Steam afsluiten en druk dan opnieuw op Aan Steam toevoegen."},
     {"The next Add to Steam uses the port's own pictures.", "De volgende Aan Steam toevoegen gebruikt de afbeeldingen van de port."},
     {"Steam was not found on this computer.", "Steam is niet gevonden op deze computer."},
     {"Install Steam and sign in once, then press Add to Steam again.", "Installeer Steam en meld je één keer aan, druk dan opnieuw op Aan Steam toevoegen."},
@@ -7319,12 +8888,59 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Choose a cover picture for Steam (PNG or JPEG)", "Kies een hoesafbeelding voor Steam (PNG of JPEG)"},
     {"Choose a background picture for Steam (PNG or JPEG)", "Kies een achtergrondafbeelding voor Steam (PNG of JPEG)"},
     {"Choose a logo picture for Steam (PNG or JPEG)", "Kies een logoafbeelding voor Steam (PNG of JPEG)"},
-    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > INTERFACE > CONTROLS; the launcher's Controls page)
+    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > CONTROLS > BINDINGS; the launcher's Controls page)
     {"CONTROLLER LAYOUT", "CONTROLLERINDELING"},
     {"BUTTONS FOR", "KNOPPEN VOOR"},
     {"Layout", "Indeling"},
     {"Buttons for", "Knoppen voor"},
     {"Custom", "Aangepast"},
+    {"CAR PAINT", "AUTOLAK"},   // carpaint
+    {"PAINT RED", "LAK ROOD"},   // carpaint
+    {"PAINT GREEN", "LAK GROEN"},   // carpaint
+    {"PAINT BLUE", "LAK BLAUW"},   // carpaint
+    {"DECALS", "STICKERS"},   // carpaint
+    {"Custom: your car in your own colour (the three rows below) instead of the paint picked in the car select.", "Aangepast: je auto in je eigen kleur (de drie regels hieronder) in plaats van de lak die je bij de autokeuze koos."},   // carpaint
+    {"Cars with one fixed livery keep it.", "Auto's met één vaste beschildering houden die."},   // carpaint
+    {"Drawn only: the game, replays and saves keep the car select's paint.", "Alleen weergave: het spel, replays en opgeslagen spellen houden de lak van de autokeuze."},   // carpaint
+    {"The custom paint's colour, 0 to 255 for each of red, green and blue.", "De kleur van de eigen lak, 0 tot 255 voor rood, groen en blauw."},   // carpaint
+    {"Off: your car without its logos, numbers and stripes, in plain paint; lights, grilles and wheels stay.", "Uit: je auto zonder logo's, nummers en strepen, in effen lak; lampen, grilles en wielen blijven."},   // carpaint
+    {"FINISH", "AFWERKING"},
+    {"Gloss", "Glans"},
+    {"Metallic", "Metallic"},
+    {"Pearl", "Parelmoer"},
+    {"PLAYER 2 CAR PAINT", "AUTOLAK SPELER 2"},
+    {"P2 CAR PAINT", "AUTOLAK S2"},
+    {"P2 PAINT RED", "LAK S2 ROOD"},
+    {"P2 PAINT GREEN", "LAK S2 GROEN"},
+    {"P2 PAINT BLUE", "LAK S2 BLAUW"},
+    {"P2 DECALS", "STICKERS S2"},
+    {"The paint's finish on both players' cars.", "De afwerking van de lak op de auto's van beide spelers."},
+    {"Gloss: the game's.", "Glans: die van het spel."},
+    {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metallic: een sterkere weerspiegeling in de kleur van de lak, met schilfers die schitteren in het licht."},
+    {"Pearl: the colour shifts as the car turns to the light.", "Parelmoer: de kleur verschuift als de auto naar het licht draait."},
+    {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "De auto van speler 2 in gedeeld scherm: Aangepast toont hem in de kleur van de drie rijen hieronder in plaats van de lak die bij de autokeuze is gekozen."},
+    {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Uit: de auto van speler 2 zonder logo's, nummers en strepen, in effen lak."},
+    {"LIGHTING", "VERLICHTING"},   // night
+    {"TIME OF DAY", "TIJD VAN DE DAG"},   // night
+    {"Day", "Dag"},   // night
+    {"Night", "Nacht"},   // night
+    {"TIME OF DAY PER RACE", "TIJD VAN DE DAG PER RACE"},   // todrace
+    {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Circuitpagina's (los evenement, multiplayer): Standaard, Dag of Nacht voor de volgende race."},   // todrace
+    {"Time of day: {}", "Tijd van de dag: {}"},   // todrace
+    {"Default ({})", "Standaard ({})"},   // todrace
+    {"MOON", "MAAN"},   // night
+    {"SURFACE DETAIL", "OPPERVLAKTEDETAIL"},   // night
+    {"AMBIENT OCCLUSION", "AMBIENT OCCLUSION"},   // night
+    {"Night: every race after dark, with a night sky, the cars' lights on and headlight beams on the road.", "Nacht: elke race in het donker, met een nachthemel, de lichten van de auto's aan en koplampbundels op de weg."},   // night
+    {"The moon in the night sky, and its cool light on the cars, the road and the walls facing it.", "De maan aan de nachthemel, en haar koele licht op de auto's, de weg en de muren die naar haar toe staan."},   // night
+    {"Relief and sheen on the road, kerbs and walls from their textures, lit by the sun or the moon.", "Reliëf en glans op de weg, stoepranden en muren uit hun texturen, belicht door de zon of de maan."},   // night
+    {"Soft contact shadows under the cars and along walls and kerbs.", "Zachte contactschaduwen onder de auto's en langs muren en stoepranden."},   // night
+    {"Draws the scene twice: for fast graphics cards.", "Tekent de scène twee keer: voor snelle videokaarten."},   // night
+    {"SUN SHADOWS", "ZONSCHADUWEN"},   // sunshadow
+    {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Echte schaduwen van de auto's op de weg, geworpen door de zon of 's nachts door de maan."},   // sunshadow
+    {"None in tunnels and under bridges.", "Geen in tunnels en onder bruggen."},   // sunshadow
+    {"Sharper with ANTI-ALIASING at 4x or more.", "Scherper met ANTI-ALIASING op 4x of meer."},   // sunshadow
+    {"It lights the road's relief too, a small extra cost even with SURFACE DETAIL off.", "Ze belicht ook het reliëf van de weg, een kleine extra belasting, ook met OPPERVLAKTEDETAIL uit."},   // night
     {"Auto: Xbox controller", "Auto: Xbox-controller"},
     {"Auto: PlayStation controller", "Auto: PlayStation-controller"},
     {"Auto: Nintendo, Xbox layout", "Auto: Nintendo, Xbox-indeling"},
@@ -7333,12 +8949,314 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Which buttons do what on this player's controller.", "Welke knop wat doet op de controller van deze speler."},
     {"Auto: the layout of the controller's console, picked again when the controller changes: a PlayStation controller gets the PS2 game's, any other controller the original Xbox game's.", "Auto: de indeling van de console van de controller, opnieuw gekozen als de controller wisselt: een PlayStation-controller krijgt die van de PS2-game, elke andere controller die van de oorspronkelijke Xbox-game."},
     {"Xbox, PlayStation: that layout on any controller.", "Xbox, PlayStation: die indeling op elke controller."},
+    {"Nintendo: the Xbox layout by label, A confirms and boosts, B goes back and is the Crashbreaker.", "Nintendo: de Xbox-indeling volgens de knopnamen, A bevestigt en geeft boost, B gaat terug en is de Crashbreaker."},
     {"Custom: your own bindings in the rows below.", "Aangepast: je eigen toewijzingen in de rijen hieronder."},
     {"Changing a binding below makes it Custom.", "Een toewijzing hieronder wijzigen schakelt naar Aangepast."},
     {"A button can do one thing while you drive and another in the menus (on the Xbox layout A boosts, and confirms in a menu).", "Een knop kan iets doen tijdens het rijden en iets anders in de menu's (in de Xbox-indeling geeft A boost, en bevestigt in een menu)."},
+    // polish122: the CONTROLS change notes (in the game: LAST CHANGE; the launcher's Controls page)
+    {"KEYBOARD", "TOETSENBORD"},
+    {"DRIVING", "RIJDEN"},
+    {"MENUS", "MENU'S"},
+    {"SHORTCUTS", "SNELTOETSEN"},
+    {"ALL CONTROLS RESET TO DEFAULTS", "ALLE BESTURING TERUGGEZET NAAR DE STANDAARD"},
+    {"PRESS RESET ALL CONTROLS AGAIN TO PUT EVERYTHING BACK (ANY OTHER ROW CANCELS)", "DRUK NOGMAALS OP ALLE BESTURING RESETTEN OM ALLES TERUG TE ZETTEN (ELKE ANDERE RIJ ANNULEERT)"},
+    {"(this run only)", "(alleen deze sessie)"},
+    {"(NOT SAVED: {})", "(NIET OPGESLAGEN: {})"},
+    {"{}: saved (the game reads it at its next start).", "{}: opgeslagen (het spel leest het bij de volgende start)."},
+    {"controller layout", "controllerindeling"},
+    {"gyro steering", "gyrosturen"},
+    {"gyro axis", "gyro-as"},
+    {"gyro sensitivity", "gyrogevoeligheid"},
+    {"gyro dead zone", "gyro-dode zone"},
+    {"gyro recentre button", "knop voor gyro hercentreren"},
+    {"keyboard reset to the defaults", "toetsenbord teruggezet naar de standaard"},
+    {"controller reset to the defaults", "controller teruggezet naar de standaard"},
+    {"AUDIO", "AUDIO"},   // settingsui
+    {"GAME", "SPEL"},   // settingsui
+    {"LAYOUT", "INDELING"},   // settingsui
+    {"SMOOTHNESS", "VLOEIENDHEID"},   // settingsui
+    {"TEXTURES", "TEXTUREN"},   // settingsui
+    {"CAR LOOK", "UITERLIJK AUTO"},   // settingsui
+    {"GARAGE", "GARAGE"},   // settingsui
+    {"FEEDBACK", "FEEDBACK"},   // settingsui
+    {"BINDINGS", "TOEWIJZINGEN"},   // settingsui
+    {"GYRO", "GYRO"},   // settingsui
+    {"MODES", "MODI"},   // settingsui
+    {"LANGUAGE AND UNITS", "TAAL EN EENHEDEN"},   // settingsui
+    {"STARTING AND LOADING", "STARTEN EN LADEN"},   // settingsui
+    {"COLOUR", "KLEUR"},   // settingsui
+    {"P2 COLOUR", "KLEUR S2"},   // settingsui
+    {"Red", "Rood"},   // settingsui
+    {"Orange", "Oranje"},   // settingsui
+    {"Yellow", "Geel"},   // settingsui
+    {"Green", "Groen"},   // settingsui
+    {"Blue", "Blauw"},   // settingsui
+    {"Purple", "Paars"},   // settingsui
+    {"Pink", "Roze"},   // settingsui
+    {"White", "Wit"},   // settingsui
+    {"Silver", "Zilver"},   // settingsui
+    {"A ready colour: sets the three rows below and turns the custom paint on.", "Een kant-en-klare kleur: zet de drie regels hieronder en zet de eigen lak aan."},   // settingsui
+    {"Custom: the colour of the rows below.", "Aangepast: de kleur van de regels hieronder."},   // settingsui
+    {"VOLUMES AND DJ", "VOLUMES EN DJ"},   // settingsui
+    {"The game's own sound: RADIO VOLUME, the effects, the speech and the DJ are in DRIVER DETAILS > SETTINGS > AUDIO.", "Het geluid van het spel: RADIOVOLUME, de effecten, de spraak en de DJ staan in RIJDERGEGEVENS > INSTELLINGEN > AUDIO."},   // settingsui
+    {"BOOST HOLD OR TOGGLE", "BOOST VASTHOUDEN OF SCHAKELEN"},   // settingsui
+    {"Boost by holding the button, or press once to boost and again to stop: CONTROLS > DRIVING > BOOST.", "Boosten door de knop vast te houden, of één keer drukken om te boosten en nog eens om te stoppen: BESTURING > RIJDEN > BOOST."},   // settingsui
+    {"BUTTONS AND KEYS", "KNOPPEN EN TOETSEN"},   // settingsui
+    {"The launcher's Controllers page: test your controllers, and change the buttons and keys of both players, the shortcuts and the gyro steering.", "De pagina Controllers van de launcher: de controllers testen en de knoppen en toetsen van beide spelers, de sneltoetsen en de gyrobesturing wijzigen."},   // settingsui
+    {"The launcher's Music page: your own music folder, the playlist, its volume and other music apps.", "De pagina Muziek van de launcher: je eigen muziekmap, de afspeellijst, het volume en andere muziek-apps."},   // settingsui
+    {"The launcher's HD Textures page: choose the pack's folder, get the pack, or stop using it.", "De pagina HD-texturen van de launcher: de map van het pakket kiezen, het pakket halen of het niet meer gebruiken."},   // settingsui
+    {"CHANGE", "WIJZIGEN"},   // settingsui
+    {"CHOOSE", "KIEZEN"},   // settingsui
+    {"CLOSE AND SAVE", "SLUITEN EN OPSLAAN"},   // settingsui
+    {"SECTION", "SECTIE"},   // settingsui
+    {"REBIND", "OPNIEUW TOEWIJZEN"},   // settingsui
+    {"ADD", "TOEVOEGEN"},   // settingsui
+    {"REMOVE", "VERWIJDEREN"},   // settingsui
+    {"DEFAULT", "STANDAARD"},   // settingsui
+    {"CLICK", "KLIK"},   // settingsui
+    {"WHEEL", "WIEL"},   // settingsui
+    {"SCROLL", "SCROLLEN"},   // settingsui
+    {"RIGHT CLICK", "RECHTERMUISKNOP"},   // settingsui
+    {"CLOSE", "SLUITEN"},   // settingsui
+    {"MOVE", "BEWEGEN"},   // settingsui
+    {"Kept: the menus need one input that confirms and one that goes back.", "Behouden: de menu's hebben een invoer nodig die bevestigt en een die teruggaat."},   // settingsui
+    {"Go back", "Terug"},   // settingsui
+    {"Bug report...", "Bugrapport..."},   // settingsui
+    {"Make a bug report?", "Bugrapport maken?"},   // settingsui
+    {"Make report", "Rapport maken"},   // settingsui
+    {"With my save", "Met mijn opslag"},   // settingsui
+    {"Click a row twice to open it", "Klik twee keer op een rij om hem te openen"},   // settingsui
+    {"LAUNCHER", "LAUNCHER"},   // settingsui
+    {"TEST", "TEST"},   // settingsui
+    {"Left stick", "Linkerstick"},   // settingsui
+    {"built {}", "gebouwd op {}"},   // settingsui
+    {"Burnout 3 native port, a test build", "native port van Burnout 3, een testversie"},   // settingsui
+    {"{} preset", "niveau {}"},   // settingsui
+    {"fullscreen", "volledig scherm"},   // settingsui
+    {"window", "venster"},   // settingsui
+    {"no MSAA", "geen MSAA"},   // settingsui
+    {"{} fps limit", "limiet van {} fps"},   // settingsui
+    {"no HD pack", "geen HD-pakket"},   // settingsui
+    {"HD pack", "HD-pakket"},   // settingsui
+    {"HD pack off", "HD-pakket uit"},   // settingsui
+    {"saved {}", "opgeslagen op {}"},   // settingsui
+    {"(an older profile-{} folder: read, and saved as a .sav at the first save)", "(een oudere map profile-{}: gelezen, en bij de eerste keer opslaan als .sav bewaard)"},   // settingsui
+    {"An older profile-{} folder (read; saved as a .sav at the first save)", "Een oudere map profile-{} (gelezen; bij de eerste keer opslaan als .sav bewaard)"},   // settingsui
+    {"Released {}", "Uitgebracht op {}"},   // settingsui
+    {"Last checked {}", "Laatst gecontroleerd: {}"},   // settingsui
+    {"Version {}", "Versie {}"},   // settingsui
+    {"Not checked for updates yet", "Nog niet op updates gecontroleerd"},   // settingsui
+    {"Checking for updates...", "Zoeken naar updates..."},   // settingsui
+    {"Update check off (Settings > Launcher)", "Updatecontrole uit (Instellingen > Launcher)"},   // settingsui
+    {"Update available: {}", "Update beschikbaar: {}"},   // settingsui
+    {"Up to date ({} is the latest release)", "Up-to-date ({} is de nieuwste versie)"},   // settingsui
+    {"Up to date (no release published yet)", "Up-to-date (nog geen versie uitgebracht)"},   // settingsui
+    {"Couldn't check for updates ({})", "Kon niet op updates controleren ({})"},   // settingsui
+    {"Installed: {}", "Geïnstalleerd: {}"},   // settingsui
+    {"on: {}", "aan: {}"},   // settingsui
+    {"gold", "goud"},   // settingsui
+    {"silver", "zilver"},   // settingsui
+    {"bronze", "brons"},   // settingsui
+    {"Paint {}", "Lak {}"},   // settingsui
+    {"NOT SET", "NIET INGESTELD"},   // settingsui
+    {"Not saved: {}", "Niet opgeslagen: {}"},   // settingsui
+    // item 11: a pack of the game's files without a mod.ini
+    {"Install as a file-replacement mod?", "Installeren als mod die bestanden vervangt?"},
+    {"This pack has no mod.ini.", "Dit pakket heeft geen mod.ini."},
+    {"Install it as a file-replacement mod named {}?", "Installeren als mod die bestanden vervangt, met de naam {}?"},
+    {"Its files replace the game's files of the same names; it has no code, so nothing in it runs.", "De bestanden vervangen de bestanden van het spel met dezelfde namen; er zit geen code in, dus er wordt niets uitgevoerd."},
+    {"A mod.ini is written for it, and it starts off.", "Er wordt een mod.ini voor geschreven, en de mod staat eerst uit."},
+    {"Install", "Installeren"},
+    {"Not a mod", "Geen mod"},
+    {"{} was not installed; nothing was written.", "{} is niet geïnstalleerd; er is niets geschreven."},
+    {"It has no mod.ini, and no folders of the game's own (DATA, PVEH, TRACKS, SOUND, OVID) to install as replacement files.", "Het heeft geen mod.ini en geen mappen van het spel zelf (DATA, PVEH, TRACKS, SOUND, OVID) om als vervangende bestanden te installeren."},
+    {"A mod.ini is the small text file at the top of a mod that names it: its id, name and version.", "Een mod.ini is het kleine tekstbestand bovenaan een mod dat hem een naam geeft: zijn id, naam en versie."},
+    {"Add folder...", "Map toevoegen..."},
+    {"Installs a mod from a folder: copied into its own folder in the mods folder.", "Installeert een mod uit een map: gekopieerd naar een eigen map in de modmap."},
+    {"A pack of the game's own files without a mod.ini (its DATA, PVEH or TRACKS folders) can be installed as a file-replacement mod.", "Een pakket met bestanden van het spel zonder mod.ini (de mappen DATA, PVEH of TRACKS) kan worden geïnstalleerd als mod die bestanden vervangt."},
+    {"Add a mod: choose its folder (a mod, or a pack of the game's files)", "Een mod toevoegen: kies de map (een mod, of een pakket met bestanden van het spel)"},
+    {"Open the mod's folder, then Start: it is copied into the mods folder.", "Open de map van de mod en druk op Start: hij wordt naar de modmap gekopieerd."},
+    {"Set aside file {}?", "Bestand {} opzijzetten?"},   // saveflow
+    {"The game can't play profile-{}.sav.", "Het spel kan profile-{}.sav niet gebruiken."},   // saveflow
+    {"Why: {}.", "Reden: {}."},   // saveflow
+    {"It is renamed in the save folder (kept, not deleted) and the file starts empty: the game makes a new profile at its first save.", "Het wordt hernoemd in de opslagmap (bewaard, niet verwijderd) en het bestand begint leeg: het spel maakt een nieuw profiel bij de eerste keer opslaan."},   // saveflow
+    {"Quit the game first if it is running.", "Sluit eerst het spel als het draait."},   // saveflow
+    {"Set aside", "Opzijzetten"},   // saveflow
+    {"Set aside as {}.", "Opzijgezet als {}."},   // saveflow
+    {"The game starts this file fresh.", "Het spel begint dit bestand opnieuw."},   // saveflow
+    {"Cannot set it aside: {}", "Kan het niet opzijzetten: {}"},   // saveflow
+    {"Can't be played: damaged or unreadable", "Niet te gebruiken: beschadigd of onleesbaar"},   // saveflow
+    {"Set aside file {} and start fresh...", "Bestand {} opzijzetten en opnieuw beginnen..."},   // saveflow
+    {"Renames profile-{}.sav in the save folder (kept, not deleted) so that the game starts this file empty.", "Hernoemt profile-{}.sav in de opslagmap (bewaard, niet verwijderd) zodat het spel dit bestand leeg begint."},   // saveflow
+    {"SAVED", "OPGESLAGEN"},   // saveflow
+    {"SAVE FAILED", "OPSLAAN MISLUKT"},   // saveflow
+    {"YOUR LAST SAVE IS KEPT", "JE LAATSTE OPSLAG BLIJFT BEWAARD"},   // saveflow
+    {"RETRYING", "OPNIEUW PROBEREN"},   // saveflow
+    {"SAVED AGAIN TO PROFILE {}", "WEER OPGESLAGEN IN PROFIEL {}"},   // saveflow
+    {"NOT SAVED", "NIET OPGESLAGEN"},   // saveflow
+    {"CAN'T READ {}", "KAN {} NIET LEZEN"},   // saveflow
+    {"PROGRESS WON'T BE SAVED THIS SESSION", "DE VOORTGANG WORDT DEZE SESSIE NIET OPGESLAGEN"},   // saveflow
+    {"THE LAUNCHER'S SAVES PAGE CAN SET IT ASIDE", "DE PAGINA OPSLAG VAN DE LAUNCHER KAN HET OPZIJZETTEN"},   // saveflow
+    {"{} CHANGED OUTSIDE THE GAME", "{} IS BUITEN HET SPEL GEWIJZIGD"},   // saveflow
+    {"SAVED TO {}", "OPGESLAGEN IN {}"},   // saveflow
+    {"A SAVE WAS IMPORTED: RESTART THE GAME TO PLAY IT", "ER IS EEN OPSLAG GEÏMPORTEERD: START HET SPEL OPNIEUW OM ERMEE TE SPELEN"},   // saveflow
+    {"SAVE WARNING", "OPSLAGWAARSCHUWING"},   // saveflow
+    {"ANOTHER GAME ON THIS COMPUTER USES THIS SAVE FOLDER", "EEN ANDER SPEL OP DEZE COMPUTER GEBRUIKT DEZE OPSLAGMAP"},   // saveflow
+    {"PLAY ONE AT A TIME", "SPEEL OP ÉÉN TEGELIJK"},   // saveflow
+    {"Progress from {} was saved beside it, because the file changed while the game was running.", "Voortgang van {} is ernaast opgeslagen, omdat het bestand veranderde terwijl het spel draaide."},   // saveflow
+    {"Use it", "Gebruiken"},   // saveflow
+    {"Leave it", "Laten staan"},   // saveflow
+    {"Makes it this file's save; the current one is kept as a backup (.bak and backups).", "Maakt het de opslag van dit bestand; de huidige blijft bewaard als reservekopie (.bak en backups)."},   // saveflow
+    {"Hides this line; the file stays in the save folder.", "Verbergt deze regel; het bestand blijft in de opslagmap."},   // saveflow
+    {"Use the progress from {}?", "De voortgang van {} gebruiken?"},   // saveflow
+    {"It replaces profile-{}.sav.", "Het vervangt profile-{}.sav."},   // saveflow
+    {"The current one is kept as profile-{}.sav.bak and in backups.", "De huidige blijft bewaard als profile-{}.sav.bak en in backups."},   // saveflow
+    {"Now using the progress from {}.", "De voortgang van {} wordt nu gebruikt."},   // saveflow
+    {"Cannot use it: {}", "Kan het niet gebruiken: {}"},   // saveflow
+    // xboximport (1.3.0): Import Xbox textures
+    {"XBOX TEXTURES", "XBOX-TEXTUREN"},
+    {"The textures imported from your Xbox disc in the launcher, below your own HD pack and the mods' packs.", "De texturen die in de launcher van je Xbox-disc zijn geïmporteerd, onder je eigen HD-pakket en de pakketten van de mods."},
+    {"Used while HD TEXTURES is on.", "Gebruikt zolang HD-TEXTUREN aan staat."},
+    {"Xbox textures", "Xbox-texturen"},
+    {"Builds a texture pack on this computer from your own Xbox disc image of the game (.iso or .xiso).", "Maakt op deze computer een texturenpakket van je eigen Xbox-schijfkopie van het spel (.iso of .xiso)."},
+    {"It is a small improvement: some building fronts, signs and car paint are somewhat sharper.", "Het is een kleine verbetering: sommige gevels, borden en autolak zijn iets scherper."},
+    {"An HD texture pack looks far better; this is for players who want to use their Xbox disc.", "Een HD-texturenpakket ziet er veel beter uit; dit is voor spelers die hun Xbox-disc willen gebruiken."},
+    {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Er wordt niets gedownload of gedeeld, en je eigen HD-pakket en de pakketten van de mods gaan nog steeds voor."},
+    {"Not imported.", "Niet geïmporteerd."},
+    {"{} textures imported.", "{} texturen geïmporteerd."},
+    {"Size: {} MB.", "Grootte: {} MB."},
+    {"From: {}.", "Van: {}."},
+    {"Made by an older version: import again for the newest result.", "Gemaakt door een oudere versie: importeer opnieuw voor het beste resultaat."},
+    {"XBOX TEXTURES is off.", "XBOX-TEXTUREN staat uit."},
+    {"HD TEXTURES is off.", "HD-TEXTUREN staat uit."},
+    {"Import Xbox textures...", "Xbox-texturen importeren..."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso).", "Kies je Xbox-schijfkopie van het spel (.iso of .xiso)."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso)", "Kies je Xbox-schijfkopie van het spel (.iso of .xiso)"},
+    {"The import runs on this computer in about a minute.", "Het importeren gebeurt op deze computer en duurt ongeveer een minuut."},
+    {"Deletes the imported textures (your disc image is not touched).", "Verwijdert de geïmporteerde texturen (je schijfkopie blijft onaangeroerd)."},
+    {"Disc images here: A on one imports its textures.", "Schijfkopieën hier: A op een ervan importeert de texturen."},
+    {"No disc images here: open the folder that holds your Xbox disc image.", "Geen schijfkopieën hier: open de map met je Xbox-schijfkopie."},
+    {"Xbox disc images (*.iso, *.xiso)", "Xbox-schijfkopieën (*.iso, *.xiso)"},
+    {"Importing Xbox textures", "Xbox-texturen importeren"},
+    {"Reading the game's files: {}.", "Bestanden van het spel lezen: {}."},
+    {"Building the textures: {}.", "Texturen maken: {}."},
+    {"Textures written: {}.", "Texturen geschreven: {}."},
+    {"Cancelling...", "Annuleren..."},
+    {"Import cancelled: nothing was changed.", "Importeren geannuleerd: er is niets veranderd."},
+    {"The import failed.", "Het importeren is mislukt."},
+    {"Remove the Xbox textures?", "Xbox-texturen verwijderen?"},
+    {"The imported textures are deleted.", "De geïmporteerde texturen worden verwijderd."},
+    {"You can import them again from your disc at any time.", "Je kunt ze op elk moment opnieuw van je disc importeren."},
+    {"The Xbox textures were removed.", "De Xbox-texturen zijn verwijderd."},
+    {"Cannot open the disc image.", "Kan de schijfkopie niet openen."},
+    {"Not an Xbox disc image (no XDVDFS volume in it).", "Geen Xbox-schijfkopie (er staat geen XDVDFS-volume in)."},
+    {"This Xbox disc image is not Burnout 3: Takedown.", "Deze Xbox-schijfkopie is niet Burnout 3: Takedown."},
+    {"The game's files were not found (choose the game's folder first).", "De bestanden van het spel zijn niet gevonden (kies eerst de map van het spel)."},
+    {"Not enough free space (about 200 MB needed).", "Niet genoeg vrije ruimte (ongeveer 200 MB nodig)."},
+    {"Could not read the disc or write the textures (is the drive full?).", "Kon de disc niet lezen of de texturen niet schrijven (is de schijf vol?)."},
+    {"No Xbox texture matched the game's (a different version of the game?).", "Geen enkele Xbox-textuur past bij die van het spel (een andere versie van het spel?)."},
+    {"Could not replace the earlier import (a file in it is open?).", "Kon de vorige import niet vervangen (is er een bestand van geopend?)."},
+    {"Could not move the textures into place.", "Kon de texturen niet op hun plaats zetten."},
+    {"Out of memory while reading the disc image (a damaged image?).", "Onvoldoende geheugen bij het lezen van de schijfkopie (een beschadigde kopie?)."},
+    {"The import stopped: {}.", "Het importeren is gestopt: {}."},
+    {"The import stopped: an unknown error.", "Het importeren is gestopt: een onbekende fout."},
+    // portable mode (1.3.0)
+    {"PORTABLE MODE", "DRAAGBARE MODUS"},
+    {"On: everything the port keeps for you (settings, saves, mods, logs, replays) is in a folder called appdata beside the launcher, so the game can be carried on a USB stick.", "Aan: alles wat de port voor je bewaart (instellingen, opslagbestanden, mods, logs, replays) staat in een map genaamd appdata naast de launcher, zodat je het spel op een USB-stick kunt meenemen."},
+    {"Off: in this computer's user folder.", "Uit: in de gebruikersmap van deze computer."},
+    {"The launcher moves your data now: it is copied and checked first, and the old folder is kept until the game has started from the new one.", "De launcher verplaatst je gegevens nu: ze worden eerst gekopieerd en gecontroleerd, en de oude map blijft bewaard tot het spel vanuit de nieuwe is gestart."},
+    {"The launcher moves your data at its next start (it asks first).", "De launcher verplaatst je gegevens bij zijn volgende start (hij vraagt het eerst)."},
+    {"The install folder cannot be written by you: move the game to a folder of your own to use portable mode.", "Je kunt niet in de installatiemap schrijven: verplaats het spel naar een eigen map om de draagbare modus te gebruiken."},
+    {"The game is running: close it first.", "Het spel draait: sluit het eerst."},
+    {"A data folder was given when the launcher was started (--pref), so this does not apply.", "Bij het starten van de launcher is een gegevensmap opgegeven (--pref), dus dit is niet van toepassing."},
+    {"The launcher's own folder is not known.", "De map van de launcher is niet bekend."},
+    {"Data folder", "Gegevensmap"},
+    {"In use", "In gebruik"},
+    {"Old copy", "Oude kopie"},
+    {"Remove the old copy...", "Oude kopie verwijderen..."},
+    {"Deletes the folder your data was moved from (asks first).", "Verwijdert de map waaruit je gegevens zijn verplaatst (vraagt het eerst)."},
+    {"Your data in use is not touched.", "Je gegevens in gebruik worden niet aangeraakt."},
+    {"Start the game once from the new folder first: the old copy stays until then.", "Start het spel eerst één keer vanuit de nieuwe map: de oude kopie blijft tot dan."},
+    {"portable: the appdata folder beside the launcher", "draagbaar: de map appdata naast de launcher"},
+    {"It cannot be written: settings and saves are not kept.", "Er kan niet in geschreven worden: instellingen en opslagbestanden worden niet bewaard."},
+    {"portable", "draagbaar"},
+    {"Moving your data", "Je gegevens worden verplaatst"},
+    {"Putting it in place.", "Op hun plaats zetten."},
+    {"Copying: {} MB.", "Kopiëren: {} MB."},
+    {"Checking the copy: {} MB.", "Kopie controleren: {} MB."},
+    {"Nothing is removed until the copy is checked.", "Er wordt niets verwijderd voordat de kopie is gecontroleerd."},
+    {"Your data was not moved", "Je gegevens zijn niet verplaatst"},
+    {"Nothing was changed: your data is where it was.", "Er is niets veranderd: je gegevens staan waar ze stonden."},
+    {"Cancelled: nothing was moved.", "Geannuleerd: er is niets verplaatst."},
+    {"Not moved: {}.", "Niet verplaatst: {}."},
+    {"Your data is now in {}.", "Je gegevens staan nu in {}."},
+    {"The old copy is kept in {}.", "De oude kopie blijft bewaard in {}."},
+    {"The data that was in this computer's folder is kept in {}.", "De gegevens die in de map van deze computer stonden, blijven bewaard in {}."},
+    {"Once the game has started from the new folder, the launcher offers to remove the old copy.", "Zodra het spel vanuit de nieuwe map is gestart, biedt de launcher aan de oude kopie te verwijderen."},
+    {"Portable mode is on.", "De draagbare modus staat aan."},
+    {"Portable mode is off.", "De draagbare modus staat uit."},
+    {"Portable mode is on", "De draagbare modus staat aan"},
+    {"Portable mode is off", "De draagbare modus staat uit"},
+    {"Portable mode", "Draagbare modus"},
+    {"Cannot move your data: {}.", "Je gegevens kunnen niet worden verplaatst: {}."},
+    {"Not enough free space", "Niet genoeg vrije ruimte"},
+    {"Your data needs {} MB where it goes.", "Je gegevens hebben {} MB nodig op de bestemming."},
+    {"Free there: {} MB.", "Vrij daar: {} MB."},
+    {"Turn portable mode on?", "Draagbare modus aanzetten?"},
+    {"Turn portable mode off?", "Draagbare modus uitzetten?"},
+    {"Your settings, saves and everything else the port keeps for you are copied into the appdata folder beside the launcher, checked file by file, and used from then on.", "Je instellingen, opslagbestanden en al het andere dat de port voor je bewaart, worden gekopieerd naar de map appdata naast de launcher, bestand voor bestand gecontroleerd en vanaf dan gebruikt."},
+    {"Your data is copied from the appdata folder into this computer's user folder, checked file by file, and used from then on.", "Je gegevens worden gekopieerd van de map appdata naar de gebruikersmap van deze computer, bestand voor bestand gecontroleerd en vanaf dan gebruikt."},
+    {"The old folder is kept under a dated name until the game has started from the new one.", "De oude map blijft bewaard onder een naam met datum tot het spel vanuit de nieuwe is gestart."},
+    {"The appdata folder is kept beside the launcher under a dated name until the game has started from the new one.", "De map appdata blijft naast de launcher bewaard onder een naam met datum tot het spel vanuit de nieuwe is gestart."},
+    {"Your save folder is one you chose elsewhere (the Saves page): it is not moved.", "Je opslagmap is er een die je elders hebt gekozen (pagina Opslag): die wordt niet verplaatst."},
+    {"This computer's user folder already holds data from an earlier time.", "De gebruikersmap van deze computer bevat al gegevens van eerder."},
+    {"Choose which to keep: the other is set aside under a dated name, never mixed.", "Kies welke je wilt houden: de andere worden opzijgezet onder een naam met datum, nooit gemengd."},
+    {"Portable data", "Draagbare gegevens"},
+    {"This computer's data", "Gegevens van deze computer"},
+    {"Move my data", "Mijn gegevens verplaatsen"},
+    {"Move it back", "Terugzetten"},
+    {"Remove the old copy", "Oude kopie verwijderen"},
+    {"Keep it", "Houden"},
+    {"Remove the old copy?", "Oude kopie verwijderen?"},
+    {"The game has started from your data's new folder, and the old copy is still in {}.", "Het spel is gestart vanuit de nieuwe map van je gegevens, en de oude kopie staat nog in {}."},
+    {"The data set aside is in {}.", "De opzijgezette gegevens staan in {}."},
+    {"Remove it to free the space, or keep it.", "Verwijder hem om ruimte vrij te maken, of houd hem."},
+    {"The old copy was removed.", "De oude kopie is verwijderd."},
+    {"Not all of the old copy could be removed: {}.", "De oude kopie kon niet helemaal worden verwijderd: {}."},
+    {"Your data is being moved: wait for it to finish (or cancel it).", "Je gegevens worden verplaatst: wacht tot het klaar is (of annuleer)."},
+    {"The launcher opened because portable mode needs your answer.", "De launcher is geopend omdat de draagbare modus je antwoord nodig heeft."},
+    {"B3PORT_USER_DIR is set to a data folder of your choice, so this does not apply.", "B3PORT_USER_DIR wijst naar een gegevensmap naar keuze, dus dit is niet van toepassing."},   // portable mode
+    {"Your data folder cannot be written (a write-protected drive?): settings and saves will not be kept.", "Er kan niet in je gegevensmap worden geschreven (een schijf met schrijfbeveiliging?): instellingen en opslagbestanden worden niet bewaard."},   // portable mode
+    {"THE LAUNCHER IS MOVING YOUR DATA", "DE LAUNCHER VERPLAATST JE GEGEVENS"},   // portable mode
+    {"QUIT AND START AGAIN WHEN IT IS DONE", "STOP EN START OPNIEUW ALS HIJ KLAAR IS"},   // portable mode
+    {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "ER KAN NIET IN DE DRAAGBARE GEGEVENSMAP WORDEN GESCHREVEN"},   // portable mode
+    {"SAVES AND SETTINGS WON'T BE KEPT", "OPSLAG EN INSTELLINGEN WORDEN NIET BEWAARD"},   // portable mode
 };
 
 inline constexpr Entry kSW[] = {   // Swedish
+    {"VOICES", "RÖSTER"},   // 1.3.0 VOICES
+    {"The Crash FM DJ and the race training's narrator.", "DJ:n på Crash FM och berättaren i racingträningen."},   // 1.3.0 VOICES
+    {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Språk: de talar det valda SPRÅKET (franska, tyska, italienska och spanska har egna; brittisk engelska, nederländska och svenska har de engelska rösterna, som på sina skivor)."},   // 1.3.0 VOICES
+    {"The training's narration is on your disc already; the DJ's lines need importing (the DJ VOICE rows of the launcher).", "Träningens berättare finns redan på din skiva; DJ:ns repliker måste importeras (raderna DJ-RÖST i startprogrammet)."},   // 1.3.0 VOICES
+    {"English: the US voices, with the menus in your language.", "English: de amerikanska rösterna, med menyerna på ditt språk."},   // 1.3.0 VOICES
+    {"TRAINING VIDEOS: {}", "TRÄNINGSVIDEOR: {}"},   // 1.3.0 VOICES
+    {"Copying the training videos from the disc.", "Träningsvideorna kopieras från skivan."},   // 1.3.0 VOICES
+    {"Imported: the race training videos in this language are on this PC.", "Importerat: träningsvideorna på det här språket finns på den här datorn."},   // 1.3.0 VOICES
+    {"Remove deletes them; the training then shows the English pictures.", "Ta bort raderar dem; träningen visar då de engelska bilderna."},   // 1.3.0 VOICES
+    {"Copies the race training videos' pictures in this language (their on-screen text) from the chosen disc to this PC, once.", "Kopierar bilderna i träningsvideorna på det här språket (deras text i bild) från den valda skivan till den här datorn, en gång."},   // 1.3.0 VOICES
+    {"Without them the training shows the English pictures with the narration in your language.", "Utan dem visar träningen de engelska bilderna med berättaren på ditt språk."},   // 1.3.0 VOICES
+    {"Its DJ voices (about 300 MB a language) and race training videos (about 130 MB a language) can then be imported in the rows below.", "Dess DJ-röster (cirka 300 MB per språk) och träningsvideor (cirka 130 MB per språk) kan sedan importeras i raderna nedan."},   // 1.3.0 VOICES
+    {"Language", "Språk"},   // 1.3.0 DJ VOICE
+    {"DJ VOICE: {}", "DJ-RÖST: {}"},   // 1.3.0 DJ VOICE
+    {"Cancel ({} %)", "Avbryt ({} %)"},   // 1.3.0 DJ VOICE
+    {"Remove ({} MB)", "Ta bort ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Import ({} MB)", "Importera ({} MB)"},   // 1.3.0 DJ VOICE
+    {"Copying the DJ's lines from the disc.", "DJ:ns repliker kopieras från skivan."},   // 1.3.0 DJ VOICE
+    {"Cancel stops it and keeps nothing.", "Avbryt stoppar det och behåller ingenting."},   // 1.3.0 DJ VOICE
+    {"Imported: the DJ's lines in this language are on this PC.", "Importerat: DJ:ns repliker på det här språket finns på den här datorn."},   // 1.3.0 DJ VOICE
+    {"Remove deletes them; the DJ is then English.", "Ta bort raderar dem; DJ:n blir då engelsk."},   // 1.3.0 DJ VOICE
+    {"Copies the DJ's lines in this language from the chosen disc to this PC, once.", "Kopierar DJ:ns repliker på det här språket från den valda skivan till den här datorn, en gång."},   // 1.3.0 DJ VOICE
+    {"Needs {} MB of free space.", "Behöver {} MB ledigt utrymme."},   // 1.3.0 DJ VOICE
     {"Not available on macOS: it has no public way for a game to read what another app is playing.", "Inte tillgängligt i macOS: det finns inget offentligt sätt för ett spel att läsa vad en annan app spelar."},
     {"Shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the EA TRAX popup when the song changes.", "Visar låten som en annan app spelar (Spotify, en webbläsare, valfri spelare i systemets mediekontroller) i EA TRAX-rutan när låten byts."},
     {"Its sound stays in that app: turn RADIO VOLUME down in Driver Details to hear only it.", "Ljudet stannar i den appen: sänk RADIOVOLYM i Föraruppgifter för att bara höra den."},
@@ -7393,6 +9311,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"How far Low mode looks past the newest game tick.", "Hur långt läget Låg ser förbi spelets senaste tick."},
     {"FRAMES IN FLIGHT", "BILDRUTOR I KÖ"},
     {"Frames the GPU may queue: 1 is the most direct, more can be smoother.", "Bildrutor som GPU:n får köa: 1 är mest direkt, fler kan ge jämnare bild."},
+    {"Auto: 1, or 2 while the graphics card holds the frame rate below its target (with LATENCY MODE Auto).", "Auto: 1, eller 2 medan grafikkortet håller bildfrekvensen under målet (med LATENSLÄGE Auto)."},
     {"GRAPHICS", "GRAFIK"},
     {"IMAGE", "BILD"},
     {"ANTI-ALIASING", "KANTUTJÄMNING"},
@@ -7410,6 +9329,8 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"How large the 3D picture is drawn, as a share of the window, then scaled up.", "Hur stor 3D-bilden ritas, som andel av fönstret, innan den skalas upp."},
     {"Lower is faster on a weak graphics chip; the HUD and menus stay sharp.", "Lägre är snabbare på ett svagt grafikkort; HUD och menyer förblir skarpa."},
     {"100% is the normal picture.", "100% är den normala bilden."},
+    {"Above 100%, it is drawn larger and scaled down: smoother edges and finer detail, for a large cost.", "Över 100% ritas den större och skalas ned: jämnare kanter och finare detaljer, till en hög kostnad."},
+    {"150% and 200% want a graphics card with plenty of memory.", "150% och 200% kräver ett grafikkort med mycket minne."},
     {"DITHER", "DITHERING"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Ett fint mönster som döljer stegen i mjuka övergångar som himlen."},
     {"None", "Ingen"},
@@ -7576,6 +9497,8 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"CAR SERIES ON L1 / R1", "BILSERIE MED L1 / R1"},
     {"On: in the car select, the shoulder buttons (L1 / R1, LB / RB, or their keys) change the car series as Left / Right do, and show beside the series arrows.", "På: i bilvalet byter axelknapparna (L1 / R1, LB / RB, eller deras tangenter) bilserie som Vänster / Höger gör, och visas bredvid seriepilarna."},
     {"Changes the input the game gets; Off is the original.", "Ändrar inmatningen spelet får; Av är originalet."},
+    {"GARAGE CAMERA", "GARAGEKAMERA"},
+    {"On: on the car pages (car select, your garage), the right stick or a mouse drag on the car turns the view around the car; a second after you let go, the car spins on its own again.", "På: på bilsidorna (bilval, ditt garage) vrider höger spak eller att dra med musen på bilen vyn runt bilen; en sekund efter att du släppt snurrar bilen av sig själv igen."},
     {"ANALOG TRIGGERS", "ANALOGA AVTRYCKARE"},
     {"On: a trigger set to accelerate or brake works gradually, like a pedal (light pressure, light throttle).", "På: en avtryckare inställd på gas eller broms verkar gradvis, som en pedal (lätt tryck, lite gas)."},
     {"Both triggers together still powerslide.", "Båda avtryckarna samtidigt ger fortfarande powerslide."},
@@ -7722,6 +9645,12 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Photo mode: the next blur level, round to the first.", "Fotoläge: nästa oskärpenivå, sedan tillbaka till den första."},
     {"PHOTO: FOCUS ON CAR / CENTRE", "FOTO: FOKUS BIL / MITTEN"},
     {"Photo mode: focus on the car or the middle of the screen.", "Fotoläge: fokusera på bilen eller mitten av skärmen."},
+    {"PHOTO: MOTION BLUR", "FOTO: RÖRELSEOSKÄRPA"},
+    {"Photo mode: the motion blur's next mode: off, tracking, panning, static.", "Fotoläge: rörelseoskärpans nästa läge: av, följande, panorering, stilla."},
+    {"PHOTO: FASTER SHUTTER", "FOTO: KORTARE SLUTARTID"},
+    {"Photo mode: a shorter exposure, less motion blur.", "Fotoläge: kortare exponering, mindre rörelseoskärpa."},
+    {"PHOTO: SLOWER SHUTTER", "FOTO: LÄNGRE SLUTARTID"},
+    {"Photo mode: a longer exposure, more motion blur.", "Fotoläge: längre exponering, mer rörelseoskärpa."},
     {"PHOTO: GAME CAMERA", "FOTO: SPELETS KAMERA"},
     {"Photo mode: back to the game's camera view.", "Fotoläge: tillbaka till spelets kameravy."},
     {"PHOTO: HELP", "FOTO: HJÄLP"},
@@ -7863,7 +9792,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Start the game, or start it in safe mode with its settings turned down.", "Starta spelet, eller starta det i felsäkert läge med sänkta inställningar."},
     {"The game's own PC settings: the same rows as SETTINGS in the game, saved to the same file.", "Spelets egna PC-inställningar: samma rader som INSTÄLLNINGAR i spelet, sparade i samma fil."},
     {"A PCSX2 texture replacement folder for Burnout 3, used from the next start.", "En PCSX2-mapp med ersättningstexturer för Burnout 3, används från nästa start."},
-    {"Your own music on the game's radio: the same settings as SETTINGS > INTERFACE > MUSIC in the game.", "Din egen musik i spelets radio: samma inställningar som INSTÄLLNINGAR > GRÄNSSNITT > MUSIK i spelet."},
+    {"Your own music on the game's radio: the same settings as SETTINGS > AUDIO > MUSIC in the game.", "Din egen musik i spelets radio: samma inställningar som INSTÄLLNINGAR > LJUD > MUSIK i spelet."},
     {"Mods in the mods folder: which are on, and their order.", "Mods i mods-mappen: vilka som är på, och deras ordning."},
     {"Your disc and its files are never changed.", "Din skiva och dess filer ändras aldrig."},
     {"Your Burnout 3 disc (NTSC-U, SLUS-21050): its image, or a folder with its contents.", "Din Burnout 3-skiva (NTSC-U, SLUS-21050): dess avbild, eller en mapp med dess innehåll."},
@@ -7871,7 +9800,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"The game saves by itself.", "Spelet sparar automatiskt."},
     {"Each profile's stats as the game saved them, and local achievements worked out from them.", "Varje profils statistik så som spelet sparade den, och lokala prestationer som räknas fram ur den."},
     {"Every player car on your disc in 3D on a turntable, with the game's name for it.", "Varje spelarbil på din skiva i 3D på ett vridbord, med spelets namn på den."},
-    {"Your recorded sessions, played back exactly as they were played (SETTINGS > INTERFACE > RECORD REPLAYS).", "Dina inspelade sessioner, uppspelade exakt som de spelades (INSTÄLLNINGAR > GRÄNSSNITT > SPELA IN REPRISER)."},
+    {"Your recorded sessions, played back exactly as they were played (SETTINGS > GAME > MODES > RECORD REPLAYS).", "Dina inspelade sessioner, uppspelade exakt som de spelades (INSTÄLLNINGAR > SPEL > LÄGEN > SPELA IN REPRISER)."},
     {"Connected controllers, live, and the keyboard as the game maps it.", "Anslutna handkontroller, live, och tangentbordet så som spelet mappar det."},
     {"Who made this port, and the people and projects it stands on.", "Vilka som gjorde den här porten, och de personer och projekt den bygger på."},
     {"Read with notes:", "Läst med anmärkningar:"},
@@ -7998,7 +9927,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Your settings file stays as it is.", "Din inställningsfil förblir som den är."},
     {"Start the game directly next time (skip this launcher):", "Starta spelet direkt nästa gång (hoppa över den här launchern):"},
     {"On: starting the launcher starts the game at once, with these settings, saves, mods and music.", "På: när launchern startas startar spelet direkt, med dessa inställningar, sparningar, mods och musik."},
-    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > INTERFACE.", "För att se launchern igen, håll ned Shift (eller Back / Select på en handkontroll) medan den startar, eller slå på VISA LAUNCHERN VID START igen i spelets INSTÄLLNINGAR > GRÄNSSNITT."},
+    {"To see the launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT START back on in the game's SETTINGS > GAME > STARTING AND LOADING.", "För att se launchern igen, håll ned Shift (eller Back / Select på en handkontroll) medan den startar, eller slå på VISA LAUNCHERN VID START igen i spelets INSTÄLLNINGAR > SPEL > START OCH LADDNING."},
     {"Game data", "Speldata"},
     {"Set it on the Game Data page.", "Ange den på sidan Speldata."},
     {"Game program", "Spelprogram"},
@@ -8128,7 +10057,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"ALBUM", "ALBUM"},
     {"Your songs play through the game's radio: its RADIO VOLUME, its shuffle setting and the EA TRAX popup with each song's title, artist and album from its tags.", "Dina låtar spelas genom spelets radio: dess RADIOVOLYM, dess inställning för blandning och EA TRAX-rutan med varje låts titel, artist och album från dess taggar."},
     {"The game reads the folder when its next song starts.", "Spelet läser mappen när dess nästa låt börjar."},
-    {"In the game these are SETTINGS > INTERFACE > MUSIC: a change in either place shows in the other.", "I spelet är detta INSTÄLLNINGAR > GRÄNSSNITT > MUSIK: en ändring på det ena stället syns på det andra."},
+    {"In the game these are SETTINGS > AUDIO > MUSIC: a change in either place shows in the other.", "I spelet är detta INSTÄLLNINGAR > LJUD > MUSIK: en ändring på det ena stället syns på det andra."},
     {"OTHER MUSIC APPS shows the song another app plays (Spotify, a browser, any player in the system's media controls) in the same popup; its sound stays in that app.", "ANDRA MUSIKAPPAR visar låten som en annan app spelar (Spotify, en webbläsare, valfri spelare i systemets mediekontroller) i samma ruta; ljudet stannar i den appen."},
     {"None installed.", "Inga installerade."},
     {"Put each mod in its own folder in the mods folder (a folder with a mod.ini), then Look again.", "Lägg varje mod i en egen mapp i mods-mappen (en mapp med en mod.ini), välj sedan Läs in igen."},
@@ -8152,7 +10081,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Developer mods: Off", "Utvecklarmods: Av"},
     {"For mod authors: code mods that say [code] platform = yes may then change the game's platform layer (the kernel, the disc and pad drivers).", "För mod-skapare: kodmods som anger [code] platform = yes får då ändra spelets plattformslager (kärnan, skiv- och handkontrollsdrivrutinerna)."},
     {"Leave it off unless a mod's author asks for it.", "Låt det vara av om inte en mods skapare ber om det."},
-    {"Developer mods on (also PC SETTINGS > INTERFACE > DEVELOPER MODS).", "Utvecklarmods på (även PC-INSTÄLLNINGAR > GRÄNSSNITT > UTVECKLARMODS)."},
+    {"Developer mods on (also PC SETTINGS > MODS > DEVELOPER MODS).", "Utvecklarmods på (även PC-INSTÄLLNINGAR > MODS > UTVECKLARMODS)."},
     {"Developer mods off.", "Utvecklarmods av."},
     {"|  version", "|  version"},
     {"|  api", "|  api"},
@@ -8295,7 +10224,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"A replay file is small: copy it to keep it (a renamed one is never removed) or to send it; it plays on any PC with this release of the port and the same disc.", "En reprisfil är liten: kopiera den för att behålla den (en omdöpt fil tas aldrig bort) eller för att skicka den; den spelas upp på alla datorer med den här versionen av porten och samma skiva."},
     {"Recording: On", "Inspelning: På"},
     {"Recording: Off", "Inspelning: Av"},
-    {"RECORD REPLAYS (also in the game's SETTINGS > INTERFACE).", "SPELA IN REPRISER (även i spelets INSTÄLLNINGAR > GRÄNSSNITT)."},
+    {"RECORD REPLAYS (also in the game's SETTINGS > GAME > MODES).", "SPELA IN REPRISER (även i spelets INSTÄLLNINGAR > SPEL > LÄGEN)."},
     {"On: each session, from the start of the game to its end, is kept here.", "På: varje session, från spelets start till dess slut, sparas här."},
     {"Each session of the game is recorded from its start to its end and kept here (the newest 20).", "Varje session av spelet spelas in från start till slut och sparas här (de 20 senaste)."},
     {"Turn recording on to keep your sessions here; they play back exactly as you played them.", "Slå på inspelning för att spara dina sessioner här; de spelas upp exakt som du spelade dem."},
@@ -8355,7 +10284,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Controls", "Styrning"},
     {"Which key or controller input gives each PS2 button, per player.", "Vilken tangent eller handkontrollsinmatning som ger varje PS2-knapp, per spelare."},
     {"The game reads the same buttons as before: only the input behind each one changes.", "Spelet läser samma knappar som förut: bara inmatningen bakom varje knapp ändras."},
-    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > INTERFACE > CONTROLS).", "Sparas i controls.ini; spelet läser den vid sin start (i spelet: INSTÄLLNINGAR > GRÄNSSNITT > STYRNING)."},
+    {"Saved in controls.ini; the game reads it at its start (in the game: SETTINGS > CONTROLS > BINDINGS).", "Sparas i controls.ini; spelet läser den vid sin start (i spelet: INSTÄLLNINGAR > STYRNING > KNAPPAR)."},
     {"Whose controls.", "Vems kontroller."},
     {"Device", "Enhet"},
     {"Keys for", "Tangenter för"},
@@ -8631,7 +10560,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Heavyweight", "Tungvikt"},
     {"COMPACT TYPE 1", "COMPACT TYPE 1"},
     {"DATA/GLOBALUS.BIN", "DATA/GLOBALUS.BIN"},
-    {"CAR", "CAR"},
+    {"CAR", "BIL"},   // settingsui
     {"BGV", "BGV"},
     {"TRACKS/US/C3_V1", "TRACKS/US/C3_V1"},
     {"move", "flytta"},
@@ -8738,6 +10667,24 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"MSAA {}x", "MSAA {}x"},
     {"Steam", "Steam"},   // issue #8: Add to Steam
     {"Add to Steam", "Lägg till i Steam"},
+    {"Two data folders", "Två datamappar"},
+    {"Steam's Flatpak can reach the data folder you use outside Steam, but the sandbox's own folder holds saves too, so it stays in use: {}.", "Steams Flatpak kan nå datamappen du använder utanför Steam, men sandlådans egen mapp innehåller också sparfiler, så den används fortfarande: {}."},
+    {"To use the other one from Steam, copy what you want to keep from the sandbox's folder into ~/.local/share/b3port/native, then delete the sandbox's folder.", "För att använda den andra från Steam, kopiera det du vill behålla från sandlådans mapp till ~/.local/share/b3port/native och radera sedan sandlådans mapp."},
+    {"Sandbox settings left behind", "Sandlådans inställningar lämnade kvar"},
+    {"Steam's Flatpak can now reach the data folder you use outside Steam, so the launcher and the game use it: {}.", "Steams Flatpak kan nu nå datamappen du använder utanför Steam, så startprogrammet och spelet använder den: {}."},
+    {"The settings written earlier in the sandbox's own folder stay there, unused (the sandbox's folder holds no save): {}.", "Inställningarna som skrevs tidigare i sandlådans egen mapp ligger kvar där, oanvända (mappen har ingen sparfil): {}."},
+    {"Stops the download.", "Stoppar nedladdningen."},
+    {"Nothing is installed; your current version stays as it is.", "Inget installeras; din nuvarande version förblir som den är."},
+    {"Update cancelled.", "Uppdateringen avbröts."},
+    {"An update is being installed: wait for it to finish (or cancel it).", "En uppdatering installeras: vänta tills den är klar (eller avbryt den)."},
+    {"The update {} is downloaded and checked, but its disk image did not open.", "Uppdateringen {} är nedladdad och kontrollerad, men dess skivavbild öppnades inte."},
+    {"Open it yourself ({}), then quit and drag the app to Applications.", "Öppna den själv ({}), avsluta sedan och dra appen till Program."},
+    {"macOS runs this app from a temporary copy, because it was opened where it was downloaded.", "macOS kör den här appen från en tillfällig kopia, eftersom den öppnades där den laddades ned."},
+    {"Move the app to Applications (drag it there in Finder), open it from there, then press Add to Steam again.", "Flytta appen till Program (dra dit den i Finder), öppna den därifrån och tryck sedan på Lägg till i Steam igen."},
+    {"Flatpak's Steam needs to see this folder and your data folder: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "Flatpaks Steam måste kunna se den här mappen och din datamapp: flatpak override --user --filesystem={} --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
+    {"Started from Steam's Flatpak", "Startat från Steams Flatpak"},
+    {"Steam's Flatpak runs the game in its own sandbox, so the launcher and the game keep their settings, saves and mods in a folder of their own: {}.", "Steams Flatpak kör spelet i sin egen sandlåda, så startprogrammet och spelet har sina inställningar, sparfiler och moddar i en egen mapp: {}."},
+    {"To use the same data as outside Steam, run this once in a terminal, then start the game from Steam again: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam", "För att använda samma data som utanför Steam, kör detta en gång i en terminal och starta sedan spelet från Steam igen: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam"},
     {"Adding...", "Lägger till..."},
     {"Adding to Steam...", "Lägger till i Steam..."},
     {"Big Picture and the Steam Deck then show it with its own pictures.", "Big Picture och Steam Deck visar det sedan med egna bilder."},
@@ -8764,8 +10711,9 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Cannot find the launcher's own program file, so it cannot be added.", "Launcherns egen programfil hittades inte, så den kan inte läggas till."},
     {"Steam is running.", "Steam körs."},
     {"Close Steam, then press Add to Steam again: Steam rewrites its list of games when it closes.", "Avsluta Steam och tryck sedan på Lägg till i Steam igen: Steam skriver om sin spellista när det avslutas."},
-    {"On a Steam Deck, do this in Desktop Mode: exit Steam from its icon in the taskbar first.", "På en Steam Deck görs detta i skrivbordsläget: avsluta först Steam via dess ikon i aktivitetsfältet."},
-    {"Flatpak's Steam needs to see this folder: flatpak override --user --filesystem={} com.valvesoftware.Steam", "Steam från Flatpak måste kunna se den här mappen: flatpak override --user --filesystem={} com.valvesoftware.Steam"},
+    {"Right-click the Steam icon by the clock and choose Exit.", "Högerklicka på Steam-ikonen vid klockan och välj Avsluta."},
+    {"In the menu bar: Steam > Quit Steam.", "I menyraden: Steam > Avsluta Steam."},
+    {"On a Steam Deck: right-click the Steam icon in the taskbar (bottom right) and choose Exit Steam, then press Add to Steam again.", "På en Steam Deck: högerklicka på Steam-ikonen i aktivitetsfältet (nere till höger), välj Avsluta Steam och tryck sedan på Lägg till i Steam igen."},
     {"The next Add to Steam uses the port's own pictures.", "Nästa Lägg till i Steam använder portens bilder."},
     {"Steam was not found on this computer.", "Steam hittades inte på den här datorn."},
     {"Install Steam and sign in once, then press Add to Steam again.", "Installera Steam och logga in en gång, tryck sedan på Lägg till i Steam igen."},
@@ -8784,12 +10732,59 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Choose a cover picture for Steam (PNG or JPEG)", "Välj en omslagsbild för Steam (PNG eller JPEG)"},
     {"Choose a background picture for Steam (PNG or JPEG)", "Välj en bakgrundsbild för Steam (PNG eller JPEG)"},
     {"Choose a logo picture for Steam (PNG or JPEG)", "Välj en logotypbild för Steam (PNG eller JPEG)"},
-    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > INTERFACE > CONTROLS; the launcher's Controls page)
+    // 1.2.1 padlayout: CONTROLLER LAYOUT (PC SETTINGS > CONTROLS > BINDINGS; the launcher's Controls page)
     {"CONTROLLER LAYOUT", "HANDKONTROLLSLAYOUT"},
     {"BUTTONS FOR", "KNAPPAR FÖR"},
     {"Layout", "Layout"},
     {"Buttons for", "Knappar för"},
     {"Custom", "Egen"},
+    {"CAR PAINT", "BILLACK"},   // carpaint
+    {"PAINT RED", "LACK RÖD"},   // carpaint
+    {"PAINT GREEN", "LACK GRÖN"},   // carpaint
+    {"PAINT BLUE", "LACK BLÅ"},   // carpaint
+    {"DECALS", "DEKALER"},   // carpaint
+    {"Custom: your car in your own colour (the three rows below) instead of the paint picked in the car select.", "Egen: din bil i din egen färg (de tre raderna nedan) i stället för lacken du valde i bilvalet."},   // carpaint
+    {"Cars with one fixed livery keep it.", "Bilar med en enda fast dekor behåller den."},   // carpaint
+    {"Drawn only: the game, replays and saves keep the car select's paint.", "Endast visuellt: spelet, repriser och sparade spel behåller lacken från bilvalet."},   // carpaint
+    {"The custom paint's colour, 0 to 255 for each of red, green and blue.", "Den egna lackens färg, 0 till 255 för rött, grönt och blått."},   // carpaint
+    {"Off: your car without its logos, numbers and stripes, in plain paint; lights, grilles and wheels stay.", "Av: din bil utan logotyper, nummer och ränder, i enfärgad lack; lampor, grillar och hjul finns kvar."},   // carpaint
+    {"FINISH", "YTFINISH"},
+    {"Gloss", "Blank"},
+    {"Metallic", "Metallic"},
+    {"Pearl", "Pärlemor"},
+    {"PLAYER 2 CAR PAINT", "BILLACK SPELARE 2"},
+    {"P2 CAR PAINT", "BILLACK S2"},
+    {"P2 PAINT RED", "LACK S2 RÖD"},
+    {"P2 PAINT GREEN", "LACK S2 GRÖN"},
+    {"P2 PAINT BLUE", "LACK S2 BLÅ"},
+    {"P2 DECALS", "DEKALER S2"},
+    {"The paint's finish on both players' cars.", "Lackens finish på båda spelarnas bilar."},
+    {"Gloss: the game's.", "Blank: spelets egen."},
+    {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metallic: en starkare spegling i lackens färg, med flingor som gnistrar i ljuset."},
+    {"Pearl: the colour shifts as the car turns to the light.", "Pärlemor: färgen skiftar när bilen vänder sig mot ljuset."},
+    {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "Spelare 2:s bil i delad skärm: Egen visar den i färgen från de tre raderna nedan i stället för lacken som valdes i bilvalet."},
+    {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Av: spelare 2:s bil utan logotyper, nummer och ränder, i enfärgad lack."},
+    {"LIGHTING", "BELYSNING"},   // night
+    {"TIME OF DAY", "TID PÅ DYGNET"},   // night
+    {"Day", "Dag"},   // night
+    {"Night", "Natt"},   // night
+    {"TIME OF DAY PER RACE", "TID PÅ DYGNET PER LOPP"},   // todrace
+    {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Bansidorna (enskilt evenemang, flerspelare): Standard, Dag eller Natt för nästa lopp."},   // todrace
+    {"Time of day: {}", "Tid på dygnet: {}"},   // todrace
+    {"Default ({})", "Standard ({})"},   // todrace
+    {"MOON", "MÅNE"},   // night
+    {"SURFACE DETAIL", "YTDETALJER"},   // night
+    {"AMBIENT OCCLUSION", "OMGIVNINGSOCKLUSION"},   // night
+    {"Night: every race after dark, with a night sky, the cars' lights on and headlight beams on the road.", "Natt: varje lopp i mörker, med en natthimmel, bilarnas lampor tända och strålkastarkäglor på vägen."},   // night
+    {"The moon in the night sky, and its cool light on the cars, the road and the walls facing it.", "Månen på natthimlen, och dess kalla ljus på bilarna, vägen och väggarna som vetter mot den."},   // night
+    {"Relief and sheen on the road, kerbs and walls from their textures, lit by the sun or the moon.", "Relief och glans på vägen, kantstenarna och väggarna utifrån deras texturer, belysta av solen eller månen."},   // night
+    {"Soft contact shadows under the cars and along walls and kerbs.", "Mjuka kontaktskuggor under bilarna och längs väggar och kantstenar."},   // night
+    {"Draws the scene twice: for fast graphics cards.", "Ritar scenen två gånger: för snabba grafikkort."},   // night
+    {"SUN SHADOWS", "SOLSKUGGOR"},   // sunshadow
+    {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Riktiga skuggor av bilarna på vägen, kastade av solen eller, på natten, av månen."},   // sunshadow
+    {"None in tunnels and under bridges.", "Inga i tunnlar och under broar."},   // sunshadow
+    {"Sharper with ANTI-ALIASING at 4x or more.", "Skarpare med KANTUTJÄMNING på 4x eller mer."},   // sunshadow
+    {"It lights the road's relief too, a small extra cost even with SURFACE DETAIL off.", "Den lyser också upp vägens relief, en liten extra kostnad även med YTDETALJER av."},   // night
     {"Auto: Xbox controller", "Auto: Xbox-handkontroll"},
     {"Auto: PlayStation controller", "Auto: PlayStation-handkontroll"},
     {"Auto: Nintendo, Xbox layout", "Auto: Nintendo, Xbox-layout"},
@@ -8798,9 +10793,288 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Which buttons do what on this player's controller.", "Vilken knapp som gör vad på den här spelarens handkontroll."},
     {"Auto: the layout of the controller's console, picked again when the controller changes: a PlayStation controller gets the PS2 game's, any other controller the original Xbox game's.", "Auto: layouten för handkontrollens konsol, vald på nytt när handkontrollen byts: en PlayStation-handkontroll får PS2-spelets, alla andra handkontroller det ursprungliga Xbox-spelets."},
     {"Xbox, PlayStation: that layout on any controller.", "Xbox, PlayStation: den layouten på alla handkontroller."},
+    {"Nintendo: the Xbox layout by label, A confirms and boosts, B goes back and is the Crashbreaker.", "Nintendo: Xbox-layouten efter knapparnas namn, A bekräftar och ger boost, B går tillbaka och är Crashbreaker."},
     {"Custom: your own bindings in the rows below.", "Egen: dina egna tilldelningar i raderna nedan."},
     {"Changing a binding below makes it Custom.", "Att ändra en tilldelning nedan byter till Egen."},
     {"A button can do one thing while you drive and another in the menus (on the Xbox layout A boosts, and confirms in a menu).", "En knapp kan göra en sak medan du kör och en annan i menyerna (i Xbox-layouten ger A boost, och bekräftar i en meny)."},
+    // polish122: the CONTROLS change notes (in the game: LAST CHANGE; the launcher's Controls page)
+    {"KEYBOARD", "TANGENTBORD"},
+    {"DRIVING", "KÖRNING"},
+    {"MENUS", "MENYER"},
+    {"SHORTCUTS", "GENVÄGAR"},
+    {"ALL CONTROLS RESET TO DEFAULTS", "ALL STYRNING ÅTERSTÄLLD TILL STANDARD"},
+    {"PRESS RESET ALL CONTROLS AGAIN TO PUT EVERYTHING BACK (ANY OTHER ROW CANCELS)", "TRYCK PÅ ÅTERSTÄLL ALL STYRNING IGEN FÖR ATT ÅTERSTÄLLA ALLT (VARJE ANNAN RAD AVBRYTER)"},
+    {"(this run only)", "(bara den här körningen)"},
+    {"(NOT SAVED: {})", "(INTE SPARAT: {})"},
+    {"{}: saved (the game reads it at its next start).", "{}: sparat (spelet läser det vid nästa start)."},
+    {"controller layout", "handkontrollslayout"},
+    {"gyro steering", "gyrostyrning"},
+    {"gyro axis", "gyroaxel"},
+    {"gyro sensitivity", "gyrokänslighet"},
+    {"gyro dead zone", "gyrodödzon"},
+    {"gyro recentre button", "knapp för att centrera gyro"},
+    {"keyboard reset to the defaults", "tangentbordet återställt till standard"},
+    {"controller reset to the defaults", "handkontrollen återställd till standard"},
+    {"AUDIO", "LJUD"},   // settingsui
+    {"GAME", "SPEL"},   // settingsui
+    {"LAYOUT", "LAYOUT"},   // settingsui
+    {"SMOOTHNESS", "JÄMNHET"},   // settingsui
+    {"TEXTURES", "TEXTURER"},   // settingsui
+    {"CAR LOOK", "BILENS UTSEENDE"},   // settingsui
+    {"GARAGE", "GARAGE"},   // settingsui
+    {"FEEDBACK", "FEEDBACK"},   // settingsui
+    {"BINDINGS", "KNAPPAR"},   // settingsui
+    {"GYRO", "GYRO"},   // settingsui
+    {"MODES", "LÄGEN"},   // settingsui
+    {"LANGUAGE AND UNITS", "SPRÅK OCH ENHETER"},   // settingsui
+    {"STARTING AND LOADING", "START OCH LADDNING"},   // settingsui
+    {"COLOUR", "FÄRG"},   // settingsui
+    {"P2 COLOUR", "FÄRG S2"},   // settingsui
+    {"Red", "Röd"},   // settingsui
+    {"Orange", "Orange"},   // settingsui
+    {"Yellow", "Gul"},   // settingsui
+    {"Green", "Grön"},   // settingsui
+    {"Blue", "Blå"},   // settingsui
+    {"Purple", "Lila"},   // settingsui
+    {"Pink", "Rosa"},   // settingsui
+    {"White", "Vit"},   // settingsui
+    {"Silver", "Silver"},   // settingsui
+    {"A ready colour: sets the three rows below and turns the custom paint on.", "En färdig färg: ställer in de tre raderna nedan och slår på den egna lacken."},   // settingsui
+    {"Custom: the colour of the rows below.", "Egen: färgen i raderna nedan."},   // settingsui
+    {"VOLUMES AND DJ", "VOLYMER OCH DJ"},   // settingsui
+    {"The game's own sound: RADIO VOLUME, the effects, the speech and the DJ are in DRIVER DETAILS > SETTINGS > AUDIO.", "Spelets eget ljud: RADIOVOLYM, effekterna, rösterna och DJ:n finns i FÖRARUPPGIFTER > INSTÄLLNINGAR > LJUD."},   // settingsui
+    {"BOOST HOLD OR TOGGLE", "BOOST HÅLL ELLER VÄXLA"},   // settingsui
+    {"Boost by holding the button, or press once to boost and again to stop: CONTROLS > DRIVING > BOOST.", "Boosta genom att hålla knappen, eller tryck en gång för att boosta och igen för att sluta: STYRNING > KÖRNING > BOOST."},   // settingsui
+    {"BUTTONS AND KEYS", "KNAPPAR OCH TANGENTER"},   // settingsui
+    {"The launcher's Controllers page: test your controllers, and change the buttons and keys of both players, the shortcuts and the gyro steering.", "Startprogrammets sida Handkontroller: testa handkontrollerna och ändra båda spelarnas knappar och tangenter, kortkommandona och gyrostyrningen."},   // settingsui
+    {"The launcher's Music page: your own music folder, the playlist, its volume and other music apps.", "Startprogrammets sida Musik: din egen musikmapp, spellistan, dess volym och andra musikappar."},   // settingsui
+    {"The launcher's HD Textures page: choose the pack's folder, get the pack, or stop using it.", "Startprogrammets sida HD-texturer: välj paketets mapp, hämta paketet eller sluta använda det."},   // settingsui
+    {"CHANGE", "ÄNDRA"},   // settingsui
+    {"CHOOSE", "VÄLJ"},   // settingsui
+    {"CLOSE AND SAVE", "STÄNG OCH SPARA"},   // settingsui
+    {"SECTION", "AVSNITT"},   // settingsui
+    {"REBIND", "ÄNDRA KNAPP"},   // settingsui
+    {"ADD", "LÄGG TILL"},   // settingsui
+    {"REMOVE", "TA BORT"},   // settingsui
+    {"DEFAULT", "STANDARD"},   // settingsui
+    {"CLICK", "KLICK"},   // settingsui
+    {"WHEEL", "HJUL"},   // settingsui
+    {"SCROLL", "RULLA"},   // settingsui
+    {"RIGHT CLICK", "HÖGERKLICK"},   // settingsui
+    {"CLOSE", "STÄNG"},   // settingsui
+    {"MOVE", "FLYTTA"},   // settingsui
+    {"Kept: the menus need one input that confirms and one that goes back.", "Behålls: menyerna behöver en knapp som bekräftar och en som går tillbaka."},   // settingsui
+    {"Go back", "Tillbaka"},   // settingsui
+    {"Bug report...", "Felrapport..."},   // settingsui
+    {"Make a bug report?", "Skapa en felrapport?"},   // settingsui
+    {"Make report", "Skapa rapport"},   // settingsui
+    {"With my save", "Med min sparning"},   // settingsui
+    {"Click a row twice to open it", "Klicka två gånger på en rad för att öppna den"},   // settingsui
+    {"LAUNCHER", "LAUNCHER"},   // settingsui
+    {"TEST", "TEST"},   // settingsui
+    {"Left stick", "Vänster spak"},   // settingsui
+    {"built {}", "byggd {}"},   // settingsui
+    {"Burnout 3 native port, a test build", "Burnout 3:s nativa port, en testversion"},   // settingsui
+    {"{} preset", "nivå {}"},   // settingsui
+    {"fullscreen", "helskärm"},   // settingsui
+    {"window", "fönster"},   // settingsui
+    {"no MSAA", "ingen MSAA"},   // settingsui
+    {"{} fps limit", "gräns på {} fps"},   // settingsui
+    {"no HD pack", "inget HD-paket"},   // settingsui
+    {"HD pack", "HD-paket"},   // settingsui
+    {"HD pack off", "HD-paket av"},   // settingsui
+    {"saved {}", "sparad {}"},   // settingsui
+    {"(an older profile-{} folder: read, and saved as a .sav at the first save)", "(en äldre mapp profile-{}: läses, och sparas som .sav vid första sparningen)"},   // settingsui
+    {"An older profile-{} folder (read; saved as a .sav at the first save)", "En äldre mapp profile-{} (läses; sparas som .sav vid första sparningen)"},   // settingsui
+    {"Released {}", "Släppt {}"},   // settingsui
+    {"Last checked {}", "Senast kontrollerad: {}"},   // settingsui
+    {"Version {}", "Version {}"},   // settingsui
+    {"Not checked for updates yet", "Har inte sökt efter uppdateringar än"},   // settingsui
+    {"Checking for updates...", "Söker efter uppdateringar..."},   // settingsui
+    {"Update check off (Settings > Launcher)", "Uppdateringskontroll av (Inställningar > Launcher)"},   // settingsui
+    {"Update available: {}", "Uppdatering tillgänglig: {}"},   // settingsui
+    {"Up to date ({} is the latest release)", "Uppdaterad ({} är den senaste versionen)"},   // settingsui
+    {"Up to date (no release published yet)", "Uppdaterad (ingen version släppt än)"},   // settingsui
+    {"Couldn't check for updates ({})", "Kunde inte söka efter uppdateringar ({})"},   // settingsui
+    {"Installed: {}", "Installerade: {}"},   // settingsui
+    {"on: {}", "på: {}"},   // settingsui
+    {"gold", "guld"},   // settingsui
+    {"silver", "silver"},   // settingsui
+    {"bronze", "brons"},   // settingsui
+    {"Paint {}", "Lack {}"},   // settingsui
+    {"NOT SET", "INTE TILLDELAD"},   // settingsui
+    {"Not saved: {}", "Inte sparat: {}"},   // settingsui
+    // item 11: a pack of the game's files without a mod.ini
+    {"Install as a file-replacement mod?", "Installera som en mod som ersätter filer?"},
+    {"This pack has no mod.ini.", "Det här paketet har ingen mod.ini."},
+    {"Install it as a file-replacement mod named {}?", "Installera det som en mod som ersätter filer, med namnet {}?"},
+    {"Its files replace the game's files of the same names; it has no code, so nothing in it runs.", "Dess filer ersätter spelets filer med samma namn; det innehåller ingen kod, så inget i det körs."},
+    {"A mod.ini is written for it, and it starts off.", "En mod.ini skrivs för det, och det är avstängt från början."},
+    {"Install", "Installera"},
+    {"Not a mod", "Inte en mod"},
+    {"{} was not installed; nothing was written.", "{} installerades inte; inget skrevs."},
+    {"It has no mod.ini, and no folders of the game's own (DATA, PVEH, TRACKS, SOUND, OVID) to install as replacement files.", "Det har ingen mod.ini och inga av spelets egna mappar (DATA, PVEH, TRACKS, SOUND, OVID) att installera som ersättningsfiler."},
+    {"A mod.ini is the small text file at the top of a mod that names it: its id, name and version.", "En mod.ini är den lilla textfilen överst i en mod som namnger den: dess id, namn och version."},
+    {"Add folder...", "Lägg till mapp..."},
+    {"Installs a mod from a folder: copied into its own folder in the mods folder.", "Installerar en mod från en mapp: kopieras till en egen mapp i mod-mappen."},
+    {"A pack of the game's own files without a mod.ini (its DATA, PVEH or TRACKS folders) can be installed as a file-replacement mod.", "Ett paket med spelets egna filer utan mod.ini (dess mappar DATA, PVEH eller TRACKS) kan installeras som en mod som ersätter filer."},
+    {"Add a mod: choose its folder (a mod, or a pack of the game's files)", "Lägg till en mod: välj dess mapp (en mod, eller ett paket med spelets filer)"},
+    {"Open the mod's folder, then Start: it is copied into the mods folder.", "Öppna modens mapp och tryck sedan Start: den kopieras till mod-mappen."},
+    {"Set aside file {}?", "Lägga undan fil {}?"},   // saveflow
+    {"The game can't play profile-{}.sav.", "Spelet kan inte använda profile-{}.sav."},   // saveflow
+    {"Why: {}.", "Orsak: {}."},   // saveflow
+    {"It is renamed in the save folder (kept, not deleted) and the file starts empty: the game makes a new profile at its first save.", "Den byter namn i sparmappen (behålls, raderas inte) och filen börjar tom: spelet skapar en ny profil vid första sparningen."},   // saveflow
+    {"Quit the game first if it is running.", "Avsluta spelet först om det körs."},   // saveflow
+    {"Set aside", "Lägg undan"},   // saveflow
+    {"Set aside as {}.", "Undanlagd som {}."},   // saveflow
+    {"The game starts this file fresh.", "Spelet börjar om med den här filen."},   // saveflow
+    {"Cannot set it aside: {}", "Kan inte lägga undan den: {}"},   // saveflow
+    {"Can't be played: damaged or unreadable", "Kan inte användas: skadad eller oläslig"},   // saveflow
+    {"Set aside file {} and start fresh...", "Lägg undan fil {} och börja om..."},   // saveflow
+    {"Renames profile-{}.sav in the save folder (kept, not deleted) so that the game starts this file empty.", "Byter namn på profile-{}.sav i sparmappen (behålls, raderas inte) så att spelet börjar den här filen tom."},   // saveflow
+    {"SAVED", "SPARAT"},   // saveflow
+    {"SAVE FAILED", "SPARNINGEN MISSLYCKADES"},   // saveflow
+    {"YOUR LAST SAVE IS KEPT", "DIN SENASTE SPARNING BEHÅLLS"},   // saveflow
+    {"RETRYING", "FÖRSÖKER IGEN"},   // saveflow
+    {"SAVED AGAIN TO PROFILE {}", "SPARAT IGEN I PROFIL {}"},   // saveflow
+    {"NOT SAVED", "INTE SPARAT"},   // saveflow
+    {"CAN'T READ {}", "KAN INTE LÄSA {}"},   // saveflow
+    {"PROGRESS WON'T BE SAVED THIS SESSION", "FRAMSTEGEN SPARAS INTE DEN HÄR SESSIONEN"},   // saveflow
+    {"THE LAUNCHER'S SAVES PAGE CAN SET IT ASIDE", "LAUNCHERNS SIDA SPARNINGAR KAN LÄGGA UNDAN DEN"},   // saveflow
+    {"{} CHANGED OUTSIDE THE GAME", "{} ÄNDRADES UTANFÖR SPELET"},   // saveflow
+    {"SAVED TO {}", "SPARAT I {}"},   // saveflow
+    {"A SAVE WAS IMPORTED: RESTART THE GAME TO PLAY IT", "EN SPARNING IMPORTERADES: STARTA OM SPELET FÖR ATT SPELA DEN"},   // saveflow
+    {"SAVE WARNING", "SPARVARNING"},   // saveflow
+    {"ANOTHER GAME ON THIS COMPUTER USES THIS SAVE FOLDER", "ETT ANNAT SPEL PÅ DEN HÄR DATORN ANVÄNDER DEN HÄR SPARMAPPEN"},   // saveflow
+    {"PLAY ONE AT A TIME", "SPELA PÅ EN I TAGET"},   // saveflow
+    {"Progress from {} was saved beside it, because the file changed while the game was running.", "Framsteg från {} sparades bredvid, eftersom filen ändrades medan spelet körde."},   // saveflow
+    {"Use it", "Använd den"},   // saveflow
+    {"Leave it", "Låt den vara"},   // saveflow
+    {"Makes it this file's save; the current one is kept as a backup (.bak and backups).", "Gör den till filens sparning; den nuvarande behålls som säkerhetskopia (.bak och backups)."},   // saveflow
+    {"Hides this line; the file stays in the save folder.", "Döljer den här raden; filen ligger kvar i sparmappen."},   // saveflow
+    {"Use the progress from {}?", "Använda framstegen från {}?"},   // saveflow
+    {"It replaces profile-{}.sav.", "Den ersätter profile-{}.sav."},   // saveflow
+    {"The current one is kept as profile-{}.sav.bak and in backups.", "Den nuvarande behålls som profile-{}.sav.bak och i backups."},   // saveflow
+    {"Now using the progress from {}.", "Nu används framstegen från {}."},   // saveflow
+    {"Cannot use it: {}", "Kan inte använda den: {}"},   // saveflow
+    // xboximport (1.3.0): Import Xbox textures
+    {"XBOX TEXTURES", "XBOX-TEXTURER"},
+    {"The textures imported from your Xbox disc in the launcher, below your own HD pack and the mods' packs.", "Texturerna som importerats från din Xbox-skiva i startprogrammet, under ditt eget HD-paket och moddarnas paket."},
+    {"Used while HD TEXTURES is on.", "Används medan HD-TEXTURER är på."},
+    {"Xbox textures", "Xbox-texturer"},
+    {"Builds a texture pack on this computer from your own Xbox disc image of the game (.iso or .xiso).", "Skapar ett texturpaket på den här datorn från din egen Xbox-skivavbildning av spelet (.iso eller .xiso)."},
+    {"It is a small improvement: some building fronts, signs and car paint are somewhat sharper.", "Det är en liten förbättring: vissa husfasader, skyltar och billacker blir något skarpare."},
+    {"An HD texture pack looks far better; this is for players who want to use their Xbox disc.", "Ett HD-texturpaket ser mycket bättre ut; detta är för spelare som vill använda sin Xbox-skiva."},
+    {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Inget laddas ner eller delas, och ditt eget HD-paket och moddarnas paket går fortfarande först."},
+    {"Not imported.", "Inte importerade."},
+    {"{} textures imported.", "{} texturer importerade."},
+    {"Size: {} MB.", "Storlek: {} MB."},
+    {"From: {}.", "Från: {}."},
+    {"Made by an older version: import again for the newest result.", "Skapade av en äldre version: importera igen för bästa resultat."},
+    {"XBOX TEXTURES is off.", "XBOX-TEXTURER är av."},
+    {"HD TEXTURES is off.", "HD-TEXTURER är av."},
+    {"Import Xbox textures...", "Importera Xbox-texturer..."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso).", "Välj din Xbox-skivavbildning av spelet (.iso eller .xiso)."},
+    {"Choose your Xbox disc image of the game (.iso or .xiso)", "Välj din Xbox-skivavbildning av spelet (.iso eller .xiso)"},
+    {"The import runs on this computer in about a minute.", "Importen körs på den här datorn och tar ungefär en minut."},
+    {"Deletes the imported textures (your disc image is not touched).", "Tar bort de importerade texturerna (din skivavbildning rörs inte)."},
+    {"Disc images here: A on one imports its textures.", "Skivavbildningar här: A på en importerar dess texturer."},
+    {"No disc images here: open the folder that holds your Xbox disc image.", "Inga skivavbildningar här: öppna mappen som innehåller din Xbox-skivavbildning."},
+    {"Xbox disc images (*.iso, *.xiso)", "Xbox-skivavbildningar (*.iso, *.xiso)"},
+    {"Importing Xbox textures", "Importerar Xbox-texturer"},
+    {"Reading the game's files: {}.", "Läser spelets filer: {}."},
+    {"Building the textures: {}.", "Skapar texturerna: {}."},
+    {"Textures written: {}.", "Skrivna texturer: {}."},
+    {"Cancelling...", "Avbryter..."},
+    {"Import cancelled: nothing was changed.", "Importen avbröts: inget ändrades."},
+    {"The import failed.", "Importen misslyckades."},
+    {"Remove the Xbox textures?", "Ta bort Xbox-texturerna?"},
+    {"The imported textures are deleted.", "De importerade texturerna tas bort."},
+    {"You can import them again from your disc at any time.", "Du kan importera dem igen från din skiva när som helst."},
+    {"The Xbox textures were removed.", "Xbox-texturerna togs bort."},
+    {"Cannot open the disc image.", "Det går inte att öppna skivavbildningen."},
+    {"Not an Xbox disc image (no XDVDFS volume in it).", "Ingen Xbox-skivavbildning (ingen XDVDFS-volym i den)."},
+    {"This Xbox disc image is not Burnout 3: Takedown.", "Den här Xbox-skivavbildningen är inte Burnout 3: Takedown."},
+    {"The game's files were not found (choose the game's folder first).", "Spelets filer hittades inte (välj spelets mapp först)."},
+    {"Not enough free space (about 200 MB needed).", "Inte tillräckligt med ledigt utrymme (ungefär 200 MB behövs)."},
+    {"Could not read the disc or write the textures (is the drive full?).", "Det gick inte att läsa skivan eller skriva texturerna (är enheten full?)."},
+    {"No Xbox texture matched the game's (a different version of the game?).", "Ingen Xbox-textur matchar spelets (en annan version av spelet?)."},
+    {"Could not replace the earlier import (a file in it is open?).", "Det gick inte att ersätta den tidigare importen (är en fil i den öppen?)."},
+    {"Could not move the textures into place.", "Det gick inte att flytta texturerna på plats."},
+    {"Out of memory while reading the disc image (a damaged image?).", "Slut på minne vid läsning av skivavbildningen (en skadad avbildning?)."},
+    {"The import stopped: {}.", "Importen stoppades: {}."},
+    {"The import stopped: an unknown error.", "Importen stoppades: ett okänt fel."},
+    // portable mode (1.3.0)
+    {"PORTABLE MODE", "PORTABELT LÄGE"},
+    {"On: everything the port keeps for you (settings, saves, mods, logs, replays) is in a folder called appdata beside the launcher, so the game can be carried on a USB stick.", "På: allt som porten sparar åt dig (inställningar, sparfiler, moddar, loggar, repriser) ligger i en mapp som heter appdata bredvid startprogrammet, så att spelet kan bäras med på ett USB-minne."},
+    {"Off: in this computer's user folder.", "Av: i den här datorns användarmapp."},
+    {"The launcher moves your data now: it is copied and checked first, and the old folder is kept until the game has started from the new one.", "Startprogrammet flyttar dina data nu: de kopieras och kontrolleras först, och den gamla mappen behålls tills spelet har startat från den nya."},
+    {"The launcher moves your data at its next start (it asks first).", "Startprogrammet flyttar dina data vid sin nästa start (det frågar först)."},
+    {"The install folder cannot be written by you: move the game to a folder of your own to use portable mode.", "Du kan inte skriva i installationsmappen: flytta spelet till en egen mapp för att använda portabelt läge."},
+    {"The game is running: close it first.", "Spelet körs: stäng det först."},
+    {"A data folder was given when the launcher was started (--pref), so this does not apply.", "En datamapp angavs när startprogrammet startades (--pref), så detta gäller inte."},
+    {"The launcher's own folder is not known.", "Startprogrammets egen mapp är okänd."},
+    {"Data folder", "Datamapp"},
+    {"In use", "Används"},
+    {"Old copy", "Gammal kopia"},
+    {"Remove the old copy...", "Ta bort den gamla kopian..."},
+    {"Deletes the folder your data was moved from (asks first).", "Tar bort mappen som dina data flyttades från (frågar först)."},
+    {"Your data in use is not touched.", "Dina data som används påverkas inte."},
+    {"Start the game once from the new folder first: the old copy stays until then.", "Starta spelet en gång från den nya mappen först: den gamla kopian finns kvar tills dess."},
+    {"portable: the appdata folder beside the launcher", "portabel: mappen appdata bredvid startprogrammet"},
+    {"It cannot be written: settings and saves are not kept.", "Det går inte att skriva i den: inställningar och sparfiler behålls inte."},
+    {"portable", "portabel"},
+    {"Moving your data", "Dina data flyttas"},
+    {"Putting it in place.", "Sätter dem på plats."},
+    {"Copying: {} MB.", "Kopierar: {} MB."},
+    {"Checking the copy: {} MB.", "Kontrollerar kopian: {} MB."},
+    {"Nothing is removed until the copy is checked.", "Inget tas bort förrän kopian är kontrollerad."},
+    {"Your data was not moved", "Dina data flyttades inte"},
+    {"Nothing was changed: your data is where it was.", "Inget ändrades: dina data finns där de fanns."},
+    {"Cancelled: nothing was moved.", "Avbrutet: inget flyttades."},
+    {"Not moved: {}.", "Inte flyttade: {}."},
+    {"Your data is now in {}.", "Dina data finns nu i {}."},
+    {"The old copy is kept in {}.", "Den gamla kopian behålls i {}."},
+    {"The data that was in this computer's folder is kept in {}.", "De data som fanns i den här datorns mapp behålls i {}."},
+    {"Once the game has started from the new folder, the launcher offers to remove the old copy.", "När spelet har startat från den nya mappen erbjuder startprogrammet att ta bort den gamla kopian."},
+    {"Portable mode is on.", "Portabelt läge är på."},
+    {"Portable mode is off.", "Portabelt läge är av."},
+    {"Portable mode is on", "Portabelt läge är på"},
+    {"Portable mode is off", "Portabelt läge är av"},
+    {"Portable mode", "Portabelt läge"},
+    {"Cannot move your data: {}.", "Dina data kan inte flyttas: {}."},
+    {"Not enough free space", "Inte tillräckligt med ledigt utrymme"},
+    {"Your data needs {} MB where it goes.", "Dina data behöver {} MB där de hamnar."},
+    {"Free there: {} MB.", "Ledigt där: {} MB."},
+    {"Turn portable mode on?", "Slå på portabelt läge?"},
+    {"Turn portable mode off?", "Slå av portabelt läge?"},
+    {"Your settings, saves and everything else the port keeps for you are copied into the appdata folder beside the launcher, checked file by file, and used from then on.", "Dina inställningar, sparfiler och allt annat som porten sparar åt dig kopieras till mappen appdata bredvid startprogrammet, kontrolleras fil för fil och används från och med då."},
+    {"Your data is copied from the appdata folder into this computer's user folder, checked file by file, and used from then on.", "Dina data kopieras från mappen appdata till den här datorns användarmapp, kontrolleras fil för fil och används från och med då."},
+    {"The old folder is kept under a dated name until the game has started from the new one.", "Den gamla mappen behålls under ett daterat namn tills spelet har startat från den nya."},
+    {"The appdata folder is kept beside the launcher under a dated name until the game has started from the new one.", "Mappen appdata behålls bredvid startprogrammet under ett daterat namn tills spelet har startat från den nya."},
+    {"Your save folder is one you chose elsewhere (the Saves page): it is not moved.", "Din sparmapp är en som du valt någon annanstans (sidan Sparfiler): den flyttas inte."},
+    {"This computer's user folder already holds data from an earlier time.", "Den här datorns användarmapp innehåller redan data från tidigare."},
+    {"Choose which to keep: the other is set aside under a dated name, never mixed.", "Välj vilka du vill behålla: de andra läggs undan under ett daterat namn, blandas aldrig."},
+    {"Portable data", "Portabla data"},
+    {"This computer's data", "Den här datorns data"},
+    {"Move my data", "Flytta mina data"},
+    {"Move it back", "Flytta tillbaka"},
+    {"Remove the old copy", "Ta bort den gamla kopian"},
+    {"Keep it", "Behåll den"},
+    {"Remove the old copy?", "Ta bort den gamla kopian?"},
+    {"The game has started from your data's new folder, and the old copy is still in {}.", "Spelet har startat från dina datas nya mapp, och den gamla kopian finns kvar i {}."},
+    {"The data set aside is in {}.", "De undanlagda data finns i {}."},
+    {"Remove it to free the space, or keep it.", "Ta bort den för att frigöra utrymme, eller behåll den."},
+    {"The old copy was removed.", "Den gamla kopian togs bort."},
+    {"Not all of the old copy could be removed: {}.", "Hela den gamla kopian kunde inte tas bort: {}."},
+    {"Your data is being moved: wait for it to finish (or cancel it).", "Dina data flyttas: vänta tills det är klart (eller avbryt)."},
+    {"The launcher opened because portable mode needs your answer.", "Startprogrammet öppnades eftersom portabelt läge behöver ditt svar."},
+    {"B3PORT_USER_DIR is set to a data folder of your choice, so this does not apply.", "B3PORT_USER_DIR pekar på en datamapp du valt, så detta gäller inte."},   // portable mode
+    {"Your data folder cannot be written (a write-protected drive?): settings and saves will not be kept.", "Det går inte att skriva i din datamapp (en skrivskyddad enhet?): inställningar och sparfiler behålls inte."},   // portable mode
+    {"THE LAUNCHER IS MOVING YOUR DATA", "STARTPROGRAMMET FLYTTAR DINA DATA"},   // portable mode
+    {"QUIT AND START AGAIN WHEN IT IS DONE", "AVSLUTA OCH STARTA IGEN NÄR DET ÄR KLART"},   // portable mode
+    {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "DEN PORTABLA DATAMAPPEN GÅR INTE ATT SKRIVA I"},   // portable mode
+    {"SAVES AND SETTINGS WON'T BE KEPT", "SPARFILER OCH INSTÄLLNINGAR BEHÅLLS INTE"},   // portable mode
 };
 
 inline constexpr Table kTables[] = {

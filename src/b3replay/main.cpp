@@ -54,6 +54,8 @@
 #include "b3asset/carshade.h"
 #include "b3asset/export.h"
 #include "b3asset/hdpack.h"
+#include "b3port/fileio.h"   // xboximport: the user data folder as UTF-8
+#include "b3port/user_dir.h"   // portable mode: the user data folder
 #include "b3asset/png.h"
 #include "b3asset/postfx.h"
 #include "b3asset/track.h"
@@ -102,6 +104,7 @@ struct Args {
     bool fps_counter = false;               // --fps-counter (gsoff1)
     bool route_header = true;               // --no-route-header (gsoff1)
     std::string latency = "low", latency_log;   // --latency low|smooth|newest, --latency-log <csv> (lat1)
+    bool latency_set = false;   // perf4: a latency mode chosen (--latency or LATENCY MODE), not the default
     // mac5 (Windows 2026-11-09: the car twitched forward / back against the camera at every tick): no extrapolation
     // by default -- a pose predicted up to a tick past the newest one snapped to the real tick when it came (the chase
     // camera's spring is not linear); the display now blends between real ticks only (about a tick more latency).
@@ -109,7 +112,7 @@ struct Args {
     double margin_ms = 1.0, lead = 0.0;     // --margin MS, --lead T (lat1)
     double blend_ms = 0.0;                  // --blend MS (perf1; 0 = off, the default)
     float dither = 0.0f;                    // --dither (perf1 §33.8: 1 output step; 0 = off, the default)
-    int frames_in_flight = 1;               // --frames-in-flight N (lat1)
+    int frames_in_flight = -1;              // --frames-in-flight N (lat1); -1: Auto (perf4, include/b3gfx/frames_auto.h)
     bool inproc = false;      // --inproc (inproc1, §23): live mode on the in-process feed (b3render.dll inside the game)
     std::string car_look;        // --car-look <ini> (reflect2)
     int car_reflect = -1;        // --car-reflections (reflect1): -1 the setting's / default (enhanced)
@@ -117,6 +120,7 @@ struct Args {
     std::string controls_path;   // --controls <ini> (remap1): the control bindings (native window: <prefs>/controls.ini)
     std::string ghost_dir;       // --ghost-dir <dir> (ghost1, ghost.h): Time Attack ghosts (native window: <prefs>/ghosts)
     std::string speedrun_dir;    // --speedrun-dir <dir> (speedrun1, speedrun.h): best times (native window: <prefs>/speedrun)
+    bool replay_playback = false;   // --replay-playback (media1, records.h): a replay plays (no ghost or best time written)
     std::optional<b3settings::Settings> pc;   // loaded from settings_path
     bool safe_mode = false;   // --safe-mode (mac5)
     std::string mods_dir, mods, mods_hash;   // modkit1b: --mods-dir, --mods, --mods-hash (native_play's active set)
@@ -230,7 +234,7 @@ bool parse(int argc, char** argv, Args& a) {
         else if (s == "--native-audio") a.native_audio = true;   // play1: the native game's sound (nativeaudio.h)
         else if (s == "--fps-counter") a.fps_counter = true;     // gsoff1
         else if (s == "--no-route-header") a.route_header = false;   // gsoff1: the old route rule (comparisons)
-        else if (s == "--latency") { a.latency = next(); if (a.latency != "low" && a.latency != "smooth" && a.latency != "newest") return false; }   // lat1
+        else if (s == "--latency") { a.latency = next(); a.latency_set = true; if (a.latency != "low" && a.latency != "smooth" && a.latency != "newest") return false; }   // lat1
         else if (s == "--latency-log") a.latency_log = next();       // lat1
         else if (s == "--margin") a.margin_ms = std::atof(next());   // lat1
         else if (s == "--lead") a.lead = std::clamp(std::atof(next()), 0.0, 1.0);   // lat1
@@ -248,6 +252,7 @@ bool parse(int argc, char** argv, Args& a) {
         else if (s == "--controls") a.controls_path = next();   // remap1 (src/native/input_bindings.h)
         else if (s == "--ghost-dir") a.ghost_dir = next();      // ghost1 (src/b3replay/ghost.h)
         else if (s == "--speedrun-dir") a.speedrun_dir = next();   // speedrun1 (src/b3replay/speedrun.h)
+        else if (s == "--replay-playback") a.replay_playback = true;   // media1 (src/b3replay/records.h): native_play --replay
         else if (s == "--safe-mode") a.safe_mode = true;   // mac5: start with safe settings (include/b3settings/safemode.h)
         else if (s == "--mods-dir") a.mods_dir = next();     // modkit1b (include/b3mod/mods.h renderer_args)
         else if (s == "--mods") a.mods = next();
@@ -1891,6 +1896,7 @@ int run_offscreen(Replay& r) {
     const char* how = "";
     auto dev = b3gfx::create_headless(opt, &err, &hidden, &how);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
+    b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
     std::printf("headless device: %s (%s, video driver %s)\n", dev->driver_name(), how, SDL_GetCurrentVideoDriver());
     if (!r.load_track(*dev, &err)) { std::fprintf(stderr, "%s\n", err.c_str()); return 1; }
     const auto& s = r.segment();
@@ -2136,6 +2142,7 @@ int run_profile(Replay& r) {
     const char* how = "";
     auto dev = b3gfx::create_headless(opt, &err, &hidden, &how);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
+    b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
     if (!r.load_track(*dev, &err)) { std::fprintf(stderr, "%s\n", err.c_str()); return 1; }
     std::FILE* out = std::fopen(r.args.profile.c_str(), "w");
     if (!out) { std::fprintf(stderr, "cannot write %s\n", r.args.profile.c_str()); return 1; }
@@ -2227,6 +2234,7 @@ int run_pop_scan(Replay& r) {
     const char* how = "";
     auto dev = b3gfx::create_headless(opt, &err, &hidden, &how);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
+    b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
     if (!r.load_track(*dev, &err)) { std::fprintf(stderr, "%s\n", err.c_str()); return 1; }
     const auto& s = r.segment();
     const int w = 320, h = 224;
@@ -2380,6 +2388,7 @@ int run_window(Replay& r) {
     std::string err;
     auto dev = b3gfx::Device::create(win, opt, &err);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
+    b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
     auto load = [&]() -> bool {
         r.view.clear(*dev);
         if (!r.load_track(*dev, &err)) { std::fprintf(stderr, "%s\n", err.c_str()); return false; }
@@ -2544,6 +2553,7 @@ int run_window(Replay& r) {
 std::mutex g_mods_m;
 bool g_mods_ready = false, g_mods_override = false;
 std::string g_mods_dir, g_mods_game, g_mods_ids, g_mods_hash;
+std::string g_mods_gameplay;   // media1 (records.h): the set's hash when a mod of it changes gameplay ("": none)
 // patches3: the set's [textures] packs, first wins; b3replay_main gives them to hd_enable (g_mods_hd_done from then on)
 std::vector<std::string> g_mods_textures;
 bool g_mods_hd_done = false;
@@ -2580,6 +2590,15 @@ void build_mod_overlay(const std::string& ids, const std::string& hash) {
                     "them): the picture may differ from the game\n", got.empty() ? "(none)" : got.c_str(), hash.empty() ? "(none)" : hash.c_str());
     b3asset::disc::set_overlay(g_mods_game, o->winners());
     std::printf("[b3render] mods: %s over %s (%zu files)\n", b3mod::describe(*o).c_str(), g_mods_game.c_str(), o->file_count());
+    // media1: a set that changes gameplay keeps its ghosts and best times apart (src/b3replay/records.h)
+    // (named by the gameplay-changing mods alone: a texture mod added or moved keeps the folder)
+    std::string gameplay_ids;
+    for (const b3mod::ActiveMod& m : o->mods())
+        if (b3mod::changes_gameplay_any(m)) gameplay_ids += (gameplay_ids.empty() ? "" : ",") + m.id;
+    g_mods_gameplay = b3mod::gameplay_set_hash(o->mods());
+    if (!gameplay_ids.empty())
+        std::printf("[b3render] mods: %s change gameplay: ghosts and best times go to the folders' modded-%s\n", gameplay_ids.c_str(),
+                    g_mods_gameplay.c_str());
     std::fflush(stdout);
     kept.push_back(std::move(o));
 }
@@ -2624,35 +2643,32 @@ int b3replay_main(int argc, char** argv) {
     // mac5: the native game's window keeps its PC SETTINGS in the user's prefs (the page saves there); offscreen runs
     // (tests) never read a user's file
     if (r.args.settings_path.empty() && r.args.native_pad && r.args.live_out.empty() && !std::getenv("B3_NO_USER_SETTINGS")) {
-        if (char* pref = SDL_GetPrefPath("b3port", "native")) {
-            r.args.settings_path = std::string(pref) + "pc_settings.ini";
-            SDL_free(pref);
+        if (const std::string pref = b3io::user_dir_slash(); !pref.empty()) {   // portable mode: b3port/user_dir.h
+            r.args.settings_path = pref + "pc_settings.ini";
         }
     }
     // remap1: the control bindings likewise (offscreen runs: only with --controls; else the defaults)
     if (r.args.controls_path.empty() && r.args.native_pad && r.args.live_out.empty() && !std::getenv("B3_NO_USER_SETTINGS")) {
-        if (char* pref = SDL_GetPrefPath("b3port", "native")) {
-            r.args.controls_path = std::string(pref) + "controls.ini";
-            SDL_free(pref);
+        if (const std::string pref = b3io::user_dir_slash(); !pref.empty()) {   // portable mode: b3port/user_dir.h
+            r.args.controls_path = pref + "controls.ini";
         }
     }
     // ghost1: the native game's window keeps its Time Attack ghosts in the user's prefs too; offscreen runs only with
     // --ghost-dir (tests never touch a user's folder)
     if (r.args.ghost_dir.empty() && r.args.native_pad && r.args.live_out.empty() && !std::getenv("B3_NO_USER_SETTINGS")) {
-        if (char* pref = SDL_GetPrefPath("b3port", "native")) {
-            r.args.ghost_dir = std::string(pref) + "ghosts";
-            SDL_free(pref);
+        if (const std::string pref = b3io::user_dir_slash(); !pref.empty()) {   // portable mode: b3port/user_dir.h
+            r.args.ghost_dir = pref + "ghosts";
         }
     }
     // speedrun1: the speedrun timer's best times likewise (offscreen runs: only with --speedrun-dir; else in memory)
     if (r.args.speedrun_dir.empty() && r.args.native_pad && r.args.live_out.empty() && !std::getenv("B3_NO_USER_SETTINGS")) {
-        if (char* pref = SDL_GetPrefPath("b3port", "native")) {
-            r.args.speedrun_dir = std::string(pref) + "speedrun";
-            SDL_free(pref);
+        if (const std::string pref = b3io::user_dir_slash(); !pref.empty()) {   // portable mode: b3port/user_dir.h
+            r.args.speedrun_dir = pref + "speedrun";
         }
     }
     std::string run_state_path;   // mac5: safe mode's run state (empty: not a window run of the native game)
     bool safe = false, safe_forced = false;
+    bool xbox_on = false;         // xboximport: XBOX TEXTURES (the settings')
     if (!r.args.settings_path.empty()) {   // settings1: the device / window / loop rows into the arguments
         b3settings::Settings s;
         std::string why;
@@ -2683,10 +2699,11 @@ int b3replay_main(int argc, char** argv) {
         if (s.frame_cap > 0) a.max_fps = s.frame_cap;
         a.specular = a.specular && s.specular;
         if (!s.hd_textures) a.no_hd = true;
+        xbox_on = s.xbox_textures;   // xboximport
         if (a.hd_pack.empty() && !s.hd_pack_dir.empty()) a.hd_pack = s.hd_pack_dir;   // mac5: the folder chosen in SETTINGS / the launcher
         a.fe_layout = s.fe_layout;
         a.movie_fill = s.movie_fill;
-        if (s.latency > 0) a.latency = s.latency == 1 ? "low" : s.latency == 2 ? "smooth" : "newest";   // lat1 rows (else the command line's)
+        if (s.latency > 0) { a.latency = s.latency == 1 ? "low" : s.latency == 2 ? "smooth" : "newest"; a.latency_set = true; }   // lat1 rows (else the command line's)
         if (s.lead >= 0) a.lead = double(s.lead) / 100.0;
         if (s.frames_in_flight > 0) a.frames_in_flight = s.frames_in_flight;
         std::printf("[b3settings] %s: preset %s, MSAA %d, filter %d, fov %d\n", a.settings_path.c_str(),
@@ -2697,7 +2714,22 @@ int b3replay_main(int argc, char** argv) {
         r.args.mod_textures = g_mods_textures;
         g_mods_hd_done = true;
     }
-    b3asset::hd_enable(r.args.hd_pack, r.args.no_hd, r.args.mod_textures);   // patches3: the mods' packs first
+    {   // xboximport: the Import Xbox textures pack in the user data folder (beside pc_settings.ini), below the player's pack;
+        // $B3_XBOX_TEXTURES names one (the checks' offscreen runs: on whatever the settings say)
+        // (UTF-8 throughout: the user data folder holds the user's name, e.g. C:/Users/José/AppData/Roaming)
+        std::string xbox;
+        const std::optional<std::string> e = b3io::getenv("B3_XBOX_TEXTURES");   // (wide on Windows)
+        if (e && !e->empty()) {
+            xbox = *e;
+            xbox_on = true;
+        } else if (!r.args.settings_path.empty()) {
+            const fs::path d = b3io::u8path(r.args.settings_path).parent_path() / "xbox-textures";
+            std::error_code ec;
+            if (fs::is_regular_file(d / "import.ini", ec)) xbox = b3io::u8string(d);
+        }
+        b3asset::set_hd_xbox_folder(xbox);
+        b3asset::hd_enable(r.args.hd_pack, r.args.no_hd, r.args.mod_textures, xbox_on ? xbox : std::string());   // patches3: the mods' packs first
+    }
     if (!r.args.live.empty()) {
         b3replay::LiveOptions o;
         const Args& a = r.args;
@@ -2709,12 +2741,18 @@ int b3replay_main(int argc, char** argv) {
         o.fps_counter = a.fps_counter; o.route_header = a.route_header;   // gsoff1
         o.native_pad = a.native_pad; o.native_audio = a.native_audio;   // play1
         o.latency = a.latency; o.latency_log = a.latency_log; o.margin_ms = a.margin_ms; o.lead = a.lead; o.blend_ms = a.blend_ms; o.dither = a.dither; o.frames_in_flight = a.frames_in_flight;   // lat1
+        o.latency_auto = !a.latency_set;   // perf4
         o.bloom_warmup = a.bloom_warmup;
         o.settings = a.pc;   // settings1
         o.settings_path = a.settings_path;   // mac5: the PC SETTINGS page saves there
         o.controls_path = a.controls_path;   // remap1: the bindings (the PC SETTINGS page's CONTROLS saves there)
         o.ghost_dir = a.ghost_dir;           // ghost1
         o.speedrun_dir = a.speedrun_dir;     // speedrun1
+        o.replay_playback = a.replay_playback;   // media1
+        o.gameplay_set = [] {   // media1: the mod set's own records folder (b3replay_mods_set may narrow the set later)
+            std::lock_guard<std::mutex> lock(g_mods_m);
+            return g_mods_gameplay;
+        };
         if (a.inproc) {
             o.inproc = b3live::inproc_instance();
             if (!o.inproc) { std::fprintf(stderr, "b3replay: --inproc: no in-process feed (only inside b3render.dll)\n"); return 1; }

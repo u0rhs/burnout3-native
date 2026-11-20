@@ -33,6 +33,7 @@ struct CarOptions {
     // panels without their file frames, the wheel lists B0 / B1 / B2 (RenderVehicle picks one by wheel speed) once
     // each, not per wheel [C RenderVehicle 0x21E6F0 draft]
     bool bake_frames = true;
+    bool texture = true;  // carpaint: false = meshes only (no atlas decode, so no HD pack lookup); draws keep texture 0
 };
 
 bool read_car(Bytes file, const CarOptions& opt, GsMemory& gs, Model& out, std::string* why = nullptr);

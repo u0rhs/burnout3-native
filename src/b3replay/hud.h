@@ -90,7 +90,8 @@ struct HudVideo {
 };
 
 // menu1: one call of CB3World::RenderFrontEnd 0x275EF0 (the car pages' 3D car), FECAR event.
-struct HudFeCar { std::uint32_t index = 0, car = 0, rwcamera = 0; };
+// padpaint: `player` 1 + the car select page's player while that page is up (0: another page, or a capture without it)
+struct HudFeCar { std::uint32_t index = 0, car = 0, rwcamera = 0, player = 0; };
 
 // menu1: one CB3Globe2dObject::_Render 0x3B2EE0 (the World Tour globe; drawn by B3Im3d outside Gt2d's buffer, so not in
 // the draws), GLOBE event: the state a native globe needs (hud_capture.cpp observe_globe) [L layout, a reading of the code].
@@ -297,6 +298,10 @@ struct HostUi {
     std::uint32_t serial = 0;
     std::vector<std::string> paths;   // [0] "": white
     std::vector<HostUiQuad> quads;    // in draw order
+    // settingsui: pictures the host made (the PC SETTINGS page's button glyphs), a path "img:<name>" each; a new
+    // picture gets a new name (the renderer keeps what it uploaded by path)
+    struct Image { std::string name; int w = 0, h = 0; std::vector<std::uint8_t> rgba; };
+    std::vector<std::shared_ptr<const Image>> images;
 };
 // settings1 (docs/pc-settings.md): our PC settings (published when they change, at
 // kHostSetBase: {u32 'HSET', u32 serial, u32 bytes, 0}, then the ini text of include/b3settings/settings.h).
@@ -342,6 +347,12 @@ std::uint8_t host_skip_hint_decode(const Image& im);
 // {u32 'HHD1', u32 serial, u32 hold 0 / 1, 0} at kHostHoldBase, published when it changes); false when never captured.
 constexpr std::uint32_t kHostHoldBase = 0x41112100U;
 bool host_hold_decode(const Image& im);
+// todrace (tools/native/race_time.h): the race's DAY / NIGHT choice and the track page's label ({u32 'HTD1', u32
+// serial, u32 race 0 Default / 1 Day / 2 Night, u32 label: its choice | opacity 0..255 << 8} at kHostRaceTimeBase,
+// published when it changes); all 0 when never captured.
+constexpr std::uint32_t kHostRaceTimeBase = 0x41112200U;
+struct HostRaceTime { std::uint8_t race = 0, label_choice = 0, label_opacity = 0; };
+HostRaceTime host_race_time_decode(const Image& im);
 std::shared_ptr<const HostSettings> host_settings_decode(const Image& im, std::shared_ptr<const HostSettings> prev);
 // mac5: the game's menus on screen for the mouse (native_play's 'HMN1' record, include/b3live/menu_input.h at
 // b3live::kHostMenuBase): the record if its serial changed since `prev` (else prev); nullptr: none captured.

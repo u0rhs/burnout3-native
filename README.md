@@ -60,13 +60,13 @@ layer and a renderer of our own. Nothing pretends to be a PS2 and no PS2 code ru
 | | On the PS2 | With this port |
 |:--|:--|:--|
 | **Physics, AI, takedowns** | The game's own | The same: the PS2's float behaviour is reproduced, and defaults never change gameplay |
-| **Picture** | 4:3, fixed frame rate | Any window shape up to ultrawide, a frame rate limit of your choice, MSAA, anisotropic filtering, HD texture packs |
+| **Picture** | 4:3, fixed frame rate | Any window shape up to ultrawide, a frame rate limit of your choice, MSAA, anisotropic filtering, HD texture packs (and, as a small extra, somewhat sharper textures from your own Xbox disc) |
 | **Controls** | The PS2 pad | Keyboard, mouse in the menus and any gamepad, with remapping, rumble and matching button prompts |
 | **Extras** | | Launcher, photo mode, your own music in EA Trax, speed units, save files of your own, replays, a tuning console, mods |
 | **Loading** | The PS2's load times | Fast loading (on by default) |
 | **Online** | Gone with EA's servers | Coming in a future release |
 
-> **Version 1.2.1.** Found a problem? Please [report it](#reporting-a-bug).
+> **Version 1.3.0.** Found a problem? Please [report it](#reporting-a-bug).
 
 ## Screenshots
 
@@ -102,7 +102,7 @@ of view, roll, depth of field and focus. Hide the display for a clean shot; F12 
 <p align="center">
   <img src="docs/screenshots/launcher-settings.jpg" alt="The launcher's settings" width="49%">
   <img src="docs/screenshots/launcher-showroom.jpg" alt="The launcher's car showroom" width="49%">
-  <img src="docs/screenshots/settings-graphics.jpg" alt="The in-game PC SETTINGS, graphics tab" width="49%">
+  <img src="docs/screenshots/settings-graphics.jpg" alt="The in-game SETTINGS, graphics tab" width="49%">
   <img src="docs/screenshots/tuning-console.jpg" alt="The F9 tuning console over a race" width="49%">
 </p>
 
@@ -191,17 +191,22 @@ preset or safe mode helps. The download is small (about 23 MB for the test build
 
 ## Controls
 
-Keyboard, mouse in the menus and any gamepad your system knows, laid out as the PS2 pad. Everything is remappable per
-player (PC SETTINGS > INTERFACE > CONTROLS, or the launcher's Controllers page); a second gamepad is player 2.
+Keyboard, mouse in the menus and any gamepad your system knows. A gamepad gets the layout of its own console
+(**CONTROLLER LAYOUT: Auto**): a PlayStation controller the PS2 game's, every other controller the original Xbox
+game's. Everything is remappable per player (SETTINGS > CONTROLS > BINDINGS, or the launcher's Controllers page); a
+second gamepad is player 2.
 
-| | Keyboard | Gamepad |
-|:--|:--|:--|
-| Accelerate / brake | W / S or Up / Down | Right / left trigger (or A / X) |
-| Steer | A / D or Left / Right | Left stick or D-pad |
-| Boost | Space, Shift or R | RB |
-| Crashbreaker | E | Press the right stick |
-| Camera / look back | Backspace or C / Q | Y / LB |
-| Pause | Escape | Start |
+| | Keyboard | Xbox layout | PlayStation layout |
+|:--|:--|:--|:--|
+| Accelerate / brake | W / S or Up / Down | Right / left trigger | Cross or R2 / Square or L2 |
+| Steer | A / D or Left / Right | Left stick or D-pad | Left stick or D-pad |
+| Boost | Space, Shift or R | A (RB too) | R1 |
+| Crashbreaker | E | B | Press the right stick (R3) |
+| Camera / look back | Backspace or C / Q | Y / X (LB too) | Triangle / L1 |
+| Pause | Escape | Start / Menu | Start / Options |
+
+On the Xbox layout A and B do one thing while you drive and another in the menus (confirm and back), as in the
+original Xbox game. The full tables are in [docs/PLAYING.md](docs/PLAYING.md#5-controls).
 
 Handy keys: **F11** fullscreen, **F12** screenshot, **F10** bug report, **P** photo mode (pad: L3 + R3), **F9** tuning
 console (opt-in). All defaults, the menus' keys and two-player setup: [docs/PLAYING.md](docs/PLAYING.md#5-controls).
@@ -214,10 +219,12 @@ the game sees are marked ⚙️ in the feature list and start off.
 
 | Where | What you can do |
 |:--|:--|
-| **DISPLAY** | Quality preset (PS2 original to Ultra), frame rate limit, interpolation, fullscreen, vsync, fast loading, HUD and menu layout for wide screens |
-| **GRAPHICS / EFFECTS** | Anti-aliasing up to 8x, texture filtering up to 16x, car detail, shadows, bloom, motion blur, draw distance |
-| **CAMERA** | Field of view 60 to 120, split-screen layout |
-| **INTERFACE** | Speed units (MPH / KM/H), button prompts, controls, accessibility (reduced flashes, colour-blind filters, HUD size, boost toggle), music, speedrun timer, replays |
+| **DISPLAY** | Fullscreen, vsync, frame rate limit, battery saver, HUD and menu layout for wide screens, split-screen layout, field of view 60 to 120, camera distance and height, interpolation |
+| **GRAPHICS / EFFECTS** | Quality preset (PS2 original to Ultra), anti-aliasing up to 8x, texture filtering up to 16x, render scale, draw distance, shadows, night, bloom, motion blur |
+| **CAR** | Custom paint and finish for both players, car detail, car reflections, garage camera |
+| **CONTROLS** | Rumble, adaptive triggers, analog triggers, boost toggle, instant restart, remapping per player, gyro |
+| **AUDIO** | Your music folder and playlist |
+| **GAME** | Button prompts, FPS counter, language, speed units, ghosts, speedrun timer, replays, accessibility (reduced flashes, colour-blind filters, HUD size), fast loading |
 | **Launcher** | HD texture pack, your music folder, mods, saves, game data, showroom, update check |
 
 Details and every opt-in: [player guide, section 7](docs/PLAYING.md#7-settings-worth-knowing).
@@ -227,7 +234,7 @@ of field.
 
 ## Features
 
-Everything on top of the faithful port is a setting, most of them on a **PC SETTINGS** page added to the game's own
+Everything on top of the faithful port is a setting, most of them on a **SETTINGS** page added to the game's own
 main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **Defaults never change gameplay.**
 
 <p align="center">
@@ -256,7 +263,7 @@ main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **D
 
 | | Feature | |
 |:-:|:--|:--|
-| ✅ | **PC SETTINGS in the game** | Display, graphics, effects, camera, interface, music and saves, beside the game's own menus (plus QUIT GAME) |
+| ✅ | **SETTINGS in the game** | Display, graphics, effects, camera, interface, music and saves, beside the game's own menus (plus QUIT GAME) |
 | ✅ | **Launcher** | Play, Settings, HD Textures, Music, Mods, Game Data, Saves, Stats, Showroom, Replays, Controllers, Credits |
 | ✅ | **Any input in the launcher** | Fully usable with the keyboard alone, a gamepad alone or the mouse alone |
 | ✅ | **Fast loading** | Loading screens at full speed with the game's timeline unchanged (a crash event: 18.3 s → 3.1 s); picture and sound start together |
@@ -277,7 +284,7 @@ main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **D
 | ✅ | **Keyboard, mouse and gamepads** | The keyboard or any SDL gamepad as the PS2 pad; the mouse in the menus; type your profile name |
 | ✅ | **Speed units** | MPH or KM/H on the speedometer, distance messages, records and stats, in the game's own words |
 | ✅ | **Matching button prompts** | PlayStation, Xbox, Nintendo, generic or key caps, following the last device you used |
-| ✅ | **Remapping** | Per player, pads and keyboard, in PC SETTINGS and the launcher; conflicts offer swap, clear or keep both |
+| ✅ | **Remapping** | Per player, pads and keyboard, in SETTINGS and the launcher; conflicts offer swap, clear or keep both |
 | ✅ | **Local 2-player** | A second gamepad is player 2 |
 | ✅ | **Rumble** ⚙️ | The game's own vibration on your pads, with a strength slider and trigger rumble on Xbox pads |
 | ✅ | **DualSense adaptive triggers, gyro steering** ⚙️ | Triggers that resist, buzz while boosting and kick at a crash; steer by tilting or turning the pad, per player |
@@ -389,7 +396,7 @@ PC parts (renderer, sound, input, saves) are written for the PC.
 
 Your own copy of Burnout 3: Takedown for the PS2, the North American release (NTSC-U, SLUS-21050), as a disc image
 (`.iso`, `.bin` or `.chd`) or as the disc's files in a folder. Other regions do not run, but if you also own a European
-disc, **IMPORT LANGUAGES** (launcher Settings > INTERFACE) copies its languages into the US game. We don't supply the
+disc, **IMPORT LANGUAGES** (Settings > GAME > LANGUAGE AND UNITS, in the launcher) copies its languages into the US game. We don't supply the
 ISO or any game files; the [player guide](docs/PLAYING.md#2-making-a-disc-image-of-your-own-disc) shows how to make an
 image of your own disc.
 </details>
@@ -494,7 +501,10 @@ Open Anyway**, or run `xattr -dr com.apple.quarantine "/Applications/Burnout 3 N
 <summary><b>Where are my saves and settings?</b></summary>
 <br>
 
-In your user data folder, never in the game folder; the launcher's **Saves** page opens it and can export a save or
+In your user data folder (`%APPDATA%\b3port\native` on Windows, `~/.local/share/b3port/native` on Linux,
+`~/Library/Application Support/b3port/native` on a Mac), never in the game folder, unless you turn on **portable
+mode** (Windows and Linux: everything in an `appdata` folder beside the launcher, for a USB stick); the launcher's
+**Saves** page opens it and can export a save or
 import PS2 saves (`.psu`, `.max`, PCSX2 cards). It can also keep your saves in a folder you choose, such as a
 OneDrive, Google Drive or Dropbox folder or a NAS, so two computers (a PC and a Mac) share them. Details:
 [player guide, section 6](docs/PLAYING.md#6-saves).
@@ -513,7 +523,7 @@ Yes. On the launcher's **Saves** page press **Import into file N...** and choose
 ## Reporting a bug
 
 1. Note what happened and roughly when (the mode, track or menu).
-2. Press **F10** in the game, or use **Make a bug report** on the launcher's Play page. You get one
+2. Press **F10** in the game, or use **Bug report...** on the launcher's Play page. You get one
    `bug-report-<date-time>.zip` on your Desktop, with the logs and a recording of your controls that replays the
    session exactly, your settings, the version and a short system description. It holds no game data and no save
    (unless you choose to include it), and your user name is taken out of the paths in it.
@@ -553,7 +563,7 @@ Developer reading: [how it works](docs/TECHNICAL.md), [building](docs/BUILDING.m
 | `src/native` | The platform layer: kernel and threads, files, pads, memory card and saves, sound, movies, VU0 |
 | `src/libs` | RenderWare, RW Audio, SCE and lg libraries as C |
 | `src/b3replay`, `src/b3gfx`, `src/b3asset`, `src/gameview` | The renderer, the SDL3 GPU layer, the asset decoders, the scene capture |
-| `src/b3settings`, `src/b3launcher`, `src/b3report` | PC SETTINGS, the launcher, bug reports and run logs |
+| `src/b3settings`, `src/b3launcher`, `src/b3report` | the SETTINGS page, the launcher, bug reports and run logs |
 | `src/b3mod`, `src/b3modtool`, `sdk/` | The mod loader, the mod kit's asset tool, the code-mod SDK |
 | `include/b3host`, `include/gtmath`, `include/b3libm` | The host adapter, GtMath, the bit-exact PS2 libm |
 | `tools/native`, `tools/golden` | `native_play`, the scenario runs, the golden recording and compare |

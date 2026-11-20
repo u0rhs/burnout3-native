@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <string>
 
 namespace b3native::save { class ProfileCard; }
 
@@ -107,7 +108,8 @@ void pad_vblank();
 
 // save1 (remaster-features §8): the card's profile (null without $B3NATIVE_SAVES_ROOT); a pending save written now.
 save::ProfileCard* save_profile_card();
-void save_card_flush();
+// fsrobust: the session's end (ProfileCard::flush_at_exit): empty when the save is safe, else what the player is told
+std::string save_card_flush(bool throwaway = false);   // throwaway: a replay's temporary card (nothing written or told)
 
 }  // namespace b3native::platform::sif
 

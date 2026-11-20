@@ -1,5 +1,6 @@
 // pcpage.cpp -- the PC SETTINGS page in the native renderer (pcpage.h).
 #include "pcpage.h"
+#include "b3port/file_url.h"
 
 #include <algorithm>
 #include <cctype>
@@ -16,10 +17,13 @@
 #include <SDL3/SDL.h>
 
 #include "b3asset/language.h"   // 1.0.1
+#include "b3port/fileio.h"   // fsrobust
+#include "b3port/user_dir.h"   // portable mode (1.3.0)
 #include "b3asset/hdpack.h"
 #include "../native/pcsx2_cards.h"   // 1.1: IMPORT SAVE starts in PCSX2's memory cards
 #include "tuneconsole.h"   // tune4: the DEVELOPER tab
 #include "nativepad.h"
+#include "glyphdraw.h"   // settingsui: the prompt bar's glyphs
 
 namespace b3replay {
 namespace {
@@ -104,6 +108,8 @@ std::u16string to_u16(std::string_view s) {
 
 }  // namespace
 
+std::u16string host_font_text(const HostFont& f, std::string_view utf8) { return fit_to_font(f, to_u16(utf8)); }   // todrace
+
 void PcPage::set_mod_rows(const std::string& text) {   // sdk2b
     std::vector<b3mod::SettingRow> rows = b3mod::rows_from_text(text);
     std::lock_guard<std::mutex> lock(mod_m_);
@@ -163,7 +169,9 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
     in.next_tab = pressed(pad, kR1);
     in.reset = pressed(pad, kSquare);   // rebind2: the focused control back to its default
     // devnav1: the previous / next section (a long tab: DEVELOPER): PageUp / PageDown, a controller's L2 / R2
-    const int page = NativePad::instance().page_keys();
+    // settingsui: and a controller's right stick up / down (the PS2 report's L2 / R2 carry nothing in the menus on the
+    // Xbox layout); the prompt bar shows it
+    const int page = NativePad::instance().page_keys() | NativePad::instance().section_stick();
     in.previous_section = (page & 1) != 0 || pressed(pad, kL2);
     in.next_section = (page & 2) != 0 || pressed(pad, kR2);
     in.seconds = std::clamp(seconds, 0.0f, 0.1f);
@@ -179,6 +187,7 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
     b3settings::Env env;
     env.hd_pack = (std::getenv("B3_HD_PACK") != nullptr && *std::getenv("B3_HD_PACK")) || b3asset::hd_textures() != nullptr;
     env.hd_pack_loaded = b3asset::hd_textures() != nullptr;
+    env.xbox_textures = !b3asset::hd_xbox_folder().empty();   // xboximport: the XBOX TEXTURES row
     bool hd_changed = false;
     {   // mac5: a folder chosen in the dialog (its callback may run on another thread)
         std::lock_guard<std::mutex> lock(save_m_);
@@ -213,9 +222,9 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
             std::error_code ec;
             for (std::size_t k = 0; k < env.profile_used.size(); ++k) {
                 const std::string n = "profile-" + std::to_string(k + 1);
-                env.profile_used[k] = fs::exists(fs::path(folder) / (n + ".sav"), ec) || fs::is_directory(fs::path(folder) / n, ec);
+                env.profile_used[k] = fs::exists(b3io::u8path(folder) / (n + ".sav"), ec) || fs::is_directory(b3io::u8path(folder) / n, ec);
             }
-            if (FILE* f = std::fopen((fs::path(folder) / "active-slot.txt").string().c_str(), "rb")) {
+            if (FILE* f = b3io::fopen(b3io::u8path(folder) / "active-slot.txt", "rb")) {
                 int v = 0;
                 if (std::fscanf(f, "%d", &v) == 1 && v >= 1 && v <= int(env.profile_used.size())) env.next_profile = v;
                 std::fclose(f);
@@ -271,8 +280,14 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
     controls_family();                    // padlayout: the layout each player's pad gets (Auto)
     controls_flow(pad, seconds, mouse);   // remap1: a rebind's input, before the rows are built
     controls_env(env);
+    portable_scan();
+    env.portable = portable_;   // portable mode (1.3.0)
     b3settings::Content content = b3settings::build_content(settings_, env);
     if (flow_.active()) content.popup = flow_.message(pad_style());   // the menu takes no input while it shows
+    // settingsui: the prompt bar follows the last input: the mouse (its words), the keyboard or a controller (glyphs)
+    content.prompt_device = MenuMouse::instance().used_last()            ? b3settings::Content::PromptDevice::kMouse
+                            : prompt_device_ == PromptDevice::kKeyboard ? b3settings::Content::PromptDevice::kKeyboard
+                                                                         : b3settings::Content::PromptDevice::kPad;
     b3settings::translate(content, b3settings::ui_language(settings_, env));   // 1.1: our own text in the player's language
     const b3settings::Frame f = menu_.update(content, in);
     if (timing.on) {
@@ -340,13 +355,25 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
         }
         if (e.id == b3settings::kRowSaveFile) {   // active-slot.txt (read at the next start)
             const int slot = int(e.value) + 1;
-            const std::string path = (std::filesystem::path(env.saves_folder) / "active-slot.txt").string();
-            FILE* f = std::fopen(path.c_str(), "wb");
-            const bool ok = f && std::fprintf(f, "%d\n", slot) > 0;
-            if (f) std::fclose(f);
+            const std::filesystem::path file = b3io::u8path(env.saves_folder) / "active-slot.txt";
+            const std::string path = b3io::u8string(file);
+            const bool ok = b3io::replace_file(file, std::to_string(slot) + "\n");   // fsrobust
             set_local_status(ok ? (slot == env.profile ? "SAVE FILE " + std::to_string(slot) + " STAYS IN USE"
                                                        : "SAVE FILE " + std::to_string(slot) + " FROM THE NEXT START")
                                 : "CANNOT WRITE " + path);
+            continue;
+        }
+        if (e.id == b3settings::kRowPortable) {   // portable mode (1.3.0): asked of the launcher (it moves the data)
+            if (!portable_.shown || !portable_.disabled.empty()) continue;
+            const bool want = e.value != 0;
+            if (want == portable_.on) {
+                b3io::clear_portable_request(b3io::u8path(portable_dir_));
+                portable_.request = -1;
+            } else if (b3io::write_portable_request(b3io::u8path(portable_dir_), want)) {
+                portable_.request = want ? 1 : 0;
+            }
+            std::printf("[b3settings] PORTABLE MODE: %s\n", portable_.request < 0 ? "as it is" : portable_.request ? "on at the launcher's next start"
+                                                                                                          : "off at the launcher's next start");
             continue;
         }
         if (b3settings::language_edit(settings_, env, e)) { changed = true; ++edits_; continue; }   // 1.0.1
@@ -362,7 +389,18 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
         }
         active_.store(false);
         std::string why;
-        const bool saved = !ini.empty() && b3settings::save_file(ini, settings_, &why);
+        if (controls_unsynced_) {   // fsrobust: the edits' controls.ini, flushed to the disk once
+            controls_unsynced_ = false;
+            if (!b3native::input::save_controls(controls_path_, controls_, &why))
+                std::printf("[b3controls] controls.ini NOT SAVED at the page's close: %s\n", why.c_str());
+        }
+        // settingsui: the file read again and only the page's own changes written (the launcher's edits meanwhile stay)
+        const b3settings::Settings before = settings_;
+        const bool saved = !ini.empty() && b3settings::save_merged(ini, saved_, settings_, &why);
+        if (saved) {
+            saved_ = settings_;
+            if (!(settings_ == before)) ++serial_, changed = true;   // another program's changes taken in: applied too
+        }
         std::printf("[b3settings] PC SETTINGS closed (%llu edits in all), preset %s, %s\n", static_cast<unsigned long long>(edits_),
                     b3settings::preset_name(b3settings::matching_preset(settings_)),
                     saved ? ("saved to " + ini).c_str() : ini.empty() ? "no ini" : why.c_str());
@@ -385,6 +423,17 @@ void PcPage::controls_start(const std::string& path) {
                 in::pad_layout_key(controls_.player[0].layout), in::pad_layout_key(controls_.player[1].layout));
     std::fflush(stdout);
     NativePad::instance().set_controls(controls_);
+}
+
+std::uint32_t PcPage::port_row_id(b3native::input::PortAction a) {
+    using PA = b3native::input::PortAction;
+    switch (a) {
+    case PA::PhotoMotion: return b3settings::kActionCtlPhotoFirst;
+    case PA::PhotoShutterFaster: return b3settings::kActionCtlPhotoFirst + 1;
+    case PA::PhotoShutterSlower: return b3settings::kActionCtlPhotoFirst + 2;
+    case PA::RaceTime: return b3settings::kActionCtlRaceTime;   // todrace
+    default: return 0;
+    }
 }
 
 std::vector<b3native::input::PortAction> PcPage::port_list(b3native::input::Device d) {
@@ -421,6 +470,7 @@ void PcPage::controls_env(b3settings::Env& env) const {
     if (ctl_player_ >= 2) {   // rebind2: the shortcuts (port actions)
         for (in::PortAction a : port_list(dev)) {
             b3settings::Env::Controls::Action row;
+            row.id = port_row_id(a);   // photoblur: the motion blur's in their own block
             row.label = in::port_label(a);
             row.value = in::bound_port_text(controls_, a, dev, pad_style());
             row.description = std::string(in::port_use(a)) + " Bound: " + row.value + ". CONFIRM: press a new " +
@@ -465,12 +515,20 @@ void PcPage::controls_family() {
     }
 }
 
-void PcPage::controls_changed(const std::string& what) {
+// polish122: the LAST CHANGE row in the page's language: `shown` is `what` with the port's own words translated (the
+// key and button names stay); the log keeps the English `what`
+void PcPage::controls_changed(const std::string& what, const std::string& shown) {
     namespace in = b3native::input;
     NativePad::instance().set_controls(controls_);
     std::string why;
-    const bool saved = !controls_path_.empty() && in::save_controls(controls_path_, controls_, &why);
-    ctl_status_ = what + (saved ? "" : controls_path_.empty() ? " (this run only)" : " (NOT SAVED: " + why + ")");
+    // fsrobust: on every edit, replaced safely but not flushed to the disk (the render thread); once when the page closes
+    const bool saved = !controls_path_.empty() && in::save_controls(controls_path_, controls_, &why, false);
+    controls_unsynced_ = controls_unsynced_ || saved;
+    const std::string lang = ui_language();
+    const auto tr = [&lang](const std::string& s) { return b3settings::translate_text(s, lang); };
+    ctl_status_ = (lang.empty() || shown.empty() ? tr(what) : shown) +   // English: `what` as before
+                  (saved ? "" : controls_path_.empty() ? " " + tr("(this run only)")
+                                                       : " " + b3settings::translate_format("(NOT SAVED: {})", why, lang));
     std::printf("[b3controls] %s; %s\n", what.c_str(),
                 saved ? ("saved to " + controls_path_).c_str() : controls_path_.empty() ? "no controls file: this run only" : why.c_str());
     std::fflush(stdout);
@@ -484,17 +542,25 @@ bool PcPage::controls_edit(const b3settings::Edit& e) {
     const std::string who = port ? std::string("SHORTCUTS ") + (dev == in::Device::Keyboard ? "KEYBOARD " : "CONTROLLER ")
                                  : "PLAYER " + std::to_string(ctl_player_ + 1) + (dev == in::Device::Keyboard ? " KEYBOARD" : " CONTROLLER") +
                                        (view == in::KeyCtx::Drive ? " (DRIVING) " : " (MENUS) ");
+    // polish122: the same in the page's language (LAST CHANGE)
+    const std::string lang = ui_language();
+    const auto tr = [&lang](const std::string& s) { return b3settings::translate_text(s, lang); };
+    const std::string player_tr = tr("PLAYER") + " " + std::to_string(ctl_player_ + 1);
+    const std::string who_tr = port ? tr("SHORTCUTS") + " " + tr(dev == in::Device::Keyboard ? "KEYBOARD" : "CONTROLLER") + " "
+                                    : player_tr + " " + tr(dev == in::Device::Keyboard ? "KEYBOARD" : "CONTROLLER") + " (" +
+                                          tr(view == in::KeyCtx::Drive ? "DRIVING" : "MENUS") + ") ";
     if (e.id != b3settings::kActionCtlResetAll) reset_all_armed_ = false;
     if (e.id == b3settings::kRowCtlPlayer) { ctl_player_ = std::min<std::size_t>(e.value, 2); return true; }
     if (e.id == b3settings::kRowCtlDevice) { ctl_device_ = std::min<std::size_t>(e.value, 1); return true; }
     if (e.id == b3settings::kRowCtlView) { ctl_view_ = std::min<std::size_t>(e.value, 1); return true; }
     if (e.id == b3settings::kRowCtlLayout && !port) {   // padlayout: the player's CONTROLLER LAYOUT (Custom keeps its bindings)
-        const in::PadLayout l = in::PadLayout(std::min<std::size_t>(e.value, 3));
+        const in::PadLayout l = in::PadLayout(std::min<std::size_t>(e.value, in::kPadLayouts - 1));
         if (l != controls_.player[ctl_player_].layout) {
             in::set_layout(controls_, int(ctl_player_), l);
             const int type = NativePad::instance().pad_type(int(ctl_player_));
-            controls_changed("PLAYER " + std::to_string(ctl_player_ + 1) + " CONTROLLER LAYOUT " +
-                             in::layout_text(controls_.player[ctl_player_], in::page_family(controls_, int(ctl_player_)), type >= 0));
+            const std::string lt = in::layout_text(controls_.player[ctl_player_], in::page_family(controls_, int(ctl_player_)), type >= 0);
+            controls_changed("PLAYER " + std::to_string(ctl_player_ + 1) + " CONTROLLER LAYOUT " + lt,
+                             player_tr + " " + tr("CONTROLLER LAYOUT") + " " + tr(lt));
         }
         return true;
     }
@@ -504,18 +570,36 @@ bool PcPage::controls_edit(const b3settings::Edit& e) {
         const std::size_t v = e.value;
         const auto& ch = in::gyro_recentre_choices();
         static const char* const kModes[] = {"OFF", "MIX", "REPLACE"};
-        std::string what;
+        static const char* const kModeValues[] = {"Off", "Mix", "Replace"};   // the row's values (page.cpp)
+        std::string what, shown;
         switch (e.id) {
-        case b3settings::kRowCtlGyroMode: g.mode = std::uint8_t(std::min<std::size_t>(v, 2)); what = std::string("GYRO STEERING ") + kModes[g.mode]; break;
-        case b3settings::kRowCtlGyroAxis: g.axis = std::uint8_t(std::min<std::size_t>(v, 1)); what = g.axis ? "GYRO AXIS TURN" : "GYRO AXIS TILT"; break;
-        case b3settings::kRowCtlGyroSensitivity: g.sensitivity = int(std::min<std::size_t>(v, 11) + 1) * 25; what = "GYRO SENSITIVITY " + std::to_string(g.sensitivity) + "%"; break;
-        case b3settings::kRowCtlGyroDeadZone: g.dead_zone = int(std::min<std::size_t>(v, 10)); what = "GYRO DEAD ZONE " + std::to_string(g.dead_zone) + " DEG"; break;
+        case b3settings::kRowCtlGyroMode:
+            g.mode = std::uint8_t(std::min<std::size_t>(v, 2));
+            what = std::string("GYRO STEERING ") + kModes[g.mode];
+            shown = tr("GYRO STEERING") + " " + tr(kModeValues[g.mode]);
+            break;
+        case b3settings::kRowCtlGyroAxis:
+            g.axis = std::uint8_t(std::min<std::size_t>(v, 1));
+            what = g.axis ? "GYRO AXIS TURN" : "GYRO AXIS TILT";
+            shown = tr("GYRO AXIS") + " " + tr(g.axis ? "Turn" : "Tilt");
+            break;
+        case b3settings::kRowCtlGyroSensitivity:
+            g.sensitivity = int(std::min<std::size_t>(v, 11) + 1) * 25;
+            what = "GYRO SENSITIVITY " + std::to_string(g.sensitivity) + "%";
+            shown = tr("GYRO SENSITIVITY") + " " + std::to_string(g.sensitivity) + "%";
+            break;
+        case b3settings::kRowCtlGyroDeadZone:
+            g.dead_zone = int(std::min<std::size_t>(v, 10));
+            what = "GYRO DEAD ZONE " + std::to_string(g.dead_zone) + " DEG";
+            shown = tr("GYRO DEAD ZONE") + " " + b3settings::translate_format("{} DEG", std::to_string(g.dead_zone), lang);
+            break;
         default:
             g.recentre = ch[std::min(v, ch.size() - 1)];
             what = "GYRO RECENTRE " + (g.recentre == in::PadInput::None ? std::string("NONE") : in::pad_input_label(g.recentre, pad_style()));
+            shown = tr("GYRO RECENTRE") + " " + (g.recentre == in::PadInput::None ? std::string("NONE") : in::pad_input_label(g.recentre, pad_style()));
             break;
         }
-        if (!(g == before)) controls_changed("PLAYER " + std::to_string(ctl_player_ + 1) + " " + what);
+        if (!(g == before)) controls_changed("PLAYER " + std::to_string(ctl_player_ + 1) + " " + what, player_tr + " " + shown);
         return true;
     }
     if (e.id == b3settings::kActionCtlReset && e.action) {
@@ -525,7 +609,7 @@ bool PcPage::controls_edit(const b3settings::Edit& e) {
         } else {
             in::reset(controls_, int(ctl_player_), dev);
         }
-        controls_changed(who + "RESET TO DEFAULTS");
+        controls_changed(who + "RESET TO DEFAULTS", who_tr + tr("RESET TO DEFAULTS"));
         return true;
     }
     if (e.id == b3settings::kActionCtlResetAll && e.action) {   // asks first: a second press does it
@@ -537,25 +621,36 @@ bool PcPage::controls_edit(const b3settings::Edit& e) {
         }
         reset_all_armed_ = false;
         in::reset_all(controls_);
-        controls_changed("ALL CONTROLS RESET TO DEFAULTS");
+        controls_changed("ALL CONTROLS RESET TO DEFAULTS", tr("ALL CONTROLS RESET TO DEFAULTS"));
         return true;
     }
-    if (e.id < b3settings::kActionCtlFirst || e.id > b3settings::kActionCtlLast || !e.action) return false;
+    if (!b3settings::is_ctl_action(e.id) || !e.action) return false;
     const std::size_t k = e.id - b3settings::kActionCtlFirst;
-    if (port) {   // rebind2: a shortcut or a photo mode control
+    if (port) {   // rebind2: a shortcut or a photo mode control (photoblur: its row id as controls_env gives it)
         const std::vector<in::PortAction> list = port_list(dev);
-        if (k >= list.size()) return true;
-        const in::PortAction pa = list[k];
+        std::size_t at = list.size();
+        for (std::uint32_t i = 0, next = b3settings::kActionCtlFirst; i < list.size() && at == list.size(); ++i) {
+            const std::uint32_t own = port_row_id(list[i]);
+            if ((own ? own : next++) == e.id) at = i;
+        }
+        if (at >= list.size()) return true;
+        const in::PortAction pa = list[at];
         if (e.direction == 2) {
             const in::Controls before = controls_;
             in::reset_port(controls_, pa, dev);
-            if (!(controls_ == before)) controls_changed(who + in::port_label(pa) + ": " + in::bound_port_text(controls_, pa, dev, pad_style()));
+            if (!(controls_ == before)) {
+                const std::string b = in::bound_port_text(controls_, pa, dev, pad_style());
+                controls_changed(who + in::port_label(pa) + ": " + b, who_tr + tr(in::port_label(pa)) + ": " + b);
+            }
             return true;
         }
         if (e.direction < 0) {
             const in::Controls before = controls_;
             in::remove_last_port(controls_, pa, dev);
-            if (!(controls_ == before)) controls_changed(who + in::port_label(pa) + ": " + in::bound_port_text(controls_, pa, dev, pad_style()));
+            if (!(controls_ == before)) {
+                const std::string b = in::bound_port_text(controls_, pa, dev, pad_style());
+                controls_changed(who + in::port_label(pa) + ": " + b, who_tr + tr(in::port_label(pa)) + ": " + b);
+            }
             return true;
         }
         flow_.begin_port(pa, dev, e.direction > 0);
@@ -570,15 +665,25 @@ bool PcPage::controls_edit(const b3settings::Edit& e) {
     if (e.direction == 2) {   // SQUARE: this one back to its default
         const in::Controls before = controls_;
         in::reset_action(controls_, int(ctl_player_), dev, a, view);
-        if (!(controls_ == before))
-            controls_changed(who + in::action_label(a) + ": " + in::bound_text(controls_, int(ctl_player_), dev, a, view, pad_style()));
+        if (!(controls_ == before)) {
+            const std::string b = in::bound_text(controls_, int(ctl_player_), dev, a, view, pad_style());
+            controls_changed(who + in::action_label(a) + ": " + b, who_tr + tr(in::action_label(a)) + ": " + b);
+        }
         return true;
     }
     if (e.direction < 0) {   // LEFT: the last input shown goes
         const in::Controls before = controls_;
-        in::remove_last(controls_, int(ctl_player_), dev, a, view);
-        if (!(controls_ == before))
-            controls_changed(who + in::action_label(a) + ": " + in::bound_text(controls_, int(ctl_player_), dev, a, view, pad_style()));
+        if (in::remove_last(controls_, int(ctl_player_), dev, a, view) == in::Removed::kKeptForMenus) {   // settingsui
+            ctl_status_ = tr(in::kKeptForMenusText);
+            ++serial_;
+            std::printf("[b3controls] %s%s: %s\n", who.c_str(), in::action_label(a), in::kKeptForMenusText);
+            std::fflush(stdout);
+            return true;
+        }
+        if (!(controls_ == before)) {
+            const std::string b = in::bound_text(controls_, int(ctl_player_), dev, a, view, pad_style());
+            controls_changed(who + in::action_label(a) + ": " + b, who_tr + tr(in::action_label(a)) + ": " + b);
+        }
         return true;
     }
     flow_.begin(int(ctl_player_), dev, a, view, e.direction > 0);
@@ -596,12 +701,17 @@ void PcPage::controls_flow(const std::array<std::uint8_t, 32>& pad, float second
     const in::Ds2 a = flow_.action();
     const auto finish = [&]() {
         NativePad::instance().end_capture();
+        menu_.hold_until_released();   // settingsui: the input just taken (still held) does not also act on the page
+        const std::string lang = ui_language();   // polish122: LAST CHANGE in the page's language
+        const auto tr = [&lang](const std::string& s) { return b3settings::translate_text(s, lang); };
         if (flow_.state() == S::Done && flow_.is_port()) {
-            controls_changed(std::string("SHORTCUTS ") + in::port_label(flow_.port_action()) + ": " +
-                             in::bound_port_text(controls_, flow_.port_action(), flow_.device(), pad_style()));
+            const std::string b = in::bound_port_text(controls_, flow_.port_action(), flow_.device(), pad_style());
+            controls_changed(std::string("SHORTCUTS ") + in::port_label(flow_.port_action()) + ": " + b,
+                             tr("SHORTCUTS") + " " + tr(in::port_label(flow_.port_action())) + ": " + b);
         } else if (flow_.state() == S::Done) {
-            controls_changed("PLAYER " + std::to_string(flow_.player() + 1) + " " + in::action_label(a) + ": " +
-                             in::bound_text(controls_, flow_.player(), flow_.device(), a, flow_.view(), pad_style()));
+            const std::string b = in::bound_text(controls_, flow_.player(), flow_.device(), a, flow_.view(), pad_style());
+            controls_changed("PLAYER " + std::to_string(flow_.player() + 1) + " " + in::action_label(a) + ": " + b,
+                             tr("PLAYER") + " " + std::to_string(flow_.player() + 1) + " " + tr(in::action_label(a)) + ": " + b);
         } else {
             std::printf("[b3controls] rebind cancelled\n");
             std::fflush(stdout);
@@ -673,11 +783,7 @@ void PcPage::save_action(std::uint32_t id, const b3settings::Env& env) {
             set_local_status("OPEN FOLDER " + env.saves_folder);
             return;
         }
-        std::string url = "file://";
-#ifdef _WIN32
-        url += "/";
-#endif
-        url += env.saves_folder;
+        const std::string url = b3port::file_url(env.saves_folder);   // robust2: percent-encoded ("Application Support")
         // (the run log names every window the game asks the system to open: issue #3's reports of file manager windows)
         std::printf("[b3settings] SAVES: SAVE FOLDER > Open: asking the system to show %s\n", url.c_str());
         std::fflush(stdout);
@@ -715,6 +821,18 @@ void PcPage::save_action(std::uint32_t id, const b3settings::Env& env) {
     }
 }
 
+std::string PcPage::save_alert() {
+    if (!save_.status) return {};
+    char text[512] = {};
+    const int serial = save_.status(text, int(sizeof text));
+    if (serial == alert_serial_seen_) return {};
+    alert_serial_seen_ = serial;
+    // (save_store.h ProfileCard kSaveFailed; saveflow: kNotSaved, kSaveWarning, kSaved and fsrobust's "SAVED AGAIN ...")
+    for (const char* p : {"SAVE FAILED", "NOT SAVED", "SAVE WARNING", "SAVED"})
+        if (std::strncmp(text, p, std::strlen(p)) == 0) return std::string(text);
+    return {};
+}
+
 void PcPage::dialog_done(int kind, const char* path, const char* error) {
     namespace fs = std::filesystem;
     if (path && *path) {
@@ -746,13 +864,33 @@ void PcPage::dialog_done(int kind, const char* path, const char* error) {
     set_local_status("IMPORTING " + files.front().filename().string() + "...");
 }
 
+void PcPage::portable_scan() {
+    if (portable_known_) return;
+    portable_known_ = true;
+    namespace fs = std::filesystem;
+    const b3io::UserDirCase c = b3io::this_user_dir_case();
+    const b3io::UserDirChoice in_use = b3io::resolve_user_dir(c);
+    // the player's own data folder only (an offscreen run, a test, an explicit folder: no row)
+    if (controls_path_.empty() || in_use.kind == b3io::UserDirKind::kOverride || in_use.dir.empty() ||
+        !b3io::portable_supported(c.apple, c.appimage, c.flatpak) || c.exe_dir.empty())
+        return;
+    std::error_code ec;
+    if (fs::weakly_canonical(b3io::u8path(controls_path_).parent_path(), ec) != fs::weakly_canonical(in_use.dir, ec)) return;
+    portable_.shown = true;
+    portable_.on = in_use.kind == b3io::UserDirKind::kPortable;
+    portable_dir_ = b3io::u8string(in_use.dir);
+    if (const auto r = b3io::read_portable_request(in_use.dir)) portable_.request = *r == portable_.on ? -1 : int(*r);
+    if (!b3io::dir_writable(c.exe_dir))
+        portable_.disabled = "The install folder cannot be written by you: move the game to a folder of your own to use portable mode.";
+}
+
 void PcPage::scan_languages() {
     if (languages_scanned_) return;   // 1.0.1: once (a disc scan per frame would cost the frame)
     languages_scanned_ = true;
     // 1.1: the folder native_play reads the game's text from (B3NATIVE_LANGUAGES_DIR, set by native_play for every
     // run); else <prefs>/languages beside the controls file (a window run without native_play's word)
     std::filesystem::path root;
-    if (const char* d = std::getenv("B3NATIVE_LANGUAGES_DIR"); d && *d) root = b3mod::path_from_utf8(d);
+    if (const auto d = b3io::getenv("B3NATIVE_LANGUAGES_DIR")) root = b3io::u8path(*d);   // fsrobust: the wide value
     else if (!controls_path_.empty()) root = b3asset::language::imported_root(std::filesystem::path(controls_path_).parent_path());
     for (const auto& l : b3asset::language::on_disc(root))
         if (l.supported) languages_.emplace_back(l.code, l.name);
@@ -860,6 +998,92 @@ std::uint32_t darker(std::uint32_t c, float f) {
 
 }  // namespace
 
+
+// ---- settingsui: the prompt bar's glyphs ----
+
+PromptKeys PcPage::page_prompt_keys() const {
+    PromptKeys k = prompt_keys_;
+    if (prompt_device_ == PromptDevice::kKeyboard) {   // the section keys (the shortcuts SECTION PREV / NEXT: Page Up / Down)
+        const auto& prev = controls_.port.keys[std::size_t(b3native::input::PortAction::SectionPrev)];
+        const auto& next = controls_.port.keys[std::size_t(b3native::input::PortAction::SectionNext)];
+        k.scancode[std::size_t(PadButton::kL2)] = prev.empty() ? 0 : prev.front();
+        k.scancode[std::size_t(PadButton::kR2)] = next.empty() ? 0 : next.front();
+    }
+    return k;
+}
+
+void PcPage::build_glyphs() {
+    namespace g = glyph;
+    const PromptKeys keys = page_prompt_keys();
+    if (glyph_image_ && glyph_device_ == prompt_device_ && glyph_keys_ == keys) return;
+    glyph_device_ = prompt_device_;
+    glyph_keys_ = keys;
+    const PromptDevice d = prompt_device_;
+    const bool kb = d == PromptDevice::kKeyboard;
+    constexpr float H = 64;   // pixels (drawn 12-16 picture units high: about 30-40 pixels at 1080p)
+    struct Want { std::string name; int button; float w; };   // button: a PadButton, or -1..-4 the D-pad / arrows
+    std::vector<Want> want = {{"cross", int(PadButton::kCross), 0},   {"circle", int(PadButton::kCircle), 0},
+                              {"square", int(PadButton::kSquare), 0}, {"triangle", int(PadButton::kTriangle), 0},
+                              {"l1", int(PadButton::kL1), 0},         {"r1", int(PadButton::kR1), 0},
+                              {"l2", int(PadButton::kL2), 0},         {"r2", int(PadButton::kR2), 0},
+                              {"l3", int(PadButton::kL3), 0},         {"r3", int(PadButton::kR3), 0},
+                              {"start", int(PadButton::kStart), 0},   {"select", int(PadButton::kSelect), 0},
+                              {"dpad-ud", -1, H}, {"dpad-lr", -2, H}, {"dpad-l", -3, H}, {"dpad-r", -4, H}};
+    // the section keys: the keyboard's (L2 / R2 here: Page Up / Down), a controller's right stick (R3's glyph, once)
+    want.push_back({"section-up", kb ? int(PadButton::kL2) : int(PadButton::kR3), 0});
+    if (kb) want.push_back({"section-down", int(PadButton::kR2), 0});
+    float total = 0;
+    for (Want& w : want) {
+        if (w.button >= 0) {
+            g::Canvas probe(1, 1);
+            w.w = paint_prompt_glyph(probe, 0, 0, H, d, PadButton(w.button), keys);
+        }
+        total += std::ceil(w.w) + 4;
+    }
+    g::Canvas c(static_cast<int>(total), static_cast<int>(H));
+    const float on[4] = {1, 1, 1, 1}, dim[4] = {0.55f, 0.62f, 0.75f, 0.85f}, cap[4] = {0.10f, 0.16f, 0.30f, 0.9f};
+    const auto arrow = [&](float cx, float cy, float r, int dir, const float (&col)[4]) {   // 0 up, 1 down, 2 left, 3 right
+        std::vector<g::Pt> t;
+        if (dir == 0) t = {{cx, cy - r}, {cx + r, cy + r * 0.6f}, {cx - r, cy + r * 0.6f}};
+        if (dir == 1) t = {{cx, cy + r}, {cx - r, cy - r * 0.6f}, {cx + r, cy - r * 0.6f}};
+        if (dir == 2) t = {{cx - r, cy}, {cx + r * 0.6f, cy - r}, {cx + r * 0.6f, cy + r}};
+        if (dir == 3) t = {{cx + r, cy}, {cx - r * 0.6f, cy + r}, {cx - r * 0.6f, cy - r}};
+        c.polygon(t, col);
+    };
+    glyph_cells_.clear();
+    float x = 0;
+    for (const Want& w : want) {
+        const float cx = x + w.w * 0.5f, cy = H * 0.5f;
+        if (w.button >= 0) {
+            paint_prompt_glyph(c, x, 0, H, d, PadButton(w.button), keys);
+        } else if (kb) {   // an arrow key cap with its arrows
+            c.box(cx, cy, H * 0.44f, H * 0.44f, H * 0.12f, cap);
+            c.box_outline(cx, cy, H * 0.44f, H * 0.44f, H * 0.12f, H * 0.05f, on);
+            if (w.button == -1) { arrow(cx, cy - H * 0.17f, H * 0.13f, 0, on); arrow(cx, cy + H * 0.17f, H * 0.13f, 1, on); }
+            if (w.button == -2) { arrow(cx - H * 0.17f, cy, H * 0.13f, 2, on); arrow(cx + H * 0.17f, cy, H * 0.13f, 3, on); }
+            if (w.button == -3) arrow(cx, cy, H * 0.18f, 2, on);
+            if (w.button == -4) arrow(cx, cy, H * 0.18f, 3, on);
+        } else {   // a D-pad: its cross, the arms that act bright
+            const float a = H * 0.46f, t = H * 0.16f;
+            c.box(cx, cy, t, a, H * 0.05f, dim);
+            c.box(cx, cy, a, t, H * 0.05f, dim);
+            const bool up = w.button == -1, side = w.button == -2;
+            if (up) { c.box(cx, cy - a * 0.55f, t, a * 0.45f, H * 0.05f, on); c.box(cx, cy + a * 0.55f, t, a * 0.45f, H * 0.05f, on); }
+            if (side || w.button == -3) c.box(cx - a * 0.55f, cy, a * 0.45f, t, H * 0.05f, on);
+            if (side || w.button == -4) c.box(cx + a * 0.55f, cy, a * 0.45f, t, H * 0.05f, on);
+        }
+        glyph_cells_[w.name] = GlyphCell{x / float(c.w), 0, (x + w.w) / float(c.w), 1, w.w / H};
+        x += std::ceil(w.w) + 4;
+    }
+    auto im = std::make_shared<HostUi::Image>();
+    im->name = "pcglyphs-" + std::to_string(++glyph_serial_);
+    im->w = c.w;
+    im->h = c.h;
+    im->rgba.resize(std::size_t(c.w) * std::size_t(c.h) * 4);
+    c.store(im->rgba.data(), c.w, 0, 0);
+    glyph_image_ = std::move(im);
+}
+
 std::shared_ptr<const HostUi> PcPage::ui(const std::shared_ptr<const HostFonts>& fonts,
                                          const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>& textures) {
     using namespace b3settings;
@@ -885,6 +1109,13 @@ std::shared_ptr<const HostUi> PcPage::ui(const std::shared_ptr<const HostFonts>&
     auto ui = std::make_shared<HostUi>();
     ui->serial = std::uint32_t(++built_serial_);
     ui->paths.push_back(std::string());   // path 0: plain colour
+    build_glyphs();   // settingsui: the prompt bar's glyphs, for the device in use
+    std::uint32_t glyph_path = 0;
+    if (glyph_image_) {
+        ui->images.push_back(glyph_image_);
+        glyph_path = std::uint32_t(ui->paths.size());
+        ui->paths.push_back("img:" + glyph_image_->name);
+    }
     std::map<std::uint32_t, std::uint32_t> path_index;   // font raster -> path
     const auto path_of = [&](std::uint32_t raster) {
         auto it = path_index.find(raster);
@@ -922,6 +1153,10 @@ std::shared_ptr<const HostUi> PcPage::ui(const std::shared_ptr<const HostFonts>&
     };
     const auto widen = [](std::uint8_t flags) { return (flags & kTextSizeMask) == kItalic ? kItalicWidth : 1.0f; };
     const auto measure = [&](std::string_view text, float h, std::uint8_t flags) {
+        if (flags & kGlyph) {   // settingsui: a button glyph's width at that height (none: no room)
+            const auto it = glyph_cells_.find(std::string(text));
+            return it == glyph_cells_.end() || !glyph_path ? 0.0f : it->second.aspect * h;
+        }
         const HostFont* f = font_for(flags, *fonts, textures);
         if (!f) return fallback_measure(text, h, flags);
         return f->width(fit_to_font(*f, to_u16(text)), size_for(*f, h)) * widen(flags);
@@ -1020,6 +1255,20 @@ std::shared_ptr<const HostUi> PcPage::ui(const std::shared_ptr<const HostFonts>&
             } else if (named(kImageArrowDown)) {
                 const float qx[4] = {x0, x1, mx, mx}, qy[4] = {y0, y0, y1, y1};
                 flat(qx, qy, it.colour);
+            } else if (n.rfind(kGlyphPrefix, 0) == 0 || ((named(kImagePromptL1) || named(kImagePromptR1)) && glyph_path &&
+                                                           glyph_cells_.count(named(kImagePromptL1) ? "l1" : "r1"))) {
+                // settingsui: a button glyph (the prompt bar; the tab bar's L1 / R1 too), fitted in its box
+                const std::string key = n.rfind(kGlyphPrefix, 0) == 0 ? std::string(n.substr(std::strlen(kGlyphPrefix)))
+                                                                    : named(kImagePromptL1) ? "l1" : "r1";
+                const auto cell = glyph_cells_.find(key);
+                if (cell == glyph_cells_.end() || !glyph_path) break;
+                const GlyphCell& gc = cell->second;
+                float gh = it.h, gw = gc.aspect * gh;
+                if (gw > it.w && gw > 0) { gh *= it.w / gw; gw = it.w; }
+                const float gx = x0 + 0.5f * (it.w - gw), gy = y0 + 0.5f * (it.h - gh);
+                const float qx[4] = {gx, gx + gw, gx + gw, gx}, qy[4] = {gy, gy, gy + gh, gy + gh};
+                const float qu[4] = {gc.u0, gc.u1, gc.u1, gc.u0}, qv[4] = {gc.v0, gc.v0, gc.v1, gc.v1};
+                add(qx, qy, qu, qv, it.colour, glyph_path);
             } else if (named(kImagePromptL1) || named(kImagePromptR1)) {
                 // the tab prompts: the prompt device's own L1 / R1 label (LB / RB, L / R, the bound keys), fitted in the box
                 const std::string label = prompt_label(prompt_device_, named(kImagePromptL1) ? PadButton::kL1 : PadButton::kR1, prompt_keys_);

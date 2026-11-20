@@ -1,4 +1,5 @@
 #include "b3asset/png.h"
+#include "b3port/fileio.h"   // fsrobust: UTF-8 paths
 
 #include <algorithm>
 #include <cstdio>
@@ -60,7 +61,7 @@ std::vector<std::uint8_t> encode_png_rgba(int w, int h, const std::uint8_t* rgba
 
 bool write_png_rgba(const std::string& path, int w, int h, const std::uint8_t* rgba) {
     const auto png = encode_png_rgba(w, h, rgba);
-    FILE* f = std::fopen(path.c_str(), "wb");
+    FILE* f = b3io::fopen(b3io::u8path(path), "wb");
     if (!f) return false;
     const bool ok = std::fwrite(png.data(), 1, png.size(), f) == png.size();
     return std::fclose(f) == 0 && ok;

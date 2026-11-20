@@ -41,6 +41,7 @@
 //     until IRQ_ENABLE is written again [L libsd / RWA handler 0x6464].
 //   - Noise: spx's LFSR, libsd NOISE_CLK (6 bits) = shift << 2 | step [L].
 #include "spu2_mixer_impl.h"
+#include "b3port/fileio.h"   // fsrobust: UTF-8 paths
 #include <vector>
 #include <array>
 #include <cstdio>
@@ -616,7 +617,7 @@ bool g_presets_warned = false;
 // LIBSD.IRX: an ELF; .data's section header gives its file offset. The span used is .data 0x4A68..0x4A90 + 10 * 0x44
 // (sizes, then rows), FNV-1a 64 0x896325285530ecfb in the retail module [C audio1 2026-11-06].
 bool load_libsd_reverb_presets(const char* path) {
-    std::FILE* f = path ? std::fopen(path, "rb") : nullptr;
+    std::FILE* f = path ? b3io::fopen(b3io::u8path(path), "rb") : nullptr;   // fsrobust: a UTF-8 path
     if (!f) return false;
     std::vector<uint8_t> d;
     uint8_t buf[4096];
@@ -629,29 +630,33 @@ bool load_libsd_reverb_presets_bytes(const std::vector<uint8_t>& d) {
     auto u16 = [&](size_t o) { return static_cast<uint32_t>(d[o] | d[o + 1] << 8); };
     auto u32 = [&](size_t o) { return u16(o) | u16(o + 2) << 16; };
     if (d.size() < 0x34 || u32(0) != 0x464C457Fu) return false;
-    const uint32_t shoff = u32(0x20), shent = u16(0x2E), shnum = u16(0x30), shstr = u16(0x32);
-    if (shoff + shnum * shent > d.size() || shstr >= shnum) return false;
-    const uint32_t strtab = u32(shoff + shstr * shent + 0x10);
-    uint32_t data_addr = 0, data_off = 0;
+    // fsrobust: the offsets in 64 bits (a corrupt header's 32-bit sums wrapped past the checks); a section header is
+    // read up to +0x14
+    const uint64_t shoff = u32(0x20), shent = u16(0x2E), shnum = u16(0x30), shstr = u16(0x32);
+    if (shent < 0x14 || shoff + shnum * shent > d.size() || shstr >= shnum) return false;
+    const uint64_t strtab = u32(size_t(shoff + shstr * shent + 0x10));
+    uint64_t data_addr = 0, data_off = 0;
     bool found = false;
-    for (uint32_t k = 0; k < shnum; ++k) {
-        const size_t h = shoff + k * shent;
-        const uint32_t name = strtab + u32(h);
-        if (name + 6 <= d.size() && std::memcmp(&d[name], ".data", 6) == 0) {
+    for (uint64_t k = 0; k < shnum; ++k) {
+        const size_t h = size_t(shoff + k * shent);
+        const uint64_t name = strtab + u32(h);
+        if (name + 6 <= d.size() && std::memcmp(&d[size_t(name)], ".data", 6) == 0) {
             data_addr = u32(h + 0x0C);
             data_off = u32(h + 0x10);
             found = true;
         }
     }
     if (!found) return false;
-    const size_t lo = data_off + (0x4A68u - data_addr), hi = data_off + (0x4A90u - data_addr) + 10 * 0x44;
-    if (0x4A68u < data_addr || hi > d.size()) return false;
+    if (0x4A68u < data_addr) return false;
+    const uint64_t lo64 = data_off + (0x4A68u - data_addr), hi64 = data_off + (0x4A90u - data_addr) + 10 * 0x44;
+    if (hi64 > d.size()) return false;
+    const size_t lo = size_t(lo64), hi = size_t(hi64);
     uint64_t fnv = 0xcbf29ce484222325ull;
     for (size_t o = lo; o < hi; ++o) fnv = (fnv ^ d[o]) * 0x100000001b3ull;
     if (fnv != 0x896325285530ecfbull) return false;
     for (uint32_t m = 0; m < 10; ++m) {
         g_presets[m].size8 = u32(lo + 4 * m);
-        const size_t row = data_off + (0x4A90u - data_addr) + m * 0x44 + 4;
+        const size_t row = size_t(data_off + (0x4A90u - data_addr) + m * 0x44 + 4);
         for (int r = 0; r < 32; ++r) g_presets[m].r[r] = static_cast<uint16_t>(u16(row + 2 * r));
     }
     g_presets_loaded = true;

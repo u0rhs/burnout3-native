@@ -371,7 +371,7 @@ void gtfs_read(const CallArgs& a, CallResult& r) {
             const std::uint32_t off = ld(self + kfBufPos);
             std::uint32_t c = kSector - off;
             if (n < c) c = n;
-            std::memcpy(b3host::host_pointer(p, c), b3host::host_pointer(buffer + off, c), c);
+            std::memcpy(b3host::host_pointer_checked(p, c), b3host::host_pointer_checked(buffer + off, c), c);
             n -= c;
             const std::int64_t at = ld64(self + kfPos);
             if (ld64(self + kfSize) < at + static_cast<std::int32_t>(c)) c = static_cast<std::uint32_t>(static_cast<std::int32_t>(ld64(self + kfSize) - at));

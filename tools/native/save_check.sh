@@ -61,13 +61,13 @@ for line in sys.stdin:
 shown1=$(card_shown "$OUT/run1/log.txt")
 [ -z "$shown1" ] || why="${why:+$why; }run 1 showed card messages: $shown1"
 cp "$OUT/card/profile-1.sav" "$OUT/run1/profile-1.sav"
-# run 2: load it, then SETTINGS (main menu row 6: Down x5) > SAVES (the 6th tab: R1 x5) > EXPORT SAVE (Down x3)
+# run 2: load it, then SETTINGS (main menu row 6: Down x5) > SAVES (the 8th tab, settingsui: R1 x7) > EXPORT SAVE (Down x3)
 # (the page reads the pad on the renderer's frames, which an unpaced run may space out: page keys are held 40 VBlanks)
 K2="$(press 9000 41),$(press 9600 29),$(press 10200 29)"
 for v in 11600 11660 11720 11780 11840; do K2="$K2,$(press $v 81)"; done
 K2="$K2,$(press 12000 29)"
-for v in 12300 12400 12500 12600 12700; do K2="$K2,$(press $v 21 40)"; done
-K2="$K2,$(press 12800 81 40),$(press 12900 81 40),$(press 13000 81 40),$(press 13100 29 40),$(press 13500 41 40)"
+for v in 12300 12400 12500 12600 12700 12800 12900; do K2="$K2,$(press $v 21 40)"; done
+K2="$K2,$(press 13000 81 40),$(press 13100 81 40),$(press 13200 81 40),$(press 13300 29 40),$(press 13700 41 40)"
 run run2 14200 "$K2" 4800,5300,6200,6540
 grep -q '^crash:' "$OUT/run2/log.txt" && why="${why:+$why; }run 2 crashed"
 grep -qF "card_silence: message 205 (type 2) not shown, answered OK" "$OUT/run2/log.txt" || why="${why:+$why; }run 2: the profile did not load (no \"Load successful\")"

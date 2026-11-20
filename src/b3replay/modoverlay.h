@@ -20,7 +20,8 @@ namespace b3replay {
 class ModOverlay {
 public:
     static ModOverlay& instance();
-    // Any thread: a mod's texture (straight-alpha RGBA rows), made on the device at its first use
+    // Any thread: a mod's texture (straight-alpha RGBA rows), made on the device at its first use; 0 x 0 without pixels:
+    // drop it (modsec: its mod stopped; the copy kept for a device clear goes, the device's texture is shrunk to 1 x 1)
     void add_texture(std::uint32_t id, std::uint32_t w, std::uint32_t h, const std::uint8_t* rgba);
     // Render thread: the list's draw items for a `w` x `h` window, appended to `out` (one per texture); the number of
     // items drawn
@@ -35,6 +36,7 @@ private:
     };
     std::mutex m_;
     std::map<std::uint32_t, Pending> pending_;
+    std::vector<std::uint32_t> dropped_;   // (under m_) ids to drop at the next draw_list
     std::map<std::uint32_t, b3gfx::TextureId> textures_;
     b3gfx::TextureId white_ = b3gfx::kNone;
     b3gfx::ResourceEpoch epoch_;   // a track load clears every id above (Device::resource_epoch)

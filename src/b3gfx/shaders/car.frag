@@ -21,6 +21,7 @@ layout(location = 0) out vec4 out_color;
 layout(set = 2, binding = 0) uniform sampler2D tex;      // the mesh's texture slot (atlas / underside / glass)
 layout(set = 2, binding = 1) uniform sampler2D envsky;   // the 64x32 sky backdrop (display units)
 layout(set = 2, binding = 2) uniform sampler2D envworld; // reflect-tunnel: the track around the car (b3gfx::EnvPass), look3.z = 1
+layout(set = 2, binding = 3) uniform sampler2D paintmask; // carpaint: the car's paint map (b3asset::CarPaintMap::mask), paint.w > 0
 
 layout(set = 3, binding = 0) uniform CarFragmentUniforms {
     vec4 env_colour;  // VU1 1012 (GS units)
@@ -36,6 +37,11 @@ layout(set = 3, binding = 0) uniform CarFragmentUniforms {
     vec4 look1;       // sky gain, horizon gain, ground level, haze
     vec4 look2;       // glass weight, glass Fresnel, glass gain, glass darkening
     vec4 look3;       // rim, paint colour keep, 1 = envworld bound, strength
+    vec4 paint;       // carpaint: rgb the paint (texel units); w the mode: 0 off, bit 0 recolour, bit 1 decals off,
+                      // bit 2 metallic, bit 3 pearl (padpaint: the finish)
+    vec4 paint2;      // carpaint: rgb the second colour's paint; w the reference level (main paint's mean brightest channel)
+    vec4 night;       // night mode (§17): x the SH light's scale, y the env map's, z the moon key light's gain; w: 1 = on
+    vec4 moon;        // night mode: rgb the moonlight (frame units), towards to_sun.xyz (the moon at night)
 };
 
 float fog_amount(float w) {
@@ -60,6 +66,8 @@ float fog_amount(float w) {
 // game does not draw 3 into the env map]; component 5 (uv mode 1, blended) and the sphere-map warp itself are not
 // modelled [G]. Looked up by the reflected ray directly instead of through the 256x256 sphere map (same directions,
 // without the map's resolution loss towards its rim).
+// normalize(v), or `f` for a zero (or non-finite) vector: normalize(0) is NaN, which the bloom would keep
+vec3 unit_or(vec3 v, vec3 f) { float l = dot(v, v); return l > 1e-24 && l < 1e30 ? normalize(v) : f; }
 vec3 env_sky(vec3 r) {
     vec3 d = normalize(r);
     float hor = length(d.xz);
@@ -159,6 +167,20 @@ vec3 env_sharp(vec3 d, float lit, float open, out float dark, out float glint) {
     return c;
 }
 
+// padpaint: the finish's flakes, one value per atlas cell (a hash: no texture)
+float flake_hash(vec2 c) {
+    vec3 p = fract(vec3(c.xyx) * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yzx + 33.33);
+    return fract((p.x + p.y) * p.z);
+}
+
+// padpaint: `c` turned round the grey axis by `a` radians (its hue), its brightness kept
+vec3 hue_turn(vec3 c, float a) {
+    const vec3 k = vec3(0.57735);
+    float cs = cos(a), sn = sin(a);
+    return c * cs + cross(k, c) * sn + k * dot(k, c) * (1.0 - cs);
+}
+
 void main() {
     // mac5: a screen-door fade (the Time Attack ghost's see-through look): a 4 x 4 ordered threshold against the fade,
     // so the car stays opaque in the depth buffer and needs no sorting
@@ -173,15 +195,37 @@ void main() {
         if (door <= (float(b) + 0.5) / 16.0) discard;
     }
     vec4 t = texture(tex, v_uv);
+    int pm = 0;
+    vec4 m = vec4(0.0);
+    if (paint.w > 0.5) {
+        // carpaint (docs/remaster-features.md §15): the mask's R main paint, G second colour, B decal, A the shade / 2
+        m = texture(paintmask, v_uv);
+        pm = int(paint.w + 0.5);
+        float sh = max(t.r, max(t.g, t.b)) / max(paint2.w, 1.0 / 255.0);
+        vec3 c = t.rgb;
+        if ((pm & 1) != 0) {
+            c = mix(c, paint.rgb * sh, m.r);
+            c = mix(c, paint2.rgb * sh, m.g);
+        }
+        if ((pm & 2) != 0) c = mix(c, paint.rgb * (2.0 * m.a), min(m.g + m.b, 1.0));
+        t.rgb = min(c, vec3(1.0));
+    }
     const bool glass_mesh = mode.x < 0.5 && mode.y < 0.99;
     const bool enh = refl.x > 0.0 && mode.z > 0.5 && mode.z < 1.5 && env_colour.r > 100.0;   // CAR REFLECTIONS: Enhanced
-    vec3 cs = min(t.rgb * (v_colour.rgb / 128.0), vec3(1.0));
+    vec3 light = v_colour.rgb / 128.0;
+    if (night.w > 0.5) {
+        // night mode: the daylight SH dimmed, the moon as a key light on the faces turned to it
+        float nl = max(dot(unit_or(v_nrm, vec3(0.0, 1.0, 0.0)), to_sun.xyz), 0.0);
+        light = light * night.x + moon.rgb * (night.z * nl);
+    }
+    vec3 cs = min(t.rgb * light, vec3(1.0));
     float a = min(floor(t.a * 128.0 * v_colour.a / 128.0), 255.0) / 128.0;  // As / 128 (texel alpha 0x80 = 1.0)
     float k = mode.x > 0.5 ? a : mode.y;
     vec3 X = k * cs;
     float keep = 1.0 - k;
     if (mode.z > 0.5) {
         vec3 ce = min(env_map(v_refl) * (env_colour.rgb / 128.0), vec3(1.0));
+        if (night.w > 0.5) ce *= night.y;   // night mode: the daylight env map dimmed
         if (mode.z < 1.5) { X = X * (1.0 - a) + a * ce; keep *= 1.0 - a; }
         else X += a * ce;
     }
@@ -190,7 +234,7 @@ void main() {
         // env pass: the car's colour); with the gloss strength 0 the pixel is Original's. v_colour.rgb is the SH irradiance lighting (dark in shade, tunnels
         // and at night): the sky is not shown where the car is not under it.
         float lit = clamp(dot(v_colour.rgb, vec3(0.3333)) / 128.0, 0.0, 1.0);
-        vec3 N = normalize(v_nrm), V = -normalize(v_view);
+        vec3 V = -unit_or(v_view, vec3(0.0, 0.0, -1.0)), N = unit_or(v_nrm, V);
         float cs2 = clamp(abs(dot(N, V)), 0.0, 1.0);
         float fr = pow(1.0 - cs2, refl.z);
         float open = refl.y;   // no sky in a tunnel or under cover
@@ -198,7 +242,8 @@ void main() {
         float mask = refl.x * look3.w * smoothstep(0.30, 0.85, t.a);
         float dark;
         float glint;
-        vec3 E = env_sharp(normalize(v_refl), lit, open, dark, glint);
+        vec3 E = env_sharp(unit_or(v_refl, N), lit, open, dark, glint);
+        if (night.w > 0.5) E *= night.y;   // night mode: the sky in the gloss dimmed (the moon's glint kept)
         float Ls = dot(E, vec3(0.3333));
         if (glass) {
             // dark glass, a strong sky in it and a bright rim at the edges
@@ -214,6 +259,38 @@ void main() {
             vec3 tint = mx > 0.03 ? X / mx : vec3(1.0);
             tint = mix(E / max(max(max(E.r, E.g), E.b), 0.01), tint, look3.y);
             X = X * (1.0 - look0.y * F * dark) + F * Ls * look0.x * tint + F * glint * look0.w;   // (look0.y: an optional darkening, 0)
+        }
+    }
+    // (skipped where a normal, the view or the reflection is degenerate: normalize would give NaN)
+    if ((pm & 12) != 0 && !glass_mesh && dot(v_nrm, v_nrm) > 1e-12 && dot(v_view, v_view) > 1e-12 && dot(v_refl, v_refl) > 1e-12) {
+        // padpaint: the finish, on the paint only (the mask's main paint and second colour; decals off: those too), over
+        // whatever the reflections above gave. The paint's own colour (X) carries it: never a colour of its own
+        float pw = clamp(m.r + m.g + ((pm & 2) != 0 ? m.b : 0.0), 0.0, 1.0) * smoothstep(0.30, 0.85, t.a);
+        vec3 N = normalize(v_nrm), V = -normalize(v_view);
+        float ndv = clamp(abs(dot(N, V)), 0.0, 1.0);
+        float lit = clamp(dot(v_colour.rgb, vec3(0.3333)) / 128.0, 0.0, 1.0);
+        vec3 R = normalize(v_refl);
+        float mx = max(max(X.r, X.g), X.b);
+        vec3 hue = mx > 0.02 ? X / mx : vec3(1.0);
+        if ((pm & 4) != 0) {
+            // metallic: the sky mirrored in the paint's colour, strongest towards the edges, and flakes that catch the sun
+            float fr = 0.35 + 0.65 * pow(1.0 - ndv, 2.0);
+            vec3 E = env_map(R);
+            float Ls = dot(E, vec3(0.3333));
+            X = X * (1.0 - 0.25 * pw * fr) + pw * fr * (0.55 * Ls + 0.10 * lit) * hue;
+            vec2 cell = floor(v_uv * 900.0);
+            float h = flake_hash(cell + floor(ndv * 6.0) * 17.0);   // the flakes that face the eye change as it moves
+            float flake = smoothstep(0.93, 0.995, h);
+            float sun = to_sun.w > 0.5 ? pow(max(dot(R, to_sun.xyz), 0.0), 6.0) : 0.0;
+            X += pw * flake * (0.06 + 0.45 * sun) * (0.4 + 0.6 * lit) * mix(hue, vec3(1.0), 0.6);
+        }
+        if ((pm & 8) != 0) {
+            // pearl: the hue turns with the angle to the eye (face-on the paint's own; at the edges about a sixth of the
+            // way round the colour wheel), with a soft white sheen there
+            float edge = pow(1.0 - ndv, 2.0);
+            vec3 turned = hue_turn(X, 1.0 * edge);
+            X = mix(X, max(turned, vec3(0.0)), pw);
+            X += pw * edge * edge * 0.18 * (0.3 + 0.7 * lit) * vec3(1.0);
         }
     }
     // CB3Fog::Render is a post pass over the whole frame by Z [C]: fog the car's own contribution here; what shows

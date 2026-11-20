@@ -569,8 +569,12 @@ void Player::mix(std::int16_t* lr, std::size_t frames) {
     const float g0 = gain_ < 0.0f ? gain_target_ : gain_, g1 = gain_target_;
     for (std::size_t k = 0; k < got; ++k) {
         const float g = g0 + (g1 - g0) * (float(k + 1) / float(got));
-        tmp_[2 * k] *= g;
-        tmp_[2 * k + 1] *= g;
+        // robust2: a float file's NaN / Inf samples are silence (a NaN passed the limiter unseen and came out at full
+        // scale; an Inf held its gain at 0 for the whole window)
+        for (int c = 0; c < 2; ++c) {
+            float& x = tmp_[2 * k + std::size_t(c)];
+            x = std::isfinite(x) ? x * g : 0.0f;
+        }
     }
     // the song's end: silence after it pushes the limiter's last frames out (as far as this block has room)
     std::size_t out = got;

@@ -8,6 +8,7 @@
 #include <set>
 #include <tuple>
 
+#include "b3asset/hdpack.h"
 #include "b3asset/vif.h"
 #include "b3host/ps2float.h"
 
@@ -48,6 +49,7 @@ struct Reader {
         const int ntex = s16(st, 0x16);
         const std::size_t tab = st.u32(0x18);
         std::map<std::size_t, int> tex_index;
+        const HdCompressScope bc;   // hdgpu: the track's textures are only uploaded (HD replacements may stay BC)
         for (int k = 0; k < ntex; ++k) {
             const std::size_t at = st.u32(tab + 4 * std::size_t(k));
             DecodedRaster r;

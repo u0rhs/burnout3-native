@@ -1,6 +1,7 @@
 #include "b3asset/hdpack.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -8,8 +9,10 @@
 #include <cstring>
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <thread>
 
+#include "b3asset/bc.h"
 #include "b3asset/export.h"
 
 namespace b3asset {
@@ -325,25 +328,315 @@ HdTextures* g_hd = nullptr;
 double ms_since(std::chrono::steady_clock::time_point t0) {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }
+bool g_compressed = false;           // hdgpu: set_hd_compressed
+thread_local bool t_compress = false;   // hdgpu: HdCompressScope
+thread_local bool t_no_hook = false;    // hdgpu: prefetch's plain decodes (this thread only: the hook stays for the others)
+thread_local int t_rows = 8;            // hdgpu: threads hd_rows and the chain builders use (1 on prefetch's own threads)
 }  // namespace
 
+// hdgpu: a replacement file as read: its bytes (the BC blocks are used from here) and, when the RGBA8 path or the alpha
+// rule needs it, the top level decoded (decode_dds)
+struct HdTextures::Source {
+    std::vector<std::uint8_t> data;
+    DdsInfo info;
+    mutable std::shared_ptr<const Image> rgba;
+    const Image* decoded() const {
+        if (!rgba) {
+            auto im = std::make_shared<Image>();
+            if (!decode_dds(data.data(), data.size(), *im)) return nullptr;
+            rgba = std::move(im);
+        }
+        return rgba.get();
+    }
+};
+
+void set_hd_compressed(bool on) { g_compressed = on; }
+bool hd_compressed() { return g_compressed; }
+HdCompressScope::HdCompressScope() : saved(t_compress) { t_compress = true; }
+HdCompressScope::~HdCompressScope() { t_compress = saved; }
+
+namespace {
+std::shared_ptr<const HdTextures::Source> read_source(const std::string& path, bool decode) {
+    auto s = std::make_shared<HdTextures::Source>();
+    if (!read_file(path, s->data) || !parse_dds(s->data.data(), s->data.size(), s->info)) return nullptr;
+    if ((decode || s->info.fmt >= kDdsRGBA) && !s->decoded()) return nullptr;
+    return s;
+}
+
+HdTextures::Job job_of(const RasterHeader& h) {
+    HdTextures::Job j;
+    j.width = int(h.width);
+    j.height = int(h.height);
+    j.tw = int(h.tex0 >> 26 & 0xF);
+    j.th = int(h.tex0 >> 30 & 0xF);
+    j.tcc = h.tcc();
+    return j;
+}
+
+// The alpha rule (apply, below) may change the replacement: TCC 1, the pack's alpha not taken raw, and the original has
+// alpha below 1/4 somewhere or a maximum below 0x80. (Holds for any rule that cuts only where the original's bilinear
+// alpha is below 64 and clamps to its maximum: the bilinear of texels >= 64 is >= 64.)
+bool rule_may_change(const DecodedRaster& r) {
+    if (r.max_alpha < 0x80) return true;
+    const std::vector<std::uint8_t>& o = r.levels[0].rgba;
+    for (std::size_t i = 3; i < o.size(); i += 4)
+        if (o[i] < 64) return true;
+    return false;
+}
+
+std::string chain_key(const std::string& path, const HdTextures::Job& j) {
+    char b[96];
+    std::snprintf(b, sizeof b, "|%dx%d/%dx%d/%d", j.width, j.height, j.tw, j.th, j.tcc ? 1 : 0);
+    return path + b;
+}
+std::string rule_key(const std::string& path, const HdTextures::Job& j, const DecodedRaster& r) {
+    const Image& o = r.levels[0];
+    char b[96];
+    std::snprintf(b, sizeof b, "|rule %d %dx%d %016llx", int(r.max_alpha), o.w, o.h,
+                  static_cast<unsigned long long>(xxh3_64(o.rgba.data(), o.rgba.size())));
+    return chain_key(path, j) + b;
+}
+
+std::size_t chain_bytes(const std::vector<Image>& c) {
+    std::size_t n = 0;
+    for (const Image& l : c) n += l.blocks ? l.blocks->size() : 0;
+    return n;
+}
+
+// One stored BC level for the GPU, with the alpha as decode_dds maps it (`tcc` 0: opaque). `to_bc3`: a BC1 level as BC3.
+void convert_level(int fmt, const std::uint8_t* src, int src_bw, int bw, int bh, bool tcc, bool to_bc3, std::vector<std::uint8_t>& out) {
+    const std::size_t ssz = bc_block_bytes(fmt), osz = to_bc3 ? 16 : ssz;
+    out.resize(std::size_t(bw) * bh * osz);
+    std::uint8_t px[16][4];
+    for (int by = 0; by < bh; ++by)
+        for (int bx = 0; bx < bw; ++bx) {
+            const std::uint8_t* b = src + (std::size_t(by) * src_bw + bx) * ssz;
+            std::uint8_t* o = out.data() + (std::size_t(by) * bw + bx) * osz;
+            if (fmt == kBC1) {
+                const bool three = (b[0] | b[1] << 8) <= (b[2] | b[3] << 8);
+                if (to_bc3) {   // the colour half decodes in 4-colour mode: a 3-colour block is fitted again
+                    if (!three) {
+                        static const std::uint8_t opaque[8] = {255, 255, 0, 0, 0, 0, 0, 0};
+                        std::memcpy(o, opaque, 8);
+                        std::memcpy(o + 8, b, 8);
+                        continue;
+                    }
+                    bc_decode_block(kBC1, b, px);
+                    std::uint8_t a[16];
+                    for (int i = 0; i < 16; ++i) a[i] = px[i][3];
+                    bc_encode_alpha(a, o);
+                    bc_encode_color(px, o + 8, false);
+                    continue;
+                }
+                std::memcpy(o, b, 8);
+                if (!tcc && three) {   // a transparent texel would stay transparent: opaque black, as the decode forces it
+                    bool hole = false;
+                    for (int i = 0; i < 16; ++i) hole |= ((b[4 + i / 4] >> (2 * (i & 3))) & 3) == 3;
+                    if (hole) {
+                        bc_decode_block(kBC1, b, px);
+                        for (auto& t : px) t[3] = 255;
+                        bc_encode_color(px, o, false);
+                    }
+                }
+                continue;
+            }
+            std::memcpy(o + 8, b + 8, 8);   // the colour half as stored
+            if (!tcc) {
+                if (fmt == kBC2) std::memset(o, 0xFF, 8);
+                else { static const std::uint8_t opaque[8] = {255, 255, 0, 0, 0, 0, 0, 0}; std::memcpy(o, opaque, 8); }
+                continue;
+            }
+            if (fmt == kBC2) {   // 4-bit a: a * 17 -> PS2 map -> (a >= 8 ? 15 : 2a) * 17, exact
+                for (int i = 0; i < 8; ++i) {
+                    const int lo = b[i] & 15, hi = b[i] >> 4;
+                    o[i] = std::uint8_t((lo >= 8 ? 15 : 2 * lo) | (hi >= 8 ? 15 : 2 * hi) << 4);
+                }
+                continue;
+            }
+            if (b[0] <= 128 && b[1] <= 128) {   // endpoints doubled, indices kept: within one level of the map
+                std::memcpy(o, b, 8);
+                o[0] = std::uint8_t(std::min(2 * b[0], 255));
+                o[1] = std::uint8_t(std::min(2 * b[1], 255));
+                continue;
+            }
+            bc_decode_block(kBC3, b, px);
+            std::uint8_t a[16];
+            for (int i = 0; i < 16; ++i) a[i] = px[i][3] >= 0x80 ? 0xFF : std::uint8_t(px[i][3] * 2);
+            bc_encode_alpha(a, o);
+        }
+}
+
+// The rest of a chain from its last level: decoded, halved like the GPU's blit, encoded again, down to 1 x 1.
+void finish_chain(std::vector<Image>& c, Image last, int fmt, int threads, std::size_t* built) {
+    while (last.w > 1 || last.h > 1) {
+        Image next;
+        mip_down(last, next);
+        Image l;
+        l.w = next.w;
+        l.h = next.h;
+        l.bc = fmt;
+        auto b = std::make_shared<std::vector<std::uint8_t>>();
+        bc_encode(fmt, next.rgba.data(), next.w, next.h, *b, threads);
+        l.blocks = std::move(b);
+        c.push_back(std::move(l));
+        last = std::move(next);
+        if (built) ++*built;
+    }
+}
+}  // namespace
+
+namespace {
+// hdgpu: fn(first, end) over [0, n) in strips on up to t_rows threads (this one included)
+template <class Fn>
+void hd_rows(int n, Fn fn) {
+    const int k = std::clamp(n / 64, 1, t_rows);
+    std::vector<std::thread> pool;
+    for (int i = 1; i < k; ++i) pool.emplace_back([&fn, n, k, i] { fn(n * i / k, n * (i + 1) / k); });
+    fn(0, n / k);
+    for (auto& t : pool) t.join();
+}
+}  // namespace
+
+bool HdTextures::crop(const Job& job, int w, int h, int min_w, int min_h, int& cw, int& ch) {
+    // the raster's extent inside the 2^TW x 2^TH region the replacement covers
+    const std::uint32_t tw = 1u << job.tw, th = 1u << job.th;
+    cw = std::clamp(int((std::uint64_t(w) * std::uint32_t(job.width) + tw / 2) / tw), 1, w);
+    ch = std::clamp(int((std::uint64_t(h) * std::uint32_t(job.height) + th / 2) / th), 1, h);
+    return cw >= min_w && ch >= min_h;   // never lower resolution than the decode
+}
+
+std::shared_ptr<const std::vector<Image>> HdTextures::bc_chain(const Source& src, const Job& job, int threads) {
+    const DdsInfo& in = src.info;
+    const int fmt = in.fmt;
+    int cw, ch;
+    if (fmt < kBC1 || fmt > kBC3 || !crop(job, in.w, in.h, 1, 1, cw, ch) || cw % 4 || ch % 4) return nullptr;
+    const std::uint8_t* base = src.data.data() + in.at;
+    const int sbw = (in.w + 3) / 4, bw = cw / 4, bh = ch / 4;
+    // BC1 with transparent texels (3-colour blocks using index 3) and TCC 1: BC3 (the mips' partial alpha needs it)
+    bool to_bc3 = false;
+    if (fmt == kBC1 && job.tcc)
+        for (int by = 0; by < bh && !to_bc3; ++by)
+            for (int bx = 0; bx < bw && !to_bc3; ++bx) {
+                const std::uint8_t* b = base + (std::size_t(by) * sbw + bx) * 8;
+                if ((b[0] | b[1] << 8) > (b[2] | b[3] << 8)) continue;
+                for (int i = 0; i < 16; ++i) to_bc3 |= ((b[4 + i / 4] >> (2 * (i & 3))) & 3) == 3;
+            }
+    const int ofmt = to_bc3 ? kBC3 : fmt;
+    auto chain = std::make_shared<std::vector<Image>>();
+    // the stored levels while the crop is the whole file (a crop's mips are built from its level 0)
+    const int stored = cw == in.w && ch == in.h ? in.levels : 1;
+    std::size_t off = in.at;
+    for (int l = 0; l < stored; ++l) {
+        const int lw = l ? std::max(in.w >> l, 1) : cw, lh = l ? std::max(in.h >> l, 1) : ch;
+        Image lv;
+        lv.w = lw;
+        lv.h = lh;
+        lv.bc = ofmt;
+        auto b = std::make_shared<std::vector<std::uint8_t>>();
+        const int lbw = l ? (lw + 3) / 4 : bw, lbh = l ? (lh + 3) / 4 : bh;
+        convert_level(fmt, src.data.data() + off, l ? lbw : sbw, lbw, lbh, job.tcc, to_bc3, *b);
+        lv.blocks = std::move(b);
+        chain->push_back(std::move(lv));
+        off += bc_level_bytes(fmt, l ? lw : in.w, l ? lh : in.h);
+    }
+    const Image& last = chain->back();
+    Image dec;
+    dec.w = last.w;
+    dec.h = last.h;
+    dec.rgba.resize(std::size_t(dec.w) * dec.h * 4);
+    bc_decode(ofmt, last.blocks->data(), dec.w, dec.h, dec.rgba.data());
+    finish_chain(*chain, std::move(dec), ofmt, threads, nullptr);
+    return chain;
+}
+
+std::shared_ptr<const std::vector<Image>> HdTextures::bc_rule_chain(const std::vector<Image>& plain, const Image& level0, int threads) {
+    if (plain.empty() || plain[0].w != level0.w || plain[0].h != level0.h || level0.rgba.size() < std::size_t(level0.w) * level0.h * 4)
+        return nullptr;
+    auto chain = std::make_shared<std::vector<Image>>();
+    Image cur = level0;   // the rule's RGBA8 at this level (the mips: halved like the GPU's blit)
+    for (std::size_t lv = 0; lv < plain.size(); ++lv) {
+        const Image& p = plain[lv];
+        if (lv) {
+            Image next;
+            mip_down(cur, next);
+            cur = std::move(next);
+        }
+        if (!p.blocks || p.w != cur.w || p.h != cur.h) return nullptr;
+        const int w = cur.w, h = cur.h, bw = (w + 3) / 4, bh = (h + 3) / 4, fmt = p.bc;
+        const std::size_t psz = bc_block_bytes(fmt);
+        auto b = std::make_shared<std::vector<std::uint8_t>>(std::size_t(bw) * bh * 16);
+        auto rows = [&](int r0, int r1) {
+            std::uint8_t px[16][4], a[16];
+            for (int by = r0; by < r1; ++by)
+                for (int bx = 0; bx < bw; ++bx) {
+                    const std::uint8_t* sb = p.blocks->data() + (std::size_t(by) * bw + bx) * psz;
+                    std::uint8_t* o = b->data() + (std::size_t(by) * bw + bx) * 16;
+                    for (int i = 0; i < 16; ++i) {
+                        const int x = std::min(bx * 4 + (i & 3), w - 1), y = std::min(by * 4 + (i >> 2), h - 1);
+                        std::memcpy(px[i], &cur.rgba[(std::size_t(y) * w + std::size_t(x)) * 4], 4);
+                        a[i] = px[i][3];
+                    }
+                    bc_encode_alpha(a, o);
+                    if (fmt != kBC1) { std::memcpy(o + 8, sb + 8, 8); continue; }   // the colour half as built
+                    // BC1: a 4-colour block (or one colour) reads the same as BC3's colour half; a 3-colour one is fitted again
+                    const bool four = (sb[0] | sb[1] << 8) > (sb[2] | sb[3] << 8);
+                    bool one = (sb[0] | sb[1] << 8) == (sb[2] | sb[3] << 8);
+                    for (int i = 0; i < 16 && one; ++i) one = ((sb[4 + i / 4] >> (2 * (i & 3))) & 3) < 2;
+                    if (four || one) std::memcpy(o + 8, sb, 8);
+                    else bc_encode_color(px, o + 8, false);
+                }
+        };
+        const int n = std::clamp(threads, 1, std::max(1, bh / 8));
+        std::vector<std::thread> pool;
+        for (int k = 1; k < n; ++k) pool.emplace_back(rows, bh * k / n, bh * (k + 1) / n);
+        rows(0, bh / n);
+        for (auto& t : pool) t.join();
+        Image l;
+        l.w = w;
+        l.h = h;
+        l.bc = kBC3;
+        l.blocks = std::move(b);
+        chain->push_back(std::move(l));
+    }
+    return chain;
+}
+
+std::shared_ptr<const HdTextures::Source> HdTextures::source(const std::string& path) {
+    auto it = cache_.find(path);
+    if (it == cache_.end()) {
+        const auto t1 = std::chrono::steady_clock::now();
+        std::shared_ptr<const Source> s = read_source(path, !g_compressed);
+        if (s) ++files_loaded;
+        load_ms += ms_since(t1);
+        it = cache_.emplace(path, std::move(s)).first;
+    }
+    return it->second;
+}
+
 void set_hd_textures(HdTextures* t) { g_hd = t; }
-HdTextures* hd_textures() { return g_hd; }
+HdTextures* hd_textures() { return t_no_hook ? nullptr : g_hd; }
 bool hd_switchable() { return g_hd && g_hd->originals_from < g_hd->pack.dirs.size(); }
 
-std::vector<std::string> hd_folders(const std::string& dir, bool off, const std::vector<std::string>& before) {
+std::vector<std::string> hd_folders(const std::string& dir, bool off, const std::vector<std::string>& before, const std::string& xbox) {
     std::string d = dir;
     if (d.empty())
         if (const char* e = std::getenv("B3_HD_PACK")) d = e;
     std::vector<std::string> folders = before;   // patches3: the mods' packs first, the player's last
     if (!off && !d.empty()) folders.push_back(d);
+    if (!off && !xbox.empty() && xbox != d) folders.push_back(xbox);   // xboximport: below the player's own pack
     return folders;
 }
 
-HdTextures* hd_enable(const std::string& dir, bool off, const std::vector<std::string>& before) {
+namespace {
+std::string g_xbox_folder;   // xboximport (set_hd_xbox_folder)
+}
+void set_hd_xbox_folder(const std::string& dir) { g_xbox_folder = dir; }
+const std::string& hd_xbox_folder() { return g_xbox_folder; }
+
+HdTextures* hd_enable(const std::string& dir, bool off, const std::vector<std::string>& before, const std::string& xbox) {
     static HdTextures instance;
     set_hd_textures(nullptr);
-    const std::vector<std::string> folders = hd_folders(dir, off, before);
+    const std::vector<std::string> folders = hd_folders(dir, off, before, xbox);
     if (folders.empty()) return nullptr;
     std::string names;
     for (const std::string& f : folders) names += (names.empty() ? "" : " + ") + f;
@@ -356,9 +649,10 @@ HdTextures* hd_enable(const std::string& dir, bool off, const std::vector<std::s
     if (!why.empty()) std::fprintf(stderr, "hd pack: %s\n", why.c_str());
     std::fprintf(stderr, "hd pack %s: %zu replacements indexed (%zu other files) in %.0f ms\n", names.c_str(), instance.pack.files.size(),
                  instance.pack.skipped, ms_since(t0));
-    // hdkey: the player's pack (the last folder, after the mods'; a folder that is not there is left out of dirs) keeps
-    // the originals for the HD TEXTURES key
-    if (folders.size() > before.size() && instance.pack.dirs.back() == folders.back()) instance.originals_from = instance.pack.dirs.size() - 1;
+    // hdkey: the player's pack (after the mods'; a folder that is not there is left out of dirs) and the Xbox import
+    // below it keep the originals for the HD TEXTURES key: from the first folder that is not a mod's
+    for (std::size_t i = 0; i < instance.pack.dirs.size(); ++i)
+        if (std::find(before.begin(), before.end(), instance.pack.dirs[i]) == before.end()) { instance.originals_from = i; break; }
     set_hd_textures(&instance);
     return &instance;
 }
@@ -375,6 +669,9 @@ void hd_report() {
     std::fprintf(stderr, "hd pack: %zu rasters looked up, %zu replaced (%zu files decoded, %zu failed, %zu with alpha held to the original's coverage / maximum%s, %zu originals kept); keys %.0f ms, DDS %.0f ms\n",
                  g_hd->lookups, g_hd->hits, g_hd->files_loaded, g_hd->failures, g_hd->masked, g_hd->raw_alpha ? ", B3_HD_RAW_ALPHA: off" : "",
                  g_hd->originals, g_hd->key_ms, g_hd->load_ms);
+    if (g_compressed)   // hdgpu
+        std::fprintf(stderr, "hd pack: %zu kept compressed (BC, %.1f MB with their mips; %zu re-encoded for the alpha rule), %zu as RGBA8; hook %.0f ms (BC chains built there %.0f ms)\n",
+                     g_hd->compressed, double(g_hd->bc_bytes) / 1048576.0, g_hd->encoded, g_hd->hits - g_hd->compressed, g_hd->apply_ms, g_hd->bc_ms);
 }
 
 bool HdTextures::open(const std::string& folder, std::string* why) { return open(std::vector<std::string>{folder}, why); }
@@ -394,46 +691,85 @@ bool HdTextures::keeps_original(const std::string& path) const {
 }
 
 bool HdTextures::open(const std::vector<std::string>& folders, std::string* why) {
+    const std::lock_guard<Lock> lk(mu_);
     cache_.clear();
     raw_alpha = std::getenv("B3_HD_RAW_ALPHA") != nullptr;
+    prepared_.clear();
     lookups = hits = failures = files_loaded = masked = originals = 0;
+    compressed = encoded = bc_bytes = bc_built = 0;
     originals_from = SIZE_MAX;
-    load_ms = key_ms = 0;
+    load_ms = key_ms = bc_ms = apply_ms = 0;
     return pack.open(folders, why);
 }
 
 bool HdTextures::apply(const GsMemory& gs, DecodedRaster& r, std::uint32_t cbp_add) {
+    const std::lock_guard<Lock> lk(mu_);
+    const auto t_apply = std::chrono::steady_clock::now();
+    const bool hit = apply_(gs, r, cbp_add);
+    apply_ms += ms_since(t_apply);
+    return hit;
+}
+
+bool HdTextures::apply_(const GsMemory& gs, DecodedRaster& r, std::uint32_t cbp_add) {
     if (r.levels.empty() || pack.files.empty()) return false;
     ++lookups;
     const auto t0 = std::chrono::steady_clock::now();
     const std::string* path = hd_lookup(pack, gs, r.hdr, cbp_add);
     key_ms += ms_since(t0);
     if (!path) return false;
-    auto it = cache_.find(*path);
-    if (it == cache_.end()) {
-        const auto t1 = std::chrono::steady_clock::now();
-        auto im = std::make_shared<Image>();
-        std::string why;
-        std::shared_ptr<const Image> v;
-        if (load_dds(*path, *im, &why)) { v = std::move(im); ++files_loaded; }
-        load_ms += ms_since(t1);
-        it = cache_.emplace(*path, std::move(v)).first;
-    }
-    if (!it->second) { ++failures; return false; }
-    const Image& src = *it->second;
+    const std::shared_ptr<const Source> file = source(*path);
+    if (!file) { ++failures; return false; }
+    return replace_(*path, file, r, t_compress, masked);
+}
+
+// hdgpu: the replacement of `r` by `file` (found at `path_`): apply's own (`masked` = this->masked: counted), or prefetch's
+// threads building an alpha rule's BC chain ahead (`compress`, `masked` a scratch: nothing counted; prepared_ gets it)
+bool HdTextures::replace_(const std::string& path_, const std::shared_ptr<const Source>& file, DecodedRaster& r, bool compress,
+                          std::size_t& masked) {
+    const std::string* const path = &path_;
+    const bool count = &masked == &this->masked;
     const RasterHeader& h = r.hdr;
-    const std::uint32_t tw = 1u << (h.tex0 >> 26 & 0xF), th = 1u << (h.tex0 >> 30 & 0xF);
-    // the raster's extent inside the 2^TW x 2^TH region the replacement covers
-    const int cw = std::clamp(int((std::uint64_t(src.w) * h.width + tw / 2) / tw), 1, src.w);
-    const int ch = std::clamp(int((std::uint64_t(src.h) * h.height + th / 2) / th), 1, src.h);
-    if (cw < r.levels[0].w || ch < r.levels[0].h) { ++failures; return false; }   // never lower resolution than the decode
+    const Job job = job_of(h);
+    int cw, ch;
+    if (!crop(job, file->info.w, file->info.h, r.levels[0].w, r.levels[0].h, cw, ch)) { failures += count; return false; }
+    // hdgpu: the BC chain when the device takes it and this decode's consumer only uploads it (HdCompressScope): the
+    // file's blocks when the alpha rule below cannot change anything, else the rule's result (cached for the LOD model)
+    bool bc = g_compressed && compress && file->info.fmt >= kBC1 && file->info.fmt <= kBC3 && cw % 4 == 0 && ch % 4 == 0;
+    const bool rule = bc && h.tcc() && !raw_alpha && rule_may_change(r);
+    std::shared_ptr<const std::vector<Image>> chain;
+    bool chain_masked = false;
+    const std::string key = bc ? (rule ? rule_key(*path, job, r) : chain_key(*path, job)) : std::string();
+    if (bc) {
+        std::unique_lock<Lock> lk(mu_);
+        auto p = prepared_.find(key);
+        if (p != prepared_.end()) {
+            chain = p->second.chain;
+            chain_masked = p->second.masked;
+        } else if (!rule) {
+            lk.unlock();
+            const auto t1 = std::chrono::steady_clock::now();
+            chain = bc_chain(*file, job, t_rows);
+            if (count) bc_ms += ms_since(t1);
+            lk.lock();
+            prepared_[key] = Prepared{chain, false};
+        }
+        if (!chain && !rule) bc = false;
+    }
+    bool rule_changed = false;
     Image out;
-    out.w = cw;
-    out.h = ch;
-    out.rgba.resize(std::size_t(cw) * ch * 4);
-    for (int y = 0; y < ch; ++y)
-        std::memcpy(&out.rgba[std::size_t(y) * cw * 4], &src.rgba[std::size_t(y) * src.w * 4], std::size_t(cw) * 4);
-    if (!h.tcc()) {
+    if (!chain) {
+        const Image* dec = file->decoded();
+        if (!dec) { failures += count; return false; }
+        const Image& src = *dec;
+        out.w = cw;
+        out.h = ch;
+        out.rgba.resize(std::size_t(cw) * ch * 4);
+        for (int y = 0; y < ch; ++y)
+            std::memcpy(&out.rgba[std::size_t(y) * cw * 4], &src.rgba[std::size_t(y) * src.w * 4], std::size_t(cw) * 4);
+    }
+    if (chain) {
+        masked += chain_masked;
+    } else if (!h.tcc()) {
         for (std::size_t i = 3; i < out.rgba.size(); i += 4) out.rgba[i] = 0xFF;
     } else if (!raw_alpha) {
         // The replacement keeps to the original's alpha: transparent over the original's transparent texels (alpha 0)
@@ -456,8 +792,11 @@ bool HdTextures::apply(const GsMemory& gs, DecodedRaster& r, std::uint32_t cbp_a
         auto oa = [&](int x, int y) {
             return float(o.rgba[(std::size_t((y % o.h + o.h) % o.h) * o.w + std::size_t((x % o.w + o.w) % o.w)) * 4 + 3]);
         };
+        // hdgpu: the rows in strips on threads (hd_rows; the body below is kept as it was, not indented again)
+        std::atomic<bool> any_rows{false};
+        hd_rows(ch, [&](int y_begin, int y_end) {
         bool any = false;
-        for (int y = 0; y < ch; ++y) {
+        for (int y = y_begin; y < y_end; ++y) {
             const float fy = (float(y) + 0.5f) * float(o.h) / float(ch) - 0.5f;
             const int y0 = int(std::floor(fy));
             const float wy = fy - float(y0);
@@ -473,17 +812,84 @@ bool HdTextures::apply(const GsMemory& gs, DecodedRaster& r, std::uint32_t cbp_a
                 if (a > lim) { a = lim; any = true; }
             }
         }
+        if (any) any_rows = true;
+        });
+        const bool any = any_rows;
         masked += any;
+        rule_changed = any;
     }
+    if (bc && !chain) {   // hdgpu: the rule ran on RGBA8: its result as BC3 when it changed texels, else the file's blocks
+        const auto t1 = std::chrono::steady_clock::now();
+        const std::string plain_key = chain_key(*path, job);   // the file's chain (prefetch builds it on its threads)
+        std::shared_ptr<const std::vector<Image>> plain;
+        {
+            const std::lock_guard<Lock> lk(mu_);
+            auto p = prepared_.find(plain_key);
+            if (p != prepared_.end()) plain = p->second.chain;
+        }
+        if (!plain) {
+            plain = bc_chain(*file, job, t_rows);
+            const std::lock_guard<Lock> lk(mu_);
+            prepared_[plain_key] = Prepared{plain, false};
+        }
+        chain = rule_changed && plain ? bc_rule_chain(*plain, out, t_rows) : plain;
+        if (count) bc_ms += ms_since(t1);
+        const std::lock_guard<Lock> lk(mu_);
+        if (chain) prepared_[key] = Prepared{chain, rule_changed};
+        chain_masked = rule_changed;
+    }
+    if (!count) return chain != nullptr;   // prefetch: built ahead, nothing replaced
     if (keeps_original(*path)) {   // hdkey
         r.original = std::move(r.levels);
         ++originals;
     }
     r.levels.clear();
-    r.levels.push_back(std::move(out));
+    if (chain) {
+        r.levels = *chain;   // the blocks are shared
+        ++compressed;
+        encoded += chain->front().bc == kBC3 && chain_masked;
+        bc_bytes += chain_bytes(*chain);
+    } else {
+        r.levels.push_back(std::move(out));
+    }
     r.hd = true;
     ++hits;
     return true;
+}
+
+HdNoHookScope::HdNoHookScope() : saved(t_no_hook) { t_no_hook = true; }
+HdNoHookScope::~HdNoHookScope() { t_no_hook = saved; }
+
+std::size_t hd_each_raster(Bytes f, GsMemory& gs, const std::function<bool(const HdRasterVariant&)>& fn, bool all_keys) {
+    const HdNoHookScope no_hook;
+    std::size_t n = 0;
+    for (std::size_t o : find_rasters(f)) {
+        RasterHeader h;
+        if (!read_raster_header(f, o, h)) continue;
+        ++n;
+        const int variants = std::max<int>(1, h.palettes);
+        for (int v = 0; v < variants; ++v) {
+            HdRasterVariant rv;
+            rv.offset = o;
+            rv.variant = v;
+            rv.variants = variants;
+            rv.cbp_add = palette_cbp_add(f, o, v);
+            rv.decoded = decode_raster_clut(f, o, gs, rv.raster, rv.cbp_add, &rv.why);
+            if (rv.decoded) {
+                if (all_keys) {
+                    rv.keys = hd_candidate_keys(gs, rv.raster.hdr, rv.cbp_add);
+                } else {
+                    HdCandidate c;
+                    if (hd_key(gs, rv.raster.hdr, rv.cbp_add, 1, c.key)) rv.keys.push_back(c);
+                }
+            } else {
+                rv.raster = DecodedRaster{};
+                rv.raster.hdr = h;
+            }
+            if (!fn(rv)) return n;
+        }
+    }
+    return n;
 }
 
 std::vector<std::size_t> find_rasters(Bytes f) {
@@ -504,9 +910,17 @@ std::vector<std::size_t> find_rasters(Bytes f) {
 std::size_t HdTextures::prefetch(const std::vector<std::string>& files, int threads) {
     if (pack.files.empty()) return 0;
     const auto t0 = std::chrono::steady_clock::now();
-    HdTextures* saved = hd_textures();
-    set_hd_textures(nullptr);   // plain decodes here
-    std::vector<std::string> todo;
+    struct NoHook {   // plain decodes here (on this thread only)
+        bool saved = t_no_hook;
+        NoHook() { t_no_hook = true; }
+        ~NoHook() { t_no_hook = saved; }
+    };
+    std::optional<NoHook> no_hook(std::in_place);
+    // hdgpu: per file, the BC chains its rasters will ask for (built on the threads as well) and whether the RGBA8
+    // decode is needed (no BC device, or a raster the alpha rule may change)
+    struct Todo { std::string path; std::vector<Job> jobs; std::vector<std::string> keys; bool decode = false; std::vector<DecodedRaster> rules; };
+    std::vector<Todo> todo;
+    std::unordered_map<std::string, std::size_t> at;
     GsMemory gs;
     for (const auto& path : files) {
         std::vector<std::uint8_t> d;
@@ -518,14 +932,37 @@ std::size_t HdTextures::prefetch(const std::vector<std::string>& files, int thre
             for (int v = 0; v < std::max<int>(1, h.palettes); ++v) {
                 DecodedRaster r;
                 const std::uint32_t add = palette_cbp_add(f, o, v);
-                if (!decode_raster_clut(f, o, gs, r, add)) continue;
-                if (const std::string* p = hd_lookup(pack, gs, r.hdr, add))
-                    if (!cache_.count(*p) && std::find(todo.begin(), todo.end(), *p) == todo.end()) todo.push_back(*p);
+                if (!decode_raster_clut(f, o, gs, r, add) || r.levels.empty()) continue;
+                const std::string* p = hd_lookup(pack, gs, r.hdr, add);
+                if (!p) continue;
+                std::unique_lock<Lock> lk(mu_);
+                if (cache_.count(*p)) continue;
+                auto [it, fresh] = at.emplace(*p, todo.size());
+                if (fresh) todo.push_back(Todo{*p, {}, {}, false});
+                Todo& t = todo[it->second];
+                const Job job = job_of(r.hdr);
+                if (!g_compressed || (job.tcc && !raw_alpha && rule_may_change(r))) {
+                    t.decode = true;   // the alpha rule runs on it (with BC: here, on the threads, onto this chain's colour)
+                    if (!g_compressed) continue;
+                    if (!prepared_.count(rule_key(*p, job, r))) {
+                        DecodedRaster rc;
+                        rc.hdr = r.hdr;
+                        rc.levels.push_back(r.levels[0]);
+                        rc.max_alpha = r.max_alpha;
+                        t.rules.push_back(std::move(rc));
+                    }
+                }
+                const std::string key = chain_key(*p, job);
+                if (!prepared_.count(key) && std::find(t.keys.begin(), t.keys.end(), key) == t.keys.end()) {
+                    t.jobs.push_back(job);
+                    t.keys.push_back(key);
+                }
             }
         }
     }
-    set_hd_textures(saved);
-    std::vector<std::shared_ptr<const Image>> got(todo.size());
+    no_hook.reset();
+    struct Got { std::shared_ptr<const Source> src; };
+    std::vector<Got> got(todo.size());
     std::size_t next = 0;
     std::mutex m;
     auto work = [&]() {
@@ -536,8 +973,25 @@ std::size_t HdTextures::prefetch(const std::vector<std::string>& files, int thre
                 if (next >= todo.size()) return;
                 i = next++;
             }
-            auto im = std::make_shared<Image>();
-            if (load_dds(todo[i], *im)) got[i] = std::move(im);
+            Todo& t = todo[i];
+            got[i].src = read_source(t.path, t.decode);
+            if (!got[i].src) continue;
+            std::vector<std::shared_ptr<const std::vector<Image>>> chains;
+            for (const Job& j : t.jobs) chains.push_back(bc_chain(*got[i].src, j));
+            {
+                const std::lock_guard<Lock> lk(mu_);
+                for (std::size_t k = 0; k < chains.size(); ++k)
+                    if (chains[k]) prepared_[t.keys[k]] = Prepared{chains[k], false};
+            }
+            const int rows = t_rows;
+            t_rows = 1;   // (this pool is the parallelism)
+            bool all = true;
+            for (DecodedRaster& rc : t.rules) {
+                std::size_t scratch = 0;
+                all = replace_(t.path, got[i].src, rc, true, scratch) && all;
+            }
+            t_rows = rows;
+            if (g_compressed && all && got[i].src->info.fmt <= kBC3) got[i].src->rgba.reset();   // built: the decode goes (decoded() redoes it)
         }
     };
     std::vector<std::thread> pool;
@@ -545,10 +999,11 @@ std::size_t HdTextures::prefetch(const std::vector<std::string>& files, int thre
     for (int k = 1; k < n; ++k) pool.emplace_back(work);
     work();
     for (auto& t : pool) t.join();
+    const std::lock_guard<Lock> lk(mu_);
     std::size_t loaded = 0;
     for (std::size_t i = 0; i < todo.size(); ++i) {
-        if (got[i]) ++loaded;
-        cache_.emplace(todo[i], std::move(got[i]));
+        if (got[i].src) ++loaded;
+        cache_.emplace(todo[i].path, std::move(got[i].src));
     }
     files_loaded += loaded;
     load_ms += ms_since(t0);
@@ -606,60 +1061,16 @@ namespace {
 bool fail(std::string* why, const char* what) { if (why) *why = what; return false; }
 
 inline std::uint8_t ps2_alpha(std::uint32_t a) { return a >= 0x80 ? 0xFF : std::uint8_t(a * 2); }
-
-void rgb565(std::uint16_t c, std::uint8_t o[3]) {
-    const std::uint32_t r = (c >> 11) & 31, g = (c >> 5) & 63, b = c & 31;
-    o[0] = std::uint8_t((r << 3) | (r >> 2));
-    o[1] = std::uint8_t((g << 2) | (g >> 4));
-    o[2] = std::uint8_t((b << 3) | (b >> 2));
-}
-
-// One BC1 colour block into 4x4 RGBA (alpha 255, or 0 for BC1's 3-colour transparent index when `bc1_alpha`).
-void color_block(const std::uint8_t* b, std::uint8_t px[16][4], bool bc1_alpha) {
-    const std::uint16_t c0 = std::uint16_t(b[0] | b[1] << 8), c1 = std::uint16_t(b[2] | b[3] << 8);
-    std::uint8_t pal[4][4];
-    rgb565(c0, pal[0]);
-    rgb565(c1, pal[1]);
-    pal[0][3] = pal[1][3] = pal[2][3] = pal[3][3] = 255;
-    const bool four = c0 > c1 || !bc1_alpha;
-    for (int k = 0; k < 3; ++k) {
-        if (four) {
-            pal[2][k] = std::uint8_t((2 * pal[0][k] + pal[1][k] + 1) / 3);
-            pal[3][k] = std::uint8_t((pal[0][k] + 2 * pal[1][k] + 1) / 3);
-        } else {
-            pal[2][k] = std::uint8_t((pal[0][k] + pal[1][k]) / 2);
-            pal[3][k] = 0;
-        }
-    }
-    if (!four) pal[3][3] = 0;
-    const std::uint32_t idx = std::uint32_t(b[4]) | std::uint32_t(b[5]) << 8 | std::uint32_t(b[6]) << 16 | std::uint32_t(b[7]) << 24;
-    for (int i = 0; i < 16; ++i) std::memcpy(px[i], pal[(idx >> (2 * i)) & 3], 4);
-}
-
-void bc3_alpha(const std::uint8_t* b, std::uint8_t px[16][4]) {
-    std::uint32_t a[8];
-    a[0] = b[0];
-    a[1] = b[1];
-    if (a[0] > a[1]) {
-        for (int i = 1; i < 7; ++i) a[1 + i] = ((7 - i) * a[0] + i * a[1] + 3) / 7;
-    } else {
-        for (int i = 1; i < 5; ++i) a[1 + i] = ((5 - i) * a[0] + i * a[1] + 2) / 5;
-        a[6] = 0;
-        a[7] = 255;
-    }
-    u64 bits = 0;
-    for (int i = 0; i < 6; ++i) bits |= u64(b[2 + i]) << (8 * i);
-    for (int i = 0; i < 16; ++i) px[i][3] = std::uint8_t(a[(bits >> (3 * i)) & 7]);
-}
 }  // namespace
 
-bool decode_dds(const std::uint8_t* d, std::size_t n, Image& out, std::string* why) {
-    out = Image{};
+bool parse_dds(const std::uint8_t* d, std::size_t n, DdsInfo& out, std::string* why) {
+    out = DdsInfo{};
     if (n < 128 || std::memcmp(d, "DDS ", 4) != 0 || rd32(d + 4) != 124) return fail(why, "not a DDS file");
-    const std::uint32_t h = rd32(d + 12), w = rd32(d + 16), pf_flags = rd32(d + 80), fourcc = rd32(d + 84);
+    const std::uint32_t flags = rd32(d + 8), h = rd32(d + 12), w = rd32(d + 16), mips = rd32(d + 28), pf_flags = rd32(d + 80),
+                        fourcc = rd32(d + 84);
     if (!w || !h || w > 16384 || h > 16384) return fail(why, "bad DDS size");
     std::size_t at = 128;
-    enum { kNone, kBC1, kBC2, kBC3, kRGBA, kBGRA } fmt = kNone;
+    int fmt = 0;
     auto cc = [](const char* s) { return std::uint32_t(s[0]) | std::uint32_t(s[1]) << 8 | std::uint32_t(s[2]) << 16 | std::uint32_t(s[3]) << 24; };
     if (pf_flags & 4) {   // DDPF_FOURCC
         if (fourcc == cc("DXT1")) fmt = kBC1;
@@ -672,64 +1083,65 @@ bool decode_dds(const std::uint8_t* d, std::size_t n, Image& out, std::string* w
             if (dxgi == 71 || dxgi == 72) fmt = kBC1;
             else if (dxgi == 74 || dxgi == 75) fmt = kBC2;
             else if (dxgi == 77 || dxgi == 78) fmt = kBC3;
-            else if (dxgi == 28 || dxgi == 29) fmt = kRGBA;
-            else if (dxgi == 87 || dxgi == 91) fmt = kBGRA;
+            else if (dxgi == 28 || dxgi == 29) fmt = kDdsRGBA;
+            else if (dxgi == 87 || dxgi == 91) fmt = kDdsBGRA;
             else return fail(why, "unsupported DX10 format (BC7 and others not decoded)");
         } else return fail(why, "unsupported DDS FourCC");
     } else if ((pf_flags & 0x40) && rd32(d + 88) == 32) {   // DDPF_RGB, 32 bits
         const std::uint32_t rm = rd32(d + 92), am = rd32(d + 104);
         const bool has_a = (pf_flags & 1) && am == 0xFF000000u;
-        if (rm == 0x000000FFu) fmt = kRGBA;
-        else if (rm == 0x00FF0000u) fmt = kBGRA;
+        if (rm == 0x000000FFu) fmt = kDdsRGBA;
+        else if (rm == 0x00FF0000u) fmt = kDdsBGRA;
         else return fail(why, "unsupported DDS RGB mask");
         if (!has_a) return fail(why, "DDS RGB without alpha not handled");
     } else {
         return fail(why, "unsupported DDS pixel format");
     }
-    const std::size_t bw = (w + 3) / 4, bh = (h + 3) / 4;
-    const std::size_t need = (fmt == kRGBA || fmt == kBGRA) ? std::size_t(w) * h * 4 : bw * bh * (fmt == kBC1 ? 8 : 16);
-    if (at > n || n - at < need) return fail(why, "DDS data truncated");
+    auto bytes = [&](std::uint32_t lw, std::uint32_t lh) {
+        return fmt >= kDdsRGBA ? std::size_t(lw) * lh * 4 : bc_level_bytes(fmt, int(lw), int(lh));
+    };
+    if (at > n || n - at < bytes(w, h)) return fail(why, "DDS data truncated");
+    out.fmt = fmt;
     out.w = int(w);
     out.h = int(h);
-    out.rgba.resize(std::size_t(w) * h * 4);
-    const std::uint8_t* p = d + at;
-    if (fmt == kRGBA || fmt == kBGRA) {
-        for (std::size_t i = 0; i < std::size_t(w) * h; ++i) {
+    out.at = at;
+    if (flags & 0x20000) {   // DDSD_MIPMAPCOUNT: the levels the data holds whole (a short file keeps the ones before)
+        std::size_t off = at + bytes(w, h);
+        std::uint32_t lw = w, lh = h;
+        for (std::uint32_t l = 1; l < std::min<std::uint32_t>(mips, 15) && (lw > 1 || lh > 1); ++l) {
+            lw = std::max(lw / 2, 1u);
+            lh = std::max(lh / 2, 1u);
+            if (n - off < bytes(lw, lh)) break;
+            off += bytes(lw, lh);
+            ++out.levels;
+        }
+    }
+    return true;
+}
+
+bool decode_dds(const std::uint8_t* d, std::size_t n, Image& out, std::string* why) {
+    out = Image{};
+    DdsInfo info;
+    if (!parse_dds(d, n, info, why)) return false;
+    const int fmt = info.fmt;
+    const std::size_t w = std::size_t(info.w), h = std::size_t(info.h);
+    out.w = info.w;
+    out.h = info.h;
+    out.rgba.resize(w * h * 4);
+    const std::uint8_t* p = d + info.at;
+    if (fmt == kDdsRGBA || fmt == kDdsBGRA) {
+        for (std::size_t i = 0; i < w * h; ++i) {
             std::uint8_t* o = &out.rgba[i * 4];
             const std::uint8_t* s = p + i * 4;
-            o[0] = fmt == kRGBA ? s[0] : s[2];
+            o[0] = fmt == kDdsRGBA ? s[0] : s[2];
             o[1] = s[1];
-            o[2] = fmt == kRGBA ? s[2] : s[0];
+            o[2] = fmt == kDdsRGBA ? s[2] : s[0];
             o[3] = ps2_alpha(s[3]);
         }
         return true;
     }
-    const std::size_t bsz = fmt == kBC1 ? 8 : 16;
-    std::uint8_t px[16][4];
-    for (std::size_t by = 0; by < bh; ++by)
-        for (std::size_t bx = 0; bx < bw; ++bx) {
-            const std::uint8_t* b = p + (by * bw + bx) * bsz;
-            if (fmt == kBC1) {
-                color_block(b, px, true);
-            } else {
-                color_block(b + 8, px, false);
-                if (fmt == kBC3) bc3_alpha(b, px);
-                else
-                    for (int i = 0; i < 16; ++i) {
-                        const std::uint32_t a4 = (b[i / 2] >> (4 * (i & 1))) & 15;
-                        px[i][3] = std::uint8_t(a4 * 17);
-                    }
-            }
-            for (int i = 0; i < 16; ++i) {
-                const std::size_t x = bx * 4 + std::size_t(i & 3), y = by * 4 + std::size_t(i >> 2);
-                if (x >= w || y >= h) continue;
-                std::uint8_t* o = &out.rgba[(y * w + x) * 4];
-                o[0] = px[i][0];
-                o[1] = px[i][1];
-                o[2] = px[i][2];
-                o[3] = ps2_alpha(px[i][3]);
-            }
-        }
+    bc_decode(fmt, p, info.w, info.h, out.rgba.data());
+    for (std::size_t i = 3; i < out.rgba.size(); i += 4) out.rgba[i] = ps2_alpha(out.rgba[i]);
     return true;
 }
 

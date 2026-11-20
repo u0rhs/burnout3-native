@@ -43,6 +43,9 @@ struct Canvas {
 // high from (x, top), strokes `t` wide; returns its width. Lower case letters draw as upper case.
 float text(std::string_view s, float x, float top, float cap, float t, std::vector<Line>& out);
 float text_width(std::string_view s, float cap, float t);
+// promptround: where the strokes' weight sits across a text laid out by text() from x 0 (the strokes' length-weighted
+// centre, x): a letter with its stem on one side (B, D, P ...) is centred on this, not on its box, to look centred
+float text_mass_x(std::string_view s, float cap, float t);
 
 }  // namespace b3replay::glyph
 

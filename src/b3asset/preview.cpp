@@ -56,6 +56,7 @@ Image render_preview(const Model& m, int w, int h, const PreviewView& view) {
     }
     for (const DrawRange& dr : m.draws) {
         const Texture* tex = dr.texture >= 0 && view.textured ? &m.textures[dr.texture] : nullptr;
+        if (tex && (tex->levels.empty() || tex->levels[0].rgba.empty())) tex = nullptr;   // hdgpu: a BC level has no texels here
         for (std::uint32_t t = 0; t < dr.index_count; t += 3) {
             const std::uint32_t* idx = &m.indices[dr.first_index + t];
             const P &a = proj[idx[0]], &b = proj[idx[1]], &cc = proj[idx[2]];

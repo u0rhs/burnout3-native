@@ -6,6 +6,8 @@
 #include "custom_music.h"
 
 #include <cmath>
+#include <cstring>
+#include <limits>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -308,6 +310,63 @@ TEST(wav_folder_decode_resample_play) {
     CHECK(double(h.peak()) >= b3music::Limiter::kCeiling * 32767.0 * 0.98);
     CHECK(h.limiter().limited() > 40000);
     CHECK_NEAR(double(h.limiter().min_gain()), b3music::Limiter::kCeiling / 2.0, 0.01);
+    fs::remove_all(dir, ec);
+}
+
+// robust2: a float WAV with NaN / Inf samples: silence there, never a full-scale click (a NaN passed the limiter)
+TEST(float_wav_nan_inf_are_silence) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path("build") / "test_custom_music_nan.d";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const std::string wav = (dir / "Bad Floats.wav").string();
+    const std::uint32_t rate = 48000, frames = 24000;
+    Bytes b;
+    put(b, "RIFF");
+    le32(b, 36 + frames * 8);
+    put(b, "WAVEfmt ");
+    le32(b, 16);
+    le16(b, 3);   // IEEE float
+    le16(b, 2);
+    le32(b, rate);
+    le32(b, rate * 8);
+    le16(b, 8);
+    le16(b, 32);
+    put(b, "data");
+    le32(b, frames * 8);
+    for (std::uint32_t k = 0; k < frames; ++k) {
+        float v = 0.5f * float(std::sin(2.0 * 3.14159265358979 * 440.0 * double(k) / double(rate)));
+        if (k % 997 == 0) v = std::numeric_limits<float>::quiet_NaN();
+        else if (k % 1499 == 0) v = std::numeric_limits<float>::infinity();
+        else if (k % 2003 == 0) v = -std::numeric_limits<float>::infinity();
+        std::uint32_t u;
+        std::memcpy(&u, &v, 4);
+        le32(b, u);
+        le32(b, u);
+    }
+    { std::FILE* f = std::fopen(wav.c_str(), "wb"); if (f) { std::fwrite(b.data(), 1, b.size(), f); std::fclose(f); } }
+    std::string why;
+    const std::vector<b3music::Track> tracks = b3music::scan_folder(dir.string(), &why);
+    CHECK(tracks.size() == 1);
+    if (tracks.size() != 1) return;
+    b3music::Player p;
+    CHECK(p.start(tracks[0], 0, &why));
+    p.set_gain(1.0f);
+    p.play(false);
+    std::int16_t block[2 * 800];
+    int loud = 0, sound = 0;
+    for (int k = 0; k < 40 && !p.finished(); ++k) {
+        std::fill(std::begin(block), std::end(block), std::int16_t(0));
+        p.mix(block, 800);
+        for (std::int16_t v : block) {
+            loud += v > 17000 || v < -17000;   // over the file's 0.5 (16384)
+            sound += v != 0;
+        }
+    }
+    CHECK(loud == 0);
+    CHECK(sound > 20000);   // the tone itself still plays
+    CHECK(double(p.peak()) <= 0.5 * 32767.0 + 2.0);
     fs::remove_all(dir, ec);
 }
 

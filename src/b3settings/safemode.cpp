@@ -1,5 +1,6 @@
 // safemode.cpp -- see include/b3settings/safemode.h
 #include "b3settings/safemode.h"
+#include "b3port/fileio.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -41,7 +42,7 @@ RunState run_state_from_ini(std::string_view text) {
 }
 
 RunState load_run_state(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(b3io::u8path(path), std::ios::binary);
     if (!f) return {};
     std::ostringstream ss;
     ss << f.rdbuf();
@@ -49,15 +50,7 @@ RunState load_run_state(const std::string& path) {
 }
 
 bool save_run_state(const std::string& path, const RunState& r) {
-    const std::string tmp = path + ".tmp";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f) return false;
-        f << run_state_to_ini(r);
-        if (!f) return false;
-    }
-    std::remove(path.c_str());   // Windows: rename does not replace
-    return std::rename(tmp.c_str(), path.c_str()) == 0;
+    return b3io::replace_file(b3io::u8path(path), run_state_to_ini(r));
 }
 
 StartDecision start_run(const RunState& previous, bool force_safe) {
@@ -67,6 +60,20 @@ StartDecision start_run(const RunState& previous, bool force_safe) {
     d.forced = force_safe;
     d.safe = force_safe || d.now.unclean >= kSafeModeAfter;
     return d;
+}
+
+std::string safe_mode_guards_off(const StartDecision& d, bool last_run_overrun) {
+    if (d.forced) return kGuardsOffAsked;
+    if (d.safe && last_run_overrun) return kGuardsOffOverrun;
+    return {};
+}
+
+bool log_shows_guard_overrun(const std::string& path) {
+    std::ifstream f(b3io::u8path(path), std::ios::binary);
+    const std::string crash = "guest memory overrun: host address", kept = std::string("guest RAM guards: off (") + kGuardsOffOverrun + ")";
+    for (std::string line; std::getline(f, line);)
+        if (line.find(crash) != std::string::npos || line.find(kept) != std::string::npos) return true;
+    return false;
 }
 
 Settings safe_settings(Settings s) {

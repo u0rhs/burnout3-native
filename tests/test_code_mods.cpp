@@ -298,8 +298,61 @@ TEST(settings_rows_values_and_files) {
     std::ofstream(lib, std::ios::binary) << "abc";
     const std::string d = b3mod::library_digest(lib);
     CHECK(d == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");   // SHA-256("abc")
-    CHECK(!b3mod::trusted(pref, d) && b3mod::add_trust(pref, d, "m", "1.0") && b3mod::trusted(pref, d));
-    CHECK(!b3mod::trusted(pref, std::string(64, '0')) && b3mod::add_trust(pref, d, "m", "1.0"));
+    CHECK(!b3mod::trusted(pref, "m", d) && b3mod::add_trust(pref, d, "m", "1.0") && b3mod::trusted(pref, "m", d));
+    CHECK(!b3mod::trusted(pref, "m", std::string(64, '0')) && b3mod::add_trust(pref, d, "m", "1.0"));
+    CHECK(!b3mod::trusted(pref, "other", d));   // the record is the mod id's: another mod with the same bytes is asked
+}
+
+TEST(trust_covers_every_library_in_the_mod) {
+    const fs::path dir = fs::path(B3_TESTMODS_DIR) / "trust-set" / "m";
+    fs::remove_all(dir.parent_path());
+    fs::create_directories(dir / "bin" / "deps");
+    auto put = [&](const std::string& rel, const std::string& text) { std::ofstream(dir / rel, std::ios::binary) << text; };
+    put("bin/m.so", "ELF main");
+    put("bin/deps/libz.SO", "ELF dep");
+    put("bin/libq.so.1", "ELF versioned");
+    put("bin/helper.dll", "MZ helper");
+    put("bin/x.dylib", "macho");
+    put("readme.txt", "words");
+    b3mod::CodeSpec code;
+    code.present = true;
+    code.linux_path = "bin/m.so";
+    code.windows_path = "bin/m.dll";   // (not there: only this system's named library is looked for)
+    std::vector<b3mod::TrustFile> files;
+    CHECK(b3mod::trust_files(dir, code, {}, files));
+    std::vector<std::string> names;
+    for (const auto& f : files) names.push_back(f.rel);
+    CHECK((names == std::vector<std::string>{"bin/deps/libz.SO", "bin/helper.dll", "bin/libq.so.1", "bin/m.so", "bin/x.dylib"}));
+    CHECK(b3mod::library_file_name("a.so.12") && !b3mod::library_file_name("a.so.x") && !b3mod::library_file_name("a.sox") && !b3mod::library_file_name(".so"));
+    const std::string d0 = b3mod::trust_digest(dir, code, {});
+    CHECK(d0.size() == 64 && d0 == b3mod::trust_digest(files));
+    put("readme.txt", "other words");   // not code: the same set
+    CHECK(b3mod::trust_digest(dir, code, {}) == d0);
+    put("bin/deps/libz.SO", "ELF dop");   // a dependency only, the same size: asked again
+    const std::string d1 = b3mod::trust_digest(dir, code, {});
+    CHECK(d1.size() == 64 && d1 != d0);
+    put("bin/new.so", "x");   // a library added: asked again
+    CHECK(b3mod::trust_digest(dir, code, {}) != d1);
+    fs::remove(dir / "bin" / "new.so");
+    CHECK(b3mod::trust_digest(dir, code, {}) == d1);
+    b3mod::CodeSpec none;
+    CHECK(!b3mod::needs_trust(none, {}) && b3mod::trust_digest(dir, none, {}).empty());
+    fs::remove_all(dir.parent_path());
+}
+
+TEST(the_loader_checks_the_allowed_set_again_before_loading) {
+    Fixture f;
+    CodeMods::Candidate c = f.mod("good", "good");
+    c.dir = fs::absolute(fs::path(B3_TESTMODS_DIR));   // the folder of the test libraries: every one of them in the set
+    c.code.present = true;
+    c.code.linux_path = "good.so";
+    c.trust_digest = std::string(64, '0');   // not what is there now (a file changed after the check)
+    auto r = f.mods->load({c}, false);
+    CHECK(r.size() == 1 && !r[0].loaded && r[0].reason.find("changed after they were checked") != std::string::npos);
+    c.trust_digest = b3mod::trust_digest(c.dir, c.code, {});
+    CHECK(c.trust_digest.size() == 64);
+    r = f.mods->load({c}, false);
+    CHECK(r.size() == 1 && r[0].loaded);
 }
 
 TEST(settings_change_at_vblank_boundaries_and_replay_the_same) {

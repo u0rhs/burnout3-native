@@ -4,6 +4,7 @@
 #include "test.h"
 
 #include "../src/b3launcher/update.h"
+#include "b3port/file_url.h"
 
 #include <sstream>
 
@@ -249,6 +250,15 @@ TEST(release_assets_and_sums) {
     CHECK(sum_for(sums, "burnout3-native-1.2.0-abc-linux-x86_64.tar.gz") == std::string(64, 'b'));   // lower case
     CHECK(sum_for(sums, "other.zip").empty());
     CHECK(sum_for(sums + std::string(64, 'c') + "  burnout3-native-1.2.0-abc-win64.zip\n", "burnout3-native-1.2.0-abc-win64.zip").empty());   // two different
+}
+
+// robust2: file:// URLs for SDL_OpenURL, percent-encoded (the macOS update's disk image in "Application Support")
+TEST(file_urls_are_encoded) {
+    CHECK(b3port::file_url("/Users/me/Library/Application Support/b3port/updates/x.dmg") ==
+          "file:///Users/me/Library/Application%20Support/b3port/updates/x.dmg");
+    CHECK(b3port::file_url("C:\\Users\\me\\Saved Games\\b3") == "file:///C:/Users/me/Saved%20Games/b3");
+    CHECK(b3port::file_url("/a/#1 50%?.txt") == "file:///a/%231%2050%25%3F.txt");
+    CHECK(b3port::file_url("/home/m\xC3\xA9/x") == "file:///home/m\xC3\xA9/x");   // UTF-8 kept as it is
 }
 
 TEST_MAIN("test_launcher_update: the launcher's update check (src/b3launcher/update.h), canned answers only")

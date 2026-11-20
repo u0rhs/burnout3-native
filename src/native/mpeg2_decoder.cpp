@@ -73,7 +73,8 @@ struct Bits {
 };
 
 struct Frame {
-    int w = 0, h = 0;   // coded (macroblock multiples)
+    int w = 0, h = 0;     // coded (macroblock multiples)
+    int dw = 0, dh = 0;   // display: the sequence's size when it was decoded (a later sequence header may change it)
     std::vector<std::uint8_t> y, cb, cr;
     int type = 0, tref = 0;
     std::uint64_t index = 0;
@@ -137,6 +138,10 @@ struct Mpeg2Decoder::Impl {
         } else if (id == 8) {   // picture coding extension
             f_code[0][0] = int(b.get(4)); f_code[0][1] = int(b.get(4));
             f_code[1][0] = int(b.get(4)); f_code[1][1] = int(b.get(4));
+            // 1..9, or 15 for a direction not used; 0 and 10..14 are forbidden / reserved [6.3.10, Table 7-7]
+            for (const auto& fs : f_code)
+                for (const int fc : fs)
+                    if (fc == 0 || (fc > 9 && fc != 15)) return fail("mpeg2: invalid f_code " + std::to_string(fc));
             dc_prec = int(b.get(2)); pic_struct = int(b.get(2));
             b.skip(1);   // top_field_first
             fpfd = int(b.get(1)); cmv = int(b.get(1)); qst = int(b.get(1)); ivf = int(b.get(1)); alt = int(b.get(1));
@@ -152,6 +157,9 @@ struct Mpeg2Decoder::Impl {
 
     // ---- motion ----
     int motion_delta(Bits& b, int fcode) {
+        // a vector in a direction whose f_code is 15 ("not used"), or none came (the MPEG-1 default): the residual
+        // size r = f_code - 1 would be out of range
+        if (fcode < 1 || fcode > 9) { fail("mpeg2: motion vector with f_code " + std::to_string(fcode)); return 0; }
         const std::uint32_t nx = b.peek16();
         int code;
         if (nx & 0x8000u) { b.skip(1); code = 0; }
@@ -269,6 +277,7 @@ struct Mpeg2Decoder::Impl {
     bool picture(Bits& b, std::shared_ptr<Frame>& f) {
         f = std::make_shared<Frame>();
         f->alloc(mbw * 16, mbh * 16);
+        f->dw = hsize; f->dh = vsize;
         f->type = pct; f->tref = tref; f->index = index++;
         int pmv[2][2] = {{0, 0}, {0, 0}};
         int last_type = 0, last_mv[2][2] = {{0, 0}, {0, 0}};   // a skipped B macroblock repeats the previous one
@@ -306,10 +315,16 @@ struct Mpeg2Decoder::Impl {
                     const auto& e = tables().mbai.at(b.peek16());
                     if (!e.len) { if (b.peek(11) == 0x00F) { b.skip(11); continue; } return fail("mpeg2: bad macroblock address increment"); }
                     b.skip(e.len);
-                    if (e.value == 0x23) { inc += 33; continue; }   // macroblock_escape
+                    if (e.value == 0x23) {   // macroblock_escape
+                        inc += 33;
+                        if (inc > mbw * mbh) return fail("mpeg2: macroblock past the picture");
+                        continue;
+                    }
                     inc += e.value;
                     break;
                 }
+                // the new address (and every skipped one before it) must be in the picture before anything is stored
+                if (mbaddr + inc >= mbw * mbh) return fail("mpeg2: macroblock past the picture");
                 // skipped macroblocks between the previous one and this one (not before a slice's first)
                 if (!first_mb && inc > 1) {
                     for (int s = 1; s < inc; ++s) {
@@ -419,7 +434,7 @@ struct Mpeg2Decoder::Impl {
 
     void emit(const Frame& f) {
         Mpeg2Picture p;
-        p.width = f.w; p.height = f.h; p.display_w = hsize; p.display_h = vsize;
+        p.width = f.w; p.height = f.h; p.display_w = f.dw; p.display_h = f.dh;
         p.type = f.type; p.temporal_reference = f.tref; p.decode_index = f.index;
         p.y = f.y; p.cb = f.cb; p.cr = f.cr;
         out.push_back(std::move(p));
@@ -471,6 +486,12 @@ struct Mpeg2Decoder::Impl {
                 if (!have_seq) { fail("mpeg2: picture before a sequence header"); return; }
                 if (!mpeg2) { fail("mpeg2: MPEG-1 stream (no sequence extension)"); return; }
                 if (pct < 1 || pct > 3) { fail("mpeg2: picture coding type " + std::to_string(pct)); return; }
+                // a new sequence header changed the coded size: the held picture goes out at its own size and the
+                // references (the old size) are dropped; a P / B picture before the next I one then fails or is dropped
+                if (bwd && (bwd->w != mbw * 16 || bwd->h != mbh * 16)) {
+                    if (held) emit(*held);
+                    held.reset(); fwd.reset(); bwd.reset();
+                }
                 std::shared_ptr<Frame> f;
                 if (pct != 3 || (fwd && bwd)) {
                     if (!picture(b, f)) return;
@@ -536,10 +557,17 @@ void Mpeg2Decoder::reset() {
 }
 
 void Mpeg2Decoder::to_rgba(const Mpeg2Picture& p, std::vector<std::uint8_t>& rgba, int th0, int th1) {
-    rgba.assign(std::size_t(p.display_w) * std::size_t(p.display_h) * 4, 0);
+    rgba.assign(std::size_t(std::max(p.display_w, 0)) * std::size_t(std::max(p.display_h, 0)) * 4, 0);
+    // only the part the planes hold (a picture made elsewhere may claim a display size past its coded one): the rest
+    // stays 0
     const int cw = p.width / 2;
-    for (int y = 0; y < p.display_h; ++y)
-        for (int x = 0; x < p.display_w; ++x) {
+    const int w = std::min(p.display_w, cw * 2), h = std::min(p.display_h, (p.height / 2) * 2);
+    const std::size_t csz = std::size_t(std::max(cw, 0)) * std::size_t(std::max(p.height / 2, 0));
+    if (w <= 0 || h <= 0 || p.y.size() < std::size_t(p.width) * std::size_t(p.height) || p.cb.size() < csz ||
+        p.cr.size() < csz)
+        return;
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
             const std::size_t c = std::size_t(y / 2) * std::size_t(cw) + std::size_t(x / 2);
             mpeg_dsp::csc_pixel(p.y[std::size_t(y) * std::size_t(p.width) + std::size_t(x)], mpeg_dsp::csc_chroma(p.cb[c], p.cr[c]), th0, th1,
                                 &rgba[(std::size_t(y) * std::size_t(p.display_w) + std::size_t(x)) * 4]);

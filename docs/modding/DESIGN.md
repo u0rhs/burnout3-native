@@ -333,7 +333,8 @@ version and the one before. All strings UTF-8, all guest addresses 32-bit EE add
 
 A code mod is a native program: no sandbox can stop a library from calling the OS. The API's limits are for
 correctness and determinism, not security. So: the launcher marks mods with `[code]` ("contains code: runs as a
-program on your PC"), asks once per mod version (the library's hash) before the first start with it, and the docs say
+program on your PC"), asks once per mod id and set of code files (one hash over every library in its folder) before
+the first start with it, and the docs say
 to install code mods only from people you trust, preferably with source. Data-only mods cannot run code (the overlay
 serves bytes to the game's own loaders; the decomp's parsers are what read them, as on a PS2 with a modded disc).
 
@@ -382,10 +383,13 @@ section counts.
 - **Libraries**: `[code] windows / linux / macos` paths inside the mod; the templates put them in
   `bin/<windows|linux|macos>/<name>.<dll|so|dylib>`. Every library named is in the mod hash (`code <system> <path> <size>
   <fnv>` lines), so a folder hashes the same on every system; the set hash's text keeps its first line `b3mods api 1`.
-- **Trust**: the launcher asks once per library SHA-256 (turning the mod on, or starting the game), kept in
-  `<user data>/mods-trusted.ini`; a window run refuses a library not listed; offscreen runs are not asked.
+- **Trust**: the launcher asks once per mod id and set SHA-256 (every library file in the mod's folder: `.dll`, `.so`,
+  `.so.<n>`, `.dylib`, and the named library; turning the mod on, or starting the game), kept in
+  `<user data>/mods-trusted.ini`; a window run refuses a mod whose id and set are not listed, and the loader hashes the
+  set again right before it loads the library (Windows: held against writes until loaded); offscreen runs are not asked
+  (test-only: the launcher never starts offscreen).
   **Developer mods** is one switch shared with the tuning console (§4.1): `developer_mods` in `pc_settings.ini`
-  (PC SETTINGS > INTERFACE > DEVELOPER MODS, or the launcher Mods page's button, which sets the same value), read by a
+  (PC SETTINGS > MODS > DEVELOPER MODS, or the launcher Mods page's button, which sets the same value), read by a
   window run; `--developer-mods` / `B3NATIVE_DEVELOPER_MODS=1` turn it on for one run (offscreen runs: off unless
   given). (sdk2b's test builds kept it as `[options] developer_mods` in `mods.ini`; that section is now ignored.)
 - **Settings**: the values at the start come from `<user data>/mod-settings/<id>.ini` (window runs) or the defaults
@@ -618,7 +622,11 @@ overlay), the `[tuning]` section in `include/b3mod/mods.h`; tests `tests/test_tu
 - **Gameplay-changing.** A mod is gameplay-changing when it has a tuning preset, a code hook marked `gameplay = yes`,
   or replaces a file the simulation reads (track collision / AI data `TRACKS/*/GAMEDATA.BGD`, car handling in the car
   files, VDB.XML) [L: the list is refined as formats are decoded]. The Mods page shows "changes gameplay"; times and
-  ghosts made with such a set are kept apart (speedrun tools, leaderboards later). Purely visual or audio mods are not.
+  ghosts made with such a set are kept apart (media1, `src/b3replay/records.h`: a set with a tuning preset, a code mod
+  marked `gameplay = yes` or a script mod not marked `gameplay = no` keeps its ghosts and speedrun best times in
+  `ghosts/modded-<hash>/` and `speedrun/modded-<hash>/`, the hash over the gameplay-changing mods alone
+  (`b3mod::gameplay_set_hash`: a texture mod added or moved keeps the folder); the plain game's folders list only their own files;
+  leaderboards later). Purely visual or audio mods are not.
 - **The golden checks run without mods** (`baseline.sh` / `race_check.sh` pass no `--mods`; an offscreen run ignores
   mods.ini). A mod's own checks run with `MODS=`.
 - **Failure behaviour.** A broken manifest, a newer api, a missing required mod: that mod is not loaded, the rest are,
@@ -720,7 +728,11 @@ The reference is [lua-reference.md](lua-reference.md); where it differs from the
   reads, mods-state.ini. native_play adds the candidates (`script_candidate`) and nothing else; the launcher's Mods page
   shows a script card (what it is, gameplay, the last start, its rows).
 - **One lua_State per mod** with its own allocator (the memory cap; a refused allocation is Lua's memory error) and a
-  count hook every 1,000 instructions (the budget: per VBlank, the main chunk and `on_load` 50 times it). Every entry
+  count hook every 1,000 instructions (the budget: per VBlank, the main chunk and `on_load` 50 times it). modsec: and a
+  wall-clock limit on the script's own time per VBlank (1 s; loading 10 s; per script, paused while the game's code it
+  calls runs, the running script set at every entry), looked at in the count hook, the allocator
+  and each step of lstrlib's pattern matcher (script_lua.cpp redefines `l_unlikely` around lstrlib.c only, so each of
+  its error checks also asks; the vendored file unchanged); `string.rep` capped at the memory cap, `""` at once. Every entry
   from the game (the main chunk, a VBlank, a frame, a hook, a wrapped event, shutdown) is one protected call; an error,
   the budget or the cap there **stops** the script: logged with the message and its traceback, its callbacks no longer
   called, its hooks passing each call to the game's function with the game's arguments, its state closed. A `pcall` in
@@ -744,6 +756,19 @@ The reference is [lua-reference.md](lua-reference.md); where it differs from the
   views `b3.view.race()`, `player()` (position: the race car's matrix; speed: the speedometer's source vector
   0x0055EF70 + 0x1CB80 + 0xB0, [L] from CB3HUDSpeedo::Update's nonmatching but logic-exact source), `score()` (capture.h
   ScoreState's fields, takedowns +0x68 [L]).
+- **unsafe** (modsec, 1.3.0): `mem.write*`, `b3.call`, `hook.replace` and a call's integer `set_arg` / `set_result`
+  hand the game's native code values the script chose (a pointer, an index, a skipped function's v0), which can reach
+  past the sandbox, so they need `[script] unsafe = yes` (with `gameplay = yes`; read from the hashed mod.ini) and
+  `b3.call` only reaches the addresses `[script] calls` lists; `hook.wrap`, `set_farg` and `set_fresult` stay with
+  `gameplay`. A hot reload (Developer mods) runs the edited files unasked. Such a mod needs the player's permission as a code
+  mod does (trust over mod.ini and every file of the script folder, b3mod::trust_files), and the runtime runs the
+  bytes it read and hashed at load. A native function's pointer argument is range-checked for its pointee's whole
+  size (b3host call.h `from_image`), not its first byte. A fatal error of the host (b3host::HostError) in the game's
+  code a script called (`b3.call`, `call:next`) is caught in that binding, never by Lua (Lua compiled as C++ would
+  turn it into a script error a `pcall` catches: a probe, and a half-run game function going on): the script is
+  stopped (every later instruction raises), and once its state has unwound the error is thrown on to the game.
+  Every C function the script can call is wrapped the same way (`guarded<>`), so a HostError from a view, a read or a
+  draw is never a Lua error either. The vendored Lua is not changed.
 - **gameplay = no** refuses `mem.write*`, `b3.call`, `hook.replace` and a call's `set_*` (each an error); not given:
   read as yes, with a note (the Mods page then says it changes gameplay).
 - **Hot reload** only with Developer mods (the one switch of §2 and §4.1: `pc_settings.ini` developer_mods, or

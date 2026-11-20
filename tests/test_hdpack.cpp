@@ -1,9 +1,12 @@
 // HD texture packs (b3asset/hdpack.h, docs/native-renderer.md §18): XXH3-64, PCSX2 replacement keys, names, DDS and
 // the replacement hook on synthetic data only (no pack or game data).
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 
+#include "b3asset/bc.h"
 #include "b3asset/gs_memory.h"
 #include "b3asset/hdpack.h"
 #include "b3asset/raster.h"
@@ -340,6 +343,301 @@ TEST(player_pack_hits_keep_the_original) {
     CHECK(t && t->apply(gs, m, 0) && m.hd && m.original.empty() && t->originals == 0);
     set_hd_textures(nullptr);
     fs::remove_all(root);
+}
+
+// ---- hdgpu: the BC path (bc.h; HdTextures with set_hd_compressed) ----
+
+namespace {
+// A smooth test picture with a soft alpha ramp (w x h RGBA8)
+Image picture(int w, int h, bool alpha) {
+    Image im;
+    im.w = w;
+    im.h = h;
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            const std::uint8_t p[4] = {std::uint8_t(x * 255 / std::max(w - 1, 1)), std::uint8_t(y * 255 / std::max(h - 1, 1)),
+                                       std::uint8_t((x + y) * 255 / std::max(w + h - 2, 1)), std::uint8_t(alpha ? (x * 255 / std::max(w - 1, 1)) : 255)};
+            im.rgba.insert(im.rgba.end(), p, p + 4);
+        }
+    return im;
+}
+int max_diff(const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b, int channel = -1) {
+    int m = 0;
+    for (std::size_t i = 0; i < a.size() && i < b.size(); ++i)
+        if (channel < 0 || int(i % 4) == channel) m = std::max(m, std::abs(int(a[i]) - int(b[i])));
+    return a.size() == b.size() ? m : 999;
+}
+Image decoded(const Image& l) {
+    Image o;
+    o.w = l.w;
+    o.h = l.h;
+    o.rgba.resize(std::size_t(l.w) * l.h * 4);
+    bc_decode(l.bc, l.blocks->data(), l.w, l.h, o.rgba.data());
+    return o;
+}
+// A DDS file of `fmt` blocks for `im` (PS2 alpha: the picture's alpha halved), with `mips` stored levels
+std::vector<std::uint8_t> bc_dds(const Image& im, int fmt, int mips = 1) {
+    auto d = dds_header(std::uint32_t(im.w), std::uint32_t(im.h), fmt == kBC1 ? "DXT1" : fmt == kBC2 ? "DXT3" : "DXT5");
+    if (mips > 1) {
+        put32(d, 8, 0x20000 | 0x1007);
+        put32(d, 28, std::uint32_t(mips));
+    }
+    Image l = im;
+    for (int k = 0; k < mips; ++k) {
+        Image half = l;
+        for (std::size_t i = 3; i < half.rgba.size(); i += 4) half.rgba[i] = std::uint8_t(half.rgba[i] / 2 + (half.rgba[i] == 255));
+        std::vector<std::uint8_t> b;
+        bc_encode(fmt, half.rgba.data(), half.w, half.h, b);
+        d.insert(d.end(), b.begin(), b.end());
+        Image n;
+        mip_down(l, n);
+        l = std::move(n);
+    }
+    return d;
+}
+}  // namespace
+
+TEST(bc_encode_decode_roundtrip) {
+    for (int fmt : {kBC1, kBC2, kBC3}) {
+        const Image im = picture(64, 32, fmt != kBC1);
+        std::vector<std::uint8_t> b, b8;
+        bc_encode(fmt, im.rgba.data(), im.w, im.h, b);
+        bc_encode(fmt, im.rgba.data(), im.w, im.h, b8, 8);   // split by rows: the same blocks
+        CHECK(b.size() == bc_level_bytes(fmt, 64, 32) && b == b8);
+        Image out;
+        out.w = 64;
+        out.h = 32;
+        out.rgba.resize(64 * 32 * 4);
+        bc_decode(fmt, b.data(), 64, 32, out.rgba.data());
+        for (int c = 0; c < 3; ++c) CHECK(max_diff(im.rgba, out.rgba, c) <= 12);   // R across, G down: each block a plane, not a line
+        CHECK(max_diff(im.rgba, out.rgba, 3) <= (fmt == kBC2 ? 8 : fmt == kBC3 ? 4 : 0));
+    }
+    {   // colours on a line (a grey ramp): within the 565 step and the thirds
+        Image g;
+        g.w = 64;
+        g.h = 4;
+        for (int i = 0; i < 64 * 4; ++i) { const std::uint8_t v = std::uint8_t((i % 64) * 4); const std::uint8_t p[4] = {v, v, v, 255}; g.rgba.insert(g.rgba.end(), p, p + 4); }
+        std::vector<std::uint8_t> b;
+        bc_encode(kBC1, g.rgba.data(), 64, 4, b);
+        Image out;
+        out.w = 64;
+        out.h = 4;
+        out.rgba.resize(64 * 4 * 4);
+        bc_decode(kBC1, b.data(), 64, 4, out.rgba.data());
+        CHECK(max_diff(g.rgba, out.rgba) <= 4);
+    }
+    // one colour: exact up to the 565 rounding; BC1 punch-through: transparent texels on index 3
+    std::uint8_t px[16][4], blk[8], back[16][4];
+    for (auto& p : px) { p[0] = 200; p[1] = 100; p[2] = 50; p[3] = 255; }
+    px[5][3] = 0;
+    bc_encode_color(px, blk, true);
+    bc_decode_block(kBC1, blk, back);
+    CHECK(back[5][3] == 0 && back[0][3] == 255 && std::abs(back[0][0] - 200) <= 4 && std::abs(back[0][1] - 100) <= 2);
+    // alpha only 0 and 255: exact (the 6-value mode holds both)
+    std::uint8_t a[16], ab[16];
+    for (int i = 0; i < 16; ++i) a[i] = i & 1 ? 255 : 0;
+    std::uint8_t full[16] = {};
+    bc_encode_alpha(a, full);
+    std::memset(full + 8, 0, 8);
+    bc_decode_block(kBC3, full, back);
+    for (int i = 0; i < 16; ++i) ab[i] = back[i][3];
+    CHECK(std::memcmp(a, ab, 16) == 0);
+}
+
+TEST(mip_down_matches_the_gpu_blit) {
+    Image a;
+    a.w = 4;
+    a.h = 2;
+    for (int i = 0; i < 8; ++i) { const std::uint8_t p[4] = {std::uint8_t(i * 10), 0, 255, std::uint8_t(i)}; a.rgba.insert(a.rgba.end(), p, p + 4); }
+    Image b;
+    mip_down(a, b);
+    CHECK(b.w == 2 && b.h == 1);
+    CHECK(b.rgba[0] == (0 + 10 + 40 + 50 + 2) / 4 && b.rgba[2] == 255 && b.rgba[4] == (20 + 30 + 60 + 70 + 2) / 4);
+    Image c = picture(5, 3, true), d;   // odd sizes: bilinear at the texel centres, clamped at the edge
+    mip_down(c, d);
+    CHECK(d.w == 2 && d.h == 1 && d.rgba.size() == 8);
+    Image e = picture(1, 8, false), f;
+    mip_down(e, f);
+    CHECK(f.w == 1 && f.h == 4);
+}
+
+TEST(dds_header_levels_and_bc1_blocks) {
+    const Image im = picture(64, 32, true);
+    const auto d1 = bc_dds(picture(64, 32, false), kBC1);
+    DdsInfo info;
+    CHECK(parse_dds(d1.data(), d1.size(), info) && info.fmt == kBC1 && info.levels == 1 && info.at == 128 && info.w == 64);
+    Image ref;
+    CHECK(decode_dds(d1.data(), d1.size(), ref));
+    Image l;
+    l.w = 64;
+    l.h = 32;
+    l.bc = kBC1;
+    l.blocks = std::make_shared<std::vector<std::uint8_t>>(d1.begin() + 128, d1.end());
+    CHECK(decoded(l).rgba == ref.rgba);   // opaque BC1: the blocks decode to decode_dds's texels
+    // stored mips: only the whole ones count
+    auto d = bc_dds(im, kBC3, 4);
+    CHECK(parse_dds(d.data(), d.size(), info) && info.levels == 4);
+    d.resize(d.size() - 1);
+    CHECK(parse_dds(d.data(), d.size(), info) && info.levels == 3);
+}
+
+namespace {
+struct CompressedOn {
+    CompressedOn() { set_hd_compressed(true); }
+    ~CompressedOn() { set_hd_compressed(false); }
+};
+// A pack folder with one replacement for the 48x32 T8 raster of `gs` (TEX0 64x32: the replacement covers 64x32 at 4x)
+std::filesystem::path one_file_pack(const char* name, const GsMemory& gs, const DecodedRaster& r, const std::vector<std::uint8_t>& dds) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path("build") / name;
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    HdKey k;
+    if (!hd_key(gs, r.hdr, 0, 1, k)) return {};
+    std::ofstream(dir / (hd_key_name(k) + ".dds"), std::ios::binary).write(reinterpret_cast<const char*>(dds.data()), std::streamsize(dds.size()));
+    return dir;
+}
+}  // namespace
+
+TEST(hook_keeps_bc_replacements_compressed) {
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 3 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster base;
+    base.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    base.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0xFF)});   // opaque: the rule changes nothing
+    base.max_alpha = 0x80;
+    const Image pic = picture(256, 128, true);
+    for (int fmt : {kBC1, kBC2, kBC3}) {
+        const Image src = fmt == kBC1 ? picture(256, 128, false) : pic;
+        const fs::path dir = one_file_pack("test_hdpack.bc", gs, base, bc_dds(src, fmt));
+        Image ref;   // the RGBA8 path's picture: the file decoded, cropped to 192 x 128
+        {
+            HdTextures hd;
+            CHECK(hd.open(dir.string()));
+            DecodedRaster r = base;
+            CHECK(hd.apply(gs, r, 0));   // compression off: RGBA8 as before
+            CHECK(r.levels.size() == 1 && r.levels[0].bc == 0 && r.levels[0].w == 192);
+            ref = r.levels[0];
+        }
+        const CompressedOn on;
+        {
+            HdTextures hd;
+            CHECK(hd.open(dir.string()));
+            DecodedRaster r = base;
+            CHECK(hd.apply(gs, r, 0));   // no HdCompressScope: RGBA8 (the consumer may read texels)
+            CHECK(r.levels.size() == 1 && r.levels[0].bc == 0 && hd.compressed == 0);
+        }
+        HdTextures hd;
+        CHECK(hd.open(dir.string()));
+        const HdCompressScope scope;
+        DecodedRaster r = base;
+        CHECK(hd.apply(gs, r, 0) && r.hd);
+        CHECK(hd.compressed == 1 && hd.encoded == 0);
+        CHECK(r.levels.size() == 8);   // 192x128 .. 1x1
+        CHECK(r.levels[0].w == 192 && r.levels[0].h == 128 && r.levels.back().w == 1 && r.levels.back().h == 1);
+        for (const Image& l : r.levels) CHECK(l.bc == fmt && l.rgba.empty() && l.blocks && l.blocks->size() == bc_level_bytes(fmt, l.w, l.h));
+        const Image d0 = decoded(r.levels[0]);
+        for (int c = 0; c < 3; ++c) CHECK(max_diff(d0.rgba, ref.rgba, c) == 0);   // the file's colour blocks
+        CHECK(max_diff(d0.rgba, ref.rgba, 3) <= (fmt == kBC3 ? 2 : 0));       // BC1 / BC2 alpha exact, BC3 within the map
+        Image m1;
+        mip_down(ref, m1);
+        CHECK(max_diff(decoded(r.levels[1]).rgba, m1.rgba) <= 16);   // the mips: the GPU's 2x2, BC encoded
+        DecodedRaster again = base;   // the LOD model's decode: the same blocks, shared
+        CHECK(hd.apply(gs, again, 0) && again.levels[0].blocks == r.levels[0].blocks);
+        // TCC 0: opaque blocks
+        DecodedRaster opaque = base;
+        opaque.hdr.tex0 &= ~(1ull << 34);
+        CHECK(hd.apply(gs, opaque, 0));
+        CHECK(opaque.levels[0].bc == fmt);
+        const Image o0 = decoded(opaque.levels[0]);
+        int amin = 255;
+        for (std::size_t i = 3; i < o0.rgba.size(); i += 4) amin = std::min(amin, int(o0.rgba[i]));
+        CHECK(amin == 255);
+        fs::remove_all(dir);
+    }
+}
+
+TEST(hook_bc_alpha_rule_and_fallbacks) {
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 5 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster lim;   // the original transparent on its left half: the rule cuts the replacement there
+    lim.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    lim.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0)});
+    for (int y = 0; y < 32; ++y)
+        for (int x = 24; x < 48; ++x) lim.levels[0].rgba[(std::size_t(y) * 48 + x) * 4 + 3] = 0xFF;
+    lim.max_alpha = 0x80;
+    Image opaque = picture(256, 128, false);
+    const fs::path dir = one_file_pack("test_hdpack.bcrule", gs, lim, bc_dds(opaque, kBC3));
+    Image ref;
+    {
+        HdTextures hd;
+        CHECK(hd.open(dir.string()));
+        DecodedRaster r = lim;
+        CHECK(hd.apply(gs, r, 0) && hd.masked == 1);
+        ref = r.levels[0];
+    }
+    const CompressedOn on;
+    const HdCompressScope scope;
+    {
+        HdTextures hd;
+        CHECK(hd.open(dir.string()));
+        DecodedRaster r = lim;
+        CHECK(hd.apply(gs, r, 0) && hd.masked == 1 && hd.compressed == 1 && hd.encoded == 1);
+        CHECK(r.levels[0].bc == kBC3 && r.levels.size() == 8);
+        const Image d0 = decoded(r.levels[0]);
+        CHECK(d0.rgba[(5 * 192 + 10) * 4 + 3] == 0 && d0.rgba[(5 * 192 + 150) * 4 + 3] == 255);
+        CHECK(max_diff(d0.rgba, ref.rgba, 3) <= 8);
+        for (int c = 0; c < 3; ++c) CHECK(max_diff(d0.rgba, ref.rgba, c) == 0);   // the file's colour blocks, the alpha encoded again
+        DecodedRaster again = lim;   // the LOD model: the rule's chain from the cache, still counted
+        CHECK(hd.apply(gs, again, 0) && again.levels[0].blocks == r.levels[0].blocks && hd.masked == 2);
+    }
+    {   // the same file, a raster the rule leaves alone (its original opaque): the file's blocks, not re-encoded
+        HdTextures hd;
+        CHECK(hd.open(dir.string()));
+        DecodedRaster r = lim;
+        r.levels[0].rgba.assign(48 * 32 * 4, 0xFF);
+        CHECK(hd.apply(gs, r, 0) && hd.encoded == 0 && hd.compressed == 1 && hd.masked == 0);
+    }
+    {   // an RGBA32 file: RGBA8
+        auto d = dds_header(256, 128, nullptr);
+        d.insert(d.end(), opaque.rgba.begin(), opaque.rgba.end());
+        const fs::path d2 = one_file_pack("test_hdpack.bcrgba", gs, lim, d);
+        HdTextures hd;
+        CHECK(hd.open(d2.string()));
+        DecodedRaster r = lim;
+        CHECK(hd.apply(gs, r, 0) && r.levels.size() == 1 && r.levels[0].bc == 0 && hd.compressed == 0);
+        fs::remove_all(d2);
+    }
+    {   // a crop that is not whole blocks (a 46-wide raster: 184 x 128 is, 45: 180 is; 43: 172; a 2x file of 43: 86): RGBA8
+        DecodedRaster odd = lim;
+        odd.hdr = header(PSMT8, 6, 5, 0, 2, 64, 43, 32);
+        odd.levels[0] = Image{43, 32, std::vector<std::uint8_t>(43 * 32 * 4, 0xFF)};
+        const fs::path d3 = one_file_pack("test_hdpack.bcodd", gs, odd, bc_dds(picture(128, 64, false), kBC1));
+        HdTextures hd;
+        CHECK(hd.open(d3.string()));
+        CHECK(hd.apply(gs, odd, 0) && odd.levels.size() == 1 && odd.levels[0].bc == 0 && odd.levels[0].w == 86);
+        fs::remove_all(d3);
+    }
+    {   // stored mips: used as they are (BC1, the whole file)
+        DecodedRaster full = lim;
+        full.hdr = header(PSMT8, 6, 5, 0, 2, 64, 64, 32);
+        full.levels[0] = Image{64, 32, std::vector<std::uint8_t>(64 * 32 * 4, 0xFF)};
+        const auto d = bc_dds(picture(256, 128, false), kBC1, 3);
+        const fs::path d4 = one_file_pack("test_hdpack.bcmips", gs, full, d);
+        HdTextures hd;
+        CHECK(hd.open(d4.string()));
+        CHECK(hd.apply(gs, full, 0) && full.levels.size() == 9 && full.levels[0].w == 256);
+        const std::size_t l0 = bc_level_bytes(kBC1, 256, 128), l1 = bc_level_bytes(kBC1, 128, 64);
+        CHECK(*full.levels[1].blocks == std::vector<std::uint8_t>(d.begin() + 128 + std::ptrdiff_t(l0), d.begin() + 128 + std::ptrdiff_t(l0 + l1)));
+        fs::remove_all(d4);
+    }
+    fs::remove_all(dir);
 }
 
 TEST_MAIN("hdpack")

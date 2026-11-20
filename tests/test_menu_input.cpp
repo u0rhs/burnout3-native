@@ -391,4 +391,76 @@ TEST(mouse_events_to_actions) {
     CHECK(!pp2.click && !pp2.moved && !pp2.back && pp2.held && pp2.wheel == 0);
 }
 
+// garagecam1 (garagecam.h): on a car page with GARAGE CAMERA on, a left click without a drag is Cross on the release; a
+// drag presses nothing (it turns the view); a click on a prompt is still its button at once
+TEST(car_page_click_and_drag) {
+    MenuMouse m;
+    MenuTargets car;
+    car.menu = true;
+    car.car = true;
+    b3replay::MenuPromptTarget back;
+    back.button = pad::kTriangle;
+    back.box = box(0.7f, 0.9f, 0.8f, 0.95f);
+    car.prompts = {back};
+    std::uint32_t w[3 * 16];
+    auto take = [&] { std::vector<MenuAction> v; const int n = m.take(w, 16); for (int i = 0; i < n; ++i) v.push_back(b3live::menu_action_get(w + 3 * i)); return v; };
+    m.move(0.5f, 0.5f, 0.0);
+    m.button(1, true, 0.0);
+    m.frame(car, false, 0.0);
+    CHECK(take().empty());   // held: not yet a click
+    m.move(0.505f, 0.5f, 0.05);   // under kDragStart: still a click
+    m.button(1, false, 0.1);
+    m.frame(car, false, 0.1);
+    auto a = take();
+    CHECK(a.size() == 1 && a[0].kind == MenuAction::kPress && a[0].button == pad::kCross);
+    m.button(1, true, 0.2);   // a drag: nothing for the game
+    m.move(0.55f, 0.5f, 0.25);
+    m.move(0.65f, 0.52f, 0.3);
+    m.button(1, false, 0.35);
+    m.frame(car, false, 0.35);
+    CHECK(take().empty());
+    m.move(0.75f, 0.92f, 0.4);   // a prompt: its button on the press, as on any page
+    m.button(1, true, 0.4);
+    m.frame(car, false, 0.4);
+    a = take();
+    CHECK(a.size() == 1 && a[0].button == pad::kTriangle);
+    m.button(1, false, 0.45);
+    m.frame(car, false, 0.45);
+    CHECK(take().empty());
+    // a press whose car page goes away before the release (another page, or PC SETTINGS opened): no Cross
+    m.move(0.5f, 0.5f, 0.46);
+    m.button(1, true, 0.46);
+    m.frame(car, false, 0.46);
+    MenuTargets other;   // a page without the car (a message)
+    other.menu = true;
+    m.frame(other, false, 0.47);
+    m.button(1, false, 0.48);
+    m.frame(other, false, 0.48);
+    CHECK(take().empty());
+    m.button(1, true, 0.5);
+    m.frame(car, false, 0.5);
+    m.frame(car, true, 0.51);   // the PC SETTINGS page opened over it
+    m.button(1, false, 0.52);
+    m.frame(car, false, 0.52);
+    CHECK(take().empty());
+    m.button(1, true, 0.53);   // another car page (other selects) by the release: no Cross either
+    m.frame(car, false, 0.53);
+    MenuTargets car2 = car;
+    car2.current = {{7u, 0u}};
+    m.button(1, false, 0.54);
+    m.frame(car2, false, 0.54);
+    CHECK(take().empty());
+    m.button(1, true, 0.55);   // the same page all along: the click's Cross
+    m.button(1, false, 0.56);
+    m.frame(car, false, 0.56);
+    a = take();
+    CHECK(a.size() == 1 && a[0].button == pad::kCross);
+    car.car = false;   // GARAGE CAMERA off: Cross on the press, as before
+    m.move(0.5f, 0.5f, 0.5);
+    m.button(1, true, 0.5);
+    m.frame(car, false, 0.5);
+    a = take();
+    CHECK(a.size() == 1 && a[0].button == pad::kCross);
+}
+
 TEST_MAIN("menu mouse and typed text (mac5)")

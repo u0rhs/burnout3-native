@@ -20,7 +20,7 @@
 // downloads anything. B3LAUNCHER_UPDATE_FILE=<file>: the answer read from that file instead (a test hook); a
 // --screenshot run never makes a request.
 //
-//   b3launcher [--pref DIR] [--size WxH]          DIR: the user data folder (default SDL_GetPrefPath("b3port", "native"))
+//   b3launcher [--pref DIR] [--size WxH]          DIR: the user data folder (default b3io::user_dir(): appdata/native beside it in portable mode, else this computer's)
 //   b3launcher --screenshot DIR [--pref DIR]      draws each page into DIR/*.png and exits (checks; offscreen driver)
 //   b3launcher --launcher                         shows the launcher even when it is set to start the game at once
 //
@@ -28,6 +28,7 @@
 // directly next time"), the launcher starts the game at once (START GAME, after a one-second "Starting" screen in which
 // Shift or a controller's Back / Select opens the launcher instead), except as core.h skip_launcher lists.
 #include "core.h"
+#include "b3port/fileio.h"   // fsrobust
 #include "draw.h"
 #include "font.h"
 #include "gameart.h"
@@ -38,12 +39,16 @@
 #include "update_net.h"
 #include "oneclick.h"        // 1.1 one-click updates: the signed release's package
 #include "installer.h"       // ... put in place of this one (the previous version kept)
+#include "portable.h"        // portable mode (1.3.0): the data folder moved beside the launcher
+#include "b3port/user_dir.h"  // ... and the rule that finds it
 #include "steam.h"           // issue #8: ADD TO STEAM (Settings > Launcher)
 #include "steam_art.h"
 
 #include "b3port/app_icon.h"   // the built-in window icon
+#include "b3port/file_url.h"   // robust2: file:// URLs percent-encoded (one helper for the launcher and the game)
 #include "b3asset/discfs.h"   // patches3: the game folder's files a mod's patches apply to
 #include "b3asset/language.h"   // 1.0.1: LANGUAGE, IMPORT LANGUAGES
+#include "b3asset/xboximport.h"   // xboximport (1.3.0): Import Xbox textures (the HD Textures page)
 #include "b3asset/hdpack.h"   // showhd1: the showroom's HD packs (the game's list) and its check's test pack
 #include "b3asset/png.h"
 #include "b3mod/archive.h"   // modkit1b: Add mod (a .zip / .b3mod)
@@ -76,6 +81,7 @@
 
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -128,25 +134,32 @@ void game_theme() {
 }
 }
 
-constexpr float kSideW = 268, kHeaderH = 92, kFooterH = 108, kPadX = 36;
+// settingsui: the header and footer bands 24 px slimmer than before (92 / 108): the page has 532 px at 16:9
+constexpr float kSideW = 268, kHeaderH = 84, kFooterH = 92, kPadX = 36, kSideTop = 104;
 constexpr float kBody = 16, kSmall = 13.5f, kTitle = 27, kSection = 12.5f;
 
-enum Page { kPlay, kSettings, kHd, kMusic, kMods, kGame, kSaves, kStats, kShowroom, kReplays, kPads, kCredits, kPageCount };
-const char* const kPageNames[kPageCount] = {"Play", "Settings", "HD Textures", "Music", "Mods", "Game Data", "Saves", "Stats", "Showroom", "Replays", "Controllers", "Credits"};
+// settingsui: the sidebar's order: Play; set-up (Game Data, Saves); the options (Settings to Mods); the extras (Stats,
+// Showroom, Replays); Credits. A small gap before each group (kGroupStart).
+enum Page { kPlay, kGame, kSaves, kSettings, kPads, kHd, kMusic, kMods, kStats, kShowroom, kReplays, kCredits, kPageCount };
+const char* const kPageNames[kPageCount] = {"Play", "Game Data", "Saves", "Settings", "Controllers", "HD Textures", "Music", "Mods", "Stats", "Showroom", "Replays", "Credits"};
+constexpr bool kGroupStart[kPageCount] = {false, true, false, true, false, false, false, false, true, false, false, true};
+constexpr float kGroupGap = 8;
 const char* const kPageSubtitles[kPageCount] = {
     "Start the game, or start it in safe mode with its settings turned down.",
-    "The game's own PC settings: the same rows as SETTINGS in the game, saved to the same file.",
-    "A PCSX2 texture replacement folder for Burnout 3, used from the next start.",
-    "Your own music on the game's radio: the same settings as SETTINGS > INTERFACE > MUSIC in the game.",
-    "Mods in the mods folder: which are on, and their order. Your disc and its files are never changed.",
     "Your Burnout 3 disc (NTSC-U, SLUS-21050): its image, or a folder with its contents.",
     "The save files and the one the game uses. The game saves by itself.",
+    "The game's own PC settings: the same rows as SETTINGS in the game, saved to the same file.",
+    "Connected controllers, live, and the keyboard as the game maps it.",
+    "A PCSX2 texture replacement folder for Burnout 3, used from the next start.",
+    "Your own music on the game's radio: the same settings as SETTINGS > AUDIO > MUSIC in the game.",
+    "Mods in the mods folder: which are on, and their order. Your disc and its files are never changed.",
     "Each profile's stats as the game saved them, and local achievements worked out from them.",
     "Every player car on your disc in 3D on a turntable, with the game's name for it.",
-    "Your recorded sessions, played back exactly as they were played (SETTINGS > INTERFACE > RECORD REPLAYS).",
-    "Connected controllers, live, and the keyboard as the game maps it.",
+    "Your recorded sessions, played back exactly as they were played (SETTINGS > GAME > MODES > RECORD REPLAYS).",
     "Who made this port, and the people and projects it stands on.",
 };
+
+constexpr std::size_t kLauncherTab = 1000;   // settingsui: Settings' LAUNCHER tab, whatever the game's tabs (clamped to the last)
 
 enum class Nav { Up, Down, Left, Right, Confirm, Back, PrevPage, NextPage, PrevTab, NextTab };
 constexpr double kPadTestHold = 0.8;   // seconds of B / Circle held that stop the controller button test
@@ -167,7 +180,9 @@ struct Widget {
 
 // 1.1: kSavesFolder   // 1.0.1: kLanguageImage   // iso1: kGameImage; modkit1b: kModArchive
 enum class DialogKind { kHdFolder, kGameFolder, kExport, kImportFile, kImportFolder, kGameImage, kMusicFolder, kModArchive, kLanguageImage, kSavesFolder,
-                        kSteamCover, kSteamHero, kSteamLogo };   // issue #8: ADD TO STEAM's own pictures
+                        kSteamCover, kSteamHero, kSteamLogo,   // issue #8: ADD TO STEAM's own pictures
+                        kModFolder,                            // item 11: Add folder (a mod's folder, or a pack of the game's files)
+                        kXboxImage };                          // xboximport: the player's Xbox disc image
 
 struct Modal {
     std::string title, text;
@@ -182,6 +197,7 @@ struct Modal {
     TextEdit field;                     // osk1: its text and cursor
     std::function<void(const std::string&)> on_text;
     std::vector<SDL_FRect> rects;       // the buttons as last drawn
+    float progress = -1;                // xboximport: a progress bar under the text (0..1; below 0: none)
     // osk1: the launcher's on-screen keyboard under the field (opened with a controller or the touch screen, or by
     // the keyboard mark in the field), its keys and state, and what was drawn (the mouse)
     bool osk = false;
@@ -225,6 +241,7 @@ App* g_app = nullptr;
 
 struct App {
     SDL_Window* win = nullptr;
+    bool pads_unfocused = false;   // robust2: pad presses count without the window's focus (--screenshot: its hidden window)
     SDL_Renderer* ren = nullptr;
     Text* text = nullptr;
     float scale = 1, W = 1280, H = 720;
@@ -233,6 +250,7 @@ struct App {
     SDL_Texture* icon = nullptr;   // the B3 icon (assets/b3-icon.png beside the launcher): the header and the window icon
     Config cfg;
     b3settings::Settings settings;
+    b3settings::Settings settings_base;   // settingsui: the file as last read or written (save_settings writes only the changes)
     std::string settings_note;   // the last save's result
     fs::path game_dir;
     GameCheck game;
@@ -247,6 +265,28 @@ struct App {
     // 1.0.1 LANGUAGE (b3asset/language.h): the languages imported into <pref>/languages (code, name), the last import's result
     std::vector<std::pair<std::string, std::string>> languages;
     std::string language_note;
+    // 1.3.0 DJ VOICE (b3asset/language.h dj_*): the DJ voices on the last chosen European disc, the import on its own
+    // thread (one at a time; Cancel or closing the launcher stops it and keeps nothing), the rows the page shows
+    struct DjJob {
+        std::mutex m;
+        std::uint64_t done = 0, total = 0;
+        bool finished = false, ok = false;
+        std::string why;
+        std::atomic<bool> cancel{false};
+    };
+    struct Dj {
+        std::vector<b3asset::language::DjVoice> found;   // on `disc`: the DJ banks
+        std::vector<b3asset::language::DjVoice> found_training;   // and the race training videos
+        fs::path disc;
+        std::shared_ptr<DjJob> job;                      // an import under way
+        std::string code;                                // its language
+        b3asset::language::Pack pack = b3asset::language::Pack::kDj;   // and what it copies
+        std::thread th;
+        std::chrono::steady_clock::time_point started;
+        std::string note;                                // the last result
+        std::vector<b3settings::Env::DjVoice> rows;
+        int widget = -1;                                 // the first DJ VOICE import row as last drawn (the checks)
+    } dj;
     // nowplaying1: OTHER MUSIC APPS' reader for the Music page's "Detected" line (made the first time the page shows
     // with the option on; it reads only while that page shows and the option is on)
     std::unique_ptr<b3nowplaying::Poller> now_playing;
@@ -294,7 +334,9 @@ struct App {
     float scroll[kPageCount] = {};
     bool reveal_focus = true;   // scroll the focused widget into view (keyboard / pad); the wheel turns it off
     bool mouse_on = false;      // the mouse was the last input: hover marks and its description show (keys / pad: the focus only)
-    std::size_t settings_tab = 0;
+    std::size_t settings_tab = 0;      // settingsui: the game's tabs, then LAUNCHER (the last)
+    std::size_t pads_tab = 0;          // settingsui: the Controllers page's tabs: 0 TEST, 1 BINDINGS
+    SDL_Scancode swallow_repeats = SDL_SCANCODE_UNKNOWN;   // settingsui: the key a rebind took, until it is let go
     std::vector<Widget> widgets, side_widgets;
     std::optional<Modal> modal;
     std::optional<Browser> browser;   // osk1: the launcher's folder list (under a modal: its text field)
@@ -377,6 +419,7 @@ struct App {
         std::mutex m;
         int step = 0;                     // 0 asking GitHub, 1 the signed list, 2 downloading, 3 checking, 4 writing, 5 installing
         bool done = false, ok = false;
+        std::atomic<bool> cancel{false};  // robust2: Cancel / closing the launcher stops the download (never the swap, step 5)
         std::string why, tag;
         fs::path package;                 // macOS: the checked dmg, opened for the player
     };
@@ -387,6 +430,47 @@ struct App {
         std::string tag, note;            // the version installed; the last attempt's result in words
     } inst;
     fs::path self_exe;                    // this launcher's own file, found at start (a swap moves the running one)
+    // xboximport (1.3.0): Import Xbox textures (b3asset/xboximport.h) on a thread of its own, as the update download:
+    // its progress polled each frame into a modal with Cancel (the atomic flag the importer checks)
+    struct XboxJob {
+        std::mutex m;
+        b3asset::xboximport::Progress p;
+        bool done = false;
+        b3asset::xboximport::Result r;
+        std::atomic<bool> cancel{false};
+    };
+    struct XboxUi {
+        std::shared_ptr<XboxJob> job;
+        std::thread th;
+        b3asset::xboximport::Status status;   // the folder's import.ini (present: imported)
+        std::string note;                     // the last import / removal in words
+        int level = 0;                        // 0 a hint, 1 done, 2 not done
+    } xbox;
+    // portable mode (1.3.0, portable.h): the data folder in <install>/appdata or this computer's user folder. The move
+    // runs on a thread of its own, as the Xbox import: its progress polled each frame into a modal with Cancel
+    struct PortableJob {
+        std::mutex m;
+        bool done = false;
+        b3launcher::portable::Result r;
+        b3launcher::portable::Progress p;
+    };
+    struct PortableUi {
+        std::shared_ptr<PortableJob> job;
+        std::thread th;
+        b3launcher::portable::Plan plan;     // the move under way
+        fs::path exe, platform;              // the install folder, this computer's data folder (the checks: scratch folders)
+        bool hidden = true;                  // macOS, an AppImage, a Flatpak: no row
+        int override_dir = 0;                // a data folder given (1 --pref, 2 $B3PORT_USER_DIR): the row disabled
+        bool writable = false;               // the install folder can be written (probed at the start, again before a move)
+        std::string stamp;                   // the dated names' stamp (empty: now; the checks: a fixed one)
+        std::optional<b3launcher::portable::Record> rec;   // the old copy kept after a move (portable-move.ini)
+        std::string note;                    // the last move in words
+        int level = 0;                       // 0 a hint, 1 done, 2 not done
+        bool ask = false;                    // the start asked a question (the start without the launcher waits for it)
+        bool data_writable = true;           // the data folder in use can be written (a write-protected stick: said)
+        int widget = -1;                     // the PORTABLE MODE row as last drawn (the screenshot check)
+        fs::path lock_root;                  // the save folder whose game.lock the move holds (kLauncherMoveSlot)
+    } portable;
     // issue #8: ADD TO STEAM (steam.h). A press waits for the next frame, so that "Adding..." shows while it works
     struct SteamUi {
         bool pending = false;
@@ -406,6 +490,9 @@ struct App {
         std::map<std::string, SDL_Texture*> tex;      // by texture name
         SDL_Texture* font_tex[3] = {};
         std::map<std::tuple<int, int, int>, std::pair<SDL_Texture*, float>> prompts;   // (device, button, px) -> glyph, width px
+        // settingsui: the title logo's visible part (texture fractions u0 v0 u1 v1) and its width / height, from the
+        // picture itself: the fixed rect before cut the B's left edge and the TM off
+        float logo_uv[4] = {18.0f / 512, 44.0f / 256, 494.0f / 512, 212.0f / 256}, logo_aspect = 476.0f / 168;
     } look;
 
     // the SHOWROOM page (photo2): the cars of the game data, the 3D view (made on the first visit) and its picture
@@ -414,6 +501,7 @@ struct App {
         std::string listed_for, note, error;
         std::size_t sel = 0, loaded_index = std::size_t(-1);
         int paint = 0, loaded_paint = -1;
+        b3settings::Settings saved_settings;   // padpaint: the screenshots' paint shots put the settings back
         showroom::Turntable tt;
         std::unique_ptr<showroom::View> view;
         std::vector<std::uint8_t> pixels;
@@ -429,7 +517,7 @@ struct App {
 
 // ---- files ----
 
-void save_settings(App& a);
+void save_settings(App& a, bool whole = false);
 
 // 1.1: a Steam Deck (Steam's SteamDeck=1, or the board's DMI name: Jupiter = LCD, Galileo = OLED)
 bool on_steam_deck() {
@@ -457,12 +545,21 @@ void load_settings(App& a) {
         return;
     }
     if (b3settings::load_file(utf8_of(file), a.settings, &why) && !why.empty()) a.settings_note = "Read with notes: " + why;
+    a.settings_base = a.settings;
 }
 
-void save_settings(App& a) {
+// settingsui: the file read again and only the launcher's own changes written, so that a running game's edits stay
+// (`whole`: every key as the launcher has it, Reset all settings)
+void save_settings(App& a, bool whole) {
     std::string why;
-    if (b3settings::save_file(utf8_of(settings_file(a.pref)), a.settings, &why)) a.settings_note = "Saved to " + utf8_of(settings_file(a.pref));
-    else a.settings_note = "Cannot save: " + why;
+    const std::string file = utf8_of(settings_file(a.pref));
+    const bool ok = whole ? b3settings::save_file(file, a.settings, &why) : b3settings::save_merged(file, a.settings_base, a.settings, &why);
+    if (ok) {
+        a.settings_base = a.settings;
+        a.settings_note = "Saved to " + utf8_of(settings_file(a.pref));
+    } else {
+        a.settings_note = "Cannot save: " + why;
+    }
 }
 
 void refresh_hd(App& a, bool force = false) {
@@ -482,6 +579,9 @@ void refresh_music(App& a, bool force = false) {
 
 // 1.1: the saves folder in use: the one chosen on the Saves page (launcher.ini saves_dir), else the default
 fs::path saves_root(const App& a) { return saves_folder(a.pref, a.cfg.saves_dir); }
+// fsrobust: the save folder ready for a write: the default one is made when missing; a chosen one (a network folder,
+// a drive) is never made in its place: false and *why say it is not there
+bool saves_ready(const App& a, std::string* why) { return b3native::save::saves_root_ready(saves_root(a), a.cfg.saves_dir.empty(), why); }
 
 // The stats of every profile in the save files (read only: nothing is written)
 void load_stats(App& a) {
@@ -551,10 +651,16 @@ fs::path code_library(const b3mod::Mod& m) {
     const std::string& rel = m.manifest.code.path_for(b3mod::host_system());
     return m.manifest.code.present && !rel.empty() ? m.dir / b3mod::path_from_utf8(rel) : fs::path();
 }
+// the SHA-256 over every file the mod's code runs from (all its libraries; b3mod::trust_files), as the game checks it
+std::string code_digest(const b3mod::Mod& m) { return b3mod::trust_digest(m.dir, m.manifest.code, m.manifest.script); }
 bool code_allowed(const App& a, const b3mod::Mod& m) {
-    const fs::path lib = code_library(m);
-    std::error_code ec;
-    return lib.empty() || !fs::exists(lib, ec) || b3mod::trusted(a.pref, b3mod::library_digest(lib));
+    if (!b3mod::needs_trust(m.manifest.code, m.manifest.script)) return true;
+    if (m.manifest.code.present) {   // no library for this system, or it is missing: it cannot run (nothing to ask)
+        const fs::path lib = code_library(m);
+        std::error_code ec;
+        if (lib.empty() || !fs::exists(lib, ec)) return true;
+    }
+    return b3mod::trusted(a.pref, m.manifest.id, code_digest(m));
 }
 const b3mod::ModState* code_state(const App& a, const std::string& id) {
     for (const b3mod::ModState& s : a.mod_state)
@@ -573,12 +679,35 @@ void save_mods(App& a, const std::string& what) {
 
 void message(App& a, const std::string& title, const std::string& text);
 
-// modkit1b: Add mod -- a .zip / .b3mod unpacked into the mods folder (b3mod/archive.h); a mod already installed with
-// that id asks first
-void add_mod(App& a, const fs::path& archive, bool replace) {
+// The name a pack without mod.ini is installed as: its folder's name, or its archive's without the extension
+std::string pack_name(const fs::path& p) {
+    std::error_code ec;
+    return utf8_of(fs::is_directory(p, ec) ? p.filename() : p.stem());
+}
+
+// modkit1b: Add mod -- a .zip / .b3mod unpacked into the mods folder (b3mod/archive.h), or (item 11) a folder copied
+// into it; a mod already installed with that id asks first, and so does a pack of the game's own folders without a
+// mod.ini (installed as a file-replacement mod named files_name once the user agrees)
+void add_mod(App& a, const fs::path& archive, bool replace, const std::string& files_name = {}) {
     b3mod::InstallOptions opt;
     opt.replace = replace;
-    const b3mod::InstallResult r = b3mod::install_archive(archive, b3mod::mods_folder(a.pref), opt);
+    opt.files_mod_name = files_name;
+    std::error_code dec;
+    const bool folder = fs::is_directory(archive, dec);
+    const b3mod::InstallResult r = folder ? b3mod::install_folder(archive, b3mod::mods_folder(a.pref), opt)
+                                          : b3mod::install_archive(archive, b3mod::mods_folder(a.pref), opt);
+    if (!r.ok && r.files_pack && files_name.empty()) {   // item 11: ask, then install it with a mod.ini made for it
+        const std::string name = pack_name(archive);
+        Modal m;
+        m.title = "Install as a file-replacement mod?";
+        m.text = a.text->translated("This pack has no mod.ini.") + " " +
+                 b3settings::translate_format("Install it as a file-replacement mod named {}?", name, a.text->language()) + " " +
+                 a.text->translated("Its files replace the game's files of the same names; it has no code, so nothing in it runs.") + " " +
+                 a.text->translated("A mod.ini is written for it, and it starts off.");
+        m.buttons = {{"Install", [&a, archive, name]() { add_mod(a, archive, false, name); }, true}, {"Cancel", nullptr}};
+        a.modal = m;
+        return;
+    }
     if (!r.ok && r.exists && !replace) {
         Modal m;
         m.title = "Replace " + r.id + "?";
@@ -595,6 +724,14 @@ void add_mod(App& a, const fs::path& archive, bool replace) {
         if (r.errors.size() > 6) why += "\n... and " + std::to_string(r.errors.size() - 6) + " more";
         a.mods_note = "Not added (" + utf8_of(archive.filename()) + "): " + r.errors.front();
         a.mods_note_bad = true;
+        if (r.errors.front().find("no mod.ini") != std::string::npos) {   // item 11: what a mod.ini is, where it is told
+            message(a, "Not a mod",
+                    b3settings::translate_format("{} was not installed; nothing was written.", utf8_of(archive.filename()), a.text->language()) + " " +
+                        a.text->translated("It has no mod.ini, and no folders of the game's own (DATA, PVEH, TRACKS, SOUND, OVID) to install as replacement files.") + " " +
+                        a.text->translated("A mod.ini is the small text file at the top of a mod that names it: its id, name and version.") + " " +
+                        a.text->translated("How to make one: docs/modding in the port's source."));
+            return;
+        }
         message(a, "Mod not added", utf8_of(archive.filename()) + " was not installed; nothing was written.\n" + why);
         return;
     }
@@ -611,6 +748,8 @@ void load_replays(App& a) {
 }
 
 void refresh_languages(App& a);   // 1.0.1 (the SETTINGS page)
+void dj_disc_chosen(App& a, const fs::path& disc);   // 1.3.0
+void refresh_xbox(App& a);        // xboximport (the HD Textures page)
 
 void refresh(App& a) {
     a.game = check_game_folder(a.game_dir);
@@ -622,6 +761,7 @@ void refresh(App& a) {
     refresh_hd(a);
     refresh_music(a);
     refresh_languages(a);   // 1.0.1
+    refresh_xbox(a);        // xboximport
     refresh_mods(a);
 }
 
@@ -638,6 +778,15 @@ void set_game_dir(App& a, const fs::path& p, bool remember) {
         std::string why;
         if (!save_config(config_file(a.pref), a.cfg, &why)) a.game_note = "Cannot remember the folder: " + why;
     }
+}
+
+// settingsui: launcher.ini written, and a failure said (in the log, and in `note` where the change was made)
+bool save_cfg(App& a, std::string* note = nullptr) {
+    std::string why;
+    if (save_config(config_file(a.pref), a.cfg, &why)) return true;
+    std::fprintf(stderr, "b3launcher: launcher.ini not saved: %s\n", why.c_str());
+    if (note) *note = "Not saved: " + why;
+    return false;
 }
 
 // ---- update1: the update check (update.h) ----
@@ -687,7 +836,7 @@ bool poll_update(App& a) {
     a.upd.job.reset();
     if (!a.cfg.update.enabled) return true;   // turned off meanwhile: the answer is dropped
     update::apply(a.cfg.update, r, unix_now());
-    save_config(config_file(a.pref), a.cfg);
+    save_cfg(a);
     return true;
 }
 
@@ -698,16 +847,34 @@ bool oneclick_available(const App& a) {
     return a.upd.net && oneclick::release_key(key) && !a.self_exe.empty();
 }
 
+// robust2: is this launcher running from a Flatpak sandbox (Flatpak sets FLATPAK_ID; /.flatpak-info is in every one)
+bool in_flatpak() {
+    const char* id = SDL_getenv("FLATPAK_ID");
+    std::error_code ec;
+    return (id && *id) || fs::exists("/.flatpak-info", ec);
+}
+
 // Asks GitHub for the latest release, fetches this system's package checked against the signed hash list
 // (oneclick.h), and installs it beside the launcher (installer.h; macOS: the dmg is opened for the player).
 void start_install(App& a) {
     if (a.inst.job || a.inst.installed || !oneclick_available(a)) return;
+    // robust2: a folder the update cannot be written to is found before the download, not after it
+    if (update::this_platform() != update::Platform::kMac) {
+        const char* appimage = SDL_getenv("APPIMAGE");
+        if (const std::string why = installer::install_blocker(a.exe_dir, appimage && *appimage, in_flatpak()); !why.empty()) {
+            a.inst.note = "Update not installed: " + why + ".";
+            return;
+        }
+    }
     auto job = std::make_shared<App::InstallJob>();
     const std::string ua = update::user_agent(b3port::version());
     const fs::path dir = a.pref / "updates", install_dir = a.exe_dir;
+    // robust2: the installed version (VERSION.txt, else this build's): the signed package must be newer (oneclick.h)
+    std::string installed = installer::installed_version(install_dir);
+    if (installed.empty() || !update::parse_version(installed)) installed = b3port::version();
     a.inst.job = job;
     a.inst.note.clear();
-    a.inst.th = std::thread([job, ua, dir, install_dir]() {
+    a.inst.th = std::thread([job, ua, dir, install_dir, installed]() {
         const auto set_step = [&](int s) { std::lock_guard<std::mutex> l(job->m); job->step = s; };
         const auto finish = [&](bool ok, std::string why) {
             std::lock_guard<std::mutex> l(job->m);
@@ -720,18 +887,31 @@ void start_install(App& a) {
         std::string why;
         if (!latest.ok || latest.status != 200 || !update::parse_release(latest.body, rel, &why))
             return finish(false, "could not read the latest release" + (latest.ok ? std::string() : " (" + latest.error + ")"));
-        if (!update::is_newer(rel.tag, b3port::version())) return finish(false, "this is already the latest version");
+        if (!update::is_newer(rel.tag, b3port::version()) || !update::is_newer(rel.tag, installed))
+            return finish(false, "this is already the latest version");
         {
             std::lock_guard<std::mutex> l(job->m);
             job->tag = rel.tag;
         }
         std::array<std::uint8_t, 32> key{};
         if (!oneclick::release_key(key)) return finish(false, "one-click updates are off in this build");
-        const oneclick::Fetch fetch = [ua](const std::string& url, bool download, std::size_t max) {
-            return update::https_get(url, ua, download ? 30 * 60 * 1000 : 15000, max, download);
+        const std::atomic<bool>* cancel = &job->cancel;
+        const oneclick::Fetch fetch = [ua, cancel](const std::string& url, bool download, std::size_t max) {
+            return update::https_get(url, ua, download ? 30 * 60 * 1000 : 15000, max, download, cancel);
         };
-        const oneclick::Result got = oneclick::fetch_package(rel, update::this_platform(), key, fetch, dir,
+        const oneclick::Result got = oneclick::fetch_package(rel, update::this_platform(), installed, key, fetch, dir,
                                                              [&](oneclick::Step s) { set_step(1 + int(s)); });
+        bool cancelled;
+        {   // robust2: the cancel is decided under the lock: either it is seen here, or step 5 is set first (a close then waits)
+            std::lock_guard<std::mutex> l(job->m);
+            cancelled = job->cancel.load();
+            if (!cancelled && got.ok && update::this_platform() != update::Platform::kMac) job->step = 5;
+        }
+        if (cancelled) {   // a download stopped half way (or a finished one not yet installed): nothing kept
+            std::error_code ec;
+            if (got.ok) fs::remove(got.package, ec);
+            return finish(false, "cancelled");
+        }
         if (!got.ok) return finish(false, got.why);
         if (update::this_platform() == update::Platform::kMac) {
             std::lock_guard<std::mutex> l(job->m);
@@ -739,12 +919,25 @@ void start_install(App& a) {
             job->ok = job->done = true;
             return;
         }
-        set_step(5);
         const installer::Result in = installer::install(got.package, install_dir);
         std::error_code ec;
         fs::remove(got.package, ec);
         finish(in.ok, in.why);
     });
+}
+
+std::string file_url(const fs::path& p);
+
+// robust2: the download under way, stopped (the swap, step 5, is never cut short)
+void cancel_install(App& a) {
+    if (!a.inst.job) return;
+    std::lock_guard<std::mutex> l(a.inst.job->m);
+    a.inst.job->cancel = true;
+}
+int install_step(const App& a) {
+    if (!a.inst.job) return -1;
+    std::lock_guard<std::mutex> l(a.inst.job->m);
+    return a.inst.job->done ? 6 : a.inst.job->step;
 }
 
 // The result, once it is there. True when one came.
@@ -764,14 +957,18 @@ bool poll_install(App& a) {
     if (a.inst.th.joinable()) a.inst.th.join();
     a.inst.job.reset();
     if (!ok) {
-        a.inst.note = "Update not installed: " + why + ".";
+        a.inst.note = why == "cancelled" ? std::string("Update cancelled.") : "Update not installed: " + why + ".";
         return true;
     }
     a.inst.tag = tag;
     if (!package.empty()) {   // macOS: the checked disk image, opened; the player drags the app as on the first install
-        const std::string url = "file://" + utf8_of(package);
-        SDL_OpenURL(url.c_str());
-        a.inst.note = "The update " + tag + " is downloaded and checked: its disk image is open. Quit, then drag the app to Applications.";
+        if (SDL_OpenURL(file_url(package).c_str()))
+            a.inst.note = "The update " + tag + " is downloaded and checked: its disk image is open. Quit, then drag the app to Applications.";
+        else {
+            std::fprintf(stderr, "b3launcher: the update's disk image did not open: %s\n", SDL_GetError());
+            a.inst.note = "The update " + tag + " is downloaded and checked, but its disk image did not open. Open it yourself (" + utf8_of(package) +
+                          "), then quit and drag the app to Applications.";
+        }
         return true;
     }
     a.inst.installed = true;
@@ -790,6 +987,404 @@ void restart_launcher(App& a) {
     }
 }
 
+// ---- xboximport (1.3.0): Import Xbox textures (b3asset/xboximport.h) ----
+
+namespace xi = b3asset::xboximport;
+fs::path xbox_folder(const App& a) { return a.pref / xi::kFolderName; }
+void refresh_xbox(App& a) { a.xbox.status = xi::read_status(xbox_folder(a)); }
+bool xbox_running(const App& a) { return a.xbox.job != nullptr; }
+
+// An importer's message as a sentence of its own (the page's language has it)
+std::string xbox_sentence(std::string s) {
+    if (!s.empty() && s[0] >= 'a' && s[0] <= 'z') s[0] = char(s[0] - 'a' + 'A');
+    return s + ".";
+}
+
+// The import of `image` into <pref>/xbox-textures from the game's own files, on its thread
+void start_xbox_import(App& a, const fs::path& image) {
+    if (a.xbox.job) return;
+    a.xbox.level = 2;
+    const std::uint64_t avail = xi::free_bytes(a.pref);
+    if (avail && avail < xi::kNeedBytes) {   // (the importer checks too: the message at once, before the thread)
+        a.xbox.note = "The import failed. " + xbox_sentence("not enough free space (about " + std::to_string(xi::kNeedBytes >> 20) + " MB needed)");
+        return;
+    }
+    auto job = std::make_shared<App::XboxJob>();
+    const fs::path game = a.game_dir, out = xbox_folder(a);
+    a.xbox.job = job;
+    a.xbox.note.clear();
+    a.xbox.th = std::thread([job, image, game, out]() {
+        const auto progress = [job](const xi::Progress& p) {
+            std::lock_guard<std::mutex> l(job->m);
+            job->p = p;
+        };
+        xi::Result r;
+        try {   // (run never throws; still nothing may leave this thread: std::terminate would close the launcher)
+            xi::Options o;
+            o.remove_tree = b3mod::remove_tree;   // modsec: the .partial / .old folders without following a link
+            r = xi::run(image, game, out, progress, &job->cancel, o);
+        } catch (...) {
+            r = xi::Result{};
+            r.error = "the import stopped: an unknown error";
+        }
+        std::lock_guard<std::mutex> l(job->m);
+        job->r = std::move(r);
+        job->done = true;
+    });
+}
+
+// Each frame while an import runs: its modal (progress, Cancel); once it is done, the result. True when one came.
+bool poll_xbox(App& a) {
+    if (!a.xbox.job) return false;
+    xi::Progress p;
+    bool done;
+    {
+        std::lock_guard<std::mutex> l(a.xbox.job->m);
+        p = a.xbox.job->p;
+        done = a.xbox.job->done;
+    }
+    if (!done) {
+        Modal m;
+        m.title = "Importing Xbox textures";
+        m.text = std::string(p.stage ? "Building the textures: {}." : "Reading the game's files: {}.");
+        m.text.replace(m.text.find("{}"), 2, std::to_string(p.done) + " / " + std::to_string(p.total));
+        m.text += " Textures written: " + std::to_string(p.written) + ".";
+        if (a.xbox.job->cancel) m.text += " Cancelling...";
+        m.progress = p.total ? 0.5f * float(p.stage) + 0.5f * float(p.done) / float(p.total) : 0.0f;
+        m.buttons = {{"Cancel", [&a]() { if (a.xbox.job) a.xbox.job->cancel = true; }}};
+        a.modal = m;
+        return false;
+    }
+    if (a.xbox.th.joinable()) a.xbox.th.join();
+    const xi::Result r = a.xbox.job->r;
+    a.xbox.job.reset();
+    a.modal.reset();
+    refresh_xbox(a);
+    ++a.hd_gen;   // (the showroom's packs)
+    if (r.ok) {
+        a.settings.xbox_textures = true;   // a finished import turns XBOX TEXTURES on
+        save_settings(a);
+        a.xbox.level = 1;
+        a.xbox.note = std::to_string(r.written) + " textures imported. Used from the next start. "
+                      "It is a small improvement: some building fronts, signs and car paint are somewhat sharper.";
+        std::printf("b3launcher: Xbox textures imported: %zu written (%zu car paints), %.1f MB, %.1f s\n", r.written, r.cars,
+                    double(r.bytes) / 1048576.0, r.seconds);
+    } else if (r.cancelled) {
+        a.xbox.level = 0;
+        a.xbox.note = "Import cancelled: nothing was changed.";
+    } else {
+        a.xbox.level = 2;
+        a.xbox.note = "The import failed. " + xbox_sentence(r.error);
+    }
+    return true;
+}
+
+// Remove: asks first, then deletes the folder (modsec: b3mod::remove_tree, no link followed) and turns XBOX TEXTURES off
+void confirm_xbox_remove(App& a) {
+    Modal m;
+    m.title = "Remove the Xbox textures?";
+    m.text = "The imported textures are deleted. You can import them again from your disc at any time.";
+    // (the modal's dispatch copies a button's function and closes the modal before calling it: modal_nav)
+    m.buttons = {{"Remove", [&a]() {
+                      std::string why;
+                      const bool ok = xi::remove(xbox_folder(a), &why, b3mod::remove_tree);
+                      a.settings.xbox_textures = false;
+                      save_settings(a);
+                      refresh_xbox(a);
+                      ++a.hd_gen;
+                      a.xbox.level = ok ? 0 : 2;
+                      a.xbox.note = ok ? "The Xbox textures were removed." : why;
+                  }, true},
+                 {"Cancel", nullptr}};
+    m.focus = 1;
+    a.modal = m;
+}
+
+// At the end: an import under way is cancelled and waited for (its .partial folder removed)
+void end_xbox_import(App& a) {
+    if (!a.xbox.th.joinable()) return;
+    a.xbox.job->cancel = true;
+    a.xbox.th.join();
+}
+
+// ---- portable mode (1.3.0): the data folder beside the launcher (portable.h; the rule: b3port/user_dir.h) ----
+
+namespace pm = b3launcher::portable;
+void controls_load(App& a);
+void refresh_languages(App& a);
+
+std::string ltr(const App& a, const std::string& s);   // (the launcher's words in the language shown, below)
+std::string ltrf(const App& a, const std::string& pattern, const std::string& arg);
+// The game plays: started by this launcher, or holding its save folder's lock (saveflow) on this computer
+bool game_playing(const App& a) {
+    return a.child.has_value() || !b3native::save::folder_lock_holder(saves_folder(a.pref, a.cfg.saves_dir)).empty();
+}
+pm::Status portable_status(const App& a) {
+    if (a.portable.hidden) return {};
+    return pm::status(a.portable.exe, false, false, false, a.portable.override_dir, a.portable.writable, a.child.has_value());
+}
+
+// Everything read from the data folder, read again from `a.pref` (after a move: the folder now in use)
+void reload_data_folder(App& a) {
+    std::error_code ec;
+    fs::create_directories(a.pref, ec);
+    a.cfg = Config{};
+    load_config(config_file(a.pref), a.cfg);
+    load_settings(a);
+    controls_load(a);
+    refresh(a);
+    load_replays(a);
+    a.portable.rec = pm::read_record(a.pref);
+}
+
+// The start: a move cut short cleaned, the old copy's record read
+void portable_init(App& a, int override_dir) {
+    App::PortableUi& u = a.portable;
+    u.exe = a.exe_dir;
+    u.platform = b3io::platform_user_dir();
+    u.hidden = !b3io::portable_supported(b3io::apple_build(), b3io::in_appimage(), b3io::in_flatpak());
+    u.override_dir = override_dir;
+    u.data_writable = b3io::dir_writable(a.pref);
+    if (!u.data_writable) std::printf("b3launcher: the data folder %s cannot be written: settings and saves are not kept\n", utf8_of(a.pref).c_str());
+    if (u.hidden) return;
+    u.writable = b3io::dir_writable(u.exe);
+    if (!override_dir && pm::clean_partials(u.exe, u.platform) > 0)
+        std::printf("b3launcher: portable mode: a move cut short was cleaned up (its .partial folder removed; the data is where it was)\n");
+    u.rec = pm::read_record(a.pref);
+}
+
+std::string mb_text(std::uintmax_t bytes) { return std::to_string((bytes + (1u << 20) - 1) >> 20); }   // (rounded up: 1 for a few KB)
+
+// The move holds saveflow's lock on the save folder a game started now would use (game.lock, kLauncherMoveSlot): a game
+// started meanwhile (from Steam, say) is told the launcher is moving the data, a second launcher refuses to move. False
+// (and *holder) when a game or another launcher holds it.
+bool portable_lock(App& a, const fs::path& from, std::string* holder) {
+    const fs::path root = saves_folder(from, a.cfg.saves_dir);
+    std::error_code ec;
+    fs::create_directories(root, ec);
+    if (!b3native::save::acquire_folder_lock(root, b3native::save::kLauncherMoveSlot, unix_now(), holder)) return false;
+    a.portable.lock_root = root;
+    return true;
+}
+// ... let go, wherever the lock file now is (the folder moved from, its dated name, the copy in the new folder)
+void portable_unlock(App& a, const pm::Result* r) {
+    std::vector<fs::path> roots = {a.portable.lock_root, saves_folder(a.pref, a.cfg.saves_dir)};
+    if (r && !r->old_kept.empty()) roots.push_back(r->old_kept / "saves"), roots.push_back(r->old_kept / "native" / "saves");
+    for (const fs::path& d : roots)
+        if (!d.empty()) b3native::save::release_folder_lock(d);
+    a.portable.lock_root.clear();
+}
+
+// The move, on its thread; poll_portable shows its progress and then its result
+void start_portable_move(App& a, const pm::Plan& plan, pm::Keep keep) {
+    if (a.portable.job) return;
+    std::string holder;
+    if (!portable_lock(a, plan.from, &holder)) {
+        message(a, "Portable mode", verbatim(ltrf(a, "Cannot move your data: {}.", holder + " uses the save folder")));
+        return;
+    }
+    auto job = std::make_shared<App::PortableJob>();
+    a.portable.job = job;
+    a.portable.plan = plan;
+    a.portable.note.clear();
+    const std::string stamp = a.portable.stamp.empty() ? pm::stamp_now() : a.portable.stamp;
+    a.portable.th = std::thread([job, plan, keep, stamp]() {
+        pm::Result r;
+        try {   // (nothing may leave this thread)
+            r = pm::move(plan, keep, stamp, &job->p);
+        } catch (...) {
+            r = pm::Result{};
+            r.why = "the move stopped: an unknown error";
+        }
+        std::lock_guard<std::mutex> l(job->m);
+        job->r = std::move(r);
+        job->done = true;
+    });
+}
+
+// Each frame while a move runs: its modal (progress, Cancel); once it is done, the data folder in use switched and the
+// result said. True when one came.
+bool poll_portable(App& a) {
+    App::PortableUi& u = a.portable;
+    if (!u.job) return false;
+    bool done;
+    {
+        std::lock_guard<std::mutex> l(u.job->m);
+        done = u.job->done;
+    }
+    if (!done) {
+        const std::uint64_t d = u.job->p.done, t = u.job->p.total;
+        const int step = u.job->p.step;
+        Modal m;
+        m.title = "Moving your data";
+        std::string text = step == 2 ? ltr(a, "Putting it in place.")
+                                     : ltrf(a, step == 0 ? "Copying: {} MB." : "Checking the copy: {} MB.",
+                                            mb_text(step == 0 ? d : d - std::min<std::uint64_t>(d, t / 2)) + " / " + mb_text(t / 2));
+        text += " " + ltr(a, "Nothing is removed until the copy is checked.");
+        if (u.job->p.cancel) text += " " + ltr(a, "Cancelling...");
+        m.text = verbatim(text);
+        m.progress = t ? float(double(d) / double(t)) : (step == 2 ? 1.0f : 0.0f);
+        if (step < 2) m.buttons = {{"Cancel", [&a]() { if (a.portable.job) a.portable.job->p.cancel = true; }}};
+        a.modal = m;
+        return false;
+    }
+    if (u.th.joinable()) u.th.join();
+    const pm::Result r = u.job->r;
+    u.job.reset();
+    a.modal.reset();
+    const pm::Plan p = u.plan;
+    if (!r.ok) {
+        portable_unlock(a, &r);
+        u.level = 2;
+        u.note = r.why == "cancelled" ? "Cancelled: nothing was moved." : "Not moved: " + r.why + ".";
+        if (r.why != "cancelled")
+            message(a, "Your data was not moved", verbatim(ltr(a, "Nothing was changed: your data is where it was.") + " " + r.why + "."));
+        std::printf("b3launcher: portable mode: the move %s: %s\n", r.why == "cancelled" ? "was cancelled" : "failed", r.why.c_str());
+        return true;
+    }
+    // the folder in use now (the rule decides, as the game's will): everything read again from it
+    const fs::path old_pref = a.pref;
+    a.pref = p.to_portable ? b3io::portable_dir(u.exe) : u.platform;
+    reload_data_folder(a);
+    u.data_writable = b3io::dir_writable(a.pref);
+    if (const std::string moved = pm::rebase_saves_dir(a.cfg.saves_dir, old_pref, a.pref); moved != a.cfg.saves_dir) {
+        a.cfg.saves_dir = moved;   // (a save folder chosen inside the data folder moved with it)
+        save_cfg(a);
+        refresh(a);
+    }
+    portable_unlock(a, &r);
+    pm::Record rec;
+    rec.old_kept = r.old_kept;
+    rec.aside = r.aside;
+    if (!rec.old_kept.empty() || !rec.aside.empty()) pm::write_record(a.pref, rec);
+    u.rec = pm::read_record(a.pref);
+    u.level = 1;
+    std::string text = ltrf(a, "Your data is now in {}.", utf8_of(a.pref));
+    if (!r.old_kept.empty()) text += " " + ltrf(a, "The old copy is kept in {}.", utf8_of(r.old_kept));
+    if (!r.aside.empty()) text += " " + ltrf(a, "The data that was in this computer's folder is kept in {}.", utf8_of(r.aside));
+    if (!r.note.empty()) text += " " + r.note;
+    if (!r.old_kept.empty()) text += " " + ltr(a, "Once the game has started from the new folder, the launcher offers to remove the old copy.");
+    u.note = p.to_portable ? "Portable mode is on." : "Portable mode is off.";
+    message(a, p.to_portable ? "Portable mode is on" : "Portable mode is off", verbatim(text));
+    std::printf("b3launcher: portable mode %s: %zu files (%s MB) moved to %s; the old copy: %s\n", p.to_portable ? "on" : "off", r.files,
+                mb_text(r.bytes).c_str(), utf8_of(a.pref).c_str(), r.old_kept.empty() ? "none" : utf8_of(r.old_kept).c_str());
+    return true;
+}
+
+// The row (or the game's request) asks for portable mode `on`: checked, then confirmed, then moved
+void portable_toggle(App& a, bool on) {
+    App::PortableUi& u = a.portable;
+    if (u.hidden || u.job) return;
+    u.writable = b3io::dir_writable(u.exe);
+    const pm::Status st = portable_status(a);
+    if (st.on == on) return;
+    std::string why = st.why;
+    if (why.empty() && game_playing(a)) why = "The game is running: close it first.";
+    if (!why.empty()) {
+        message(a, "Portable mode", why);
+        return;
+    }
+    const std::optional<pm::Plan> p = pm::plan(on, u.exe, u.platform, &why);
+    if (!p) {
+        message(a, "Portable mode", verbatim(ltrf(a, "Cannot move your data: {}.", why)));
+        return;
+    }
+    if (!p->enough_space && !p->target_has_data) {   // (with data in both, keeping this computer's copies nothing)
+        message(a, "Not enough free space", verbatim(ltrf(a, "Your data needs {} MB where it goes.", mb_text(p->bytes + pm::kMargin)) + " " +
+                                                          ltrf(a, "Free there: {} MB.", mb_text(p->free))));
+        return;
+    }
+    Modal m;
+    m.title = on ? "Turn portable mode on?" : "Turn portable mode off?";
+    m.text = ltr(a, on ? "Your settings, saves and everything else the port keeps for you are copied into the appdata folder beside "
+                         "the launcher, checked file by file, and used from then on."
+                       : "Your data is copied from the appdata folder into this computer's user folder, checked file by file, and "
+                         "used from then on.");
+    m.text += " " + ltrf(a, "Size: {} MB.", mb_text(p->bytes));
+    m.text += " " + ltr(a, on ? "The old folder is kept under a dated name until the game has started from the new one."
+                              : "The appdata folder is kept beside the launcher under a dated name until the game has started from the new one.");
+    if (!a.cfg.saves_dir.empty() && pm::rebase_saves_dir(a.cfg.saves_dir, p->from, p->to) == a.cfg.saves_dir)
+        m.text += " " + ltr(a, "Your save folder is one you chose elsewhere (the Saves page): it is not moved.");
+    const pm::Plan plan = *p;
+    if (!on && p->target_has_data) {
+        m.text += " " + ltr(a, "This computer's user folder already holds data from an earlier time. Choose which to keep: the other is "
+                               "set aside under a dated name, never mixed.");
+        m.text = verbatim(m.text);
+        m.buttons = {{"Portable data", [&a, plan]() { start_portable_move(a, plan, pm::Keep::kMoved); }},
+                     {"This computer's data", [&a, plan]() { start_portable_move(a, plan, pm::Keep::kExisting); }},
+                     {"Cancel", nullptr}};
+        m.focus = 2;
+    } else {
+        m.text = verbatim(m.text);
+        m.buttons = {{on ? "Move my data" : "Move it back", [&a, plan]() { start_portable_move(a, plan, pm::Keep::kMoved); }}, {"Cancel", nullptr}};
+        m.focus = 1;
+    }
+    a.modal = m;
+}
+
+// The old copy: removed (asks first)
+void confirm_portable_remove(App& a) {
+    if (!a.portable.rec) return;
+    const pm::Record rec = *a.portable.rec;
+    Modal m;
+    m.title = "Remove the old copy?";
+    m.text = ltrf(a, "The game has started from your data's new folder, and the old copy is still in {}.", utf8_of(rec.old_kept.empty() ? rec.aside : rec.old_kept));
+    if (!rec.old_kept.empty() && !rec.aside.empty()) m.text += " " + ltrf(a, "The data set aside is in {}.", utf8_of(rec.aside));
+    m.text = verbatim(m.text + " " + ltr(a, "Remove it to free the space, or keep it."));
+    m.buttons = {{"Remove the old copy", [&a, rec]() {
+                      std::string why;
+                      bool ok = true;
+                      for (const fs::path& d : {rec.old_kept, rec.aside})
+                          if (!d.empty()) ok = pm::remove_old(d, &why) && ok;
+                      a.portable.level = ok ? 1 : 2;
+                      a.portable.note = ok ? "The old copy was removed." : "Not all of the old copy could be removed: " + why + ".";
+                      if (ok) pm::clear_record(a.pref);
+                      a.portable.rec = pm::read_record(a.pref);
+                  }, true},
+                 {"Keep it", [&a, rec]() {
+                      pm::Record r = rec;
+                      r.declined = true;
+                      pm::write_record(a.pref, r);
+                      a.portable.rec = pm::read_record(a.pref);
+                  }}};
+    m.focus = 1;
+    a.modal = m;
+}
+
+// At the start (after the data folder is read): the game's request (its PORTABLE MODE row), else the old copy's
+// removal once the game has started from the new folder and ended cleanly
+void portable_start_checks(App& a) {
+    App::PortableUi& u = a.portable;
+    if (u.hidden || u.override_dir) return;
+    if (const auto want = b3io::read_portable_request(a.pref)) {
+        b3io::clear_portable_request(a.pref);
+        if (*want != portable_status(a).on) {
+            portable_toggle(a, *want);
+            u.ask = a.modal.has_value();
+            return;
+        }
+    }
+    if (u.rec && u.rec->started && !u.rec->declined && a.have_run && !a.run.running) {
+        confirm_portable_remove(a);
+        u.ask = a.modal.has_value();
+    }
+}
+
+// A game start from the data folder a move made: the record says so (its old copy is then offered for removal)
+void portable_game_started(App& a) {
+    if (!a.portable.rec || a.portable.rec->started) return;
+    a.portable.rec->started = true;
+    pm::write_record(a.pref, *a.portable.rec);
+}
+
+// At the end: a move under way is cancelled before its rename (or finishes it) and waited for
+void end_portable_move(App& a) {
+    if (!a.portable.th.joinable()) return;
+    a.portable.job->p.cancel = true;
+    a.portable.th.join();
+    portable_unlock(a, &a.portable.job->r);
+}
+
 // At the end: a request still under way is left to finish on its own (its timeout bounds it; quitting does not wait)
 void end_update_check(App& a) {
     if (!a.upd.th.joinable()) return;
@@ -804,7 +1399,7 @@ void end_update_check(App& a) {
 
 void set_update_check(App& a, bool on) {
     a.cfg.update.enabled = on;
-    save_config(config_file(a.pref), a.cfg);
+    save_cfg(a, &a.settings_note);
     if (on && update::due(a.cfg.update, unix_now())) start_update_check(a);
 }
 
@@ -887,6 +1482,14 @@ void load_look(App& a) {
         }
         return im;
     };
+    if (const ArtImage* logo = a.look.art.image("titlescreen_logo"); logo && logo->w > 0 && logo->h > 0) {   // settingsui
+        const PixelBox b = visible_box(*logo, 3);
+        a.look.logo_uv[0] = float(b.x0) / float(logo->w);
+        a.look.logo_uv[1] = float(b.y0) / float(logo->h);
+        a.look.logo_uv[2] = float(b.x1) / float(logo->w);
+        a.look.logo_uv[3] = float(b.y1) / float(logo->h);
+        a.look.logo_aspect = float(b.x1 - b.x0) / float(std::max(1, b.y1 - b.y0));
+    }
     for (const auto& [n, im] : a.look.art.images) {
         const ArtImage use = n == "Halo" ? tinted(im, 0x6FA8FF, 1.7f) : n == "grid" ? tinted(im, 0x5C8FD8, 0.11f) : im;
         if (SDL_Texture* t = make_texture(a.ren, use)) a.look.tex[n] = t;
@@ -922,18 +1525,9 @@ void blit(App& a, SDL_Texture* t, SDL_FRect dst, SDL_FColor tint, float u0 = 0, 
 }
 
 std::string file_url(const fs::path& p) {
-    std::string s = utf8_of(fs::absolute(p)), out;
-    for (char& c : s)
-        if (c == '\\') c = '/';
-    for (unsigned char c : s) {
-        if (std::isalnum(c) || c == '/' || c == ':' || c == '-' || c == '_' || c == '.' || c == '~' || c >= 0x80) out += char(c);
-        else {
-            char b[4];
-            std::snprintf(b, sizeof b, "%%%02X", c);
-            out += b;
-        }
-    }
-    return (out.size() > 1 && out[1] == ':') ? "file:///" + out : "file://" + out;
+    std::error_code ec;
+    const fs::path abs = fs::absolute(p, ec);
+    return b3port::file_url(utf8_of(ec ? p : abs));
 }
 
 bool open_folder(const fs::path& p, std::string* note) {
@@ -995,7 +1589,7 @@ std::vector<b3native::save::Pcsx2CardFolder> pcsx2_folders(const App& a) {
     if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) h.xdg_config = fs::path(x);
 #ifdef _WIN32
     for (const char* v : {"ProgramFiles", "ProgramFiles(x86)"})
-        if (const char* p = std::getenv(v); p && *p) h.program_files.push_back(fs::path(p));
+        if (const auto p = b3io::getenv(v)) h.program_files.push_back(b3io::u8path(*p));   // fsrobust: the wide value
 #endif
     return b3native::save::pcsx2_card_folders(h);
 }
@@ -1025,6 +1619,9 @@ void open_dialog(App& a, DialogKind kind, const std::string& start) {
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
     } else if (kind == DialogKind::kSteamCover || kind == DialogKind::kSteamHero || kind == DialogKind::kSteamLogo) {   // issue #8
         static const SDL_DialogFileFilter f[] = {{"Images (*.png, *.jpg)", "png;jpg;jpeg"}, {"All files", "*"}};
+        SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
+    } else if (kind == DialogKind::kXboxImage) {   // xboximport
+        static const SDL_DialogFileFilter f[] = {{"Xbox disc images (*.iso, *.xiso)", "iso;xiso"}, {"All files", "*"}};
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
     } else if (kind == DialogKind::kGameImage || kind == DialogKind::kLanguageImage) {   // iso1: the disc image, read in place (b3asset/discfs.h)
         static const SDL_DialogFileFilter f[] = {{"Disc images (*.iso, *.bin, *.chd)", "iso;bin;chd"}, {"All files", "*"}};   // chd1: .chd
@@ -1108,8 +1705,10 @@ const char* browse_title(DialogKind k) {
     case DialogKind::kGameFolder: return "Choose the game data folder or disc image";
     case DialogKind::kGameImage: return "Choose the game's disc image or folder";
     case DialogKind::kLanguageImage: return "Choose a European disc image of the game (its languages are copied)";
+    case DialogKind::kXboxImage: return "Choose your Xbox disc image of the game (.iso or .xiso)";   // xboximport
     case DialogKind::kMusicFolder: return "Choose your music folder";
     case DialogKind::kModArchive: return "Add a mod: choose its .b3mod or .zip file";
+    case DialogKind::kModFolder: return "Add a mod: choose its folder (a mod, or a pack of the game's files)";
     case DialogKind::kImportFile: return "Import a save file";
     case DialogKind::kImportFolder: return "Import a folder card";
     case DialogKind::kExport: return "Export the save to a folder";
@@ -1143,6 +1742,10 @@ void browse_status(Browser& b) {
         }
         break;
     }
+    case DialogKind::kXboxImage:   // xboximport
+        b.status = files ? "Disc images here: A on one imports its textures." : "No disc images here: open the folder that holds your Xbox disc image.";
+        b.status_level = files ? 1 : 0;
+        break;
     case DialogKind::kLanguageImage:   // 1.0.1
         b.status = files ? "Disc images here: A on one copies its languages (a European copy of the game)."
                          : "No disc images here: open the folder that holds your European disc image.";
@@ -1166,6 +1769,9 @@ void browse_status(Browser& b) {
         break;
     case DialogKind::kImportFolder:
         b.status = "Open the folder card's folder, then Start.";
+        break;
+    case DialogKind::kModFolder:   // item 11
+        b.status = "Open the mod's folder, then Start: it is copied into the mods folder.";
         break;
     case DialogKind::kModArchive:
     case DialogKind::kSteamCover:   // issue #8
@@ -1222,9 +1828,11 @@ void open_browser(App& a, DialogKind kind, const std::string& start, const std::
     case DialogKind::kGameFolder:
     case DialogKind::kGameImage: b.exts = {"iso", "bin", "chd"}; b.pick_files = true; break;   // a folder, or a disc image (chd1: .chd)
     case DialogKind::kLanguageImage: b.exts = {"iso", "bin", "chd"}; b.pick_files = true; break;   // 1.0.1
+    case DialogKind::kXboxImage: b.exts = {"iso", "xiso"}; b.pick_files = true; b.pick_folder = false; break;   // xboximport
     case DialogKind::kHdFolder: b.exts = {"dds", "png"}; break;                          // shown, not chosen
     case DialogKind::kMusicFolder: b.exts = {"mp3", "flac", "ogg", "oga", "wav"}; break;
     case DialogKind::kModArchive: b.exts = {"b3mod", "zip"}; b.pick_files = true; b.pick_folder = false; break;
+    case DialogKind::kModFolder: break;   // item 11: a folder (the one shown)
     case DialogKind::kImportFile: b.exts = {"sav", "psu", "max", "ps2", "mcd", "bin"}; b.pick_files = true; b.pick_folder = false; break;
     case DialogKind::kImportFolder: break;
     case DialogKind::kExport: b.export_name = start.empty() ? "Burnout3-save.sav" : start; break;
@@ -1350,6 +1958,7 @@ void browse_nav(App& a, Nav n) {
 }
 
 void choose_saves_folder(App& a, const fs::path& to);   // 1.1 (the SAVES page)
+void start_xbox_import(App& a, const fs::path& image);   // xboximport (the HD Textures page)
 void steam_choose(App& a, DialogKind kind, const fs::path& p);   // issue #8 (Settings > Launcher)
 
 void handle_path(App& a, DialogKind kind, const std::string& path) {
@@ -1383,6 +1992,7 @@ void handle_path(App& a, DialogKind kind, const std::string& path) {
         load_look(a);
         break;
     case DialogKind::kModArchive:   // modkit1b
+    case DialogKind::kModFolder:    // item 11
         add_mod(a, p, false);
         break;
     case DialogKind::kSavesFolder:   // 1.1
@@ -1392,6 +2002,9 @@ void handle_path(App& a, DialogKind kind, const std::string& path) {
     case DialogKind::kSteamHero:
     case DialogKind::kSteamLogo:
         steam_choose(a, kind, p);
+        return;
+    case DialogKind::kXboxImage:   // xboximport
+        start_xbox_import(a, p);
         return;
     case DialogKind::kLanguageImage: {   // 1.0.1: copy the disc's languages into <pref>/languages (b3asset/language.h)
         std::string why;
@@ -1403,6 +2016,7 @@ void handle_path(App& a, DialogKind kind, const std::string& path) {
             for (const auto& l : done) names += (names.empty() ? "" : ", ") + l.name;
             a.language_note = "Imported: " + names + ". Choose one in LANGUAGE (from the next start).";
         }
+        dj_disc_chosen(a, p);   // 1.3.0: the disc's DJ voices, offered in the DJ VOICE rows
         break;
     }
     case DialogKind::kExport: {
@@ -1418,8 +2032,11 @@ void handle_path(App& a, DialogKind kind, const std::string& path) {
     }
     case DialogKind::kImportFile:
     case DialogKind::kImportFolder: {
-        std::error_code ec;
-        fs::create_directories(root, ec);
+        if (!saves_ready(a, &err)) {   // fsrobust: a chosen folder that is not there is not made
+            a.save_note = "IMPORT FAILED: " + err;
+            a.save_note_bad = true;
+            break;
+        }
         const auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         const bool ok = b3native::save::import_profile(root, slot, p, now, &err);
         a.save_note = ok ? "Imported into file " + std::to_string(slot) + " (the old one kept as profile-" + std::to_string(slot) +
@@ -1470,22 +2087,30 @@ void message(App& a, const std::string& title, const std::string& text) {
     a.modal = m;
 }
 
-// sdk2b (DESIGN.md §2.5): a code mod runs as a program on the user's PC, so the launcher asks once per library (its
-// SHA-256 in mods-trusted.ini; a new version of the library is asked about again) before the game may load it
+// sdk2b (DESIGN.md §2.5): a code mod runs as a program on the user's PC, so the launcher asks once per mod and set of
+// files (the SHA-256 over every library in its folder, with its id, in mods-trusted.ini; a change to any of them is
+// asked about again) before the game may load it
 void ask_code_trust(App& a, const std::vector<const b3mod::Mod*>& mods, const std::string& yes, std::function<void()> then) {
     std::string names;
     for (std::size_t k = 0; k < mods.size(); ++k) names += (k ? ", " : "") + mods[k]->manifest.name + " " + mods[k]->manifest.version;
+    bool any_lib = false, any_script = false;
+    for (const b3mod::Mod* md : mods) (md->manifest.code.present ? any_lib : any_script) = true;
     Modal m;
     m.title = mods.size() == 1 ? "Allow this mod's code to run?" : "Allow these mods' code to run?";
-    m.text = names + (mods.size() == 1 ? " contains code" : " contain code") +
-             ": a library the game loads and runs as a program on your PC, with your user's rights, like any program you "
-             "install. Allow code only from people you trust, ideally with its source. You are asked again when the "
-             "library changes (a new version of the mod).";
+    m.text = names + (mods.size() == 1 ? " contains code" : " contain code") + ": " +
+             (any_lib ? "a library the game loads and runs as a program on your PC, with your user's rights, like any program you install"
+                      : "") +
+             (any_lib && any_script ? "; or " : "") +
+             (any_script ? "an unsafe script (unsafe = yes) that may write the game's memory and call or replace its functions, which can reach "
+                           "past the script sandbox to your PC"
+                         : "") +
+             ". Allow code only from people you trust, ideally with its source. You are asked again when any "
+             "of its code changes (a new version of the mod, or any library or script file in it).";
     struct Ask {
-        std::string id, version, digest;   // (the library's hash as it was asked about; the mods list may be re-read meanwhile)
+        std::string id, version, digest;   // (the code's hash as it was asked about; the mods list may be re-read meanwhile)
     };
     std::vector<Ask> list;
-    for (const b3mod::Mod* md : mods) list.push_back({md->manifest.id, md->manifest.version, b3mod::library_digest(code_library(*md))});
+    for (const b3mod::Mod* md : mods) list.push_back({md->manifest.id, md->manifest.version, code_digest(*md)});
     m.buttons = {{yes, [&a, list, then]() {
                       for (const Ask& md : list) {
                           std::string why;
@@ -1503,6 +2128,16 @@ void ask_code_trust(App& a, const std::vector<const b3mod::Mod*>& mods, const st
 }
 
 void start_game(App& a, bool safe, const std::vector<std::string>& extra = {}) {
+    // robust2: never while an update downloads or swaps the game's files (every start: the Play page, a replay, the
+    // start without the launcher, safe mode)
+    if (a.inst.job) {
+        message(a, "Cannot start the game", "An update is being installed: wait for it to finish (or cancel it).");
+        return;
+    }
+    if (a.portable.job) {   // portable mode: never while the data folder moves
+        message(a, "Cannot start the game", "Your data is being moved: wait for it to finish (or cancel it).");
+        return;
+    }
     if (!safe) {   // sdk2b: the code mods that are on must be allowed first (the game refuses one that is not)
         std::vector<const b3mod::Mod*> ask;
         for (const b3mod::Mod* m : a.mod_sel.mods)
@@ -1545,21 +2180,9 @@ void start_game(App& a, bool safe, const std::vector<std::string>& extra = {}) {
     }
     a.child = *c;
     a.child_started = a.now();
+    portable_game_started(a);   // portable mode: the old copy is offered for removal at the next start
 }
 
-// test builds: a "file:///..." URL of a folder (SDL_OpenURL shows it in the file manager)
-std::string folder_url(const fs::path& dir) {
-    std::string p = utf8_of(dir);
-    for (char& ch : p)
-        if (ch == '\\') ch = '/';
-    std::string u = p.size() > 1 && p[1] == ':' ? "file:///" : "file://";
-    const char* hex = "0123456789ABCDEF";
-    for (unsigned char ch : p) {
-        if (std::isalnum(ch) || ch == '/' || ch == ':' || ch == '-' || ch == '_' || ch == '.' || ch == '~' || ch >= 0x80) u += char(ch);
-        else { u += '%'; u += hex[ch >> 4]; u += hex[ch & 15]; }
-    }
-    return u;
-}
 
 // test builds: the bug report (include/b3report/bug_report.h): the newest runs' logs and pad recordings, the ini
 // files, the version, the system; the active save only when asked. Shown, then its folder opened.
@@ -1590,7 +2213,8 @@ void make_report(App& a) {
             utf8_of(r.zip) + "\n\nIt holds " + (runs == 1 ? std::string("the log of the last run and its controls") : runs == 0 ? std::string("no run logs yet") : "the logs of the last " + std::to_string(runs) + " runs and their controls") + ", your settings files, the "
             "version and a short system description" + (in.save_file.empty() ? std::string(" (no save, no game data)") : ", your active save (no game data)") +
             ". Send it with a few words on what happened and when.");
-    if (a.report_open) SDL_OpenURL(folder_url(r.zip.parent_path()).c_str());
+    if (a.report_open && !SDL_OpenURL(file_url(r.zip.parent_path()).c_str()))   // (the message above names the file)
+        std::fprintf(stderr, "b3launcher: the report's folder did not open: %s\n", SDL_GetError());
 }
 
 void poll_child(App& a) {
@@ -1753,20 +2377,50 @@ int button(Ui& ui, const SDL_FRect& r, const std::string& label, Style st, bool 
     if (st == Style::kDanger && enabled) D::round_rect_outline(r, 8, 1.5f, D::alpha(col::bad, 0.7f));
     if (f) focus_ring(r, 8);
     const float size = st == Style::kPrimary && r.h >= 56 ? 19.0f : kBody;
-    text_center(a, label, r.x + r.w * 0.5f, r.y + (r.h - a.text->line_height(size)) * 0.5f, size, fg, st == Style::kPrimary || f);
+    const bool bold = st == Style::kPrimary || f;   // settingsui: never past the button's edges (a flow makes it wide enough)
+    text_center(a, a.text->elide(label, size, r.w - 16, bold), r.x + r.w * 0.5f, r.y + (r.h - a.text->line_height(size)) * 0.5f, size, fg, bold);
     return i;
 }
+
+// settingsui: the width a button needs for its label (in the language shown; bold, as when focused) with its margins
+float button_need(App& a, const std::string& label, Style st, float h) {
+    const float size = st == Style::kPrimary && h >= 56 ? 19.0f : kBody;
+    return a.text->width(label, size, true) + 36;
+}
+
+// settingsui: a row of buttons from (x, y) to the right: each as wide as its label needs (at least `min_w`), the row
+// wrapping to a new line when the next would pass x + w. `y` follows the lines; end() is below the last one.
+struct Flow {
+    Ui& ui;
+    float x, y, w, h, gap = 16, bx;
+    Flow(Ui& u, float x0, float y0, float width, float height, float g = 16) : ui(u), x(x0), y(y0), w(width), h(height), gap(g), bx(x0) {}
+    SDL_FRect at(float min_w, const std::string& label = {}, Style st = Style::kNormal) {
+        const float bw = std::min(w, std::max(min_w, label.empty() ? 0.0f : button_need(ui.a, label, st, h)));
+        if (bx > x && bx + bw > x + w) {
+            bx = x;
+            y += h + gap;
+        }
+        const SDL_FRect r{bx, y, bw, h};
+        bx += bw + gap;
+        return r;
+    }
+    int button(float min_w, const std::string& label, Style st, bool enabled, const std::string& desc, std::function<void()> fn) {
+        return ::button(ui, at(min_w, label, st), label, st, enabled, desc, std::move(fn));
+    }
+    float right() const { return bx - gap; }   // the last button's right edge
+    float end() const { return y + h; }
+};
 
 // A status line: a dot, a title and its text
 // 1.1: a status line's title column: 150, or wider for a translated title that needs it
 float status_title_w(App& a, const std::string& title) { return std::max(150.0f, a.text->width(title, kBody, true) + 14); }
 
-float status_line(App& a, float x, float y, float w, SDL_FColor dot, const std::string& title, const std::string& body) {
+float status_line(App& a, float x, float y, float w, SDL_FColor dot, const std::string& title, const std::string& body, float gap = 10) {
     D::disc(x + 6, y + 11, 5, dot);
     text(a, title, x + 22, y, kBody, col::text, true);
     const float tw = status_title_w(a, title);
     const float hgt = paragraph(a, body, x + 22 + tw, y, w - 22 - tw, kBody, col::dim);
-    return std::max(hgt, a.text->line_height(kBody)) + 10;
+    return std::max(hgt, a.text->line_height(kBody)) + gap;
 }
 
 // 1.1: capitals of UTF-8 text in the launcher's languages (ASCII, Latin-1's letters, oe); other characters as they are
@@ -1793,30 +2447,40 @@ std::string utf8_upper(std::string_view s) {
     return o;
 }
 
-float section(App& a, const std::string& s, float x, float y) {
-    const std::string up = utf8_upper(a.text->translated(s));
-    text(a, up, x, y, a.look.on ? kSection + 1.5f : kSection, col::accent, true);
-    return a.text->line_height(a.look.on ? kSection + 1.5f : kSection) + 6;
+float section(App& a, const std::string& s, float x, float y, float max_w = 0) {
+    const float size = a.look.on ? kSection + 1.5f : kSection;
+    std::string up = verbatim(utf8_upper(a.text->translated(s)));   // (translated once: the capitals are not looked up again)
+    if (max_w > 0) up = a.text->elide(up, size, max_w, true);       // settingsui: within its panel
+    text(a, up, x, y, size, col::accent, true);
+    return a.text->line_height(size) + 6;
+}
+
+// settingsui: the launcher's own words in the language shown: ltr a text, ltrf a pattern with one {} (its argument as
+// it is). Both plain (not marked): a line made of them is marked verbatim once it is whole.
+std::string ltr(const App& a, const std::string& s) { return a.text->translated(s); }
+std::string ltrf(const App& a, const std::string& pattern, const std::string& arg) {
+    return b3settings::translate_format(pattern, arg, a.text->language());
 }
 
 // ---- the PLAY page ----
 
-std::string slot_line(const SaveSlot& s) {
-    std::string t = "File " + std::to_string(s.slot);
-    if (s.sav) t += " (profile-" + std::to_string(s.slot) + ".sav, " + format_bytes(s.bytes) + (s.modified ? ", saved " + format_time(*s.modified) : "") + ")";
-    else if (s.legacy) t += " (an older profile-" + std::to_string(s.slot) + " folder: read, and saved as a .sav at the first save)";
-    else t += " (new: the game makes it at its first save)";
-    return t;
+// settingsui: both lines in the language shown, piece by piece (the whole line was never in the tables)
+std::string slot_line(const App& a, const SaveSlot& s) {
+    std::string t = ltrf(a, "File {}", std::to_string(s.slot));
+    if (s.sav) t += " (profile-" + std::to_string(s.slot) + ".sav, " + format_bytes(s.bytes) + (s.modified ? ", " + ltrf(a, "saved {}", format_time(*s.modified)) : "") + ")";
+    else if (s.legacy) t += " " + ltrf(a, "(an older profile-{} folder: read, and saved as a .sav at the first save)", std::to_string(s.slot));
+    else t += " " + ltr(a, "(new: the game makes it at its first save)");
+    return verbatim(t);
 }
 
-std::string settings_line(const b3settings::Settings& s) {
-    std::string t = std::string(b3settings::preset_name(b3settings::matching_preset(s))) + " preset, ";
-    t += s.fullscreen ? "fullscreen" : "window";
+std::string settings_line(const App& a, const b3settings::Settings& s) {
+    std::string t = ltrf(a, "{} preset", ltr(a, b3settings::preset_name(b3settings::matching_preset(s)))) + ", ";
+    t += ltr(a, s.fullscreen ? "fullscreen" : "window");
     t += s.vsync ? ", vsync" : "";
-    t += s.msaa > 1 ? ", MSAA " + std::to_string(s.msaa) + "x" : ", no MSAA";
-    if (s.frame_cap > 0) t += ", " + std::to_string(s.frame_cap) + " fps limit";
-    t += s.hd_pack_dir.empty() ? ", no HD pack" : s.hd_textures ? ", HD pack" : ", HD pack off";
-    return t;
+    t += s.msaa > 1 ? ", MSAA " + std::to_string(s.msaa) + "x" : ", " + ltr(a, "no MSAA");
+    if (s.frame_cap > 0) t += ", " + ltrf(a, "{} fps limit", std::to_string(s.frame_cap));
+    t += ", " + ltr(a, s.hd_pack_dir.empty() ? "no HD pack" : s.hd_textures ? "HD pack" : "HD pack off");
+    return verbatim(t);
 }
 
 // update1: "Update available" under the start buttons, when a newer release is out: its name, date and first notes,
@@ -1824,16 +2488,21 @@ std::string settings_line(const b3settings::Settings& s) {
 float play_update_banner(App& a, Ui& ui, float x, float y, float w) {
     if (update_state(a) != update::State::kAvailable) return y;
     const update::Release& r = a.cfg.update.latest;
-    const float h = 64, bw = std::min(190.0f, w * 0.3f);
+    const float h = 64;
+    float bw = 150;   // settingsui: as wide as the longest label shown (the language's), at most 30 % of the panel each
+    for (const char* l : {"Restart now", "Cancel", "Installing...", "Install update", "Release page", "Download"})
+        bw = std::max(bw, button_need(a, l, Style::kNormal, h - 24));
+    bw = std::min(bw, w * 0.3f);
     D::round_rect(SDL_FRect{x, y, w, h}, 12, col::panel);
     D::round_rect_outline(SDL_FRect{x, y, w, h}, 12, 1.5f, D::alpha(col::accent, 0.85f));
     D::disc(x + 22, y + h * 0.5f, 6, col::accent);
     const float tx = x + 40, tw = w - 40 - (oneclick_available(a) ? 2 * bw + 12 : bw) - 36;
     text(a, a.text->elide(update::status_text(a.cfg.update, update::State::kAvailable), kBody, tw, true), tx, y + 10, kBody, col::text, true);
     std::string sub;
-    if (const std::string d = update::published_date(r.published); !d.empty()) sub = "Released " + d;
+    if (const std::string d = update::published_date(r.published); !d.empty()) sub = ltrf(a, "Released {}", d);
     for (const std::string& n : r.notes) sub += (sub.empty() ? "" : "  \u00B7  ") + n;
-    if (sub.empty()) sub = "A newer version of the port is out.";
+    if (sub.empty()) sub = ltr(a, "A newer version of the port is out.");
+    sub = verbatim(sub);   // (the release's notes as written)
     text(a, a.text->elide(sub, kSmall, tw), tx, y + 12 + a.text->line_height(kBody), kSmall, col::dim);
     const std::string url = r.url;
     const bool oneclick_on = oneclick_available(a);
@@ -1842,8 +2511,13 @@ float play_update_banner(App& a, Ui& ui, float x, float y, float w) {
         if (a.inst.installed)
             button(ui, SDL_FRect{x + w - bw - 12, y + 12, bw, h - 24}, "Restart now", Style::kPrimary, true,
                    "Starts the new version of the launcher. Your saves and settings stay as they are.", [&a]() { restart_launcher(a); });
-        else
-            button(ui, SDL_FRect{x + w - bw - 12, y + 12, bw, h - 24}, busy ? "Installing..." : "Install update", Style::kPrimary, !busy,
+        else if (busy) {   // robust2: the download can be stopped (not the swap itself: step 5)
+            const int step = install_step(a);
+            const bool stoppable = step < 5 && !a.inst.job->cancel.load();
+            button(ui, SDL_FRect{x + w - bw - 12, y + 12, bw, h - 24}, stoppable ? "Cancel" : "Installing...", Style::kNormal, stoppable,
+                   "Stops the download. Nothing is installed; your current version stays as it is.", [&a]() { cancel_install(a); });
+        } else
+            button(ui, SDL_FRect{x + w - bw - 12, y + 12, bw, h - 24}, "Install update", Style::kPrimary, true,
                    "Downloads the new version, checks that it is the port's own signed release, and puts it in place of this one. "
                    "The previous version is kept: Settings > Launcher can undo the update.",
                    [&a]() { start_install(a); });
@@ -1872,33 +2546,55 @@ float play_update_banner(App& a, Ui& ui, float x, float y, float w) {
     return y;
 }
 
+// settingsui: the bug report asks first, with the save as its choice (the Play page's one small button)
+void confirm_bug_report(App& a) {
+    Modal m;
+    m.title = "Make a bug report?";
+    m.text = "Puts the logs and controls of your last runs, your settings files, the version and a short system description in "
+             "one zip on your Desktop (or in Documents) and opens its folder. No game data; your save only when you choose it. "
+             "Whether the report also holds your active save file (profile-N.sav): useful when the problem is in your progress. "
+             "In the game, F10 makes one too.";
+    m.buttons = {{"Make report", [&a]() { a.report_save = false; make_report(a); }},
+                 {"With my save", [&a]() { a.report_save = true; make_report(a); }},
+                 {"Cancel", nullptr}};
+    m.focus = 0;
+    a.modal = m;
+}
+
 void page_play(App& a, Ui& ui, float x, float y, float w) {
-    // the banner
-    const SDL_FRect banner{x, y, w, 104};
-    D::round_rect(banner, 14, col::panel);
-    D::gradient(SDL_FRect{x + 14, y, w * 0.62f - 14, 104}, D::alpha(col::accent, 0.26f), D::alpha(col::accent, 0.0f),
-                D::alpha(col::accent, 0.12f), D::alpha(col::accent, 0.0f));
-    D::rect(SDL_FRect{x, y + 14, 4, 76}, col::accent);
-    if (SDL_Texture* logo = look_tex(a, "titlescreen_logo")) {   // the title screen's logo (FRONTEND.TXD), its letters only
-        const SDL_FRect src{18, 44, 476, 168};
-        const float lh = 100, lw = lh * src.w / src.h;
-        blit(a, logo, SDL_FRect{x + w - lw - 18, y + 2, lw, lh}, D::rgba(0xFFFFFF), src.x / 512, src.y / 256, (src.x + src.w) / 512,
-             (src.y + src.h) / 256);
-        paragraph(a, "The native PC port. Pick your settings here or in the game's own SETTINGS page.", x + 30, y + 22,
-                  w - lw - 70, kBody + 1, col::dim, true);
+    // the banner; settingsui: an available update's banner takes its place (the page fits one window at 16:9)
+    if (update_state(a) == update::State::kAvailable) {
+        y = play_update_banner(a, ui, x, y, w);
     } else {
-        text(a, "BURNOUT 3: TAKEDOWN", x + 30, y + 16, 30, col::text, true);
-        text(a, "The native PC port. Pick your settings here or in the game's own SETTINGS page.", x + 30, y + 62, kBody, col::dim);
+        const SDL_FRect banner{x, y, w, 104};
+        D::round_rect(banner, 14, col::panel);
+        D::gradient(SDL_FRect{x + 14, y, w * 0.62f - 14, 104}, D::alpha(col::accent, 0.26f), D::alpha(col::accent, 0.0f),
+                    D::alpha(col::accent, 0.12f), D::alpha(col::accent, 0.0f));
+        D::rect(SDL_FRect{x, y + 14, 4, 76}, col::accent);
+        if (SDL_Texture* logo = look_tex(a, "titlescreen_logo")) {   // the title screen's logo (FRONTEND.TXD), its letters only
+            // settingsui: the whole logo (its visible part, load_look), 7 units inside the panel at the top and bottom
+            const float* uv = a.look.logo_uv;
+            const float lh = 104 - 2 * 7, lw = lh * a.look.logo_aspect;
+            blit(a, logo, SDL_FRect{x + w - lw - 18, y + 7, lw, lh}, D::rgba(0xFFFFFF), uv[0], uv[1], uv[2], uv[3]);
+            paragraph(a, "The native PC port. Pick your settings here or in the game's own SETTINGS page.", x + 30, y + 22,
+                      w - lw - 70, kBody + 1, col::dim, true);
+        } else {
+            text(a, "BURNOUT 3: TAKEDOWN", x + 30, y + 16, 30, col::text, true);
+            text(a, "The native PC port. Pick your settings here or in the game's own SETTINGS page.", x + 30, y + 62, kBody, col::dim);
+        }
+        y += 104 + 20;
     }
-    y += 104 + 20;
 
     const fs::path prog = game_program(a.exe_dir);
     std::error_code ec;
     const bool have_prog = fs::exists(prog, ec);
-    const bool can_start = have_prog && a.game.ok;
-    const float bw = std::min(340.0f, (w - 24) * 0.5f);
+    const bool updating = a.inst.job != nullptr;   // robust2: not while an update downloads or swaps the game's files
+    const bool can_start = have_prog && a.game.ok && !updating;
+    float bw = std::min(340.0f, (w - 24) * 0.5f);
+    bw = std::min((w - 16) * 0.5f, std::max({bw, button_need(a, "START GAME", Style::kPrimary, 64), button_need(a, "START IN SAFE MODE", Style::kNormal, 64)}));
     button(ui, SDL_FRect{x, y, bw, 64}, "START GAME", Style::kPrimary, can_start,
            can_start ? "Starts the game with your settings. The launcher closes once it runs."
+                     : updating ? "An update is being installed: wait for it to finish (or cancel it)."
                      : !a.game.ok ? "Set the game data (disc image or folder) first: Game Data page."
                                   : "The game program (" + prog.filename().string() + ") is not beside the launcher: keep them in one folder.",
            [&a]() { start_game(a, false); });
@@ -1906,53 +2602,81 @@ void page_play(App& a, Ui& ui, float x, float y, float w) {
            "Starts this run with safe settings (low quality, no MSAA, no HD pack, a window, vsync). Your settings file stays as it is.",
            [&a]() { start_game(a, true); });
     y += 64 + 14;
-    {   // launchskip1: the start without the launcher (Settings::launcher_at_start: the game's OPEN THE LAUNCHER AT START)
+    {   // launchskip1: the start without the launcher (Settings::launcher_at_start: the game's OPEN THE LAUNCHER AT START);
+        // settingsui: then the bug report and Quit on the same row (Back only leaves the page: a controller's way out)
         const bool skip_on = !a.settings.launcher_at_start;
-        button(ui, SDL_FRect{x, y, bw * 2 + 16, 44}, std::string("Start the game directly next time (skip this launcher): ") + (skip_on ? "ON" : "OFF"),
-               Style::kQuiet, true,
-               "On: starting the launcher starts the game at once, with these settings, saves, mods and music. To see the "
-               "launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT "
-               "START back on in the game's SETTINGS > INTERFACE.",
-               [&a]() {
-                   a.settings.launcher_at_start = !a.settings.launcher_at_start;
-                   save_settings(a);
-               });
-        y += 44;
+        Flow f(ui, x, y, w, 44);
+        f.button(0, std::string("Start the game directly next time (skip this launcher): ") + (skip_on ? "ON" : "OFF"),
+                 Style::kQuiet, true,
+                 "On: starting the launcher starts the game at once, with these settings, saves, mods and music. To see the "
+                 "launcher again, hold Shift (or Back / Select on a controller) while it starts, or turn OPEN THE LAUNCHER AT "
+                 "START back on in the game's SETTINGS > GAME > STARTING AND LOADING.",
+                 [&a]() {
+                     a.settings.launcher_at_start = !a.settings.launcher_at_start;
+                     save_settings(a);
+                 });
+        if (a.have_run && a.run.running)
+            f.button(0, "Clear the crash count", Style::kNormal, true,
+                     "The last run did not end cleanly. This marks it as ended, so the next start uses your own settings (safe mode is "
+                     "not chosen by itself).",
+                     [&a]() {
+                         b3settings::save_run_state(utf8_of(run_state_file(a.pref)), b3settings::clean_end());
+                         refresh(a);
+                     });
+        f.button(130, "Bug report...", Style::kNormal, true,
+                 "Puts the logs and controls of your last runs, your settings files, the version and a short system description in "
+                 "one zip on your Desktop (or in Documents) and opens its folder. No game data; your save only when you choose it. "
+                 "In the game, F10 makes one too.",
+                 [&a]() { confirm_bug_report(a); });
+        f.button(110, "Quit", Style::kQuiet, true, "Closes the launcher.", [&a]() { a.quit = true; });
+        y = f.end();
         const std::string why = skip_on ? skip_block_text(a.skip_block) : std::string();
         if (!why.empty()) {
             text(a, why, x + 4, y + 8, kSmall, col::warn);
             y += 8 + a.text->line_height(kSmall);
         }
-        y += 22;
+        if (!a.portable.data_writable) {   // portable mode (1.3.0): a write-protected stick, said at the start
+            text(a, "Your data folder cannot be written (a write-protected drive?): settings and saves will not be kept.", x + 4, y + 8, kSmall, col::bad);
+            y += 8 + a.text->line_height(kSmall);
+        }
+        y += 20;
     }
-    y = play_update_banner(a, ui, x, y, w);   // update1
 
     // status
     const float px = x + 24, pw = w - 48;
-    float sy = y + 18;
+    float sy = y + 14;
     const float top = y;
-    // measure first: draw into the panel after its height is known (two passes on a cheap layout)
+    // measure first: draw into the panel after its height is known (two passes on a cheap layout); settingsui: a
+    // tighter pitch than the other pages' status lines (the page fits one window at 16:9)
+    constexpr float kGap = 5;
     auto rows = [&](bool draw_it) {
         float yy = sy;
         auto line = [&](SDL_FColor dot, const std::string& t, const std::string& b) {
-            if (draw_it) yy += status_line(a, px, yy, pw, dot, t, b);
+            if (draw_it) yy += status_line(a, px, yy, pw, dot, t, b, kGap);
             else {
                 const float tw = status_title_w(a, t);
-                yy += std::max(float(a.text->wrap(b, kBody, pw - 22 - tw).size()) * a.text->line_height(kBody), a.text->line_height(kBody)) + 10;
+                yy += std::max(float(a.text->wrap(b, kBody, pw - 22 - tw).size()) * a.text->line_height(kBody), a.text->line_height(kBody)) + kGap;
             }
         };
         line(!a.game.ok ? col::bad : a.game.warning.empty() ? col::ok : col::warn, "Game data",
              !a.game.ok ? a.game.summary + " Set it on the Game Data page."
-                        : a.game.warning.empty() ? utf8_of(a.game_dir) : utf8_of(a.game_dir) + ". " + a.game.warning);
+                        : a.game.warning.empty() ? verbatim(utf8_of(a.game_dir)) : verbatim(utf8_of(a.game_dir) + ". " + ltr(a, a.game.warning)));
         line(have_prog ? col::ok : col::bad, "Game program",
-             have_prog ? utf8_of(prog) : prog.filename().string() + " is not beside the launcher (" + utf8_of(a.exe_dir) + ").");
+             have_prog ? verbatim(utf8_of(prog)) : prog.filename().string() + " is not beside the launcher (" + utf8_of(a.exe_dir) + ").");
         const SaveSlot* act = nullptr;
         for (const SaveSlot& s : a.slots)
             if (s.active) act = &s;
-        line(col::ok, "Save file", act ? slot_line(*act) : "File 1");
+        line(col::ok, "Save file", act ? slot_line(a, *act) : "File 1");
+        {   // portable mode (1.3.0): which data folder is in use (two installs side by side: the player can tell)
+            const bool portable = !a.portable.hidden && a.pref == b3io::portable_dir(a.portable.exe);
+            std::string d = utf8_of(a.pref);
+            if (portable) d += " (" + ltr(a, "portable") + ")";
+            if (!a.portable.data_writable) d += ". " + ltr(a, "It cannot be written: settings and saves are not kept.");
+            line(a.portable.data_writable ? col::ok : col::bad, "Data folder", verbatim(d));
+        }
         const RunSummary rs = summarize_run(a.run, a.have_run);
         line(rs.kind == LastRun::kSafeNext ? col::bad : rs.kind == LastRun::kUnclean ? col::warn : col::ok, "Last run", rs.text);
-        line(col::ok, "Settings", settings_line(a.settings));
+        line(col::ok, "Settings", settings_line(a, a.settings));
         {   // modkit1
             std::string on;
             std::size_t n = 0;
@@ -1963,47 +2687,201 @@ void page_play(App& a, Ui& ui, float x, float y, float w) {
             if (n && rs.kind == LastRun::kSafeNext) more += "; the next start is in safe mode: without mods";
             line(n ? col::warn : col::ok, "Mods", n ? std::to_string(n) + " on: " + on + more + " (the Mods page)" : "None on: the game as on your disc.");
         }
-        line(col::ok, "Version", std::string(b3port::version()) + " (built " + b3port::build_date() + "): Burnout 3 native port, a test build");
+        line(col::ok, "Version", verbatim(std::string(b3port::version()) + " (" + ltrf(a, "built {}", b3port::build_date()) + "): " +
+                                          ltr(a, "Burnout 3 native port, a test build")));
         return yy;
     };
     const float end = rows(false);
-    D::round_rect(SDL_FRect{x, top, w, end - top + 8}, 12, col::panel);
+    D::round_rect(SDL_FRect{x, top, w, end - top + 6}, 12, col::panel);
     rows(true);
-    y = end + 8 + 18;
-
-    // test builds: a bug report for the developers
-    button(ui, SDL_FRect{x, y, 260, 44}, "Make a bug report", Style::kNormal, true,
-           "Puts the logs and controls of your last runs, your settings files, the version and a short system description in "
-           "one zip on your Desktop (or in Documents) and opens its folder. No game data; your save only when you choose "
-           "it. In the game, F10 makes one too.",
-           [&a]() { make_report(a); });
-    button(ui, SDL_FRect{x + 276, y, 300, 44}, a.report_save ? "Include my save: YES" : "Include my save: NO", Style::kQuiet, true,
-           "Whether the report also holds your active save file (profile-N.sav): useful when the problem is in your "
-           "progress. Off by default.",
-           [&a]() { a.report_save = !a.report_save; });
-    y += 44 + 14;
-    if (a.have_run && a.run.running) {
-        button(ui, SDL_FRect{x, y, 300, 44}, "Clear the crash count", Style::kNormal, true,
-               "The last run did not end cleanly. This marks it as ended, so the next start uses your own settings (safe mode is "
-               "not chosen by itself).",
-               [&a]() {
-                   b3settings::save_run_state(utf8_of(run_state_file(a.pref)), b3settings::clean_end());
-                   refresh(a);
-               });
-        button(ui, SDL_FRect{x + 316, y, 200, 44}, "Quit", Style::kQuiet, true, "Closes the launcher.", [&a]() { a.quit = true; });
-    } else {
-        button(ui, SDL_FRect{x, y, 200, 44}, "Quit", Style::kQuiet, true, "Closes the launcher.", [&a]() { a.quit = true; });
-    }
-    y += 44;
+    y = end + 6;
     a.content_h = y;
 }
 
 // ---- the SETTINGS page ----
 
+void refresh_dj(App& a);
+
 void refresh_languages(App& a) {   // 1.0.1: the imported languages (b3asset/language.h)
     a.languages.clear();
     for (const auto& l : b3asset::language::on_disc(b3asset::language::imported_root(a.pref)))
         if (l.supported) a.languages.emplace_back(l.code, l.name);
+    refresh_dj(a);
+}
+
+// ---- 1.3.0 DJ VOICE: the DJ's lines in a language, imported from the player's European disc ----
+
+int dj_progress(const App& a) {   // 0..100 while an import runs, else -1
+    if (!a.dj.job) return -1;
+    std::lock_guard<std::mutex> l(a.dj.job->m);
+    return a.dj.job->total ? int(a.dj.job->done * 100 / a.dj.job->total) : 0;
+}
+
+// The rows: each language with a DJ of its own that the chosen disc has, that is imported, or that is being imported
+void refresh_dj(App& a) {
+    namespace L = b3asset::language;
+    a.dj.rows.clear();
+    for (const L::Pack pack : {L::Pack::kDj, L::Pack::kTraining})
+        for (const std::string& code : L::dj_codes()) {
+            b3settings::Env::DjVoice r;
+            r.code = code;
+            r.name = L::name_of(code);
+            r.training = pack == L::Pack::kTraining;
+            for (const auto& v : r.training ? a.dj.found_training : a.dj.found)
+                if (v.code == code) r.disc_bytes = v.bytes;
+            r.imported_bytes = L::pack_imported_bytes(a.pref, code, pack);
+            if (a.dj.job && a.dj.code == code && a.dj.pack == pack) r.progress = dj_progress(a);
+            if (r.disc_bytes || r.imported_bytes || r.progress >= 0) a.dj.rows.push_back(r);
+        }
+}
+
+void dj_disc_chosen(App& a, const fs::path& disc) {
+    a.dj.found = b3asset::language::dj_on_disc(disc);
+    a.dj.found_training = b3asset::language::training_on_disc(disc);
+    a.dj.disc = disc;
+    refresh_dj(a);
+    const auto list = [](const std::vector<b3asset::language::DjVoice>& vs) {
+        std::string names;
+        for (const auto& v : vs) names += (names.empty() ? "" : ", ") + v.name + " (" + std::to_string((v.bytes + (1u << 19)) >> 20) + " MB)";
+        return names;
+    };
+    if (!a.dj.found.empty()) a.language_note += " The disc also has the DJ's voice in " + list(a.dj.found) + ": import it in the DJ VOICE rows below (optional).";
+    if (!a.dj.found_training.empty())
+        a.language_note += " And the race training videos in " + list(a.dj.found_training) + " (TRAINING VIDEOS rows, optional).";
+}
+
+void start_dj_import(App& a, const std::string& code, b3asset::language::Pack pack) {
+    if (a.dj.job) return;
+    const b3asset::language::DjVoice* v = nullptr;
+    for (const auto& f : pack == b3asset::language::Pack::kDj ? a.dj.found : a.dj.found_training)
+        if (f.code == code) v = &f;
+    if (!v) {
+        a.dj.note = "Choose the European disc again (IMPORT LANGUAGES) to import this.";
+        return;
+    }
+    // the free space first, here (the worker checks it again before it writes)
+    std::error_code ec;
+    fs::create_directories(b3asset::language::imported_root(a.pref), ec);
+    const fs::space_info sp = fs::space(b3asset::language::imported_root(a.pref), ec);
+    if (!ec && sp.available < v->bytes + b3asset::language::kDjSpareBytes) {
+        a.dj.note = "Not imported: " + std::to_string((v->bytes + b3asset::language::kDjSpareBytes) >> 20) + " MB of free space needed, " +
+                    std::to_string(sp.available >> 20) + " MB free.";
+        return;
+    }
+    auto job = std::make_shared<App::DjJob>();
+    job->total = v->bytes;
+    a.dj.job = job;
+    a.dj.code = code;
+    a.dj.pack = pack;
+    a.dj.note.clear();
+    a.dj.started = std::chrono::steady_clock::now();
+    const b3asset::language::DjVoice voice = *v;
+    const fs::path pref = a.pref, english = a.game.ok ? a.game_dir : fs::path();
+    a.dj.th = std::thread([job, voice, pref, english, pack]() {
+        bool ok = false;
+        std::string why;
+        try {   // a bad image never takes the launcher down: dj_import never throws, and this catches what might
+            b3asset::language::DjProgress pr;
+            pr.cancel = &job->cancel;
+            pr.step = [job](std::uint64_t done, std::uint64_t total) {
+                std::lock_guard<std::mutex> l(job->m);
+                job->done = done;
+                job->total = total;
+            };
+            ok = b3asset::language::pack_import(voice, pref, english, pr, pack, &why, b3mod::remove_tree);   // modsec: no link followed
+        } catch (const std::exception& e) {
+            why = e.what();
+        } catch (...) {
+            why = "the import stopped";
+        }
+        std::lock_guard<std::mutex> l(job->m);
+        job->ok = ok;
+        job->why = why;
+        job->finished = true;
+    });
+    refresh_dj(a);
+}
+
+void cancel_dj_import(App& a) {
+    if (a.dj.job) a.dj.job->cancel = true;
+}
+
+// The import's result once it is there (each loop: the progress in the row). True when it finished.
+bool poll_dj(App& a) {
+    if (!a.dj.job) return false;
+    bool finished, ok;
+    std::string why;
+    {
+        std::lock_guard<std::mutex> l(a.dj.job->m);
+        finished = a.dj.job->finished;
+        ok = a.dj.job->ok;
+        why = a.dj.job->why;
+    }
+    if (!finished) {
+        for (auto& r : a.dj.rows)
+            if (r.code == a.dj.code && r.training == (a.dj.pack == b3asset::language::Pack::kTraining)) r.progress = dj_progress(a);
+        return false;
+    }
+    if (a.dj.th.joinable()) a.dj.th.join();
+    a.dj.job.reset();
+    const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - a.dj.started).count();
+    const std::string name = b3asset::language::name_of(a.dj.code);
+    if (ok) {
+        char t[32];
+        std::snprintf(t, sizeof t, "%.0f", secs);
+        if (a.dj.pack == b3asset::language::Pack::kDj)
+            a.dj.note = "Imported: the DJ in " + name + " (in " + t + " s). With LANGUAGE " + name + " and VOICES Language, the DJ speaks it from the next start.";
+        else
+            a.dj.note = "Imported: the race training videos in " + name + " (in " + t + " s), from the next start.";
+        std::printf("b3launcher: %s %s imported in %.1f s\n", a.dj.pack == b3asset::language::Pack::kDj ? "dj voice" : "training videos",
+                    a.dj.code.c_str(), secs);
+    } else
+        a.dj.note = why == "cancelled" ? "Import cancelled: nothing was kept." : "Not imported: " + why + ".";
+    refresh_dj(a);
+    return true;
+}
+
+void end_dj_import(App& a) {   // closing the launcher: an import under way is stopped (nothing kept) and waited for
+    if (!a.dj.th.joinable()) return;
+    cancel_dj_import(a);
+    a.dj.th.join();
+    a.dj.job.reset();
+}
+
+void confirm_dj_remove(App& a, const std::string& code, b3asset::language::Pack pack = b3asset::language::Pack::kDj) {
+    Modal m;
+    const std::string name = b3asset::language::name_of(code);
+    const bool dj = pack == b3asset::language::Pack::kDj;
+    const std::string what = dj ? "the DJ in " + name : "the race training videos in " + name;
+    m.title = std::string(dj ? "Remove the DJ in " : "Remove the training videos in ") + name + "?";
+    m.text = "Their files are deleted from this PC (" + std::to_string((b3asset::language::pack_imported_bytes(a.pref, code, pack) + (1u << 19)) >> 20) +
+             " MB). The game's text in " + name + " stays; " + (dj ? "the DJ is then English" : "the training then shows the English pictures") +
+             ". You can import them again from the disc.";
+    m.buttons = {{"Remove", [&a, code, what, pack]() {
+                      std::string why;
+                      a.dj.note = b3asset::language::pack_remove(a.pref, code, pack, &why, b3mod::remove_tree) ? "Removed: " + what + "."
+                                                                                                                      : "Not removed: " + why + ".";
+                      refresh_dj(a);
+                  }, true},
+                 {"Cancel", nullptr}};
+    m.focus = 1;
+    a.modal = m;
+}
+
+void dj_action(App& a, std::uint32_t id) {
+    namespace L = b3asset::language;
+    const bool training = id >= b3settings::kActionTrainingFirst;
+    const L::Pack pack = training ? L::Pack::kTraining : L::Pack::kDj;
+    const std::size_t k = id - (training ? b3settings::kActionTrainingFirst : b3settings::kActionDjFirst);
+    if (k >= L::dj_codes().size()) return;
+    const std::string code = L::dj_codes()[k];
+    if (a.dj.job) {
+        if (a.dj.code == code && a.dj.pack == pack) cancel_dj_import(a);
+        else a.dj.note = "Another import is under way: wait for it, or cancel it first.";
+        return;
+    }
+    if (L::pack_imported_bytes(a.pref, code, pack)) confirm_dj_remove(a, code, pack);
+    else start_dj_import(a, code, pack);
 }
 
 void settings_edit(App& a, std::uint32_t id, std::size_t value) {
@@ -2022,7 +2900,7 @@ void confirm_reset(App& a) {
              "folders are cleared. Your saves are not touched.";
     m.buttons = {{"Reset", [&a]() {
                       a.settings = b3settings::Settings{};
-                      save_settings(a);
+                      save_settings(a, true);
                       refresh_hd(a, true);
                       refresh_music(a, true);
                       a.settings_note = "Every setting is back to its default. " + a.settings_note;
@@ -2032,8 +2910,20 @@ void confirm_reset(App& a) {
     a.modal = m;
 }
 
+void go_page(App& a, int p);
+
 void action_row(App& a, std::uint32_t id) {
-    if (id == b3settings::kActionImportLanguages) open_dialog(a, DialogKind::kLanguageImage, utf8_of(a.game_dir.parent_path()));   // 1.0.1
+    // settingsui: the rows that stand for one of the launcher's pages (Env::launcher)
+    if (id == b3settings::kActionOpenControllers || id == b3settings::kActionOpenMusic || id == b3settings::kActionOpenHdPage) {
+        go_page(a, id == b3settings::kActionOpenControllers ? kPads : id == b3settings::kActionOpenMusic ? kMusic : kHd);
+        a.in_content = true;
+        if (id == b3settings::kActionOpenControllers) a.pads_tab = 1;   // its BINDINGS
+        return;
+    }
+    if ((id >= b3settings::kActionDjFirst && id <= b3settings::kActionDjLast) ||
+        (id >= b3settings::kActionTrainingFirst && id <= b3settings::kActionTrainingLast))
+        dj_action(a, id);   // 1.3.0
+    else if (id == b3settings::kActionImportLanguages) open_dialog(a, DialogKind::kLanguageImage, utf8_of(a.game_dir.parent_path()));   // 1.0.1
     else if (id == b3settings::kActionChooseHdPack) open_dialog(a, DialogKind::kHdFolder, a.settings.hd_pack_dir);
     else if (id == b3settings::kActionClearHdPack) {
         a.settings.hd_pack_dir.clear();
@@ -2095,6 +2985,11 @@ void setting_row(App& a, Ui& ui, const b3settings::Row& row, float x, float y, f
         text(a, row.label, x + 18, ty, kBody, row.disabled ? col::faint : col::text, f);
     }
     const SDL_FColor vc = row.disabled ? col::faint : col::text;
+    if (row.swatch >= 0) {   // padpaint: the colour the row makes, a box left of the control
+        const SDL_FRect sw{vx - 40, y + 7, 30, h - 14};
+        D::round_rect(SDL_FRect{sw.x - 1, sw.y - 1, sw.w + 2, sw.h + 2}, 6, D::alpha(col::text, row.disabled ? 0.15f : 0.35f));
+        D::round_rect(sw, 5, D::alpha(D::rgba(std::uint32_t(row.swatch)), row.disabled ? 0.45f : 1.0f));
+    }
     switch (row.kind) {
     case b3settings::RowKind::kToggle: {
         const bool on = row.value != 0;
@@ -2148,8 +3043,11 @@ void setting_row(App& a, Ui& ui, const b3settings::Row& row, float x, float y, f
 // update1: the launcher's own settings under every tab (launcher.ini, not the game's file): CHECK FOR UPDATES and
 // Check now with the last answer beside it. Returns the y after them.
 float settings_launcher(App& a, Ui& ui, float x, float y, float w) {
-    y += 26;
+    y += 6;
     y += section(a, "Launcher", x + 4, y);
+    // settingsui: the one setting behind the Play page's switch (the game's OPEN THE LAUNCHER AT START)
+    setting_row(a, ui, b3settings::launcher_at_start_row(a.settings), x, y, w, 46);
+    y += 46 + 6;
     b3settings::Row r;
     r.kind = b3settings::RowKind::kToggle;
     r.label = "CHECK FOR UPDATES";
@@ -2160,20 +3058,22 @@ float settings_launcher(App& a, Ui& ui, float x, float y, float w) {
     setting_row(a, ui, r, x, y, w, 46, [&a](std::size_t v) { set_update_check(a, v != 0); });
     y += 46 + 10;
     const bool on = a.cfg.update.enabled, busy = update_checking(a);
-    button(ui, SDL_FRect{x, y, 200, 44}, busy ? "Checking..." : "Check now", Style::kNormal, on && !busy,
+    const float cw = std::min(w * 0.4f, std::max({200.0f, button_need(a, "Checking...", Style::kNormal, 44), button_need(a, "Check now", Style::kNormal, 44)}));
+    button(ui, SDL_FRect{x, y, cw, 44}, busy ? "Checking..." : "Check now", Style::kNormal, on && !busy,
            on ? "Asks GitHub for the latest release now (the launcher also checks each time it starts)."
               : "Turn CHECK FOR UPDATES on first: while it is off the launcher makes no request.",
            [&a]() { start_update_check(a); });
     const update::State st = update_state(a);
     std::string line = update::status_text(a.cfg.update, st);
     if (a.cfg.update.checked_at > 0 && st != update::State::kOff && st != update::State::kChecking)
-        line += ". Last checked " + format_time(a.cfg.update.checked_at);
-    text(a, a.text->elide(line, kSmall, w - 220), x + 220, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall,
+        line = verbatim(ltr(a, line) + ". " + ltrf(a, "Last checked {}", format_time(a.cfg.update.checked_at)));
+    text(a, a.text->elide(line, kSmall, w - cw - 20), x + cw + 20, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall,
          st == update::State::kAvailable ? col::accent : col::faint);
     y += 44;
     if (!a.exe_dir.empty() && !a.inst.job && installer::can_roll_back(a.exe_dir)) {   // 1.1: the previous version is kept
         y += 10;
-        button(ui, SDL_FRect{x, y, 260, 44}, "Undo the last update", Style::kNormal, true,
+        Flow f(ui, x, y, w, 44);
+        f.button(260, "Undo the last update", Style::kNormal, true,
                "Puts the previous version back (the one an update replaced), then restart the launcher. Your saves and settings stay as they are.",
                [&a]() {
                    const installer::Result r = installer::roll_back(a.exe_dir);
@@ -2181,11 +3081,52 @@ float settings_launcher(App& a, Ui& ui, float x, float y, float w) {
                    a.inst.note = r.ok ? "The previous version is back. Restart the launcher to use it." : "Could not undo the update: " + r.why + ".";
                });
         if (a.inst.installed)
-            button(ui, SDL_FRect{x + 276, y, 200, 44}, "Restart now", Style::kPrimary, true, "Starts the launcher that is now in place.",
-                   [&a]() { restart_launcher(a); });
-        if (!a.inst.note.empty())
-            text(a, a.text->elide(a.inst.note, kSmall, w - 500), x + 492, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::faint);
+            f.button(200, "Restart now", Style::kPrimary, true, "Starts the launcher that is now in place.", [&a]() { restart_launcher(a); });
+        y = f.y;
+        if (!a.inst.note.empty()) {
+            const float nx = f.right() + 16;
+            text(a, a.text->elide(a.inst.note, kSmall, x + w - nx), nx, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::faint);
+        }
         y += 44;
+    }
+    return y;
+}
+
+// portable mode (1.3.0): Settings > Launcher's data folder: PORTABLE MODE (hidden on macOS, in an AppImage and a
+// Flatpak; disabled with the reason when the install folder cannot be written), the folder in use, the old copy kept
+// after a move and its removal. Returns the y below it.
+float settings_portable(App& a, Ui& ui, float x, float y, float w) {
+    App::PortableUi& u = a.portable;
+    y += 26;
+    y += section(a, "Data folder", x + 4, y);
+    if (!u.hidden) {
+        const pm::Status st = portable_status(a);
+        b3settings::Env::Portable env;
+        env.shown = true;
+        env.on = st.on;
+        if (!st.usable) env.disabled = st.why;
+        setting_row(a, ui, b3settings::portable_row(env, true), x, y, w, 46, [&a](std::size_t v) { portable_toggle(a, v != 0); });
+        u.widget = int(ui.out.size()) - 1;
+        y += 46 + 10;
+    }
+    const bool portable = !u.hidden && portable_status(a).on && a.pref == b3io::portable_dir(u.exe);
+    std::string in_use = utf8_of(a.pref);
+    if (portable) in_use += " (" + ltr(a, "portable: the appdata folder beside the launcher") + ")";
+    if (!u.data_writable) in_use += ". " + ltr(a, "It cannot be written: settings and saves are not kept.");
+    y += status_line(a, x + 4, y, w - 8, u.data_writable ? col::ok : col::bad, "In use", verbatim(in_use));
+    if (u.rec) {
+        const fs::path old = u.rec->old_kept.empty() ? u.rec->aside : u.rec->old_kept;
+        y += status_line(a, x + 4, y, w - 8, col::faint, "Old copy", verbatim(utf8_of(old)));
+    }
+    if (!u.note.empty()) y += status_line(a, x + 4, y, w - 8, u.level == 1 ? col::ok : u.level == 2 ? col::bad : col::faint, "Last change", u.note);
+    if (u.rec) {
+        y += 6;
+        Flow f(ui, x, y, w, 44);
+        f.button(240, "Remove the old copy...", Style::kDanger, u.rec->started && !u.job,
+                 u.rec->started ? "Deletes the folder your data was moved from (asks first). Your data in use is not touched."
+                                : "Start the game once from the new folder first: the old copy stays until then.",
+                 [&a]() { confirm_portable_remove(a); });
+        y = f.end();
     }
     return y;
 }
@@ -2217,9 +3158,9 @@ void steam_choose(App& a, DialogKind kind, const fs::path& p) {
     }
     std::string& slot = kind == DialogKind::kSteamCover ? a.cfg.steam_cover : kind == DialogKind::kSteamHero ? a.cfg.steam_hero : a.cfg.steam_logo;
     slot = utf8_of(p);
-    save_config(config_file(a.pref), a.cfg);
     a.steam_ui.note = "Chosen: it goes into Steam at the next Add to Steam.";
     a.steam_ui.level = 0;
+    if (!save_cfg(a, &a.steam_ui.note)) a.steam_ui.level = 3;
 }
 
 // The pictures for Steam: the player's own where chosen, else the port's (steam_art.h); the wide capsule is always
@@ -2272,9 +3213,19 @@ void steam_run(App& a) {
     };
     if (u.checks && !u.places) return done("A check run writes only to a made-up Steam folder.", 3);
     if (a.self_exe.empty()) return done("Cannot find the launcher's own program file, so it cannot be added.", 3);
+    if (steam::translocated(utf8_of(a.self_exe)))   // robust2: Steam would point at a copy that is gone next time
+        return done("macOS runs this app from a temporary copy, because it was opened where it was downloaded. Move the app to "
+                    "Applications (drag it there in Finder), open it from there, then press Add to Steam again.", 3);
     if (u.running ? *u.running : steam::steam_running()) {
         std::string m = "Steam is running. Close Steam, then press Add to Steam again: Steam rewrites its list of games when it closes.";
-        if (on_steam_deck()) m += " On a Steam Deck, do this in Desktop Mode: exit Steam from its icon in the taskbar first.";
+        // issue #12: how to close it, per system (on Linux the Deck's Desktop Mode, the usual case)
+#if defined(_WIN32)
+        m += " Right-click the Steam icon by the clock and choose Exit.";
+#elif defined(__APPLE__)
+        m += " In the menu bar: Steam > Quit Steam.";
+#else
+        m += " On a Steam Deck: right-click the Steam icon in the taskbar (bottom right) and choose Exit Steam, then press Add to Steam again.";
+#endif
         return done(m, 3);
     }
     steam::Request r;
@@ -2290,9 +3241,9 @@ void steam_run(App& a) {
         flatpak = flatpak || (acc.ok && utf8_of(acc.config).find("com.valvesoftware.Steam") != std::string::npos);
         warn = warn || !acc.why.empty() || !acc.art_why.empty();
     }
-    if (flatpak)
-        note += " Flatpak's Steam needs to see this folder: flatpak override --user --filesystem=" + utf8_of(a.self_exe.parent_path()) +
-                " com.valvesoftware.Steam";
+    if (flatpak)   // robust2: and the data folder, so the game started from Steam uses the same settings and saves
+        note += " Flatpak's Steam needs to see this folder and your data folder: flatpak override --user --filesystem=" + utf8_of(a.self_exe.parent_path()) +
+                " --filesystem=~/.local/share/b3port com.valvesoftware.Steam";
     done(note, res.ok_count() == 0 ? 3 : warn ? 2 : 1);
 }
 
@@ -2301,7 +3252,7 @@ float settings_steam(App& a, Ui& ui, float x, float y, float w) {
     App::SteamUi& u = a.steam_ui;
     y += 26;
     y += section(a, "Steam", x + 4, y);
-    const float bw = 200;
+    const float bw = std::min(w * 0.4f, std::max({200.0f, button_need(a, "Adding...", Style::kNormal, 44), button_need(a, "Add to Steam", Style::kNormal, 44)}));
     u.widget = button(ui, SDL_FRect{x, y, bw, 44}, u.pending ? "Adding..." : "Add to Steam", Style::kNormal, !u.pending,
                       "Adds Burnout 3: Takedown to the Steam library of every account on this computer, with its own cover, background "
                       "and logo. Close Steam first: it rewrites its list of games when it closes.",
@@ -2325,7 +3276,10 @@ float settings_steam(App& a, Ui& ui, float x, float y, float w) {
         {"Logo image...", DialogKind::kSteamLogo, &a.cfg.steam_logo,
          "Choose your own logo shown over the background (a PNG with a transparent background fits best). It goes into Steam at the next Add to Steam."},
     };
-    const float gap = 12, pw = std::min(200.0f, (w - 3 * gap) / 4);
+    const float gap = 12;
+    float pw = std::min(200.0f, (w - 3 * gap) / 4);   // settingsui: each as wide as the longest label needs, four in the row
+    for (const char* l : {"Cover image...", "Background image...", "Logo image...", "Use the port's art"}) pw = std::max(pw, button_need(a, l, Style::kQuiet, 44));
+    pw = std::min(pw, (w - 3 * gap) / 4);
     float px = x;
     for (const Pick& p : picks) {
         const DialogKind kind = p.kind;
@@ -2341,13 +3295,13 @@ float settings_steam(App& a, Ui& ui, float x, float y, float w) {
                a.cfg.steam_cover.clear();
                a.cfg.steam_hero.clear();
                a.cfg.steam_logo.clear();
-               save_config(config_file(a.pref), a.cfg);
                a.steam_ui.note = "The next Add to Steam uses the port's own pictures.";
                a.steam_ui.level = 0;
+               if (!save_cfg(a, &a.steam_ui.note)) a.steam_ui.level = 3;
            });
     y += 44 + 4 + lh + 12;
     // 1.2.1: art the player picks themselves (the port ships only its own pictures): SteamGridDB's search, in the browser
-    button(ui, SDL_FRect{x, y, 280, 44}, "Find art online...", Style::kQuiet, true,
+    button(ui, SDL_FRect{x, y, std::min(w, std::max(280.0f, button_need(a, "Find art online...", Style::kQuiet, 44))), 44}, "Find art online...", Style::kQuiet, true,
            "Opens SteamGridDB's pictures for Burnout 3: Takedown in your browser; download a cover, background or logo you like, "
            "then choose it with the buttons above.",
            []() { SDL_OpenURL("https://www.steamgriddb.com/search/grids?term=Burnout%203%20Takedown"); });
@@ -2358,65 +3312,110 @@ float settings_steam(App& a, Ui& ui, float x, float y, float w) {
     return y;
 }
 
-void page_settings(App& a, Ui& ui, float x, float y, float w) {
-    const std::string hd_status = a.hd_note;
-    const b3settings::Content c = settings_content(a.settings, hd_status, a.hd.images > 0, a.languages, a.language_note);
-    if (c.tabs.empty()) return;
-    a.settings_tab = std::min(a.settings_tab, c.tabs.size() - 1);
-    // the tab bar: one widget (left / right switch, a click picks)
+// settingsui: a strip of tabs (the Settings page's, the Controllers page's): one widget, left / right switch, a click
+// picks; the labels in the language shown. Too wide for the page: it scrolls sideways to keep the chosen tab in view,
+// with an arrow at the cut end(s). Returns its height.
+float tab_strip(App& a, Ui& ui, float x, float y, float w, const std::vector<std::string>& labels, std::size_t& sel, const std::string& desc) {
     const float th = 44;
-    std::vector<float> tx;
-    float total = 0;
-    for (const auto& t : c.tabs) total += a.text->width(t.label, kBody, true) + 40;
-    {
-        Widget wd;
-        wd.r = SDL_FRect{x, y, w, th};
-        wd.desc = "The settings' groups, as in the game. Left / right (or PageUp / PageDown, LT / RT) switch them.";
-        const std::size_t n = c.tabs.size();
-        wd.change = [&a, n](int dir) { a.settings_tab = (a.settings_tab + n + std::size_t(dir + int(n))) % n; };
-        std::vector<std::pair<float, float>> spans;
-        float cx = x;
-        for (const auto& t : c.tabs) {
-            const float tw = a.text->width(t.label, kBody, true) + 40;
-            spans.push_back({cx, tw});
-            cx += tw;
+    const std::size_t n = labels.size();
+    if (n == 0) return 0;
+    sel = std::min(sel, n - 1);
+    std::vector<float> tw;
+    for (const std::string& l : labels) tw.push_back(a.text->width(l, kBody, true));
+    const StripLayout lay = strip_layout(tw, w, sel);   // core.h: the tabs' spans, and the shift that keeps the chosen in view
+    const float total = lay.total, shift = lay.shift;
+    const bool over = lay.over;
+    std::vector<std::pair<float, float>> spans;
+    for (const auto& [sx, sw] : lay.spans) spans.push_back({x + sx, sw});
+    const float cx = x - shift + total;
+    Widget wd;
+    wd.r = SDL_FRect{x, y, w, th};
+    wd.desc = desc;
+    std::size_t* selp = &sel;
+    wd.change = [selp, n](int dir) { *selp = (*selp + n + std::size_t(dir + int(n))) % n; };
+    wd.click = [selp, spans, x, w](float mx, float) {
+        if (mx < x || mx >= x + w) return;
+        for (std::size_t k = 0; k < spans.size(); ++k)
+            if (mx >= spans[k].first && mx < spans[k].first + spans[k].second) *selp = k;
+    };
+    wd.activate = [selp, n]() { *selp = (*selp + 1) % n; };
+    const int i = ui.add(std::move(wd));
+    const bool f = ui.focused(i);
+    const float bw = std::min(w, total);
+    D::round_rect(SDL_FRect{x, y, bw, th}, 10, col::panel);
+    if (f) focus_ring(SDL_FRect{x, y, bw, th}, 10);
+    SDL_Rect clip_was{};
+    const bool clipped = SDL_GetRenderClipRect(a.ren, &clip_was);
+    if (over) {   // the tabs inside the strip only
+        SDL_Rect c{int(x), int(y), int(bw), int(th)};
+        if (clipped) SDL_GetRectIntersection(&c, &clip_was, &c);
+        SDL_SetRenderClipRect(a.ren, &c);
+    }
+    for (std::size_t k = 0; k < n; ++k) {
+        const auto [sx, sw] = spans[k];
+        const bool on = k == sel;
+        if (on) D::round_rect(SDL_FRect{sx + 4, y + 4, sw - 8, th - 8}, 8, col::accent);
+        text_center(a, labels[k], sx + sw * 0.5f, y + (th - a.text->line_height(kBody)) * 0.5f, kBody, on ? col::ink : col::dim, true);
+    }
+    if (over) {
+        SDL_SetRenderClipRect(a.ren, clipped ? &clip_was : nullptr);
+        const float my = y + th * 0.5f;
+        const SDL_FColor shade = D::alpha(col::bg, 0.92f), clear = D::alpha(col::bg, 0.0f);
+        if (shift > 0.5f) {   // more to the left: the cut end fades, with the rows' arrow
+            D::gradient(SDL_FRect{x, y, 40, th}, shade, clear, shade, clear);
+            D::chevron(x + 12, my, 12, -1, 2.0f, col::accent_hi);
         }
-        wd.click = [&a, spans](float mx, float) {
-            for (std::size_t k = 0; k < spans.size(); ++k)
-                if (mx >= spans[k].first && mx < spans[k].first + spans[k].second) a.settings_tab = k;
-        };
-        wd.activate = [&a, n]() { a.settings_tab = (a.settings_tab + 1) % n; };
-        const int i = ui.add(std::move(wd));
-        const bool f = ui.focused(i);
-        D::round_rect(SDL_FRect{x, y, std::min(w, total), th}, 10, col::panel);
-        if (f) focus_ring(SDL_FRect{x, y, std::min(w, total), th}, 10);
-        for (std::size_t k = 0; k < c.tabs.size(); ++k) {
-            const auto [sx, sw] = spans[k];
-            const bool sel = k == a.settings_tab;
-            if (sel) D::round_rect(SDL_FRect{sx + 4, y + 4, sw - 8, th - 8}, 8, col::accent);
-            text_center(a, c.tabs[k].label, sx + sw * 0.5f, y + (th - a.text->line_height(kBody)) * 0.5f, kBody,
-                        sel ? col::ink : col::dim, true);
+        if (cx > x + w + 0.5f) {   // more to the right
+            D::gradient(SDL_FRect{x + w - 40, y, 40, th}, clear, shade, clear, shade);
+            D::chevron(x + w - 12, my, 12, +1, 2.0f, col::accent_hi);
         }
     }
-    y += th + 18;
+    return th;
+}
+
+void page_settings(App& a, Ui& ui, float x, float y, float w) {
+    const std::string hd_status = a.hd_note;
+    const b3settings::Content c = settings_content(a.settings, hd_status, a.hd.images > 0, a.languages, a.language_note, a.xbox.status.present, a.dj.rows, a.dj.note);
+    if (c.tabs.empty()) return;
+    // the game's tabs, then the launcher's own (settingsui: its settings were under every tab before)
+    std::vector<std::string> labels;
+    for (const auto& t : c.tabs) labels.push_back(t.label);
+    labels.push_back("LAUNCHER");
+    y += tab_strip(a, ui, x, y, w, labels, a.settings_tab,
+                   "The settings' groups, as in the game, and the launcher's own. Left / right (or PageUp / PageDown, LT / RT) switch them.");
+    y += 18;
+    if (a.settings_tab >= c.tabs.size()) {   // LAUNCHER: the update check, the start without it, Steam, and the reset
+        y = settings_launcher(a, ui, x, y - 6, w);   // update1
+        y = settings_portable(a, ui, x, y, w);       // portable mode (1.3.0)
+        y = settings_steam(a, ui, x, y, w);          // issue #8
+        y += 26;
+        y += section(a, "Settings", x + 4, y);
+        const float rw = std::min(w * 0.5f, std::max(260.0f, button_need(a, "Reset all settings...", Style::kDanger, 44)));
+        button(ui, SDL_FRect{x, y, rw, 44}, "Reset all settings...", Style::kDanger, true,
+               "Every PC setting back to its default (asks first). Your saves are not touched.", [&a]() { confirm_reset(a); });
+        text(a, a.text->elide(a.settings_note.empty() ? "Settings file: " + utf8_of(settings_file(a.pref)) : a.settings_note, kSmall, w - rw - 20),
+             x + rw + 20, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::faint);
+        y += 44;
+        a.content_h = y;
+        return;
+    }
     const auto& rows = c.tabs[a.settings_tab].rows;
+    bool dj_seen = false;
+    a.dj.widget = -1;
     for (const auto& r : rows) {
         if (r.kind == b3settings::RowKind::kSection) {
             y += 6;
             y += section(a, r.label, x + 4, y);
             continue;
         }
+        if (((r.id >= b3settings::kActionDjFirst && r.id <= b3settings::kActionDjLast) ||
+             (r.id >= b3settings::kActionTrainingFirst && r.id <= b3settings::kActionTrainingLast)) && !dj_seen) {   // 1.3.0: the checks focus it
+            a.dj.widget = int(ui.out.size());
+            dj_seen = true;
+        }
         setting_row(a, ui, r, x, y, w, 46);
         y += 46 + 6;
     }
-    y += 18;
-    button(ui, SDL_FRect{x, y, 260, 44}, "Reset all settings...", Style::kDanger, true,
-           "Every PC setting back to its default (asks first). Your saves are not touched.", [&a]() { confirm_reset(a); });
-    text(a, a.text->elide(a.settings_note.empty() ? "Settings file: " + utf8_of(settings_file(a.pref)) : a.settings_note, kSmall, w - 290),
-         x + 280, y + (44 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::faint);
-    y += 44;
-    y = settings_launcher(a, ui, x, y, w);   // update1
-    y = settings_steam(a, ui, x, y, w);      // issue #8
     a.content_h = y;
 }
 
@@ -2430,12 +3429,69 @@ const char* const kHdPackThread = "https://gbatemp.net/threads/burnout-3-takedow
 const char* const kHdPackDownload = "https://www.mediafire.com/file/gec85ndkk6b4wm4/SLUS-21050.7z/file";
 const char* const kHdPackSupport = "https://ko-fi.com/pandavenom";
 
+// xboximport (1.3.0): Import Xbox textures: the pack built from the player's own Xbox disc (b3asset/xboximport.h), its
+// status, Import / Open / Remove and the XBOX TEXTURES row. Returns the y below it.
+float page_hd_xbox(App& a, Ui& ui, float x, float y, float w) {
+    const xi::Status& st = a.xbox.status;
+    y += section(a, "Xbox textures", x + 4, y);
+    y += paragraph(a, "Builds a texture pack on this computer from your own Xbox disc image of the game (.iso or .xiso). "
+                      "It is a small improvement: some building fronts, signs and car paint are somewhat sharper. "
+                      "An HD texture pack looks far better; this is for players who want to use their Xbox disc. "
+                      "Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.",
+                   x + 4, y, w - 8, kBody, col::text) + 10;
+    SDL_FColor dot = col::faint;
+    std::string s = "Not imported.";
+    if (st.present) {
+        dot = col::ok;
+        s = std::to_string(st.written) + " textures imported. Size: " + std::to_string((st.bytes + (1u << 19)) >> 20) + " MB.";
+        if (!st.image.empty()) s += " From: " + st.image + ".";
+        if (st.version < xi::kVersion) s += " Made by an older version: import again for the newest result.";
+        if (!a.settings.xbox_textures) { dot = col::warn; s += " XBOX TEXTURES is off."; }
+        else if (!a.settings.hd_textures) { dot = col::warn; s += " HD TEXTURES is off."; }
+    }
+    y += status_line(a, x + 4, y, w - 8, dot, "Status", s);
+    if (!a.xbox.note.empty())
+        y += status_line(a, x + 4, y, w - 8, a.xbox.level == 1 ? col::ok : a.xbox.level == 2 ? col::bad : col::faint, "Last change", a.xbox.note);
+    y += 10;
+    const bool idle = !xbox_running(a);
+    Flow f(ui, x, y, w, 48);   // settingsui: each button as wide as its label needs; the row wraps
+    f.button(280, "Import Xbox textures...", Style::kPrimary, idle,
+             "Choose your Xbox disc image of the game (.iso or .xiso). The import runs on this computer in about a minute.",
+             [&a]() { open_dialog(a, DialogKind::kXboxImage, utf8_of(a.game_dir.parent_path())); });
+    f.button(150, "Open", Style::kNormal, st.present, "Opens the folder in the file manager.",
+             [&a]() { open_folder(xbox_folder(a), &a.xbox.note); });
+    f.button(150, "Remove", Style::kDanger, st.present && idle,
+             "Deletes the imported textures (your disc image is not touched).", [&a]() { confirm_xbox_remove(a); });
+    y = f.end() + 22;
+    if (st.present) {   // the in-game row (GRAPHICS: XBOX TEXTURES)
+        b3settings::Row r;
+        for (const auto& t : settings_content(a.settings, a.hd_note, a.hd.images > 0, a.languages, a.language_note, true).tabs)
+            for (const auto& row : t.rows)
+                if (row.id == b3settings::kRowIdXboxTextures) r = row;   // settingsui: by id (the label is translated)
+        if (!r.label.empty()) {
+            const float h = 46;
+            setting_row(a, ui, r, x, y, w, h);
+            const auto set = [&a](bool v) {
+                if (a.settings.xbox_textures == v) return;
+                a.settings.xbox_textures = v;
+                save_settings(a);
+                ++a.hd_gen;
+            };
+            ui.out.back().activate = [&a, set]() { set(!a.settings.xbox_textures); };
+            ui.out.back().click = [&a, set](float, float) { set(!a.settings.xbox_textures); };
+            ui.out.back().change = [set](int dir) { set(dir > 0); };
+            y += h + 22;
+        }
+    }
+    return y;
+}
+
 void page_hd(App& a, Ui& ui, float x, float y, float w) {
     const bool set = !a.settings.hd_pack_dir.empty();
     const float top = y;
     float yy = y + 20;
     yy += section(a, "Folder", x + 24, yy);
-    yy += paragraph(a, set ? a.settings.hd_pack_dir : "None chosen.", x + 24, yy, w - 48, 18, set ? col::text : col::dim, true) + 8;
+    yy += paragraph(a, set ? verbatim(a.settings.hd_pack_dir) : std::string("None chosen."), x + 24, yy, w - 48, 18, set ? col::text : col::dim, true) + 8;
     SDL_FColor dot = col::faint;
     std::string st = "The game draws its own textures.";
     if (set) {
@@ -2454,32 +3510,31 @@ void page_hd(App& a, Ui& ui, float x, float y, float w) {
     // drawn again over the panel (the panel's height is known only now)
     yy = y + 20;
     yy += section(a, "Folder", x + 24, yy);
-    yy += paragraph(a, set ? a.settings.hd_pack_dir : "None chosen.", x + 24, yy, w - 48, 18, set ? col::text : col::dim, true) + 8;
+    yy += paragraph(a, set ? verbatim(a.settings.hd_pack_dir) : std::string("None chosen."), x + 24, yy, w - 48, 18, set ? col::text : col::dim, true) + 8;
     yy += status_line(a, x + 24, yy, w - 48, dot, "Status", st);
     if (!a.hd_note.empty()) yy += status_line(a, x + 24, yy, w - 48, col::faint, "Last change", a.hd_note);
     y = yy + 10 + 22;
 
-    float bx = x;
-    button(ui, SDL_FRect{bx, y, 230, 48}, "Choose folder...", Style::kPrimary, true,
-           "The folder of a PCSX2 texture pack for this game (its SLUS-21050 folder, or the folder above it). With a controller: the launcher's own folder list.",
-           [&a]() { open_dialog(a, DialogKind::kHdFolder, a.settings.hd_pack_dir); });
-    bx += 246;
-    button(ui, SDL_FRect{bx, y, 190, 48}, "Type a path...", Style::kNormal, true, "Type or paste the folder's path instead. With a controller: an on-screen keyboard.",
-           [&a]() { ask_path(a, DialogKind::kHdFolder, "HD texture pack folder", a.settings.hd_pack_dir); });
-    bx += 206;
-    button(ui, SDL_FRect{bx, y, 150, 48}, "Open", Style::kNormal, set && a.hd.exists, "Opens the folder in the file manager.",
-           [&a]() { open_folder(path_from_utf8(a.settings.hd_pack_dir), &a.hd_note); });
-    bx += 166;
-    button(ui, SDL_FRect{bx, y, 150, 48}, "Remove", Style::kDanger, set, "Stops using the folder from the next start (its files stay).",
-           [&a]() { action_row(a, b3settings::kActionClearHdPack); });
-    y += 48 + 22;
+    {
+        Flow f(ui, x, y, w, 48);   // settingsui: each button as wide as its label needs; the row wraps
+        f.button(230, "Choose folder...", Style::kPrimary, true,
+                 "The folder of a PCSX2 texture pack for this game (its SLUS-21050 folder, or the folder above it). With a controller: the launcher's own folder list.",
+                 [&a]() { open_dialog(a, DialogKind::kHdFolder, a.settings.hd_pack_dir); });
+        f.button(190, "Type a path...", Style::kNormal, true, "Type or paste the folder's path instead. With a controller: an on-screen keyboard.",
+                 [&a]() { ask_path(a, DialogKind::kHdFolder, "HD texture pack folder", a.settings.hd_pack_dir); });
+        f.button(150, "Open", Style::kNormal, set && a.hd.exists, "Opens the folder in the file manager.",
+                 [&a]() { open_folder(path_from_utf8(a.settings.hd_pack_dir), &a.hd_note); });
+        f.button(150, "Remove", Style::kDanger, set, "Stops using the folder from the next start (its files stay).",
+                 [&a]() { action_row(a, b3settings::kActionClearHdPack); });
+        y = f.end() + 22;
+    }
     {
         // the in-game row (b3settings::build_content's GRAPHICS tab: HD TEXTURES, there while a folder is chosen); a
         // row of its own when none is, so the switch is reachable here too (Settings::hd_textures either way)
         b3settings::Row r;
-        for (const auto& t : settings_content(a.settings, a.hd_note, a.hd.images > 0, a.languages, a.language_note).tabs)
+        for (const auto& t : settings_content(a.settings, a.hd_note, a.hd.images > 0, a.languages, a.language_note, a.xbox.status.present, a.dj.rows, a.dj.note).tabs)
             for (const auto& row : t.rows)
-                if (row.kind == b3settings::RowKind::kToggle && row.label == "HD TEXTURES") r = row;
+                if (row.id == b3settings::kRowIdHdTextures) r = row;   // settingsui: by id (the label is translated)
         if (r.label.empty()) {
             r.kind = b3settings::RowKind::kToggle;
             r.label = "HD TEXTURES";
@@ -2501,6 +3556,7 @@ void page_hd(App& a, Ui& ui, float x, float y, float w) {
                       "folder), or the folder above it. The game reads it at its next start; this page only checks that "
                       "the folder has images in it.",
                    x + 4, y, w - 8, kSmall, col::faint);
+    y = page_hd_xbox(a, ui, x, y + 22, w);   // xboximport
     // the pack to get: credit and links to its creator's post
     y += 22;
     y += section(a, "Get the HD pack", x + 4, y);
@@ -2510,24 +3566,22 @@ void page_hd(App& a, Ui& ui, float x, float y, float w) {
                       "emulator bug: the port draws the pack without them.",
                    x + 4, y, w - 8, kBody, col::text) + 12;
     {
-        float lx = x;
+        Flow f(ui, x, y, w, 48);
         if (*kHdPackDownload) {
             const std::string url = kHdPackDownload;
-            button(ui, SDL_FRect{lx, y, 250, 48}, "Download (MediaFire)", Style::kNormal, true,
-                   "Opens the pack's download (" + url + ") in your browser. The launcher downloads nothing itself.",
-                   [url]() { SDL_OpenURL(url.c_str()); });
-            lx += 266;
+            f.button(250, "Download (MediaFire)", Style::kNormal, true,
+                     "Opens the pack's download (" + url + ") in your browser. The launcher downloads nothing itself.",
+                     [url]() { SDL_OpenURL(url.c_str()); });
         }
         const std::string url = kHdPackThread;
-        button(ui, SDL_FRect{lx, y, 200, 48}, "Creator's post", Style::kNormal, true,
-               std::string("Opens ") + kHdPackAuthor + "'s post about the pack (" + url + ") in your browser.",
-               [url]() { SDL_OpenURL(url.c_str()); });
-        lx += 216;
+        f.button(200, "Creator's post", Style::kNormal, true,
+                 std::string("Opens ") + kHdPackAuthor + "'s post about the pack (" + url + ") in your browser.",
+                 [url]() { SDL_OpenURL(url.c_str()); });
         const std::string kofi = kHdPackSupport;
-        button(ui, SDL_FRect{lx, y, 230, 48}, "Support the creator", Style::kNormal, true,
-               std::string("Opens ") + kHdPackAuthor + "'s Ko-fi page (" + kofi + ") in your browser.",
-               [kofi]() { SDL_OpenURL(kofi.c_str()); });
-        y += 48 + 12;
+        f.button(230, "Support the creator", Style::kNormal, true,
+                 std::string("Opens ") + kHdPackAuthor + "'s Ko-fi page (" + kofi + ") in your browser.",
+                 [kofi]() { SDL_OpenURL(kofi.c_str()); });
+        y = f.end() + 12;
     }
     a.content_h = y;
 }
@@ -2571,8 +3625,8 @@ void page_credits(App& a, Ui& ui, float x, float y, float w) {
                        "copy of the game and contains none of its data.";
     // update1: the version and the update check's last answer
     const update::State ust = update_state(a);
-    const std::string ver = "Version " + std::string(b3port::version()) + " (built " + b3port::build_date() + "). " +
-                            update::status_text(a.cfg.update, ust) + ".";
+    const std::string ver = verbatim(ltrf(a, "Version {}", b3port::version()) + " (" + ltrf(a, "built {}", b3port::build_date()) + "). " +
+                                     ltr(a, update::status_text(a.cfg.update, ust)) + ".");
     float hh = a.text->line_height(kSection + 1.5f) + 6;
     hh += a.text->wrap(who, kBody, w - 48, true).size() * a.text->line_height(kBody) + 6;
     hh += a.text->wrap(game, kSmall, w - 48).size() * a.text->line_height(kSmall);
@@ -2625,7 +3679,7 @@ void page_credits(App& a, Ui& ui, float x, float y, float w) {
 
 // ---- the MUSIC page ----
 // The custom soundtrack (remaster-features §6): the folder, its songs (the game's own scan and tags: custom_music.h),
-// and the in-game PLAYLIST and CUSTOM MUSIC VOLUME rows. The same settings as SETTINGS > INTERFACE > MUSIC in the game
+// and the in-game PLAYLIST and CUSTOM MUSIC VOLUME rows. The same settings as SETTINGS > AUDIO > MUSIC in the game
 // (Settings::music_folder, playlist_mode and custom_music_volume in pc_settings.ini), so a change here shows there and
 // the other way round. PLAYLIST EA Trax only (the default) is the feature off: the game's music untouched.
 
@@ -2665,7 +3719,7 @@ void page_music(App& a, Ui& ui, float x, float y, float w) {
         return std::max(float(a.text->wrap(body, kBody, w - 48 - 22 - 150).size()) * lh, lh) + 10;
     };
     const float top = y;
-    const std::string path = set ? a.settings.music_folder : "None chosen.";
+    const std::string path = set ? verbatim(a.settings.music_folder) : std::string("None chosen.");   // settingsui: the player's folder as it is
     auto body = [&](bool draw_it) {
         float yy = top + 20;
         if (draw_it) section(a, "Music folder", x + 24, yy);
@@ -2687,25 +3741,19 @@ void page_music(App& a, Ui& ui, float x, float y, float w) {
     body(true);
     y = end + 22;
 
-    // the buttons (a row that wraps, as on the Game Data page)
-    float bx = x;
-    auto at = [&](float bw) {
-        if (bx > x && bx + bw > x + w) { bx = x; y += 48 + 16; }
-        const SDL_FRect r{bx, y, bw, 48};
-        bx += bw + 16;
-        return r;
-    };
-    button(ui, at(230), "Choose folder...", Style::kPrimary, true,
+    // the buttons (a row that wraps, as on the Game Data page; settingsui: each as wide as its label needs)
+    Flow flow(ui, x, y, w, 48);
+    flow.button(230, "Choose folder...", Style::kPrimary, true,
            "A folder of your music: MP3, FLAC, Ogg Vorbis or WAV files (subfolders too). In the game: MUSIC FOLDER. With a controller: the launcher's own folder list.",
            [&a]() { action_row(a, b3settings::kActionChooseMusic); });
-    button(ui, at(190), "Type a path...", Style::kNormal, true, "Type or paste the folder's path instead. With a controller: an on-screen keyboard.",
+    flow.button(190, "Type a path...", Style::kNormal, true, "Type or paste the folder's path instead. With a controller: an on-screen keyboard.",
            [&a]() { ask_path(a, DialogKind::kMusicFolder, "Music folder", a.settings.music_folder); });
-    button(ui, at(130), "Open", Style::kNormal, set && m.exists, "Opens the folder in the file manager.",
+    flow.button(130, "Open", Style::kNormal, set && m.exists, "Opens the folder in the file manager.",
            [&a]() { open_folder(path_from_utf8(a.settings.music_folder), &a.music_note); });
-    button(ui, at(150), "Remove", Style::kDanger, set,
+    flow.button(150, "Remove", Style::kDanger, set,
            "Stop using the chosen folder (the files stay). In the game: REMOVE MUSIC FOLDER.",
            [&a]() { action_row(a, b3settings::kActionClearMusic); });
-    y += 48 + 22;
+    y = flow.end() + 22;
 
     // the in-game PLAYLIST row: its values, words and description (b3settings::build_content), edited as the game does
     setting_row(a, ui, playlist_row(a.settings), x, y, w, 46);
@@ -2762,9 +3810,9 @@ void page_music(App& a, Ui& ui, float x, float y, float w) {
                 const MusicSong& s = m.first[k];
                 if (draw_it) {
                     text_right(a, std::to_string(k + 1), c1 - 14, yy, kBody, col::faint);
-                    text(a, a.text->elide(s.title, kBody, c2 - c1 - 16, true), c1, yy, kBody, col::text, true);
-                    text(a, a.text->elide(s.artist, kBody, c3 - c2 - 16), c2, yy, kBody, col::dim);
-                    text(a, a.text->elide(s.album, kBody, x + w - 24 - c3), c3, yy, kBody, col::faint);
+                    text(a, a.text->elide(verbatim(s.title), kBody, c2 - c1 - 16, true), c1, yy, kBody, col::text, true);   // settingsui: as tagged
+                    text(a, a.text->elide(verbatim(s.artist), kBody, c3 - c2 - 16), c2, yy, kBody, col::dim);
+                    text(a, a.text->elide(verbatim(s.album), kBody, x + w - 24 - c3), c3, yy, kBody, col::faint);
                 }
                 yy += lh + 6;
             }
@@ -2781,7 +3829,7 @@ void page_music(App& a, Ui& ui, float x, float y, float w) {
     }
     y += paragraph(a, "Your songs play through the game's radio: its RADIO VOLUME, its shuffle setting and the EA TRAX popup with "
                       "each song's title, artist and album from its tags. The game reads the folder when its next song starts. "
-                      "In the game these are SETTINGS > INTERFACE > MUSIC: a change in either place shows in the other. "
+                      "In the game these are SETTINGS > AUDIO > MUSIC: a change in either place shows in the other. "
                       "OTHER MUSIC APPS shows the song another app plays (Spotify, a browser, any player in the system's "
                       "media controls) in the same popup; its sound stays in that app.",
                    x + 4, y, w - 8, kSmall, col::faint);
@@ -2797,8 +3845,8 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
     const float lh = a.text->line_height(kBody);
     auto status_h = [&](const std::string& body) { return std::max(float(a.text->wrap(body, kBody, w - 48 - 22 - 150).size()) * lh, lh) + 10; };
     const std::string count = a.mods.empty() ? "None installed. Put each mod in its own folder in the mods folder (a folder with a mod.ini), then Look again."
-                                             : std::to_string(a.mods.size()) + (a.mods.size() == 1 ? " mod" : " mods") + " installed, " +
-                                                   std::to_string(on) + " on.";
+                                             : verbatim(ltrf(a, "Installed: {}", std::to_string(a.mods.size())) + ", " +
+                                                        ltrf(a, "on: {}", std::to_string(on)) + ".");
     const std::string order = "The game reads a file from the first mod in this list that has it and is on, else from your disc. "
                               "Nothing is written to the disc or its folder.";
     // modkit1b: the paths more than one mod that is on has (the first one wins)
@@ -2812,7 +3860,7 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
         clash = std::to_string(a.mod_conflicts.size()) + (a.mod_conflicts.size() == 1 ? " file is" : " files are") + " in more than one mod that is on (" +
                 std::to_string(who.size()) + " mods): the mod higher in the list wins. Each card lists its own.";
     }
-    const std::string path = utf8_of(folder);
+    const std::string path = verbatim(utf8_of(folder));
     const float top = y;
     auto body = [&](bool draw_it) {
         float yy = top + 20;
@@ -2838,30 +3886,38 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
     D::round_rect(SDL_FRect{x, top, w, end - top}, 12, col::panel);
     body(true);
     y = end + 22;
-    button(ui, SDL_FRect{x, y, 250, 48}, "Open mods folder", Style::kPrimary, true,
+    Flow flow(ui, x, y, w, 48);   // settingsui: each button as wide as its label needs; the row wraps
+    flow.button(250, "Open mods folder", Style::kPrimary, true,
            "Opens the mods folder in the file manager (made when it is not there yet). Each mod is a folder in it.",
            [&a, folder]() { open_folder(folder, &a.mods_note); });
-    button(ui, SDL_FRect{x + 266, y, 170, 48}, "Look again", Style::kNormal, true, "Reads the mods folder again (mods added or removed since).",
+    flow.button(170, "Look again", Style::kNormal, true, "Reads the mods folder again (mods added or removed since).",
            [&a]() {
                refresh_mods(a);
                a.mods_note = "Read the mods folder again: " + std::to_string(a.mods.size()) + (a.mods.size() == 1 ? " mod." : " mods.");
                a.mods_note_bad = false;
            });
-    button(ui, SDL_FRect{x + 452, y, 190, 48}, "Add mod...", Style::kNormal, true,   // modkit1b
+    flow.button(190, "Add mod...", Style::kNormal, true,   // modkit1b
            "Installs a mod from a .b3mod or .zip file: unpacked into its own folder in the mods folder (checked first: nothing "
            "outside that folder is written). New mods are off.",
            [&a]() { open_dialog(a, DialogKind::kModArchive, ""); });
-    y += 48 + 12;
-    button(ui, SDL_FRect{x, y, 260, 44}, a.settings.developer_mods ? "Developer mods: On" : "Developer mods: Off", Style::kQuiet, true,   // sdk2b / tune4
+    flow.button(190, "Add folder...", Style::kNormal, true,   // item 11: a mod's folder, or a pack of the game's own files without a mod.ini
+                "Installs a mod from a folder: copied into its own folder in the mods folder. A pack of the game's own files "
+                "without a mod.ini (its DATA, PVEH or TRACKS folders) can be installed as a file-replacement mod.",
+                [&a]() { open_dialog(a, DialogKind::kModFolder, ""); });
+    y = flow.end() + 12;
+    {
+        const std::string dev = a.settings.developer_mods ? "Developer mods: On" : "Developer mods: Off";
+        button(ui, SDL_FRect{x, y, std::min(w, std::max(260.0f, button_need(a, dev, Style::kQuiet, 44))), 44}, dev, Style::kQuiet, true,   // sdk2b / tune4
            "For mod authors: code mods that say [code] platform = yes may then change the game's platform layer (the kernel, "
            "the disc and pad drivers). Leave it off unless a mod's author asks for it.",
            [&a]() {
-               // the one switch: PC SETTINGS > INTERFACE > DEVELOPER MODS (pc_settings.ini; the tuning console too)
+               // the one switch: PC SETTINGS > MODS > DEVELOPER MODS (pc_settings.ini; the tuning console too)
                a.settings.developer_mods = a.settings.developer_mods ? 0 : 1;
                save_settings(a);
-               a.mods_note = a.settings.developer_mods ? "Developer mods on (also PC SETTINGS > INTERFACE > DEVELOPER MODS)." : "Developer mods off.";
+               a.mods_note = a.settings.developer_mods ? "Developer mods on (also PC SETTINGS > MODS > DEVELOPER MODS)." : "Developer mods off.";
                a.mods_note_bad = false;
            });
+    }
     y += 44 + 22;
     // sdk2b: the focusable items of card k (Turn on, Move up, Move down, then its settings rows)
     auto card_items = [&a](std::size_t k) {
@@ -2885,7 +3941,7 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
             float yy = ctop + 16;
             if (draw_it) {
                 text_right(a, std::to_string(k + 1), x + 40, yy, 18, col::faint, true);
-                const float nw = text(a, a.text->elide(mf.name, 18, tw - 200, true), x + 52, yy, 18, m->usable() ? col::text : col::dim, true);
+                const float nw = text(a, a.text->elide(verbatim(mf.name), 18, tw - 200, true), x + 52, yy, 18, m->usable() ? col::text : col::dim, true);
                 const char* st = !m->usable() ? "CANNOT BE USED" : e.enabled ? "ON" : "OFF";
                 text(a, st, x + 52 + nw + 14, yy + 2, kBody, !m->usable() ? col::bad : e.enabled ? col::ok : col::faint, true);
             }
@@ -2893,7 +3949,7 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
             if (draw_it) paragraph(a, meta, x + 52, yy, tw - 28, kSmall, col::faint);
             yy += float(a.text->wrap(meta, kSmall, tw - 28).size()) * a.text->line_height(kSmall) + 4;
             if (!mf.description.empty()) {
-                if (draw_it) paragraph(a, mf.description, x + 52, yy, tw - 28, kBody, col::dim);
+                if (draw_it) paragraph(a, verbatim(mf.description), x + 52, yy, tw - 28, kBody, col::dim);   // settingsui: the mod's own words
                 yy += float(a.text->wrap(mf.description, kBody, tw - 28).size()) * lh + 4;
             }
             for (const std::string& er : m->errors) {
@@ -2950,6 +4006,10 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
                     line(st->loaded ? "At the last start: loaded." : "At the last start: not loaded: " + st->reason, st->loaded ? col::dim : col::bad);
                 if (a.mod_rows.count(mf.id)) line("Its settings (also in the game: PC SETTINGS > MODS); a change here applies at the next start:", col::dim);
             }
+            if (mf.script.present && mf.script.unsafe)   // modsec: asked as a code mod is
+                line(std::string("Unsafe script: may write the game's memory and call or replace its functions") +
+                         (code_allowed(a, *m) ? " (allowed to run)." : " (not allowed yet: you are asked when it is turned on or the game starts)."),
+                     col::warn);
             if (mf.script.present) {   // lua6: a script mod -- it runs inside the game, through the script API only
                 line("A Lua script (" + mf.script.main_file + "): it runs inside the game and can only do what the script API offers.", col::dim);
                 line(mf.script.gameplay ? "Changes gameplay: times and replays made with it are kept apart." : "Only reads and draws (gameplay = no).",
@@ -2969,7 +4029,10 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
         card(true);
         const float by = cend;
         const std::string id = e.id;
-        button(ui, SDL_FRect{x + 52, by, 170, bh}, e.enabled ? "Turn off" : "Turn on", e.enabled ? Style::kNormal : Style::kPrimary,
+        // settingsui: the three buttons as wide as their labels need (the language's)
+        const float b1 = std::max({170.0f, button_need(a, "Turn off", Style::kNormal, bh), button_need(a, "Turn on", Style::kPrimary, bh)});
+        const float b2 = std::max(140.0f, button_need(a, "Move up", Style::kNormal, bh)), b3w = std::max(150.0f, button_need(a, "Move down", Style::kNormal, bh));
+        button(ui, SDL_FRect{x + 52, by, b1, bh}, e.enabled ? "Turn off" : "Turn on", e.enabled ? Style::kNormal : Style::kPrimary,
                m->usable() || e.enabled,
                m->usable() ? (e.enabled ? "The game stops using this mod from the next start." : "The game uses this mod from the next start.")
                            : "This mod cannot be used: see its error.",
@@ -2991,7 +4054,7 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
                            save_mods(a, std::string(x2.enabled ? "Turned on " : "Turned off ") + id + ".");
                        }
                });
-        button(ui, SDL_FRect{x + 52 + 186, by, 140, bh}, "Move up", Style::kNormal, k > 0,
+        button(ui, SDL_FRect{x + 52 + b1 + 16, by, b2, bh}, "Move up", Style::kNormal, k > 0,
                "Earlier in the list: this mod wins over the ones below it when two have the same file.", [&a, k, card_items]() {
                    if (k == 0 || k >= a.mod_order.entries.size()) return;
                    const int above = card_items(k - 1);   // the same button, one card up
@@ -2999,7 +4062,7 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
                    save_mods(a, "Moved " + a.mod_order.entries[k - 1].id + " up.");
                    a.focus = std::max(0, a.focus - above);
                });
-        button(ui, SDL_FRect{x + 52 + 342, by, 150, bh}, "Move down", Style::kNormal, k + 1 < a.mod_order.entries.size(),
+        button(ui, SDL_FRect{x + 52 + b1 + b2 + 32, by, b3w, bh}, "Move down", Style::kNormal, k + 1 < a.mod_order.entries.size(),
                "Later in the list: the mods above it win when two have the same file.", [&a, k, card_items]() {
                    if (k + 1 >= a.mod_order.entries.size()) return;
                    const int below = card_items(k + 1);
@@ -3059,7 +4122,7 @@ void page_game(App& a, Ui& ui, float x, float y, float w) {
         float yy = top + 20;
         if (draw_it) section(a, "Folder or disc image", x + 24, yy);
         yy += a.text->line_height(kSection) + 6;
-        const std::string p = a.game_dir.empty() ? "Not found." : utf8_of(a.game_dir);
+        const std::string p = a.game_dir.empty() ? std::string("Not found.") : verbatim(utf8_of(a.game_dir));
         if (draw_it) paragraph(a, p, x + 24, yy, w - 48, 18, a.game_dir.empty() ? col::dim : col::text, true);
         yy += float(a.text->wrap(p, 18, w - 48, true).size()) * a.text->line_height(18) + 12;
         // the checklist, two columns
@@ -3099,24 +4162,18 @@ void page_game(App& a, Ui& ui, float x, float y, float w) {
     D::round_rect(SDL_FRect{x, top, w, end - top}, 12, col::panel);
     body(true);
     y = end + 22;
-    float bx = x;
-    // iso1: a row that wraps when the next button does not fit (the disc image button made it wider than the page)
-    auto at = [&](float bw) {
-        if (bx > x && bx + bw > x + w) { bx = x; y += 48 + 16; }
-        const SDL_FRect r{bx, y, bw, 48};
-        bx += bw + 16;
-        return r;
-    };
-    button(ui, at(230), "Choose folder...", Style::kPrimary, true,
+    // iso1: a row that wraps when the next button does not fit (settingsui: each as wide as its label needs)
+    Flow flow(ui, x, y, w, 48);
+    flow.button(230, "Choose folder...", Style::kPrimary, true,
            "The folder you copied the disc's files into (SYSTEM.CNF, SLUS_210.50, DATA, TRACKS, ...). With a controller: the launcher's own folder list.",
            [&a]() { open_dialog(a, DialogKind::kGameFolder, utf8_of(a.game_dir)); });
-    button(ui, at(250), "Choose disc image...", Style::kPrimary, true,
+    flow.button(250, "Choose disc image...", Style::kPrimary, true,
            "Your disc's image file (.iso, or a raw .bin), read in place: nothing is extracted. A .chd image of the disc works too. "
            "With a controller: the launcher's own file list.",   // chd1: the sentence on .chd
            [&a]() { open_dialog(a, DialogKind::kGameImage, utf8_of(a.game_dir)); });
-    button(ui, at(190), "Type a path...", Style::kNormal, true, "Type or paste the folder's or the disc image's path instead. With a controller: an on-screen keyboard.",
+    flow.button(190, "Type a path...", Style::kNormal, true, "Type or paste the folder's or the disc image's path instead. With a controller: an on-screen keyboard.",
            [&a]() { ask_path(a, DialogKind::kGameFolder, "Game data folder or disc image", utf8_of(a.game_dir)); });
-    button(ui, at(170), "Search again", Style::kNormal, true,
+    flow.button(170, "Search again", Style::kNormal, true,
            "Looks in the usual places again: game or data/game beside the launcher, and the folder it was started from.",
            [&a]() {
                const fs::path f = find_game_folder("", a.exe_dir, a.cwd);
@@ -3127,13 +4184,13 @@ void page_game(App& a, Ui& ui, float x, float y, float w) {
                    load_look(a);
                }
            });
-    button(ui, at(130), "Open", Style::kNormal, a.game.exists, "Opens the folder (a disc image: the folder it is in) in the file manager.",
+    flow.button(130, "Open", Style::kNormal, a.game.exists, "Opens the folder (a disc image: the folder it is in) in the file manager.",
            [&a]() {
                std::error_code ec;   // iso1: a disc image's folder; never create anything for it
                if (fs::is_regular_file(a.game_dir, ec)) open_folder(a.game_dir.parent_path(), &a.game_note);
                else open_folder(a.game_dir, &a.game_note);
            });
-    y += 48 + 22;
+    y = flow.end() + 22;
     y += paragraph(a, "You need your own copy of Burnout 3: Takedown (USA, SLUS-21050). The port includes no game data. Choose "
                       "your disc's image (a .iso as disc dumping tools make it, or a raw .bin), or copy everything on the disc "
                       "into one folder and choose that folder. A .chd image of the disc works too. The game reads its files "
@@ -3250,65 +4307,140 @@ void choose_saves_folder(App& a, const fs::path& to) {
     a.modal = m;
 }
 
+// saveflow: "Set aside and start fresh" for a file the game cannot play (save_store.h set_aside_profile). Each sentence
+// carries one `{}` (b3settings/i18n.h translates them one by one).
+void confirm_set_aside(App& a, int slot, const std::string& problem) {
+    const std::string n = std::to_string(slot);
+    Modal m;
+    m.title = "Set aside file " + n + "?";
+    m.text = "The game can't play profile-" + n + ".sav. Why: " + problem + ". It is renamed in the save folder (kept, not deleted) "
+             "and the file starts empty: the game makes a new profile at its first save. Quit the game first if it is running.";
+    m.buttons = {{"Set aside", [&a, slot]() {
+                      std::string err;
+                      const auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                      fs::path to;
+                      if (saves_ready(a, &err)) to = b3native::save::set_aside_profile(saves_root(a), slot, now, &err);
+                      a.save_note = !to.empty() ? "Set aside as " + utf8_of(to.filename()) + ". The game starts this file fresh."
+                                                : "Cannot set it aside: " + err;
+                      a.save_note_bad = to.empty();
+                      refresh(a);
+                  }, true},
+                 {"Cancel", nullptr}};
+    a.modal = m;
+}
+
+// saveflow: the newest save a game put beside file `s` (save_store.h unsaved_saves) that the player has neither used
+// nor left (launcher.ini unsaved_left); null: none
+const SaveSlot::Unsaved* pending_unsaved(const App& a, const SaveSlot& s) {
+    for (const SaveSlot::Unsaved& u : s.unsaved) {
+        const std::string name = utf8_of(u.path.filename());
+        if (std::find(a.cfg.unsaved_left.begin(), a.cfg.unsaved_left.end(), name) == a.cfg.unsaved_left.end()) return &u;
+    }
+    return nullptr;
+}
+
+// saveflow: "Leave it": the file's name in launcher.ini (names whose files have gone from the folder in use are dropped)
+void leave_unsaved(App& a, const fs::path& path) {
+    std::vector<std::string> keep;
+    std::error_code ec;
+    for (const std::string& n : a.cfg.unsaved_left)
+        if (fs::exists(saves_root(a) / path_from_utf8(n), ec)) keep.push_back(n);
+    keep.push_back(utf8_of(path.filename()));
+    a.cfg.unsaved_left = keep;
+    save_config(config_file(a.pref), a.cfg);
+    refresh(a);
+}
+
+// saveflow: "Use it": asks, then the save beside the file becomes profile-N.sav (save_store.h use_unsaved)
+void confirm_use_unsaved(App& a, int slot, const fs::path& path, const std::string& when) {
+    const std::string n = std::to_string(slot);
+    Modal m;
+    m.title = "Use the progress from " + when + "?";
+    m.text = "It replaces profile-" + n + ".sav. The current one is kept as profile-" + n + ".sav.bak and in backups. "
+             "Quit the game first if it is running.";
+    m.buttons = {{"Use it", [&a, slot, path, when]() {
+                      std::string err;
+                      const auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                      const bool ok = saves_ready(a, &err) && b3native::save::use_unsaved(saves_root(a), slot, path, now, &err);
+                      a.save_note = ok ? "Now using the progress from " + when + "." : "Cannot use it: " + err;
+                      a.save_note_bad = !ok;
+                      if (ok) leave_unsaved(a, path);   // (used: its line goes)
+                      else refresh(a);
+                  }, true},
+                 {"Cancel", nullptr}};
+    a.modal = m;
+}
+
 void page_saves(App& a, Ui& ui, float x, float y, float w) {
     const fs::path root = saves_root(a);
     const bool chosen = !a.cfg.saves_dir.empty();
     const float lw = std::max(140.0f, text(a, "Save folder", x, y, kBody, col::text, true) + 14);   // 1.1: a longer translated label
-    text(a, a.text->elide(utf8_of(root), kBody, w - lw - 200), x + lw, y, kBody, col::dim);
-    button(ui, SDL_FRect{x + w - 190, y - 10, 190, 42}, "Open save folder", Style::kNormal, true,
+    const float ow = std::min(w * 0.4f, std::max(190.0f, button_need(a, "Open save folder", Style::kNormal, 42)));
+    text(a, a.text->elide(verbatim(utf8_of(root)), kBody, w - lw - ow - 10), x + lw, y, kBody, col::dim);
+    button(ui, SDL_FRect{x + w - ow, y - 10, ow, 42}, "Open save folder", Style::kNormal, true,
            "Opens the folder in the file manager. Copy a profile-N.sav to take its three profiles to another computer.",
-           [&a, root]() { open_folder(root, &a.save_note); });
+           [&a, root]() {
+               std::string why;   // fsrobust: a chosen folder that is not there is not made by opening it
+               if (saves_ready(a, &why)) open_folder(root, &a.save_note);
+               else a.save_note = "Cannot open the folder: " + why;
+           });
     y += 46;
     // 1.1: the save folder of the player's choice (a cloud or network folder two computers share)
     {
-        float bx = x;
-        button(ui, SDL_FRect{bx, y, 230, 42}, "Choose save folder...", Style::kNormal, true,
+        Flow f(ui, x, y, w, 42);   // settingsui: each button as wide as its label needs; the row wraps
+        f.button(230, "Choose save folder...", Style::kNormal, true,
                "Keeps the saves in another folder: a cloud folder (OneDrive, Google Drive, Dropbox) or a network folder that "
                "another computer uses too. Used from the next start. Asks before copying your saves there.",
                [&a, root]() { open_dialog(a, DialogKind::kSavesFolder, utf8_of(root)); });
-        bx += 246;
-        button(ui, SDL_FRect{bx, y, 230, 42}, "Use the default folder", Style::kNormal, chosen,
+        f.button(230, "Use the default folder", Style::kNormal, chosen,
                chosen ? "Back to the save folder beside the game's settings. Used from the next start. Asks before copying your saves there."
                       : "The default save folder is in use.",
                [&a]() { choose_saves_folder(a, saves_folder(a.pref)); });
-        bx += 246;
+        float bx = f.right() + 16;
+        y = f.y;
+        if (x + w - bx < 120) {   // no room beside the buttons: under them
+            bx = x + 4;
+            y += 42 + 4;
+        }
         text(a, a.text->elide(chosen ? "Your chosen folder" : "The default folder", kSmall, x + w - bx), bx,
              y + (42 - a.text->line_height(kSmall)) * 0.5f, kSmall, chosen ? col::accent : col::faint);
         y += 42 + 14;
     }
     for (const SaveSlot& s : a.slots) {
         Widget wd;
-        wd.r = SDL_FRect{x, y, w, 58};
+        constexpr float kSlotH = 50;   // settingsui: a 56 px pitch (was 66): the five files and the buttons in one window
+        wd.r = SDL_FRect{x, y, w, kSlotH};
         const int n = s.slot;
         wd.desc = "Press to use file " + std::to_string(n) + " from the next start. Each file holds three profiles of its own.";
         wd.activate = [&a, n]() {
             std::string err;
-            if (b3native::save::write_active_slot(saves_root(a), n, &err)) a.save_note = "File " + std::to_string(n) + " is used from the next start.";
+            if (saves_ready(a, &err) && b3native::save::write_active_slot(saves_root(a), n, &err)) a.save_note = "File " + std::to_string(n) + " is used from the next start.";
             else a.save_note = "Cannot write active-slot.txt: " + err;
             a.save_note_bad = !err.empty();
             refresh(a);
         };
         const int i = ui.add(std::move(wd));
         const bool f = ui.focused(i), hv = ui.hovered(i);
-        const SDL_FRect r{x, y, w, 58};
+        const SDL_FRect r{x, y, w, kSlotH};
         D::round_rect(r, 10, f ? col::panel3 : hv ? col::panel2 : col::panel);
         if (s.active) D::round_rect_outline(r, 10, 1.5f, D::alpha(col::accent, 0.8f));
-        if (f) D::rect(SDL_FRect{x, y + 10, 3, 38}, col::accent);
+        if (f) D::rect(SDL_FRect{x, y + 8, 3, kSlotH - 16}, col::accent);
         // the slot's radio mark
-        D::ring(x + 28, y + 29, 10, 2, s.active ? col::accent : col::faint);
-        if (s.active) D::disc(x + 28, y + 29, 5, col::accent);
-        text(a, "File " + std::to_string(s.slot), x + 52, y + 8, 18, col::text, true);
+        D::ring(x + 28, y + kSlotH * 0.5f, 10, 2, s.active ? col::accent : col::faint);
+        if (s.active) D::disc(x + 28, y + kSlotH * 0.5f, 5, col::accent);
+        text(a, "File " + std::to_string(s.slot), x + 52, y + 4, 18, col::text, true);
         std::string sub;
-        if (s.sav) sub = "profile-" + std::to_string(s.slot) + ".sav   |   " + format_bytes(s.bytes) + (s.modified ? "   |   saved " + format_time(*s.modified) : "");
-        else if (s.legacy) sub = "An older profile-" + std::to_string(s.slot) + " folder (read; saved as a .sav at the first save)";
+        if (s.sav) sub = verbatim("profile-" + std::to_string(s.slot) + ".sav   |   " + format_bytes(s.bytes) + (s.modified ? "   |   " + ltrf(a, "saved {}", format_time(*s.modified)) : ""));
+        else if (s.legacy) sub = verbatim(ltrf(a, "An older profile-{} folder (read; saved as a .sav at the first save)", std::to_string(s.slot)));
         else sub = "Empty: the game makes it at its first save";
-        text(a, sub, x + 52, y + 32, kSmall, col::dim);
+        if (!s.problem.empty()) sub = "Can't be played: damaged or unreadable";   // saveflow
+        text(a, a.text->elide(sub, kSmall, w - 52 - 110), x + 52, y + 28, kSmall, s.problem.empty() ? col::dim : col::bad);
         if (s.active) {
             const float bw = a.text->width("IN USE", kSmall, true) + 20;
-            D::round_rect(SDL_FRect{x + w - bw - 16, y + 17, bw, 24}, 12, col::accent);
-            text_center(a, "IN USE", x + w - bw * 0.5f - 16, y + 17 + (24 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::ink, true);
+            D::round_rect(SDL_FRect{x + w - bw - 16, y + (kSlotH - 24) * 0.5f, bw, 24}, 12, col::accent);
+            text_center(a, "IN USE", x + w - bw * 0.5f - 16, y + (kSlotH - 24) * 0.5f + (24 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::ink, true);
         }
-        y += 58 + 8;
+        y += kSlotH + 6;
     }
     y += 14;
     const int act = b3native::save::read_active_slot(root);
@@ -3316,19 +4448,47 @@ void page_saves(App& a, Ui& ui, float x, float y, float w) {
     for (const SaveSlot& s : a.slots)
         if (s.slot == act) cur = &s;
     const bool has = cur && (cur->sav || cur->legacy);
-    float bx = x;
-    button(ui, SDL_FRect{bx, y, 230, 46}, "Export file " + std::to_string(act) + "...", Style::kNormal, has,
+    Flow f(ui, x, y, w, 46);   // settingsui: each button as wide as its label needs; the row wraps
+    f.button(230, "Export file " + std::to_string(act) + "...", Style::kNormal, has,
            has ? "Writes the file in use to a .sav file of your choice (a copy: the game keeps using its own)." : "The file in use is empty: nothing to export.",
            [&a, act]() { open_dialog(a, DialogKind::kExport, "Burnout3-file-" + std::to_string(act) + ".sav"); });
-    bx += 246;
-    button(ui, SDL_FRect{bx, y, 250, 46}, "Import into file " + std::to_string(act) + "...", Style::kNormal, true,
+    f.button(250, "Import into file " + std::to_string(act) + "...", Style::kNormal, true,
            "Replaces the file in use with a saved game: a .sav, a PS2 save (.psu, .max) or a PCSX2 memory card (.ps2). "
            "PCSX2's card is usually Mcd001.ps2 in its memcards folder. Asks first.",
            [&a]() { confirm_import(a, false); });
-    bx += 266;
-    button(ui, SDL_FRect{bx, y, 250, 46}, "Import a folder card...", Style::kNormal, true,
-           "Replaces the file in use with the Burnout 3 save on a PCSX2 folder memory card. Asks first.", [&a]() { confirm_import(a, true); });
-    y += 46 + 16;
+    f.button(250, "Import a folder card...", Style::kNormal, true,
+             "Replaces the file in use with the Burnout 3 save on a PCSX2 folder memory card. Asks first.", [&a]() { confirm_import(a, true); });
+    y = f.end() + 16;
+    // saveflow: a file in use the game cannot play (unreadable, or a save it calls corrupt): kept aside, the file starts fresh
+    if (cur && !cur->problem.empty()) {
+        const std::string label = "Set aside file " + std::to_string(act) + " and start fresh...";
+        const std::string problem = cur->problem;
+        button(ui, SDL_FRect{x, y, std::min(w, std::max(360.0f, button_need(a, label, Style::kDanger, 46))), 46}, label, Style::kDanger, true,
+               "Renames profile-" + std::to_string(act) + ".sav in the save folder (kept, not deleted) so that the game starts this "
+               "file empty. Asks first.",
+               [&a, act, problem]() { confirm_set_aside(a, act, problem); });
+        y += 46 + 16;
+    }
+    // saveflow: progress a game saved beside a file because the file changed while it ran (or a save was imported in it):
+    // the newest such save of each file not yet used or left, with Use it / Leave it
+    for (const SaveSlot& s : a.slots) {
+        const SaveSlot::Unsaved* u = pending_unsaved(a, s);
+        if (!u) continue;
+        const std::string when = u->modified ? format_time(*u->modified) : utf8_of(u->path.filename());
+        const float tw = text(a, "File " + std::to_string(s.slot), x + 4, y, kBody, col::text, true) + 14;
+        // settingsui: the two buttons as wide as their labels need
+        const float bw = std::max({120.0f, button_need(a, "Use it", Style::kNormal, 38), button_need(a, "Leave it", Style::kNormal, 38)}), bx = x + w - 2 * bw - 12;
+        const float th = paragraph(a, "Progress from " + when + " was saved beside it, because the file changed while the game was running.",
+                                   x + 4 + tw, y, bx - (x + 4 + tw) - 12, kSmall, col::warn);
+        const int slot = s.slot;
+        const fs::path path = u->path;
+        button(ui, SDL_FRect{bx, y - 4, bw, 38}, "Use it", Style::kNormal, true,
+               "Makes it this file's save; the current one is kept as a backup (.bak and backups). Asks first.",
+               [&a, slot, path, when]() { confirm_use_unsaved(a, slot, path, when); });
+        button(ui, SDL_FRect{bx + bw + 12, y - 4, bw, 38}, "Leave it", Style::kNormal, true,
+               "Hides this line; the file stays in the save folder.", [&a, path]() { leave_unsaved(a, path); });
+        y += std::max(th, 38.0f) + 14;
+    }
     if (!a.save_note.empty()) y += paragraph(a, a.save_note, x + 4, y, w - 8, kBody, a.save_note_bad ? col::bad : col::ok) + 6;
     y += paragraph(a, "The game saves by itself to the file in use (its three profiles inside). Choose another file to keep "
                       "separate profiles; a new one starts empty. A save folder in the cloud or on the network can be shared "
@@ -3385,7 +4545,9 @@ void page_stats(App& a, Ui& ui, float x, float y, float w) {
     float bx = x;
     for (std::size_t k = 0; k < a.stats.size(); ++k) {
         const App::StatsEntry& e = a.stats[k];
-        const std::string label = "FILE " + std::to_string(e.slot) + "   " + upper(e.p.name.empty() ? "Profile " + std::to_string(e.p.index + 1) : e.p.name);
+        // settingsui: "FILE" in the language shown, the profile's name as the player typed it
+        const std::string label = verbatim(a.text->translated("FILE") + " " + std::to_string(e.slot) + "   " +
+                                           (e.p.name.empty() ? utf8_upper(a.text->translated("Profile " + std::to_string(e.p.index + 1))) : upper(e.p.name)));
         const float bw = a.text->width(label, kBody, true) + 44;
         if (bx > x && bx + bw > x + w) {
             bx = x;
@@ -3413,7 +4575,7 @@ void page_stats(App& a, Ui& ui, float x, float y, float w) {
                     D::alpha(col::accent, 0.0f));
         D::rect(SDL_FRect{x, y + 14, 4, h - 28}, col::accent);
         const float rw = std::min(320.0f, w * 0.38f);
-        text(a, a.text->elide(p.name.empty() ? "Profile " + std::to_string(p.index + 1) : p.name, 28, w - rw - 60, true), x + 28, y + 16, 28, col::text, true);
+        text(a, a.text->elide(p.name.empty() ? "Profile " + std::to_string(p.index + 1) : verbatim(p.name), 28, w - rw - 60, true), x + 28, y + 16, 28, col::text, true);
         text(a, "File " + std::to_string(e.slot) + ", profile " + std::to_string(p.index + 1) + (e.active ? ", the file in use" : ""), x + 30,
              y + 16 + a.text->line_height(28) + 4, kSmall, col::dim);
         const float rx = x + w - rw - 24;
@@ -3435,8 +4597,8 @@ void page_stats(App& a, Ui& ui, float x, float y, float w) {
         };
         const Tile tiles[3] = {
             {"World Tour medals", all.medals(), S::kEvents,
-             S::group_digits(std::uint64_t(all.gold)) + " gold, " + S::group_digits(std::uint64_t(all.silver)) + " silver, " +
-                 S::group_digits(std::uint64_t(all.bronze)) + " bronze"},
+             verbatim(S::group_digits(std::uint64_t(all.gold)) + " " + ltr(a, "gold") + ", " + S::group_digits(std::uint64_t(all.silver)) + " " +
+                      ltr(a, "silver") + ", " + S::group_digits(std::uint64_t(all.bronze)) + " " + ltr(a, "bronze"))},
             {"Signature takedowns", p.signature_takedowns, S::kSignatureTakedowns, "Each one done at least once"},
             {"Crash headlines", p.headlines, S::kHeadlines, "Crash damage big enough for the news"},
         };
@@ -3540,7 +4702,7 @@ void page_stats(App& a, Ui& ui, float x, float y, float w) {
 // ---- the REPLAYS page (replay1, remaster-features §5 "Replay files"; src/native/replay_file.h) ----
 // The replay files in <pref>/replays, newest first: when, how long, the file; Play runs the game with --replay (the
 // recorded inputs from the boot on, a throwaway copy of the card: the player's saves are not touched), Delete asks
-// first, Open folder shows them. RECORD REPLAYS (PC SETTINGS > INTERFACE) is shown and switched here too.
+// first, Open folder shows them. RECORD REPLAYS (PC SETTINGS > GAME > MODES) is shown and switched here too.
 
 // Whether this port plays it: "" (yes), or why not
 std::string replay_verdict(const b3native::replay::Entry& e, b3native::replay::Compat* out = nullptr) {
@@ -3586,16 +4748,19 @@ void page_replays(App& a, Ui& ui, float x, float y, float w) {
     namespace R = b3native::replay;
     const fs::path dir = R::replays_dir(a.pref);
     text(a, "Replays folder", x, y, kBody, col::text, true);
-    text(a, a.text->elide(utf8_of(dir), kBody, w - 160 - 200), x + 160, y, kBody, col::dim);
-    button(ui, SDL_FRect{x + w - 190, y - 10, 190, 42}, "Open folder", Style::kNormal, true,
+    const float ow = std::min(w * 0.4f, std::max(190.0f, button_need(a, "Open folder", Style::kNormal, 42)));
+    const float lw = std::max(160.0f, a.text->width("Replays folder", kBody, true) + 14);
+    text(a, a.text->elide(verbatim(utf8_of(dir)), kBody, w - lw - ow - 10), x + lw, y, kBody, col::dim);
+    button(ui, SDL_FRect{x + w - ow, y - 10, ow, 42}, "Open folder", Style::kNormal, true,
            "Opens the folder in the file manager. A replay file is small: copy it to keep it (a renamed one is never removed) or "
            "to send it; it plays on any PC with this release of the port and the same disc.",
            [&a, dir]() { open_folder(dir, &a.replay_note); });
     y += 46;
-    {   // RECORD REPLAYS, as in the game's PC SETTINGS > INTERFACE
+    {   // RECORD REPLAYS, as in the game's PC SETTINGS > GAME > MODES
         const bool on = a.settings.record_replays != 0;
-        button(ui, SDL_FRect{x, y, 300, 46}, on ? "Recording: On" : "Recording: Off", on ? Style::kNormal : Style::kQuiet, true,
-               "RECORD REPLAYS (also in the game's SETTINGS > INTERFACE). On: each session, from the start of the game to its end, "
+        const std::string rec = on ? "Recording: On" : "Recording: Off";
+        button(ui, SDL_FRect{x, y, std::min(w, std::max(300.0f, button_need(a, rec, Style::kNormal, 46))), 46}, rec, on ? Style::kNormal : Style::kQuiet, true,
+               "RECORD REPLAYS (also in the game's SETTINGS > GAME > MODES). On: each session, from the start of the game to its end, "
                "is kept here. The newest 20 are kept. Applies at the next start.",
                [&a]() {
                    a.settings.record_replays = a.settings.record_replays ? 0 : 1;
@@ -3638,7 +4803,7 @@ void page_replays(App& a, Ui& ui, float x, float y, float w) {
         if (f) D::rect(SDL_FRect{x, y + 10, 3, 38}, col::accent);
         D::ring(x + 28, y + 29, 10, 2, sel ? col::accent : col::faint);
         if (sel) D::disc(x + 28, y + 29, 5, col::accent);
-        std::string title = e.replay ? format_time(e.replay->started) : utf8_of(e.path.filename());
+        std::string title = e.replay ? format_time(e.replay->started) : verbatim(utf8_of(e.path.filename()));   // settingsui: a file name as it is
         if (e.replay) title += "   " + R::format_length(e.replay->vblanks);
         text(a, title, x + 52, y + 8, 18, bad.empty() ? col::text : col::faint, true);
         std::string sub = utf8_of(e.path.filename()) + "   |   " + format_bytes(e.bytes);
@@ -3646,7 +4811,7 @@ void page_replays(App& a, Ui& ui, float x, float y, float w) {
             if (const std::string* d = e.replay->info_value("driving")) sub += "   |   driving: " + *d;
             sub += "   |   " + e.replay->version;
         }
-        text(a, a.text->elide(sub, kSmall, w - 52 - 150), x + 52, y + 32, kSmall, col::dim);
+        text(a, a.text->elide(verbatim(sub), kSmall, w - 52 - 150), x + 52, y + 32, kSmall, col::dim);   // (a file name, a version)
         if (!bad.empty()) {
             const float bw = a.text->width("CANNOT PLAY", kSmall, true) + 20;
             D::round_rect(SDL_FRect{x + w - bw - 16, y + 17, bw, 24}, 12, D::alpha(col::bad, 0.8f));
@@ -3660,12 +4825,13 @@ void page_replays(App& a, Ui& ui, float x, float y, float w) {
         R::Compat c;
         const std::string bad = replay_verdict(e, &c);
         const bool can = bad.empty() && a.game.ok;
-        button(ui, SDL_FRect{x, y, 230, 50}, "Play", Style::kPrimary, can,
+        const float pw = std::max(230.0f, button_need(a, "Play", Style::kPrimary, 50));
+        button(ui, SDL_FRect{x, y, pw, 50}, "Play", Style::kPrimary, can,
                can ? "Plays the chosen replay in the game's window: the recorded controls from the start, a throwaway copy of the "
                      "save it started from (your own saves are not touched). Start pauses it; closing the window ends it."
                    : !bad.empty() ? bad : "Choose your game data on the Game Data page first.",
                [&a]() { if (a.replay_sel < a.replays.size()) play_replay(a, a.replays[a.replay_sel]); });
-        button(ui, SDL_FRect{x + 246, y + 2, 180, 46}, "Delete...", Style::kDanger, true, "Deletes the chosen replay file. Asks first.",
+        button(ui, SDL_FRect{x + pw + 16, y + 2, std::max(180.0f, button_need(a, "Delete...", Style::kDanger, 46)), 46}, "Delete...", Style::kDanger, true, "Deletes the chosen replay file. Asks first.",
                [&a]() { confirm_delete_replay(a, a.replay_sel); });
         y += 50 + 14;
         if (e.replay) {
@@ -3793,7 +4959,7 @@ void draw_pad(App& a, SDL_Gamepad* g, float x, float y, float w, float h) {
     }
 }
 
-void ds2_strip(App& a, const std::array<std::uint8_t, 32>& s, float x, float y, float w) {
+float ds2_strip(App& a, const std::array<std::uint8_t, 32>& s, float x, float y, float w) {
     using b3native::input::Ds2;
     const unsigned bits = unsigned(s[0]) | (unsigned(s[1]) << 8);
     static const Ds2 order[] = {Ds2::Cross, Ds2::Circle, Ds2::Square, Ds2::Triangle, Ds2::L1, Ds2::R1, Ds2::L2, Ds2::R2,
@@ -3816,11 +4982,17 @@ void ds2_strip(App& a, const std::array<std::uint8_t, 32>& s, float x, float y, 
     auto axis = [](std::uint8_t b) { const float v = (float(b) - 127.5f) / 127.5f; return std::fabs(v) < 0.01f ? 0.0f : v; };   // neutral 0x80 / 0x7F
     const float lx = axis(s[4]), ly = axis(s[5]);
     char buf[64];
-    std::snprintf(buf, sizeof buf, "Left stick  %+.2f  %+.2f", lx, ly);
-    text(a, buf, bx + 8, by + (24 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::dim);
+    std::snprintf(buf, sizeof buf, "  %+.2f  %+.2f", lx, ly);
+    const std::string stick = verbatim(ltr(a, "Left stick") + buf);
+    if (bx + 8 + a.text->width(stick, kSmall) > x + w) {   // settingsui: its own line when it does not fit after the buttons
+        bx = x - 8;
+        by += 30;
+    }
+    text(a, stick, bx + 8, by + (24 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::dim);
+    return by + 24 - y;
 }
 
-// ---- remap1: the control bindings (src/native/input_bindings.h; the in-game SETTINGS > INTERFACE > CONTROLS edits the
+// ---- remap1: the control bindings (src/native/input_bindings.h; the in-game SETTINGS > CONTROLS > BINDINGS edits the
 // same controls.ini) ----
 
 fs::path controls_file(const fs::path& pref) { return pref / "controls.ini"; }
@@ -3833,11 +5005,21 @@ void controls_load(App& a) {
     a.keys.set_map(b3native::input::key_map(a.controls.player[0]));
 }
 
+// polish122: the note in the launcher's language. `what` comes translated (ctl_tr: the port's words; the key and button
+// names stay), the rest here
+std::string ctl_tr(const App& a, const std::string& s) { return a.text->translated(s); }
+std::string ctl_player_tr(const App& a, std::size_t player) { return ctl_tr(a, "Player " + std::to_string(player + 1)); }
+
 void controls_save(App& a, const std::string& what) {
     std::string why;
     a.keys.set_map(b3native::input::key_map(a.controls.player[0]));
-    a.controls_note = b3native::input::save_controls(utf8_of(controls_file(a.pref)), a.controls, &why) ? what + ": saved (the game reads it at its next start)."
-                                                                                                       : "Cannot save the controls: " + why;
+    if (b3native::input::save_controls(utf8_of(controls_file(a.pref)), a.controls, &why)) {
+        std::string t = ctl_tr(a, "{}: saved (the game reads it at its next start).");   // the language's form, {} kept
+        const std::size_t at = t.find("{}");
+        a.controls_note = at == std::string::npos ? what + ": " + t : t.replace(at, 2, what);
+    } else {
+        a.controls_note = ctl_tr(a, "Cannot save the controls:") + " " + why;
+    }
 }
 
 b3native::input::PadStyle pad_style_of(App& a) {
@@ -3895,9 +5077,9 @@ std::string flow_what(const App& a) {
     namespace in = b3native::input;
     const in::RebindFlow& f = a.flow;
     if (f.is_port())
-        return "Shortcuts " + lower_words(in::port_label(f.port_action())) + ": " +
+        return ctl_tr(a, "Shortcuts") + " " + lower_words(ctl_tr(a, in::port_label(f.port_action()))) + ": " +
                in::bound_port_text(a.controls, f.port_action(), f.device(), pad_style_of(const_cast<App&>(a)));
-    return "Player " + std::to_string(f.player() + 1) + " " + lower_words(in::action_label(f.action())) + ": " +
+    return ctl_player_tr(a, std::size_t(f.player())) + " " + lower_words(ctl_tr(a, in::action_label(f.action()))) + ": " +
            in::bound_text(a.controls, f.player(), f.device(), f.action(), f.view(), pad_style_of(const_cast<App&>(a)));
 }
 
@@ -3916,6 +5098,8 @@ void flow_modal(App& a) {
         m.title = f.device() == in::Device::Keyboard ? "Press a key for " + act : "Press a controller input for " + act;
         m.text = who + ". " + (f.device() == in::Device::Keyboard ? "Press the key now" : "Press a button, or push a stick or trigger, on any controller") +
                  ". Esc cancels (" + std::to_string(std::max(1, int(std::ceil(f.remaining())))) + " s).";
+        if (f.refused())   // todrace: an input the track pages use themselves
+            m.text = in::input_label(*f.refused(), pad_style_of(a)) + " is one the track pages use themselves (confirm, back, the D-pad): choose another. " + m.text;
         m.buttons = {{"Cancel", [&a]() { a.flow.cancel(); }}};
         a.modal = m;
         return;
@@ -3986,6 +5170,7 @@ bool flow_event(App& a, const SDL_Event& e) {
         }
         // rebind2: any key, the modifier keys themselves too (Ctrl + a key is not one key)
         if (a.flow.device() == in::Device::Keyboard && (e.key.scancode >= SDL_SCANCODE_LCTRL || !(e.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)))) {
+            a.swallow_repeats = e.key.scancode;   // settingsui: the key held on does not repeat into the dialog that may follow
             a.flow.input(a.controls, {in::Device::Keyboard, std::uint16_t(e.key.scancode), in::PadInput::None});
             flow_after(a);
         }
@@ -4153,11 +5338,7 @@ void pads_motion(App& a, bool release = false) {
 // reset. Returns the height used.
 float controls_editor(App& a, Ui& ui, float x, float y, float w) {
     namespace in = b3native::input;
-    float yy = y;
-    yy += section(a, "Controls", x, yy);
-    yy += paragraph(a, "Which key or controller input gives each PS2 button, per player. The game reads the same buttons as "
-                       "before: only the input behind each one changes. Saved in controls.ini; the game reads it at its start "
-                       "(in the game: SETTINGS > INTERFACE > CONTROLS).", x + 4, yy, w - 8, kSmall, col::dim) + 8;
+    float yy = y;   // settingsui: the page's BINDINGS tab (its strip's description says what the editor is)
     const bool shortcuts = ctl_shortcuts(a);
     const bool kb = a.ctl_device == 0 && !shortcuts;
     const bool padv = a.ctl_device != 0 && !shortcuts;   // padlayout: the controller's layout and views
@@ -4184,17 +5365,17 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
     if (padv) {   // padlayout (1.2.1): CONTROLLER LAYOUT, Auto worded for the controller shown
         const in::PlayerControls& pc = a.controls.player[ctl_pl(a)];
         layout_choice(a, ui, SDL_FRect{x, yy, w, 44}, "Layout",
-                      {in::auto_text(editor_family(a), !a.pads.empty()), "Xbox", "PlayStation", "Custom"}, std::size_t(pc.layout),
+                      {in::auto_text(editor_family(a), !a.pads.empty()), "Xbox", "PlayStation", "Nintendo", "Custom"}, std::size_t(pc.layout),
                       "Which buttons do what on this player's controller. Auto: the layout of the controller's console, picked again when "
                       "the controller changes: a PlayStation controller gets the PS2 game's, any other controller the original Xbox game's. "
-                      "Xbox, PlayStation: that layout on any controller. Custom: your own bindings in the rows below. Changing a binding "
-                      "below makes it Custom.",
+                      "Xbox, PlayStation: that layout on any controller. Nintendo: the Xbox layout by label, A confirms and boosts, B goes "
+                      "back and is the Crashbreaker. Custom: your own bindings in the rows below. Changing a binding below makes it Custom.",
                       [&a](std::size_t v) {
-                          const in::PadLayout l = in::PadLayout(std::min<std::size_t>(v, 3));
+                          const in::PadLayout l = in::PadLayout(std::min<std::size_t>(v, in::kPadLayouts - 1));
                           if (l == a.controls.player[ctl_pl(a)].layout) return;
                           in::set_layout(a.controls, int(ctl_pl(a)), l);
-                          controls_save(a, "Player " + std::to_string(ctl_pl(a) + 1) + " controller layout " +
-                                               in::layout_text(a.controls.player[ctl_pl(a)], editor_family(a), !a.pads.empty()));
+                          controls_save(a, ctl_player_tr(a, ctl_pl(a)) + " " + ctl_tr(a, "controller layout") + " " +
+                                               ctl_tr(a, in::layout_text(a.controls.player[ctl_pl(a)], editor_family(a), !a.pads.empty())));
                       });
         yy += 44 + 12;
     }
@@ -4227,13 +5408,15 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
                 const in::Controls before = a.controls;
                 in::remove_last_port(a.controls, act, ctl_device(a));
                 if (!(a.controls == before))
-                    controls_save(a, "Shortcuts " + lower_words(in::port_label(act)) + ": " + in::bound_port_text(a.controls, act, ctl_device(a), pad_style_of(a)));
+                    controls_save(a, ctl_tr(a, "Shortcuts") + " " + lower_words(ctl_tr(a, in::port_label(act))) + ": " +
+                                         in::bound_port_text(a.controls, act, ctl_device(a), pad_style_of(a)));
             };
             r.reset = [&a, act]() {
                 const in::Controls before = a.controls;
                 in::reset_port(a.controls, act, ctl_device(a));
                 if (!(a.controls == before))
-                    controls_save(a, "Shortcuts " + lower_words(in::port_label(act)) + ": " + in::bound_port_text(a.controls, act, ctl_device(a), pad_style_of(a)));
+                    controls_save(a, ctl_tr(a, "Shortcuts") + " " + lower_words(ctl_tr(a, in::port_label(act))) + ": " +
+                                         in::bound_port_text(a.controls, act, ctl_device(a), pad_style_of(a)));
             };
             rows.push_back(std::move(r));
         }
@@ -4249,16 +5432,19 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
             r.add = [&a, act]() { flow_begin(a, act, true); };
             r.remove = [&a, act]() {
                 const in::Controls before = a.controls;
-                in::remove_last(a.controls, int(ctl_pl(a)), ctl_device(a), act, ctl_view(a));
+                if (in::remove_last(a.controls, int(ctl_pl(a)), ctl_device(a), act, ctl_view(a)) == in::Removed::kKeptForMenus) {
+                    a.controls_note = ctl_tr(a, in::kKeptForMenusText);   // settingsui: the menus' last confirm / back stays
+                    return;
+                }
                 if (!(a.controls == before))
-                    controls_save(a, "Player " + std::to_string(ctl_pl(a) + 1) + " " + lower_words(in::action_label(act)) + ": " +
+                    controls_save(a, ctl_player_tr(a, ctl_pl(a)) + " " + lower_words(ctl_tr(a, in::action_label(act))) + ": " +
                                          in::bound_text(a.controls, int(ctl_pl(a)), ctl_device(a), act, ctl_view(a), pad_style_of(a)));
             };
             r.reset = [&a, act]() {
                 const in::Controls before = a.controls;
                 in::reset_action(a.controls, int(ctl_pl(a)), ctl_device(a), act, ctl_view(a));
                 if (!(a.controls == before))
-                    controls_save(a, "Player " + std::to_string(ctl_pl(a) + 1) + " " + lower_words(in::action_label(act)) + ": " +
+                    controls_save(a, ctl_player_tr(a, ctl_pl(a)) + " " + lower_words(ctl_tr(a, in::action_label(act))) + ": " +
                                          in::bound_text(a.controls, int(ctl_pl(a)), ctl_device(a), act, ctl_view(a), pad_style_of(a)));
             };
             rows.push_back(std::move(r));
@@ -4299,9 +5485,9 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
         const std::string& v = r.value;
         const float vw = std::min(colw * 0.45f, a.text->width(v, kSmall, true) + 20);
         const SDL_FRect chip{rx + colw - vw - 8, ry + 5, vw, rh - 10};
-        D::round_rect(chip, 6, v == "-" ? D::alpha(col::panel3, 0.5f) : r.moved ? D::alpha(col::accent, 0.85f) : col::panel3);
+        D::round_rect(chip, 6, v == b3native::input::kUnbound ? D::alpha(col::panel3, 0.5f) : r.moved ? D::alpha(col::accent, 0.85f) : col::panel3);
         text_center(a, a.text->elide(v, kSmall, vw - 12, true), chip.x + chip.w * 0.5f, chip.y + (chip.h - a.text->line_height(kSmall)) * 0.5f, kSmall,
-                    r.moved ? col::ink : v == "-" ? col::faint : col::text, true);
+                    r.moved ? col::ink : v == b3native::input::kUnbound ? col::faint : col::text, true);
     }
     yy += float(per) * (rh + 4) + 8;
     if (dev == in::Device::Gamepad && !shortcuts) {   // pad1: this player's gyro steering (opt-in; saved in controls.ini)
@@ -4312,67 +5498,83 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
         for (int v = 0; v <= 10; ++v) dz.push_back(std::to_string(v) + " deg");
         const auto& ch = in::gyro_recentre_choices();
         for (in::PadInput p : ch) rc.push_back(p == in::PadInput::None ? "None" : lower_words(in::pad_input_label(p, style)));
-        const std::string who = "Player " + std::to_string(ctl_pl(a) + 1) + " gyro ";
-        const auto set = [&a, who](const char* what, auto apply) {
-            return [&a, who, what, apply](std::size_t v) {
+        const auto set = [&a](const char* what, auto apply) {   // what: "gyro steering", ... (polish122: translated)
+            return [&a, what, apply](std::size_t v) {
                 in::GyroControls& gc = a.controls.player[ctl_pl(a)].gyro;
                 const in::GyroControls before = gc;
                 apply(gc, v);
-                if (!(gc == before)) controls_save(a, who + what);
+                if (!(gc == before)) controls_save(a, ctl_player_tr(a, ctl_pl(a)) + " " + ctl_tr(a, what));
             };
         };
         gyro_choice(a, ui, SDL_FRect{x, yy, gw, 44}, "Gyro", {"Off", "Mix", "Replace"}, g.mode,
                     "Steer by moving a controller with a gyro (DualSense, DualShock 4, Switch Pro, Steam Deck) while driving. Mix: "
                     "with the stick; Replace: instead of the stick's steering. Changes the input the game gets; Off is the original.",
-                    set("steering", [](in::GyroControls& c, std::size_t v) { c.mode = std::uint8_t(std::min<std::size_t>(v, 2)); }));
+                    set("gyro steering", [](in::GyroControls& c, std::size_t v) { c.mode = std::uint8_t(std::min<std::size_t>(v, 2)); }));
         gyro_choice(a, ui, SDL_FRect{x + gw + 12, yy, gw, 44}, "Gyro axis", {"Tilt", "Turn"}, g.axis,
                     "Tilt: lean the controller like a steering wheel (level is straight). Turn: turn it left and right (straight "
                     "where you start driving).",
-                    set("axis", [](in::GyroControls& c, std::size_t v) { c.axis = std::uint8_t(std::min<std::size_t>(v, 1)); }));
+                    set("gyro axis", [](in::GyroControls& c, std::size_t v) { c.axis = std::uint8_t(std::min<std::size_t>(v, 1)); }));
         gyro_choice(a, ui, SDL_FRect{x + 2 * (gw + 12), yy, gw, 44}, "Sensitivity", sens, std::size_t(std::clamp(g.sensitivity, 25, 300) / 25 - 1),
                     "How far to move for full lock: 100% is 40 degrees of tilt (30 of turn); 200% half that.",
-                    set("sensitivity", [](in::GyroControls& c, std::size_t v) { c.sensitivity = int(std::min<std::size_t>(v, 11) + 1) * 25; }));
+                    set("gyro sensitivity", [](in::GyroControls& c, std::size_t v) { c.sensitivity = int(std::min<std::size_t>(v, 11) + 1) * 25; }));
         yy += 44 + 8;
         gyro_choice(a, ui, SDL_FRect{x, yy, gw, 44}, "Dead zone", dz, std::size_t(std::clamp(g.dead_zone, 0, 10)),
                     "How far the controller moves from straight before it steers.",
-                    set("dead zone", [](in::GyroControls& c, std::size_t v) { c.dead_zone = int(std::min<std::size_t>(v, 10)); }));
+                    set("gyro dead zone", [](in::GyroControls& c, std::size_t v) { c.dead_zone = int(std::min<std::size_t>(v, 10)); }));
         gyro_choice(a, ui, SDL_FRect{x + gw + 12, yy, gw, 44}, "Recentre", rc,
                     std::size_t(std::find(ch.begin(), ch.end(), g.recentre) - ch.begin()),
                     "The button that makes the controller's present position straight. It still does what it is bound to as well.",
-                    set("recentre button", [&ch](in::GyroControls& c, std::size_t v) { c.recentre = ch[std::min(v, ch.size() - 1)]; }));
+                    set("gyro recentre button", [&ch](in::GyroControls& c, std::size_t v) { c.recentre = ch[std::min(v, ch.size() - 1)]; }));
         yy += 44 + 12;
     }
-    button(ui, SDL_FRect{x, yy, 200, 40}, "Reset this list", Style::kNormal, true,
+    // settingsui: the two buttons as wide as their labels need, the file's line after them
+    const float rb1 = std::max(200.0f, button_need(a, "Reset this list", Style::kNormal, 40)), rb2 = std::max(220.0f, button_need(a, "Reset all controls", Style::kDanger, 40));
+    button(ui, SDL_FRect{x, yy, rb1, 40}, "Reset this list", Style::kNormal, true,
            "This player's keyboard or controller (or the shortcuts of this device) back to the original layout (the other device stays).", [&a]() {
                if (ctl_shortcuts(a)) {
                    for (int pa = 0; pa < b3native::input::kPortActions; ++pa) b3native::input::reset_port(a.controls, b3native::input::PortAction(pa), ctl_device(a));
-                   controls_save(a, std::string("Shortcuts ") + (a.ctl_device == 0 ? "keyboard" : "controller") + " reset to the defaults");
+                   controls_save(a, ctl_tr(a, "Shortcuts") + " " + ctl_tr(a, a.ctl_device == 0 ? "keyboard reset to the defaults" : "controller reset to the defaults"));
                    return;
                }
                b3native::input::reset(a.controls, int(ctl_pl(a)), ctl_device(a));
-               controls_save(a, "Player " + std::to_string(ctl_pl(a) + 1) + (a.ctl_device == 0 ? " keyboard" : " controller") + " reset to the defaults");
+               controls_save(a, ctl_player_tr(a, ctl_pl(a)) + " " + ctl_tr(a, a.ctl_device == 0 ? "keyboard reset to the defaults" : "controller reset to the defaults"));
            });
-    button(ui, SDL_FRect{x + 212, yy, 220, 40}, "Reset all controls", Style::kDanger, true,
+    button(ui, SDL_FRect{x + rb1 + 12, yy, rb2, 40}, "Reset all controls", Style::kDanger, true,
            "Everything back to the original layout: both players' keyboards and controllers, the gyro settings and the shortcuts. It asks first.", [&a]() {
                Modal m;
                m.title = "Reset all controls?";
                m.text = "Both players' keyboards and controllers, the gyro settings and the shortcuts go back to the original layout.";
                m.buttons = {{"Reset all", [&a]() {
                                  b3native::input::reset_all(a.controls);
-                                 controls_save(a, "All controls reset to the defaults");
+                                 controls_save(a, ctl_tr(a, "All controls reset to the defaults"));
                              }, true},
                             {"Cancel", nullptr}};
                m.focus = 1;
                a.modal = m;
            });
     ui.chain(first, int(ui.out.size()) - 1);
-    text(a, a.text->elide(a.controls_note.empty() ? "Controls file: " + utf8_of(controls_file(a.pref)) : a.controls_note, kSmall, w - 460), x + 444,
+    text(a, a.text->elide(a.controls_note.empty() ? "Controls file: " + utf8_of(controls_file(a.pref)) : a.controls_note, kSmall, w - rb1 - rb2 - 40), x + rb1 + rb2 + 36,
          yy + (40 - a.text->line_height(kSmall)) * 0.5f, kSmall, col::faint);
     yy += 40 + 10;
     return yy - y;
 }
 
 void page_pads(App& a, Ui& ui, float x, float y, float w) {
+    // settingsui: two tabs: TEST (the controllers, live) and BINDINGS (the editor, at the top of its own tab)
+    if (a.pad_test) a.pads_tab = 0;
+    y += tab_strip(a, ui, x, y, w, {"TEST", "BINDINGS"}, a.pads_tab,
+                   a.pads_tab == 1 ? "Which key or controller input gives each PS2 button, per player. The game reads the same buttons as "
+                                     "before: only the input behind each one changes. Saved in controls.ini; the game reads it at its start "
+                                     "(in the game: SETTINGS > CONTROLS > BINDINGS)."
+                                   : "Connected controllers, live, and the keyboard as the game maps it.") + 18;
+    if (a.pads_tab == 1) {
+        float ky = y;
+        ky += controls_editor(a, ui, x, ky, w);
+        ky += paragraph(a, "The game's controller layout and the DJ's volume are in the game: DRIVER DETAILS > SETTINGS.", x + 4, ky, w - 8,
+                        kSmall, col::faint);
+        a.content_h = ky;
+        return;
+    }
     const float lw = 330, rx = x + lw + 24, rw = w - lw - 24;
     float ly = y;
     if (a.pads.empty()) {
@@ -4393,7 +5595,7 @@ void page_pads(App& a, Ui& ui, float x, float y, float w) {
         D::round_rect(SDL_FRect{x, ly, lw, 64}, 10, f ? col::panel3 : hv ? col::panel2 : col::panel);
         if (sel) D::round_rect_outline(SDL_FRect{x, ly, lw, 64}, 10, 1.5f, D::alpha(col::accent, 0.8f));
         const char* nm = SDL_GetGamepadName(g);
-        text(a, a.text->elide(nm ? nm : "Controller", kBody, lw - 32, true), x + 16, ly + 10, kBody, col::text, true);
+        text(a, a.text->elide(nm ? verbatim(nm) : std::string("Controller"), kBody, lw - 32, true), x + 16, ly + 10, kBody, col::text, true);
         text(a, pad_type_name(SDL_GetGamepadType(g)) + (pad_rumbles(g) ? "   |   rumble" : "") + (SDL_GamepadHasSensor(g, SDL_SENSOR_GYRO) ? "   |   gyro" : "") +
                     (SDL_GetGamepadType(g) == SDL_GAMEPAD_TYPE_PS5 ? "   |   adaptive triggers" : ""),
              x + 16, ly + 36, kSmall, col::dim);
@@ -4461,9 +5663,8 @@ void page_pads(App& a, Ui& ui, float x, float y, float w) {
         pad = b3native::input::merge_samples(pad.data(), one.data());
     }
     const auto seen = a.keys.compose(a.pads.empty() ? nullptr : pad.data());
-    ry += section(a, "What the game gets (every controller and the keyboard, in menus)", rx, ry);
-    ds2_strip(a, seen, rx, ry, rw);
-    ry += 30 * 2 + 10;
+    ry += section(a, "What the game gets (every controller and the keyboard, in menus)", rx, ry, rw);
+    ry += ds2_strip(a, seen, rx, ry, rw) + 16;
     if (sel && a.gyro_pad == SDL_GetGamepadID(sel)) {   // pad1: gyro steering, live, as a race would get it
         namespace in = b3native::input;
         const in::GyroControls& gy = a.controls.player[ctl_pl(a)].gyro;
@@ -4483,12 +5684,8 @@ void page_pads(App& a, Ui& ui, float x, float y, float w) {
         D::round_rect(SDL_FRect{rx + rw * 0.5f * (1.0f + std::clamp(steer, -1.0f, 1.0f)) - 6, ry - 3, 12, 16}, 6, col::accent);
         ry += 24;
     }
-    // remap1: the bindings editor (it replaced the fixed table of the keyboard's keys)
-    float ky = std::max(ly, ry) + 12;
-    ky += controls_editor(a, ui, x, ky, w);
-    ky += paragraph(a, "The game's controller layout and the DJ's volume are in the game: DRIVER DETAILS > SETTINGS.", x + 4, ky, w - 8,
-                    kSmall, col::faint);
-    a.content_h = ky;
+    // remap1: the bindings editor is the BINDINGS tab (settingsui)
+    a.content_h = std::max(ly, ry);
 }
 
 // ---- the SHOWROOM page (photo2; showroom.h / showroom_view.h) ----
@@ -4513,7 +5710,8 @@ void showroom_refresh(App& a) {
 std::vector<std::string> showroom_hd_folders(const App& a) {
     std::vector<std::string> mods;
     for (const fs::path& t : a.mod_overlay.texture_packs()) mods.push_back(b3mod::path_utf8(t));
-    return b3asset::hd_folders(a.settings.hd_pack_dir, !a.settings.hd_textures, mods);
+    return b3asset::hd_folders(a.settings.hd_pack_dir, !a.settings.hd_textures, mods,   // xboximport: the import last
+                               a.settings.xbox_textures && a.xbox.status.present ? utf8_of(xbox_folder(a)) : std::string());
 }
 
 // The selected car in the view (loaded when it, its paint or the HD packs changed)
@@ -4522,6 +5720,15 @@ void showroom_load(App& a) {
     if (s.cars.empty()) return;
     if (!s.view) s.view = std::make_unique<showroom::View>();
     if (s.view->set_hd(showroom_hd_folders(a), a.hd_gen)) s.loaded_index = std::size_t(-1);
+    {   // padpaint: player 1's custom paint and finish (PC SETTINGS > CAR > CAR PAINT Custom), as the game draws it
+        showroom::View::Paint p;
+        p.on = a.settings.car_paint == 1;
+        p.rgb = std::uint32_t(std::clamp(a.settings.paint_red, 0, 255)) << 16 | std::uint32_t(std::clamp(a.settings.paint_green, 0, 255)) << 8 |
+                std::uint32_t(std::clamp(a.settings.paint_blue, 0, 255));
+        p.decals = a.settings.car_decals;
+        p.finish = std::clamp(a.settings.paint_finish, 0, 2);
+        if (s.view->set_paint(p)) s.loaded_index = std::size_t(-1);
+    }
     if (s.loaded_index == s.sel && s.loaded_paint == s.paint) return;
     s.loaded_index = s.sel;
     s.loaded_paint = s.paint;
@@ -4641,8 +5848,9 @@ void page_showroom(App& a, Ui& ui, float x, float y, float w) {
         if (f) focus_ring(r, 8);
         text(a, "<", r.x + 16, r.y + (r.h - a.text->line_height(kBody)) * 0.5f, kBody, col::accent, true);
         text_right(a, ">", r.x + r.w - 16, r.y + (r.h - a.text->line_height(kBody)) * 0.5f, kBody, col::accent, true);
-        text_center(a, "Paint " + std::to_string(s.paint + 1) + " of " + std::to_string(np), r.x + r.w * 0.5f, r.y + (r.h - a.text->line_height(kBody)) * 0.5f,
-                    kBody, col::text, f);
+        const std::string pt = s.view && s.view->custom_paint() ? "Custom paint (Settings: Car paint)"
+                                                                 : verbatim(ltrf(a, "Paint {}", std::to_string(s.paint + 1) + " / " + std::to_string(np)));
+        text_center(a, a.text->elide(pt, kBody, r.w - 70), r.x + r.w * 0.5f, r.y + (r.h - a.text->line_height(kBody)) * 0.5f, kBody, col::text, f);
     }
     button(ui, SDL_FRect{x + bw + 10, ly, bw, 44}, s.tt.spin ? "Turning: on" : "Turning: off", Style::kNormal, true,
            "The turntable turning by itself, on or off. Up: the paint.", [&a]() { a.show.tt.spin = !a.show.tt.spin; });
@@ -4709,14 +5917,14 @@ void game_header(App& a) {
 
 // The sidebar's rows fit above its footer (the author, the version, the settings folder): the row step shrinks to fit
 // (50 down to 34 px), and when even that is too tall the footer keeps only the author and the version, then the author
-float side_step(float footer_top) { return std::min(50.0f, std::max(34.0f, (footer_top - 10 - 112) / float(kPageCount))); }
+float side_step(float footer_top) { return std::min(50.0f, std::max(34.0f, (footer_top - 10 - kSideTop - 4 * kGroupGap) / float(kPageCount))); }
 void side_footer(App& a, float by, float rows_end) {
     const std::string ver = a.text->elide(std::string("Version ") + b3port::version(), kSmall - 1, kSideW - 40);
     if (rows_end <= by - 50) {
         text(a, "Native PC port by u0rhs", 22, by - 44, kSmall - 1, col::dim);   // the author (2026-11-10)
         text(a, ver, 22, by - 22, kSmall - 1, col::faint);
         text(a, "Settings, saves and logs in", 22, by, kSmall - 1, col::faint);
-        text(a, a.text->elide(utf8_of(a.pref), kSmall - 1, kSideW - 40), 22, by + 20, kSmall - 1, col::faint);
+        text(a, a.text->elide(verbatim(utf8_of(a.pref)), kSmall - 1, kSideW - 40), 22, by + 20, kSmall - 1, col::faint);
     } else if (rows_end <= by - 6) {
         text(a, "Native PC port by u0rhs", 22, by, kSmall - 1, col::dim);
         text(a, ver, 22, by + 20, kSmall - 1, col::faint);
@@ -4731,8 +5939,9 @@ void game_sidebar(App& a) {
     a.side_widgets.clear();
     const float by = a.H - kFooterH - 52;
     const float step = side_step(by - 44);
-    float y = 112;
+    float y = kSideTop;
     for (int p = 0; p < kPageCount; ++p) {
+        if (kGroupStart[p]) y += kGroupGap;
         const SDL_FRect r{14, y, kSideW - 28, step - 4};
         Widget w;
         w.r = r;
@@ -4826,9 +6035,10 @@ void game_prompts(App& a, float y, float h) {
         return;
     }
     struct Item { std::vector<PadButton> buttons; const char* label; };
-    std::vector<Item> items = {{{PadButton::kCross}, "Select"}, {{PadButton::kCircle}, "Back"}};
+    // settingsui: "Choose" / "Go back" (the words "Select" and "Back" are the buttons' names elsewhere: not translated)
+    std::vector<Item> items = {{{PadButton::kCross}, "Choose"}, {{PadButton::kCircle}, "Go back"}};
     items.push_back({keyboard ? std::vector<PadButton>{PadButton::kR1} : std::vector<PadButton>{PadButton::kL1, PadButton::kR1}, "Pages"});
-    if (a.page == kSettings) items.push_back({{PadButton::kL2, PadButton::kR2}, "Tabs"});
+    if (a.page == kSettings || (a.page == kPads && !a.pad_test)) items.push_back({{PadButton::kL2, PadButton::kR2}, "Tabs"});
     // right-aligned like the menus' "Select (X)"
     std::vector<float> widths;
     float total = 0;
@@ -4865,8 +6075,9 @@ void draw_sidebar(App& a) {
     a.side_widgets.clear();
     const float by = a.H - 70;
     const float step = side_step(by - 44);
-    float y = 112;
+    float y = kSideTop;
     for (int p = 0; p < kPageCount; ++p) {
+        if (kGroupStart[p]) y += kGroupGap;
         const SDL_FRect r{14, y, kSideW - 28, step - 4};
         Widget w;
         w.r = r;
@@ -5064,6 +6275,7 @@ void draw_modal(App& a) {
     const auto lines = a.text->wrap(m.text, kBody, inner);
     float h = 30 + a.text->line_height(22) + 12 + float(lines.size()) * a.text->line_height(kBody) + 28 + 48 + 28;
     if (m.input) h += 56;
+    if (m.progress >= 0) h += 26;   // xboximport
     const float x = (a.W - w) * 0.5f, y = std::max(20.0f, (a.H - h) * 0.5f);
     D::round_rect(SDL_FRect{x, y, w, h}, 16, col::panel2);
     D::round_rect_outline(SDL_FRect{x, y, w, h}, 16, 1.0f, col::line);
@@ -5075,6 +6287,11 @@ void draw_modal(App& a) {
         yy += a.text->line_height(kBody);
     }
     yy += 20;
+    if (m.progress >= 0) {   // xboximport: the bar
+        D::round_rect(SDL_FRect{x + 28, yy, inner, 10}, 5, col::panel);
+        D::round_rect(SDL_FRect{x + 28, yy, std::max(10.0f, inner * std::min(1.0f, m.progress)), 10}, 5, col::accent);
+        yy += 26;
+    }
     if (m.input) {
         draw_field(a, m, SDL_FRect{x + 28, yy, inner, 44});
         yy += 56;
@@ -5134,7 +6351,7 @@ void draw_browser(App& a) {
     float yy = y + 20;
     text(a, a.text->elide(b.title, 22, inner, true), x + 24, yy, 22, col::text, true);
     yy += a.text->line_height(22) + 4;
-    text(a, elide_left(a, utf8_of(b.dir), kBody + 1, inner, true), x + 24, yy, kBody + 1, col::accent_hi, true);
+    text(a, verbatim(elide_left(a, utf8_of(b.dir), kBody + 1, inner, true)), x + 24, yy, kBody + 1, col::accent_hi, true);
     yy += a.text->line_height(kBody + 1) + 4;
     {
         const bool note = !b.note.empty();
@@ -5205,7 +6422,7 @@ void draw_browser(App& a) {
         const SDL_FColor c = sel && b.column == 1 ? col::ink : choosable ? col::text : col::faint;
         if (e.folder) folder_icon(r.x + 12, r.y + (r.h - 18) * 0.5f, 18, sel && b.column == 1 ? col::ink : col::accent_hi);
         else file_icon(r.x + 12, r.y + (r.h - 18) * 0.5f, 18, c);
-        text(a, a.text->elide(e.name, kBody, r.w - 52, e.folder), r.x + 40, r.y + (r.h - a.text->line_height(kBody)) * 0.5f, kBody, c, e.folder);
+        text(a, a.text->elide(verbatim(e.name), kBody, r.w - 52, e.folder), r.x + 40, r.y + (r.h - a.text->line_height(kBody)) * 0.5f, kBody, c, e.folder);
     }
     if (n > b.rows_shown) {   // the scroll bar
         const float view = b.list_rect.h - 12, bh = std::max(30.0f, view * float(b.rows_shown) / float(n));
@@ -5222,10 +6439,12 @@ void draw_browser(App& a) {
         hints.push_back({{PadButton::kSelect}, "Cancel"});
         pad_hints(a, hints, x + 24, hy, inner, false);
     } else {
-        text(a, a.text->elide(std::string("Enter: open   Backspace: up a folder   ") + (b.pick_folder ? "Space: " + choose_label + "   " : "") +
-                                  "Tab: places   Esc: cancel   Click a row twice to open it",
-                              kBody, inner),
-             x + 24, hy + (30 - a.text->line_height(kBody)) * 0.5f, kBody, col::dim);
+        // settingsui: each key's word in the language shown (the line as one string had no translation)
+        const auto t = [&a](const std::string& s) { return a.text->translated(s); };
+        std::string keys = "Enter: " + t("Open") + "   Backspace: " + t("Up a folder") + "   ";
+        if (b.pick_folder) keys += "Space: " + t(choose_label) + "   ";
+        keys += "Tab: " + t("Places") + "   Esc: " + t("Cancel") + "   " + t("Click a row twice to open it");
+        text(a, a.text->elide(verbatim(keys), kBody, inner), x + 24, hy + (30 - a.text->line_height(kBody)) * 0.5f, kBody, col::dim);
     }
     // the mouse's buttons
     float bx = x + w - 24;
@@ -5236,9 +6455,9 @@ void draw_browser(App& a) {
         return r;
     };
     b.choose_r = b.pick_folder ? place(std::max(180.0f, a.text->width(choose_label, kBody, true) + 40)) : SDL_FRect{};
-    b.cancel_r = place(120);
-    b.type_r = place(160);
-    b.up_r = place(150);
+    b.cancel_r = place(std::max(120.0f, a.text->width("Cancel", kBody, true) + 40));   // settingsui: as wide as the labels need
+    b.type_r = place(std::max(160.0f, a.text->width("Type a path...", kBody, true) + 40));
+    b.up_r = place(std::max(150.0f, a.text->width("Up a folder", kBody, true) + 40));
     if (b.pick_folder) browse_button(a, b.choose_r, choose_label, true);
     browse_button(a, b.cancel_r, "Cancel", false);
     browse_button(a, b.type_r, "Type a path...", false);
@@ -5347,12 +6566,22 @@ void render(App& a) {
         D::rect(SDL_FRect{kSideW, fy, a.W - kSideW, 1}, col::line);
     }
     const std::string desc = footer_text(a);
-    float dy = fy + 12;
     const float dx = a.look.on ? 40.0f : cx, dw = a.look.on ? a.W - 80 : cw;
-    for (const std::string& l : a.text->wrap(desc, kBody, dw, a.look.on)) {
-        if (dy > a.H - 58) break;
-        text(a, l, dx, dy, kBody, a.look.on ? col::dim : col::text, a.look.on);
-        dy += a.text->line_height(kBody);
+    {   // settingsui: two lines at most, centred in the band; a longer text's second line ends in "..."
+        std::vector<std::string> lines = a.text->wrap(desc, kBody, dw, a.look.on);
+        if (lines.size() > 2) {
+            const auto plain = [](const std::string& l) { return is_verbatim(l) ? l.substr(1) : l; };
+            std::string rest = plain(lines[1]);
+            for (std::size_t k = 2; k < lines.size(); ++k) rest += " " + plain(lines[k]);
+            lines.resize(2);
+            lines[1] = a.text->elide(verbatim(rest), kBody, dw, a.look.on);   // (the lines are the text as shown)
+        }
+        const float lh = a.text->line_height(kBody);
+        float dy = fy + std::max(2.0f, (kFooterH - 44 - lh * float(lines.size())) * 0.5f);
+        for (const std::string& l : lines) {
+            text(a, l, dx, dy, kBody, a.look.on ? col::dim : col::text, a.look.on);
+            dy += lh;
+        }
     }
     if (a.look.on) game_prompts(a, a.H - 44, 44);
     else D::rect(SDL_FRect{kSideW, a.H - 38, a.W - kSideW, 38}, col::side);
@@ -5527,9 +6756,11 @@ void nav(App& a, Nav n) {
     if (n == Nav::NextPage) { go_page(a, a.page + 1); return; }
     if (n == Nav::PrevTab || n == Nav::NextTab) {
         if (a.page == kSettings) {
-            const std::size_t count = settings_content(a.settings, "", false, a.languages, a.language_note).tabs.size();
-            if (count) a.settings_tab = (a.settings_tab + (n == Nav::PrevTab ? count - 1 : 1)) % count;
+            // settingsui: the game's tabs and LAUNCHER
+            const std::size_t count = settings_content(a.settings, "", false, a.languages, a.language_note, a.xbox.status.present, a.dj.rows, a.dj.note).tabs.size() + 1;
+            a.settings_tab = (a.settings_tab + (n == Nav::PrevTab ? count - 1 : 1)) % count;
         }
+        if (a.page == kPads && !a.pad_test) a.pads_tab = 1 - std::min<std::size_t>(a.pads_tab, 1);   // settingsui: TEST / BINDINGS
         if (a.page == kShowroom) showroom_step(a, n == Nav::PrevTab ? -1 : 1);
         return;
     }
@@ -5755,6 +6986,10 @@ void browse_key(App& a, const SDL_Event& e) {
     }
 }
 
+bool launcher_focused(const App& a) {
+    return a.pads_unfocused || (a.win && (SDL_GetWindowFlags(a.win) & SDL_WINDOW_INPUT_FOCUS) != 0);
+}
+
 void event(App& a, const SDL_Event& in) {
     SDL_Event e = in;
     SDL_ConvertEventToRenderCoordinates(a.ren, &e);
@@ -5769,6 +7004,12 @@ void event(App& a, const SDL_Event& in) {
         if (e.type != SDL_EVENT_QUIT && e.type != SDL_EVENT_GAMEPAD_ADDED && e.type != SDL_EVENT_GAMEPAD_REMOVED) return;
     }
     b3native::input::handle_sdl_event(a.keys, in);   // the controller page's "what the game gets"
+    // robust2: background joystick events are on (the start's Back hold, the pads seen while the game runs), so a press
+    // meant for another window (the game, a browser) must not press the launcher's buttons
+    if ((e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) && !launcher_focused(a)) return;
+    // settingsui: the key a rebind just took: its repeats are not presses (until it is let go)
+    if (in.type == SDL_EVENT_KEY_UP && in.key.scancode == a.swallow_repeats) a.swallow_repeats = SDL_SCANCODE_UNKNOWN;
+    if (in.type == SDL_EVENT_KEY_DOWN && in.key.repeat && a.swallow_repeats != SDL_SCANCODE_UNKNOWN && in.key.scancode == a.swallow_repeats) return;
     if (flow_event(a, in)) return;                   // remap1: a rebind takes the next key / pad input
     switch (e.type) {
     case SDL_EVENT_QUIT: a.quit = true; break;
@@ -6256,6 +7497,97 @@ void showroom_hd_end(App& a, ShowroomHdCheck& st) {
     st.made = false;
 }
 
+// ---- settingsui: the player's own names drawn as they are (--screenshot) ----
+// In Italian, whose table changes "gold" (oro), "Paint {}" (Vernice {}) and "Version {}" (Versione {}): a mod named
+// "gold" with the description "Version 2", a song file gold.wav, a replay file "Paint Pack.b3replay" and a folder
+// "Paint Pack" in the launcher's folder list must be drawn as they are. Everything made is removed again.
+int verbatim_check(App& a) {
+    std::error_code ec;
+    const fs::path base = a.pref / "verbatim-check", lang = b3asset::language::imported_root(a.pref) / "DATA";
+    const fs::path mod = b3mod::mods_folder(a.pref) / "verbatim-check", rep_dir = b3native::replay::replays_dir(a.pref);
+    const fs::path rep = rep_dir / "Paint Pack.b3replay", music = base / "music";
+    const bool had_lang = fs::exists(lang / "GLOBALIT.BIN", ec), had_mods = fs::exists(b3mod::mods_folder(a.pref), ec),
+               had_reps = fs::exists(rep_dir, ec);
+    const b3settings::Settings keep = a.settings;
+    fs::create_directories(lang, ec);
+    if (!had_lang) {
+        std::ofstream(lang / "GLOBALIT.BIN") << "";
+        std::ofstream(lang / "HEADIT.BIN") << "";
+    }
+    fs::create_directories(mod, ec);
+    std::ofstream(mod / "mod.ini") << "[mod]\nid = verbatim-check\nname = gold\nversion = 1.0\napi = 1\ndescription = Version 2\n";
+    fs::create_directories(rep_dir, ec);
+    std::ofstream(rep, std::ios::binary) << "not a replay (the launcher's verbatim check)";
+    fs::create_directories(music, ec);
+    fs::create_directories(base / "Paint Pack", ec);
+    {   // gold.wav: a few ms of silence (16-bit mono, 8 kHz)
+        std::string w;
+        auto le = [&](std::uint32_t v, int n) { for (int k = 0; k < n; ++k) w += char((v >> (8 * k)) & 0xFF); };
+        const std::uint32_t frames = 80;
+        w += "RIFF"; le(36 + frames * 2, 4); w += "WAVEfmt "; le(16, 4); le(1, 2); le(1, 2); le(8000, 4); le(16000, 4); le(2, 2); le(16, 2);
+        w += "data"; le(frames * 2, 4); w.append(frames * 2, '\0');
+        std::ofstream(music / "gold.wav", std::ios::binary) << w;
+    }
+    refresh_languages(a);
+    a.settings.language = "IT";
+    a.settings.music_folder = utf8_of(music);
+    refresh_mods(a);
+    refresh_music(a, true);
+    load_replays(a);
+    std::vector<std::string> drawn;
+    const auto shown = [&](int page, bool browser) {
+        drawn.clear();
+        a.modal.reset();
+        go_page(a, page);
+        a.in_content = true;
+        if (browser) open_browser(a, DialogKind::kHdFolder, utf8_of(base));
+        a.text->record_into(&drawn);
+        render(a);
+        a.text->record_into(nullptr);
+        a.browser.reset();
+        return drawn;
+    };
+    const auto has = [](const std::vector<std::string>& v, const std::string& want, bool part) {
+        for (const std::string& d : v)
+            if (part ? d.find(want) != std::string::npos : d == want) return true;
+        return false;
+    };
+    int fails = 0;
+    auto report = [&](bool ok, const std::string& what) {
+        std::printf("b3launcher: verbatim check %s: %s\n", ok ? "PASS" : "FAIL", what.c_str());
+        if (!ok) ++fails;
+    };
+    report(b3settings::translate_text("gold", "IT") == "oro" && b3settings::translate_text("Version 2", "IT") == "Versione 2" &&
+               b3settings::translate_text("Paint Pack", "IT") == "Vernice Pack",
+           "the table would change the three names (the trap is real)");
+    const std::vector<std::string> mods = shown(kMods, false);
+    report(has(mods, "gold", false) && has(mods, "Version 2", false) && !has(mods, "oro", false) && !has(mods, "Versione 2", true),
+           "the Mods page: the mod's name and description as written");
+    const std::vector<std::string> songs = shown(kMusic, false);
+    report(has(songs, "gold", false) && !has(songs, "oro", false), "the Music page: the song's title as its file names it");
+    const std::vector<std::string> reps = shown(kReplays, false);
+    report(has(reps, "Paint Pack.b3replay", true) && !has(reps, "Vernice", true), "the Replays page: the file's name as it is");
+    const std::vector<std::string> list = shown(kHd, true);
+    report(has(list, "Paint Pack", false) && !has(list, "Vernice Pack", false), "the folder list: a folder's name as it is");
+    // back as it was
+    a.settings = keep;
+    fs::remove_all(mod, ec);
+    fs::remove(rep, ec);
+    fs::remove_all(base, ec);
+    if (!had_mods) fs::remove_all(b3mod::mods_folder(a.pref), ec);
+    if (!had_reps) fs::remove_all(rep_dir, ec);
+    if (!had_lang) {
+        fs::remove(lang / "GLOBALIT.BIN", ec);
+        fs::remove(lang / "HEADIT.BIN", ec);
+    }
+    refresh_languages(a);
+    refresh_mods(a);
+    refresh_music(a, true);
+    load_replays(a);
+    std::printf("b3launcher: verbatim check %s\n", fails ? "FAIL" : "PASS");
+    return fails;
+}
+
 // ---- launcherux1: the walk (--screenshot) ----
 // Every page (each settings tab, the Controllers page with each device) driven by the keys alone and by a pad alone:
 // synthetic key events, and a virtual pad's D-pad and buttons through SDL and the launcher's own pad polling. From the
@@ -6414,9 +7746,9 @@ int walk_checks(App& a, SDL_JoystickID& vj) {
     };
     std::vector<PageState> pages = {{"Play", [&]() { go_page(a, kPlay); }}};
     {
-        const auto tabs = settings_content(a.settings, a.hd_note, a.hd.images > 0, a.languages, a.language_note).tabs;
-        for (std::size_t t = 0; t < tabs.size(); ++t)
-            pages.push_back({"Settings > " + tabs[t].label, [&a, t]() { go_page(a, kSettings); a.settings_tab = t; }});
+        const auto tabs = settings_content(a.settings, a.hd_note, a.hd.images > 0, a.languages, a.language_note, a.xbox.status.present, a.dj.rows, a.dj.note).tabs;
+        for (std::size_t t = 0; t <= tabs.size(); ++t)   // settingsui: and LAUNCHER, the last
+            pages.push_back({"Settings > " + (t < tabs.size() ? tabs[t].label : std::string("LAUNCHER")), [&a, t]() { go_page(a, kSettings); a.settings_tab = t; }});
     }
     pages.push_back({"HD Textures", [&]() { go_page(a, kHd); }});
     pages.push_back({"Music", [&]() { go_page(a, kMusic); }});
@@ -6437,8 +7769,10 @@ int walk_checks(App& a, SDL_JoystickID& vj) {
                      }});
     pages.push_back({"Showroom", [&]() { go_page(a, kShowroom); a.show.tt.spin = false; }});
     pages.push_back({"Replays", [&]() { go_page(a, kReplays); }});
-    pages.push_back({"Controllers (keyboard)", [&]() { go_page(a, kPads); a.pad_test = false; a.ctl_device = 0; a.ctl_view = 0; }});
-    pages.push_back({"Controllers (controller)", [&]() { go_page(a, kPads); a.pad_test = false; a.ctl_device = 1; }});
+    // settingsui: both of the Controllers page's tabs (BINDINGS: the keyboard's and the controller's)
+    pages.push_back({"Controllers > TEST", [&]() { go_page(a, kPads); a.pad_test = false; a.pads_tab = 0; }});
+    pages.push_back({"Controllers > BINDINGS (keyboard)", [&]() { go_page(a, kPads); a.pad_test = false; a.pads_tab = 1; a.ctl_device = 0; a.ctl_view = 0; }});
+    pages.push_back({"Controllers > BINDINGS (controller)", [&]() { go_page(a, kPads); a.pad_test = false; a.pads_tab = 1; a.ctl_device = 1; }});
     pages.push_back({"Credits", [&]() { go_page(a, kCredits); }});
 
     struct Drive {
@@ -6628,6 +7962,7 @@ int walk_checks(App& a, SDL_JoystickID& vj) {
     const std::vector<ModalCase> modals = {
         {"Reset all settings?", [&]() { go_page(a, kSettings); confirm_reset(a); }},
         {"a message", [&]() { go_page(a, kPlay); message(a, "Walk", "A message with one button."); }},
+        {"Make a bug report?", [&]() { go_page(a, kPlay); confirm_bug_report(a); }},   // settingsui: the Play page's Bug report...
         {"Replace file?", [&]() { go_page(a, kSaves); confirm_import(a, false); }},
         {"Delete this replay?", [&]() { go_page(a, kReplays); confirm_delete_replay(a, 0); }},
         {"Allow this mod's code to run?", [&]() {
@@ -6645,6 +7980,7 @@ int walk_checks(App& a, SDL_JoystickID& vj) {
              mouse_event(SDL_EVENT_MOUSE_BUTTON_DOWN, r.x + r.w * 0.5f, r.y + r.h * 0.5f, SDL_BUTTON_RIGHT);
              mouse_event(SDL_EVENT_MOUSE_BUTTON_UP, r.x + r.w * 0.5f, r.y + r.h * 0.5f, SDL_BUTTON_RIGHT);
          }},
+        {"Remove the DJ in ...?", [&]() { go_page(a, kSettings); confirm_dj_remove(a, "GE"); }},   // 1.3.0
         {"Type a path (a text field)", [&]() { go_page(a, kGame); ask_path(a, DialogKind::kGameFolder, "Game data folder", "/walk"); }},
     };
     int modal_fails = 0;
@@ -6928,6 +8264,9 @@ int walk_checks(App& a, SDL_JoystickID& vj) {
 // it), back to a folder with saves (no question, nothing copied), back to the default (no saves_dir line). Then the
 // import with a stand-in PCSX2 memcards folder (Mcd001.ps2): the question names it, the folder list starts there with
 // the card highlighted. Shots: saves_copy_offer.png, saves_chosen.png, import_confirm.png, import_pcsx2.png in `shots`.
+// saveflow: then a damaged file (its checksum does not match): saves_damaged.png, saves_set_aside_confirm.png,
+// saves_set_aside_done.png; and progress a game saved beside file 1: saves_unsaved.png, saves_unsaved_confirm.png,
+// saves_unsaved_used.png.
 // The launcher.ini choice is put back. Returns the number of failures.
 int saves_folder_checks(App& a, const fs::path& shots) {
     int bad = 0;
@@ -7010,6 +8349,110 @@ int saves_folder_checks(App& a, const fs::path& shots) {
                b.status.find("Mcd001.ps2") != std::string::npos,
            "the import's folder list starts in PCSX2's memcards with Mcd001.ps2 highlighted");
     shot("import_pcsx2.png");
+    a.browser.reset();
+    a.modal.reset();
+    // saveflow: a file the game cannot play (a stand-in save whose checksum does not match, as the game checks it): the
+    // Saves page says so and offers Set aside; it asks, renames the file (kept) and the file starts empty
+    {
+        namespace sv = b3native::save;
+        const fs::path dmg = base / "damaged";
+        fs::create_directories(dmg, ec);
+        sv::CardSaveDirectory d;
+        d.name = sv::kGameSaveDirectory;
+        sv::CardFile f;
+        f.name = sv::kGameSaveDirectory;
+        f.content.assign(61772, 0);
+        f.content[0] = 0x10;       // the game's version
+        f.content[0xF148] = 1;     // a checksum that does not match
+        d.files = {f};
+        report(sv::write_sav_file(sv::profile_file(dmg, 1), {d}, &err) && sv::write_active_slot(dmg, 1, &err), "a damaged stand-in save " + err);
+        use_saves_folder(a, dmg, false);
+        refresh(a);
+        const SaveSlot* s1 = nullptr;
+        for (const SaveSlot& s : a.slots)
+            if (s.slot == 1) s1 = &s;
+        report(s1 && s1->active && s1->problem.find("checksum") != std::string::npos, "the damaged file is named: " + (s1 ? s1->problem : std::string("no slot 1")));
+        a.focus = 0;
+        a.scroll[a.page] = 1e6f;   // the page's end: the Set aside button (render clamps it)
+        shot("saves_damaged.png");
+        if (s1) confirm_set_aside(a, 1, s1->problem);
+        report(a.modal && a.modal->title == "Set aside file 1?" && a.modal->buttons.size() == 2, "the set aside question");
+        shot("saves_set_aside_confirm.png");
+        if (a.modal && !a.modal->buttons.empty()) {
+            auto fn = a.modal->buttons[0].fn;   // Set aside
+            a.modal.reset();
+            if (fn) fn();
+        }
+        bool aside = false;
+        for (fs::directory_iterator it(dmg, ec), end; !ec && it != end; it.increment(ec))
+            aside = aside || utf8_of(it->path().filename()).rfind("profile-1-set-aside-", 0) == 0;
+        report(!fs::exists(sv::profile_file(dmg, 1), ec) && aside && !a.save_note_bad, "set aside (kept, renamed): " + a.save_note);
+        a.focus = 0;
+        a.scroll[a.page] = 1e6f;   // the note
+        shot("saves_set_aside_done.png");
+        a.scroll[a.page] = 0;
+        a.modal.reset();
+        use_saves_folder(a, saves_folder(a.pref), false);
+    }
+    // saveflow: progress a game saved beside file 1 (profile-1.sav changed while it ran): the Saves page offers Use it /
+    // Leave it; Use it asks, makes it profile-1.sav and keeps the old one as .bak; Leave it hides a line for good
+    {
+        namespace sv = b3native::save;
+        const fs::path dir = base / "unsaved";
+        fs::create_directories(dir, ec);
+        auto save = [](std::uint8_t mark) {   // a stand-in save the game's check takes: version 0x10, its word sum
+            sv::CardSaveDirectory d;
+            d.name = sv::kGameSaveDirectory;
+            sv::CardFile f;
+            f.name = sv::kGameSaveDirectory;
+            f.content.assign(61772, 0);
+            f.content[0] = 0x10;
+            f.content[4] = mark;
+            f.content[0xF148] = static_cast<std::uint8_t>(0x10 + mark);
+            d.files = {f};
+            return sv::Directories{d};
+        };
+        const fs::path newer = dir / "profile-1-unsaved-20261120-101500.sav", older = dir / "profile-1-unsaved-20261119-200000.sav";
+        report(sv::write_sav_file(sv::profile_file(dir, 1), save(1), &err) && sv::write_sav_file(newer, save(2), &err) &&
+                   sv::write_sav_file(older, save(3), &err) && sv::write_active_slot(dir, 1, &err),
+               "stand-in saves beside file 1 " + err);
+        const auto kept = a.cfg.unsaved_left;
+        use_saves_folder(a, dir, false);
+        a.save_note.clear();
+        refresh(a);
+        const SaveSlot* s1 = nullptr;
+        for (const SaveSlot& s : a.slots)
+            if (s.slot == 1) s1 = &s;
+        const SaveSlot::Unsaved* u = s1 ? pending_unsaved(a, *s1) : nullptr;
+        report(u && u->path.filename() == newer.filename() && s1->unsaved.size() == 2, "the newest save beside file 1 offered");
+        a.focus = 0;
+        a.scroll[a.page] = 1e6f;
+        shot("saves_unsaved.png");
+        if (u) confirm_use_unsaved(a, 1, u->path, u->modified ? format_time(*u->modified) : utf8_of(u->path.filename()));
+        report(a.modal && a.modal->buttons.size() == 2, "the use-it question");
+        shot("saves_unsaved_confirm.png");
+        if (a.modal && !a.modal->buttons.empty()) {
+            auto fn = a.modal->buttons[0].fn;   // Use it
+            a.modal.reset();
+            if (fn) fn();
+        }
+        const auto now = sv::read_sav_file(sv::profile_file(dir, 1), &err);
+        report(now && now->size() == 1 && (*now)[0].files[0].content[4] == 2 && fs::exists(dir / "profile-1.sav.bak", ec) && !a.save_note_bad,
+               "used: profile-1.sav is that progress, the old one kept as .bak: " + a.save_note);
+        for (const SaveSlot& s : a.slots)
+            if (s.slot == 1) s1 = &s;
+        u = pending_unsaved(a, *s1);
+        report(u && u->path.filename() == older.filename(), "the used one's line gone, the older one offered");
+        a.scroll[a.page] = 1e6f;
+        shot("saves_unsaved_used.png");
+        if (u) leave_unsaved(a, u->path);
+        for (const SaveSlot& s : a.slots)
+            if (s.slot == 1) s1 = &s;
+        report(!pending_unsaved(a, *s1) && fs::exists(older, ec), "left: no line, the file stays");
+        a.scroll[a.page] = 0;
+        a.cfg.unsaved_left = kept;
+        use_saves_folder(a, saves_folder(a.pref), false);
+    }
     // put back
     a.browser.reset();
     a.modal.reset();
@@ -7316,6 +8759,228 @@ int osk_checks(App& a, SDL_JoystickID& vj, const fs::path& shots) {
     return fails;
 }
 
+// ---- xboximport: Import Xbox textures on the HD Textures page (--screenshot) ----
+// `step`: 0 the section, 1 the progress modal (a job's state set by hand), 2 a file that is not an Xbox image (the real
+// import, its plain message), 3 an import's folder (a made-up import.ini: the status and the XBOX TEXTURES row; the
+// showroom's packs with it last), 4 Remove's question, 5 removed (the folder gone, XBOX TEXTURES off). Returns the
+// failed checks (printed).
+int xbox_check(App& a, const fs::path& dir, int step) {
+    int bad = 0;
+    const auto check = [&](bool ok, const char* what) {
+        if (!ok) { ++bad; std::printf("b3launcher: xbox textures check FAILED: %s\n", what); }
+    };
+    a.modal.reset();
+    go_page(a, kHd);
+    a.in_content = false;
+    a.scroll[kHd] = 1e6f;   // (the section is under the folder's)
+    const fs::path folder = xbox_folder(a);
+    if (step == 0) {
+        check(!a.xbox.status.present, "no import at the start");
+    } else if (step == 1) {
+        auto job = std::make_shared<App::XboxJob>();
+        job->p.stage = 1;
+        job->p.done = 40;
+        job->p.total = 132;
+        job->p.written = 592;
+        a.xbox.job = job;
+        poll_xbox(a);
+        check(a.modal && a.modal->progress > 0.6f && a.modal->progress < 0.7f && a.modal->text.find("40 / 132") != std::string::npos, "the progress modal");
+        a.xbox.job.reset();   // (the modal stays for the shot; a made-up job has no thread)
+    } else if (step == 2) {
+        const fs::path not_xbox = dir / "xbox-check-not-an-image.iso";
+        std::ofstream(not_xbox, std::ios::binary) << std::string(100 * 1024, '\0');
+        start_xbox_import(a, not_xbox);
+        for (int i = 0; i < 1000 && !poll_xbox(a); ++i) SDL_Delay(10);
+        std::error_code ec;
+        fs::remove(not_xbox, ec);
+        check(!a.xbox.job && !a.modal && a.xbox.level == 2 && a.xbox.note.find("Not an Xbox disc image") != std::string::npos, "a file that is not an Xbox image");
+        fs::path partial = folder;
+        partial += ".partial";
+        check(!fs::exists(folder, ec) && !fs::exists(partial, ec), "nothing left behind");
+    } else if (step == 3) {
+        fs::create_directories(folder);
+        std::ofstream(folder / xi::kInfoName) << "[import]\nversion = " << xi::kVersion << "\nimage = Burnout 3 - Takedown (USA).xiso.iso\n"
+                                              "image_size = 2481000000\ndate = 1795000000\nwritten = 1037\ncars = 449\nbytes = 90500000\n";
+        a.settings.xbox_textures = true;
+        a.settings.hd_textures = true;   // the walk's earlier states may have turned HD TEXTURES off; this check needs it on
+        a.xbox.note.clear();
+        refresh_xbox(a);
+        check(a.xbox.status.present && a.xbox.status.written == 1037, "the import's status");
+        bool row = false;
+        for (const auto& t : settings_content(a.settings, "", false, a.languages, a.language_note, a.xbox.status.present).tabs)
+            for (const auto& r : t.rows) row = row || r.id == b3settings::kRowIdXboxTextures;   // (by id: translated labels)
+        check(row, "the XBOX TEXTURES row");
+        const auto folders = showroom_hd_folders(a);
+        check(!folders.empty() && folders.back() == utf8_of(folder), "the showroom's packs: the import last");
+    } else if (step == 4) {
+        confirm_xbox_remove(a);
+        check(a.modal && a.modal->buttons.size() == 2 && a.modal->focus == 1, "Remove asks first (Cancel focused)");
+    } else if (step == 5) {
+        confirm_xbox_remove(a);
+        if (a.modal) {   // Remove pressed, as modal_nav does: the function copied, the modal closed, then the call
+            a.modal->focus = 0;
+            modal_nav(a, Nav::Confirm);
+        }
+        std::error_code ec;
+        check(!fs::exists(folder, ec) && !a.settings.xbox_textures && !a.xbox.status.present && a.xbox.level == 0, "Remove");
+    }
+    return bad;
+}
+
+// ---- portable mode (1.3.0): the toggle, its question, the move's progress and result (--screenshot) ----
+// In DIR/portable-check: a made-up install folder (install/) and this computer's data folder (home/b3port/native, a copy
+// of the check's own data folder, so the language and the settings stay), never the launcher's real folders. The data
+// is moved into install/appdata for real and back; the check's own data folder is in use again at the end.
+int portable_check(App& a, const fs::path& dir, int step) {
+    int bad = 0;
+    const auto check = [&](bool ok, const char* what) {
+        if (!ok) { ++bad; std::printf("b3launcher: portable mode check FAILED: %s\n", what); }
+        else std::printf("b3launcher: portable mode check PASS: %s\n", what);
+    };
+    static fs::path keep_pref;
+    static App::PortableUi keep;
+    App::PortableUi& u = a.portable;
+    const fs::path top = dir / "portable-check", install = top / "install", home = top / "home" / "b3port" / "native";
+    std::error_code ec;
+    const auto show = [&]() {   // Settings > LAUNCHER with the PORTABLE MODE row focused
+        go_page(a, kSettings);
+        a.settings_tab = kLauncherTab;
+        a.in_content = true;
+        render(a);
+        a.focus = std::max(0, u.widget);
+        a.reveal_focus = true;
+    };
+    const auto wait = [&]() {
+        for (int i = 0; i < 3000 && !poll_portable(a); ++i) SDL_Delay(10);
+    };
+    const auto press = [&](const std::string& label) {   // a modal's button, as modal_nav does
+        if (!a.modal) return false;
+        for (std::size_t k = 0; k < a.modal->buttons.size(); ++k)
+            if (a.modal->buttons[k].label == label) {
+                a.modal->focus = k;
+                modal_nav(a, Nav::Confirm);
+                return true;
+            }
+        return false;
+    };
+    if (step == 0) {   // the scratch computer; the row off
+        a.modal.reset();
+        keep_pref = a.pref;
+        keep.exe = u.exe;
+        keep.platform = u.platform;
+        keep.hidden = u.hidden;
+        keep.override_dir = u.override_dir;
+        keep.writable = u.writable;
+        fs::remove_all(top, ec);
+        fs::create_directories(install, ec);
+        std::ofstream(install / "b3launcher", std::ios::binary) << "the launcher";
+        fs::create_directories(home, ec);
+        fs::copy(a.pref, home, fs::copy_options::recursive, ec);   // (the check's own data: settings, languages ...)
+        fs::create_directories(home / "saves", ec);
+        std::ofstream(home / "saves" / "profile-3.sav", std::ios::binary) << std::string(4096, '\x5A');
+        check(!ec, "the scratch data folder");
+        u = App::PortableUi{};
+        u.exe = install;
+        u.platform = home;
+        u.hidden = false;
+        u.writable = true;
+        u.stamp = "20261120-120000";
+        a.pref = home;
+        reload_data_folder(a);
+        u.data_writable = true;
+        check(!portable_status(a).on && portable_status(a).usable, "the row: off, usable");
+        show();
+    } else if (step == 1) {   // the game's row asked for it: the launcher's next start asks
+        check(b3io::write_portable_request(a.pref, true), "the game's request written");
+        a.have_run = false;
+        portable_start_checks(a);
+        check(a.modal && a.modal->title == "Turn portable mode on?" && a.modal->buttons.size() == 2 && a.modal->focus == 1,
+              "the request asks first (Cancel focused)");
+        check(!b3io::read_portable_request(a.pref), "the request taken");
+    } else if (step == 2) {   // the progress modal (a made-up job)
+        a.modal.reset();
+        auto job = std::make_shared<App::PortableJob>();
+        job->p.total = std::uint64_t(200) << 21;   // 200 MB, copied and checked
+        job->p.done = std::uint64_t(70) << 20;
+        u.job = job;
+        poll_portable(a);
+        check(a.modal && a.modal->progress > 0.15f && a.modal->progress < 0.2f && a.modal->buttons.size() == 1, "the progress modal");
+        u.job.reset();
+    } else if (step == 3) {   // the real move: on
+        a.modal.reset();
+        portable_toggle(a, true);
+        check(press("Move my data"), "Move my data pressed");
+        wait();
+        const fs::path now = b3io::portable_dir(install);
+        check(!u.job && a.pref == now && portable_status(a).on, "portable: the data folder in use is install/appdata/native");
+        check(fs::exists(now / "saves" / "profile-3.sav") && fs::file_size(now / "saves" / "profile-3.sav", ec) == 4096, "the data copied");
+        check(fs::is_directory(home.parent_path() / "native.moved-20261120-120000") && !fs::exists(home), "the old folder kept, dated");
+        check(u.rec && !u.rec->started, "the old copy recorded");
+        check(a.modal && a.modal->title == "Portable mode is on", "the result");
+        b3io::UserDirCase c;
+        c.exe_dir = install;
+        c.marker = fs::is_directory(b3io::portable_root(install), ec);
+        c.platform = home;
+        check(b3io::resolve_user_dir(c).dir == now, "the game's rule finds the same folder");
+    } else if (step == 9) {   // a write-protected stick: the Play page says so at the start
+        a.modal.reset();
+        u.data_writable = false;
+        go_page(a, kPlay);
+        a.in_content = true;
+        a.focus = 0;
+        render(a);
+        check(true, "the read-only notice drawn");
+    } else if (step == 4) {   // the game started from it and ended cleanly: the next start offers the removal
+        a.modal.reset();
+        u.data_writable = true;
+        portable_game_started(a);
+        b3settings::save_run_state(utf8_of(run_state_file(a.pref)), b3settings::clean_end());
+        refresh(a);
+        portable_start_checks(a);
+        check(a.modal && a.modal->title == "Remove the old copy?" && a.modal->focus == 1, "the removal asked (Keep it focused)");
+    } else if (step == 5) {   // removed; then off again (this computer's folder empty: no question of which to keep)
+        check(press("Remove the old copy"), "Remove pressed");
+        check(!fs::exists(home.parent_path() / "native.moved-20261120-120000") && !u.rec, "the old copy removed");
+        u.stamp = "20261120-130000";
+        portable_toggle(a, false);
+        check(a.modal && a.modal->buttons.size() == 2, "off asks first");
+        check(press("Move it back"), "Move it back pressed");
+        wait();
+        check(a.pref == home && !portable_status(a).on && fs::exists(home / "saves" / "profile-3.sav"), "off: this computer's folder in use");
+        check(fs::is_directory(install / "appdata.moved-20261120-130000") && !fs::exists(install / "appdata"), "the appdata folder kept, dated");
+        check(a.modal && a.modal->title == "Portable mode is off", "the result");
+        show();
+    } else if (step == 6) {   // off with data in both: which to keep
+        a.modal.reset();
+        fs::create_directories(b3io::portable_dir(install) / "saves", ec);
+        std::ofstream(b3io::portable_dir(install) / "pc_settings.ini") << "vsync = 1\n";
+        u.writable = true;
+        portable_toggle(a, false);
+        check(a.modal && a.modal->buttons.size() == 3 && a.modal->focus == 2, "the question: keep which (Cancel focused)");
+    } else if (step == 7) {   // the install folder cannot be written: the row disabled with the reason
+        a.modal.reset();
+        u.writable = false;
+        const pm::Status st = portable_status(a);
+        check(st.shown && !st.usable && !st.why.empty(), "not writable: disabled");
+        show();
+    } else if (step == 8) {   // back as it was
+        a.modal.reset();
+        a.pref = keep_pref;
+        u = App::PortableUi{};
+        u.exe = keep.exe;
+        u.platform = keep.platform;
+        u.hidden = keep.hidden;
+        u.override_dir = keep.override_dir;
+        u.writable = keep.writable;
+        reload_data_folder(a);
+        u.data_writable = b3io::dir_writable(a.pref);
+        fs::remove_all(top, ec);
+        check(!fs::exists(top), "the scratch folders removed");
+        show();
+    }
+    return bad;
+}
+
 // ---- update1: the update check with canned answers (--screenshot; never a request) ----
 // Each case writes GitHub's answer into a file in DIR and points the check at it (the B3LAUNCHER_UPDATE_FILE hook):
 // the same thread, file reading, parsing, launcher.ini and pages as a real answer. A newer release (the Play page's
@@ -7432,7 +9097,7 @@ int update_checks(App& a, const fs::path& dir) {
         result("error", came && st == update::State::kError && !banner, update::status_text(a.cfg.update, st) + "; Play banner " + (banner ? "SHOWN" : "none"));
         shoot(kCredits, "update_error_credits");
         shoot(kSettings, "update_settings", [&]() {   // the Launcher rows at the end of the page, Check now focused
-            a.settings_tab = 0;
+            a.settings_tab = kLauncherTab;   // settingsui: the LAUNCHER tab (the last)
             render(a);
             for (std::size_t k = 0; k < a.widgets.size(); ++k)
                 if (a.widgets[k].desc.rfind("Asks GitHub", 0) == 0) a.focus = int(k);
@@ -7451,7 +9116,7 @@ int update_checks(App& a, const fs::path& dir) {
         a.cfg.update = update::Cache{};
         a.upd.file = utf8_of(dir / "update_newer.json");
         go_page(a, kSettings);
-        a.settings_tab = 0;
+        a.settings_tab = kLauncherTab;   // settingsui: the LAUNCHER tab (the last)
         a.in_content = true;
         render(a);
         bool toggled = false;
@@ -7633,6 +9298,132 @@ bool steam_check_refusals(App& a, const SteamCheck& c, bool running) {
     return !bad.empty();
 }
 
+// ---- 1.3.0 DJ VOICE (--screenshot): a stand-in European disc under the check's data folder (stand-in banks of two
+// languages, no game audio), its rows, a real import (the worker thread, the temporary folder renamed), one cancelled
+// (nothing kept), the removal. Returns the number of failures; dj_check_end removes everything it made.
+struct DjCheck {
+    fs::path base;
+    int bad = 0;
+    bool game_ok = false;   // the real game folder's state, put back at the end: its English banks are not the test banks
+};
+void dj_check_report(DjCheck& c, bool ok, const std::string& what) {
+    std::printf("b3launcher: dj voice check %s: %s\n", ok ? "PASS" : "FAIL", what.c_str());
+    if (!ok) ++c.bad;
+}
+bool dj_check_wait(App& a) {   // the import's end (poll_dj), at most 20 s
+    for (int k = 0; k < 4000; ++k) {
+        if (poll_dj(a)) return true;
+        SDL_Delay(5);
+    }
+    return false;
+}
+std::size_t dj_check_tab(App& a) {   // the tab with LANGUAGE (settingsui: GAME > LANGUAGE AND UNITS), found by id
+    const auto tabs = settings_content(a.settings, "", false, a.languages, a.language_note, a.xbox.status.present, a.dj.rows, a.dj.note).tabs;
+    for (std::size_t t = 0; t < tabs.size(); ++t)
+        for (const auto& r : tabs[t].rows)
+            if (r.id == b3settings::kRowLanguage) return t;
+    return 0;
+}
+void dj_check_focus(App& a) {
+    a.modal.reset();
+    go_page(a, kSettings);
+    a.settings_tab = dj_check_tab(a);
+    a.in_content = true;
+    a.reveal_focus = true;   // (the Steam shots before leave it off)
+    render(a);
+    a.focus = std::max(0, a.dj.widget);
+}
+void dj_check_begin(App& a, DjCheck& c) {
+    namespace L = b3asset::language;
+    std::error_code ec;
+    c.base = a.pref / "dj-check";
+    fs::remove_all(c.base, ec);
+    // the synthetic banks are checked against themselves, not the real disc's English banks (a real game folder's E_ banks
+    // differ from the test banks: the import would rightly refuse them)
+    c.game_ok = a.game.ok;
+    a.game.ok = false;
+    for (const std::string& code : L::dj_codes()) L::dj_remove(a.pref, code);
+    const auto put = [&](const fs::path& p, const std::vector<std::uint8_t>& b) {
+        fs::create_directories(p.parent_path(), ec);
+        std::ofstream(p, std::ios::binary).write(reinterpret_cast<const char*>(b.data()), std::streamsize(b.size()));
+    };
+    // German small, Italian larger (8 MB a bank: a cancel lands before the end)
+    put(c.base / "eu" / "TRACKS" / "G_DJGEN.RWS", L::dj_test_bank(18, 0x10000, "DJGEN"));
+    put(c.base / "eu" / "TRACKS" / "EU" / "C1_V1" / "G_DJRACE.RWS", L::dj_test_bank(38, 0x10000, "EU_C1"));
+    put(c.base / "eu" / "TRACKS" / "I_DJGEN.RWS", L::dj_test_bank(18, 0x80000, "DJGEN"));
+    put(c.base / "eu" / "TRACKS" / "EU" / "C1_V1" / "I_DJRACE.RWS", L::dj_test_bank(38, 0x40000, "EU_C1"));
+    put(c.base / "eu" / "OVID" / "TRC_GER.M2V", L::training_test_video(0x30000));   // the training pictures, German
+    put(c.base / "eu" / "OVID" / "TRD_GER.M2V", L::training_test_video(0x20000));
+    a.dj.note.clear();
+    dj_disc_chosen(a, c.base / "eu");
+    dj_check_report(c, a.dj.rows.size() == 3 && a.dj.rows[0].code == "GE" && a.dj.rows[1].code == "IT" && a.dj.rows[0].disc_bytes > 0 &&
+                           a.dj.rows[0].imported_bytes == 0 && a.dj.rows[2].training && a.dj.rows[2].code == "GE",
+                    "the disc's two DJ voices and one language's training videos offered (" + std::to_string(a.dj.rows.size()) + " rows)");
+    dj_check_focus(a);
+}
+void dj_check_import(App& a, DjCheck& c) {
+    namespace L = b3asset::language;
+    action_row(a, b3settings::kActionDjFirst + 1);   // German: Import
+    const bool started = a.dj.job != nullptr;
+    const bool done = dj_check_wait(a);
+    fs::path part = L::dj_root(a.pref, "GE");
+    part += ".part";
+    std::error_code ec;
+    dj_check_report(c, started && done && L::dj_imported_bytes(a.pref, "GE") == a.dj.found[0].bytes && !fs::exists(part, ec) &&
+                           a.dj.note.rfind("Imported", 0) == 0 && !a.dj.rows.empty() && a.dj.rows[0].imported_bytes > 0,
+                    "German imported on the worker thread (" + a.dj.note + ")");
+    action_row(a, b3settings::kActionTrainingFirst + 1);   // German training videos: Import
+    const bool tdone = a.dj.job && dj_check_wait(a);
+    dj_check_report(c, tdone && L::pack_imported_bytes(a.pref, "GE", L::Pack::kTraining) == a.dj.found_training[0].bytes,
+                    "German training videos imported (" + a.dj.note + ")");
+    dj_check_focus(a);
+}
+void dj_check_cancel(App& a, DjCheck& c) {
+    namespace L = b3asset::language;
+    action_row(a, b3settings::kActionDjFirst + 2);   // Italian: Import
+    const bool started = a.dj.job != nullptr;
+    action_row(a, b3settings::kActionDjFirst + 2);   // ... pressed again: Cancel
+    const bool done = dj_check_wait(a);
+    fs::path part = L::dj_root(a.pref, "IT");
+    part += ".part";
+    std::error_code ec;
+    const bool cancelled = a.dj.note.find("cancelled") != std::string::npos;
+    const bool nothing = !fs::exists(L::dj_root(a.pref, "IT"), ec) && !fs::exists(part, ec);
+    // (a stand-in bank this small can finish before the press is seen: then it is simply imported)
+    dj_check_report(c, started && done && (cancelled ? nothing : L::dj_imported_bytes(a.pref, "IT") > 0),
+                    std::string(cancelled ? "Italian cancelled half way, nothing kept" : "Italian finished before the cancel") + " (" + a.dj.note + ")");
+    if (!cancelled) L::dj_remove(a.pref, "IT");
+    refresh_dj(a);
+    dj_check_focus(a);
+}
+void dj_check_remove(App& a, DjCheck& c) {
+    namespace L = b3asset::language;
+    action_row(a, b3settings::kActionDjFirst + 1);   // German imported: Remove asks first
+    const bool asked = a.modal && a.modal->title.find("Remove the DJ") == 0 && !a.modal->buttons.empty();
+    if (asked && a.modal->buttons[0].fn) {
+        auto fn = a.modal->buttons[0].fn;
+        a.modal.reset();
+        fn();
+    }
+    dj_check_report(c, asked && L::dj_imported_bytes(a.pref, "GE") == 0 && a.dj.note.rfind("Removed", 0) == 0, "German removed (" + a.dj.note + ")");
+    dj_check_focus(a);
+}
+void dj_check_end(App& a, DjCheck& c) {
+    std::error_code ec;
+    for (const std::string& code : b3asset::language::dj_codes()) {
+        b3asset::language::pack_remove(a.pref, code, b3asset::language::Pack::kDj, nullptr, b3mod::remove_tree);
+        b3asset::language::pack_remove(a.pref, code, b3asset::language::Pack::kTraining, nullptr, b3mod::remove_tree);
+    }
+    fs::remove_all(c.base, ec);
+    fs::remove_all(b3asset::language::imported_root(a.pref) / "DJ", ec);
+    a.dj.found.clear();
+    a.dj.found_training.clear();
+    a.dj.disc.clear();
+    a.dj.note.clear();
+    a.game.ok = c.game_ok;
+    refresh_dj(a);
+}
+
 int screenshots(App& a, const fs::path& dir) {
     std::error_code ec;
     fs::create_directories(dir, ec);
@@ -7650,11 +9441,12 @@ int screenshots(App& a, const fs::path& dir) {
     int bad_checks = 0;
     ShowroomHdCheck hd_check;
     SteamCheck steam_check;   // issue #8
+    DjCheck dj_check;         // 1.3.0
     a.steam_ui.checks = true;
     auto steam_shot = [&]() {   // Settings with Add to Steam focused (the page scrolled to it)
         a.modal.reset();
         go_page(a, kSettings);
-        a.settings_tab = 0;
+        a.settings_tab = kLauncherTab;   // settingsui: the LAUNCHER tab (the last)
         a.in_content = true;
         render(a);
         a.focus = std::max(0, a.steam_ui.widget);
@@ -7685,13 +9477,57 @@ int screenshots(App& a, const fs::path& dir) {
              a.steam_ui.level = 0;
              steam_shot();
          }},
-        {"hd", [&]() { a.modal.reset(); go_page(a, kHd); a.in_content = true; a.focus = 0; }},
+        {"mods_files_pack", [&]() {   // item 11: Add folder with a pack of the game's files and no mod.ini: the question
+            a.modal.reset();
+            go_page(a, kMods);
+            a.in_content = true;
+            a.focus = 2;
+            const fs::path check = a.pref / ".files-pack-check", pack = check / "Cool Car Pack";
+            std::error_code ec;
+            fs::create_directories(pack / "PVEH" / "MUSCLE", ec);
+            std::ofstream(pack / "PVEH" / "MUSCLE" / "CAR1.BGV", std::ios::binary) << "not a real car";   // (synthetic: never installed)
+            add_mod(a, pack, false);
+            if (!a.modal || a.modal->title != "Install as a file-replacement mod?") {
+                std::printf("[b3launcher] check: the files pack was not offered as a file-replacement mod\n");
+                ++bad_checks;
+            }
+            fs::remove_all(check, ec);
+        }},
+        {"hd", [&]() { a.modal.reset(); go_page(a, kHd); a.in_content = true; a.focus = 0; }},   // (closes the question above)
+        // xboximport: Import Xbox textures (the section, its progress, a refused file, an import, Remove)
+        {"hd_xbox", [&]() { bad_checks += xbox_check(a, dir, 0); }},
+        {"hd_xbox_progress", [&]() { bad_checks += xbox_check(a, dir, 1); }},
+        {"hd_xbox_failed", [&]() { bad_checks += xbox_check(a, dir, 2); }},
+        {"hd_xbox_imported", [&]() { bad_checks += xbox_check(a, dir, 3); }},
+        {"hd_xbox_remove", [&]() { bad_checks += xbox_check(a, dir, 4); }},
+        {"hd_xbox_removed", [&]() { bad_checks += xbox_check(a, dir, 5); }},
+        {"settings_portable", [&]() { bad_checks += portable_check(a, dir, 0); }},           // portable mode (1.3.0)
+        {"settings_portable_confirm", [&]() { bad_checks += portable_check(a, dir, 1); }},
+        {"settings_portable_progress", [&]() { bad_checks += portable_check(a, dir, 2); }},
+        {"settings_portable_on", [&]() { bad_checks += portable_check(a, dir, 3); }},
+        {"play_portable_readonly", [&]() { bad_checks += portable_check(a, dir, 9); }},
+        {"settings_portable_remove", [&]() { bad_checks += portable_check(a, dir, 4); }},
+        {"settings_portable_off", [&]() { bad_checks += portable_check(a, dir, 5); }},
+        {"settings_portable_keep", [&]() { bad_checks += portable_check(a, dir, 6); }},
+        {"settings_portable_disabled", [&]() { bad_checks += portable_check(a, dir, 7); }},
+        {"settings_portable_end", [&]() { bad_checks += portable_check(a, dir, 8); }},
         {"music", [&]() { go_page(a, kMusic); a.in_content = true; a.focus = 0; }},
         {"music_playlist", [&]() { go_page(a, kMusic); a.in_content = true; a.focus = 4; }},
         {"mods", [&]() { go_page(a, kMods); a.in_content = true; a.focus = 2; }},   // modkit1
-        {"mods_last", [&]() { go_page(a, kMods); a.in_content = true; a.focus = 13; }},   // the fourth card (errors / notes; modkit1b: after Add mod; sdk2b: and Developer mods)
+        {"mods_last", [&]() { go_page(a, kMods); a.in_content = true; a.focus = 14; }},   // the fourth card (errors / notes; modkit1b: after Add mod; sdk2b: and Developer mods)
         {"game", [&]() { go_page(a, kGame); a.in_content = false; }},
         {"saves", [&]() { go_page(a, kSaves); a.in_content = true; a.focus = 4; }},   // (1.1: after Choose save folder... and Use the default folder: File 2)
+        // 1.3.0 DJ VOICE: offered, importing (the progress as drawn), imported, a cancel, the removal question, removed
+        {"settings_dj_offer", [&]() { dj_check_begin(a, dj_check); }},
+        {"settings_dj_importing", [&]() {   // (after the page is shown: going to it refreshes the rows)
+             dj_check_focus(a);
+             if (!a.dj.rows.empty()) a.dj.rows[0].progress = 40;
+         }},
+        {"settings_dj_imported", [&]() { refresh_dj(a); dj_check_import(a, dj_check); }},
+        {"settings_dj_cancelled", [&]() { dj_check_cancel(a, dj_check); }},
+        {"settings_dj_remove_confirm", [&]() { dj_check_focus(a); confirm_dj_remove(a, "GE"); }},
+        {"settings_dj_removed", [&]() { a.modal.reset(); dj_check_remove(a, dj_check); }},
+        {"settings_dj_end", [&]() { dj_check_end(a, dj_check); bad_checks += dj_check.bad; go_page(a, kSettings); a.settings_tab = dj_check_tab(a); a.focus = 0; }},
         {"saves_folder", [&]() { if (saves_folder_checks(a, dir)) ++bad_checks; go_page(a, kSaves); a.in_content = true; a.focus = 1; }},   // 1.1
         {"stats", [&]() { go_page(a, kStats); a.in_content = false; a.scroll[kStats] = 0; }},
         {"stats_achievements", [&]() { go_page(a, kStats); a.in_content = true; a.focus = int(a.stats.size()) + 6; }},
@@ -7702,7 +9538,7 @@ int screenshots(App& a, const fs::path& dir) {
              a.in_content = true;
              a.focus = int(a.stats_sel);
          }},
-        {"controllers_none", [&]() { go_page(a, kPads); a.in_content = false; }},
+        {"controllers_none", [&]() { go_page(a, kPads); a.pads_tab = 0; a.in_content = false; }},
         // photo2: the showroom with three cars (the first, a Super, a heavyweight), the turntable still at set angles
         {"showroom", [&]() { go_page(a, kShowroom); a.in_content = true; a.focus = 0; a.show.tt.reset(); a.show.tt.spin = false; }},
         {"showroom_super", [&]() {
@@ -7729,9 +9565,47 @@ int screenshots(App& a, const fs::path& dir) {
              if (showroom_hd_check(a, dir, hd_check)) ++bad_checks;
          }},
         {"showroom_hd_off", [&]() { showroom_hd_end(a, hd_check); }},
+        // padpaint: player 1's custom paint and finish in the showroom (metallic, then pearl on a Muscle), the colour rows'
+        // swatches on the Settings page (GRAPHICS: CAR PAINT and PLAYER 2 CAR PAINT), then the settings back
+        {"showroom_paint", [&]() {
+             a.show.saved_settings = a.settings;
+             a.settings.car_paint = 1;
+             a.settings.paint_red = 30; a.settings.paint_green = 120; a.settings.paint_blue = 225;
+             a.settings.paint_finish = 1;
+             go_page(a, kShowroom);
+             a.in_content = true;
+             a.focus = 0;
+             a.show.sel = 0;
+             a.show.tt.reset();
+             a.show.tt.spin = false;
+             a.show.tt.yaw = 0.7f;
+         }},
+        {"showroom_paint_pearl", [&]() {
+             for (std::size_t k = 0; k < a.show.cars.size(); ++k) if (a.show.cars[k].folder == "MSCL" && a.show.cars[k].number == 1) a.show.sel = k;
+             a.settings.paint_red = 225; a.settings.paint_green = 45; a.settings.paint_blue = 90;
+             a.settings.paint_finish = 2;
+             a.show.tt.yaw = 2.4f;
+             a.show.tt.pitch = 0.12f;
+         }},
+        {"settings_paint", [&]() {
+             a.settings.p2_car_paint = 1;
+             go_page(a, kSettings);
+             a.settings_tab = 1;
+             a.in_content = true;
+             a.scroll[kSettings] = 0;
+             render(a);
+             for (std::size_t k = 0; k < a.widgets.size(); ++k)   // CAR PAINT's row at the top of the view, focused
+                 if (a.widgets[k].desc.rfind("Custom: your car in your own colour", 0) == 0) {
+                     a.focus = int(k);
+                     a.scroll[kSettings] += a.widgets[k].r.y - 150.0f;
+                 }
+             a.reveal_focus = false;
+         }},
+        {"settings_paint_end", [&]() { a.settings = a.show.saved_settings; a.focus = 2; a.scroll[kSettings] = 0; }},
         {"credits", [&]() { go_page(a, kCredits); a.in_content = true; a.focus = 0; }},
         {"controllers_pad", [&]() {
              go_page(a, kPads);
+             a.pads_tab = 0;   // settingsui: TEST
              a.pad_test = true;
              vj = demo_pad();
              SDL_Event e;
@@ -7754,6 +9628,7 @@ int screenshots(App& a, const fs::path& dir) {
              a.pad_test = false;
              a.modal.reset();
              go_page(a, kPads);
+             a.pads_tab = 1;   // settingsui: the BINDINGS tab
              a.ctl_player = 0; a.ctl_device = 0; a.ctl_view = 0;
              a.reveal_focus = true;   // as after a key: the focused row in view (a shot before turned it off)
              a.controls = b3native::input::default_controls();
@@ -7796,8 +9671,63 @@ int screenshots(App& a, const fs::path& dir) {
              a.flow.input(a.controls, {b3native::input::Device::Gamepad, 0, b3native::input::PadInput::East});
              flow_modal(a);
          }},
+        // photoblur: the motion blur's three shortcuts in the Shortcuts list (keyboard: J, K, L), one rebound (J -> T), and the
+        // controller's (R3; R3 + D-pad left / right)
+        {"controls_shortcuts_photo", [&]() {
+             a.flow.cancel();
+             a.modal.reset();
+             a.controls = b3native::input::default_controls();
+             go_page(a, kPads);
+             a.pads_tab = 1;
+             a.ctl_player = 2; a.ctl_device = 0; a.ctl_view = 0;
+             a.reveal_focus = true;
+             a.in_content = true;
+             render(a);
+             a.focus = a.ctl_first_widget + int(b3native::input::PortAction::PhotoMotion);
+         }},
+        {"controls_shortcuts_photo_rebound", [&]() {
+             namespace in = b3native::input;
+             a.flow.begin_port(in::PortAction::PhotoMotion, in::Device::Keyboard, false);
+             const auto st = a.flow.input(a.controls, {in::Device::Keyboard, 23, in::PadInput::None});   // T
+             std::printf("[b3launcher] screenshot: PHOTO: MOTION BLUR rebound: %s (%s)\n",
+                         in::bound_port_text(a.controls, in::PortAction::PhotoMotion, in::Device::Keyboard, in::PadStyle::PlayStation).c_str(),
+                         st == in::RebindFlow::State::Done ? "done" : "not done");
+             a.flow.cancel();
+             a.modal.reset();
+             a.reveal_focus = true;
+             render(a);
+             a.focus = a.ctl_first_widget + int(in::PortAction::PhotoMotion);
+         }},
+        {"controls_shortcuts_photo_pad", [&]() {
+             namespace in = b3native::input;
+             a.controls = in::default_controls();
+             a.ctl_device = 1;
+             a.reveal_focus = true;
+             render(a);
+             int k = 0;   // the row of PHOTO: SLOWER SHUTTER among the actions a controller can bind
+             for (int pa = 0; pa < int(in::PortAction::PhotoShutterSlower); ++pa) k += in::port_has_pad(in::PortAction(pa)) ? 1 : 0;
+             a.focus = a.ctl_first_widget + k;
+         }},
+        {"controls_shortcuts_race_time", [&]() {   // todrace: TIME OF DAY PER RACE, the list's last row (T)
+             namespace in = b3native::input;
+             a.controls = in::default_controls();
+             a.ctl_device = 0;
+             a.reveal_focus = true;
+             render(a);
+             a.focus = a.ctl_first_widget + int(in::PortAction::RaceTime);
+         }},
+        {"controls_race_time_refused", [&]() {   // todrace: Enter (the pages' Confirm) refused, the flow still waiting
+             namespace in = b3native::input;
+             a.flow.begin_port(in::PortAction::RaceTime, in::Device::Keyboard, false);
+             a.flow_t = a.now();
+             const auto st = a.flow.input(a.controls, {in::Device::Keyboard, 40, in::PadInput::None});   // Return
+             const bool ok = st == in::RebindFlow::State::Waiting && a.flow.refused() && a.controls == in::default_controls();
+             std::printf("b3launcher: race time refusal check %s (Enter for TIME OF DAY PER RACE: %s)\n", ok ? "PASS" : "FAIL",
+                         a.flow.refused() ? "refused, still waiting" : "taken");
+             flow_modal(a);
+         }},
         {"type_path", [&]() { a.flow.cancel(); a.controls = b3native::input::default_controls(); go_page(a, kGame); a.pad_used_last = a.touch_last = false; ask_path(a, DialogKind::kGameFolder, "Game data folder", "/home/me/Games/Burnout 3/game"); }},
-        {"keys", [&]() {   // the keyboard drives the page: down twice to FULLSCREEN, Enter, right on FRAME RATE LIMIT
+        {"keys", [&]() {   // the keyboard drives the page: down to FULLSCREEN, Enter, down twice, right on FRAME RATE LIMIT
              a.modal.reset();
              SDL_StopTextInput(a.win);
              go_page(a, kSettings);
@@ -7815,7 +9745,8 @@ int screenshots(App& a, const fs::path& dir) {
                  event(a, e);
                  render(a);
              };
-             for (SDL_Keycode k : {SDLK_DOWN, SDLK_DOWN, SDLK_RETURN, SDLK_DOWN, SDLK_DOWN, SDLK_RIGHT}) key(k);
+             // settingsui: the tab strip, then FULLSCREEN (Enter), VSYNC, FRAME RATE LIMIT (right)
+             for (SDL_Keycode k : {SDLK_DOWN, SDLK_RETURN, SDLK_DOWN, SDLK_DOWN, SDLK_RIGHT}) key(k);
              b3settings::Settings back;
              b3settings::load_file(utf8_of(settings_file(a.pref)), back);
              const bool ok = back.fullscreen == !before && back.frame_cap != cap_before && back == a.settings;
@@ -7878,6 +9809,9 @@ int screenshots(App& a, const fs::path& dir) {
                          ok ? "PASS" : "FAIL", a.show.cars.size(), paint1 + 1, np, car0 + 1, a.show.sel + 1);
              if (!ok) ++bad_checks;
          }},
+        {"verbatim", [&]() {   // settingsui: names of the player's own drawn as they are, whatever the language
+             if (verbatim_check(a)) ++bad_checks;
+         }},
         {"walk", [&]() {   // launcherux1: every page by the keys alone, a pad alone and the mouse (walk_checks)
              a.modal.reset();
              SDL_StopTextInput(a.win);
@@ -7928,6 +9862,7 @@ int screenshots(App& a, const fs::path& dir) {
                  case SkipBlock::kBadGameData: return "bad game data";
                  case SkipBlock::kNoProgram: return "no game program";
                  case SkipBlock::kLastRun: return "last run";
+                 case SkipBlock::kPortable: return "portable mode";
                  }
                  return "?";
              };
@@ -8067,7 +10002,11 @@ int screenshots(App& a, const fs::path& dir) {
          }},
     };
     int bad = 0;
+    // padpaint: B3LAUNCHER_SHOT_ONLY=<name>,... takes those shots alone (in the list's order)
+    const char* only = std::getenv("B3LAUNCHER_SHOT_ONLY");
+    const std::string only_list = only && *only ? "," + std::string(only) + "," : "";
     for (const Shot& s : shots) {
+        if (!only_list.empty() && only_list.find("," + std::string(s.name) + ",") == std::string::npos) continue;
         s.setup();
         frame();
         SDL_UpdateJoysticks();
@@ -8075,6 +10014,61 @@ int screenshots(App& a, const fs::path& dir) {
         const fs::path to = dir / (std::string(s.name) + ".png");
         if (!save_shot(a, to)) { std::fprintf(stderr, "b3launcher: cannot write %s: %s\n", utf8_of(to).c_str(), SDL_GetError()); ++bad; }
         else std::printf("b3launcher: %s\n", utf8_of(to).c_str());
+    }
+    // settingsui: B3LAUNCHER_SHOT_TOUR=1: every page and every Settings tab, from the top down a window at a time
+    // (tour_<NN>_<page>[_<tab>]_<k>.png; B3LAUNCHER_SHOT_ONLY=tour takes these alone): the layout checks' pictures
+    if (const char* tour = std::getenv("B3LAUNCHER_SHOT_TOUR"); tour && tour[0] == '1') {
+        a.modal.reset();
+        a.flow.cancel();
+        a.pad_test = false;
+        a.skip_at = 0;
+        a.pad_used_last = a.touch_last = false;
+        SDL_StopTextInput(a.win);
+        const auto slug = [](std::string t) {
+            for (char& ch : t) ch = ch == ' ' || ch == '/' ? '-' : char(std::tolower(static_cast<unsigned char>(ch)));
+            return t;
+        };
+        const auto sweep = [&](const std::string& name, int page) {
+            a.in_content = false;
+            a.scroll[page] = 0;
+            a.reveal_focus = false;
+            frame();
+            for (int k = 0; k < 12; ++k) {
+                render(a);
+                const fs::path to = dir / (name + "_" + std::to_string(k) + ".png");
+                if (!save_shot(a, to)) ++bad;
+                else std::printf("b3launcher: %s\n", utf8_of(to).c_str());
+                const float before = a.scroll[page];
+                a.scroll[page] += page_bottom(a) - page_top(a) - 40;
+                render(a);
+                if (a.scroll[page] <= before + 1) break;   // the page's end was in view
+            }
+        };
+        for (int p = 0; p < kPageCount; ++p) {
+            go_page(a, p);
+            char nn[4];
+            std::snprintf(nn, sizeof nn, "%02d", p);
+            if (p == kSettings) {
+                b3settings::Settings en = a.settings;   // the tabs' English names for the files
+                en.language.clear();
+                const b3settings::Content names = settings_content(en, "", false, a.languages, a.language_note);
+                for (std::size_t t = 0; t <= names.tabs.size(); ++t) {   // and LAUNCHER, the last
+                    a.settings_tab = t;
+                    const std::string label = t < names.tabs.size() ? names.tabs[t].label : std::string("launcher");
+                    sweep(std::string("tour_") + nn + "_settings_" + std::to_string(t) + "-" + slug(label), p);
+                }
+                a.settings_tab = 0;
+            } else if (p == kPads) {   // TEST and BINDINGS
+                for (std::size_t t = 0; t < 2; ++t) {
+                    a.pads_tab = t;
+                    sweep(std::string("tour_") + nn + "_controllers_" + std::to_string(t) + (t ? "-bindings" : "-test"), p);
+                }
+                a.pads_tab = 0;
+            } else {
+                sweep(std::string("tour_") + nn + "_" + slug(kPageNames[p]), p);
+            }
+        }
+        a.reveal_focus = true;
     }
     // photo2: B3LAUNCHER_SHOWROOM_CARS=<FOLDER>/<n>,... (e.g. HSPC/20,HEVY/36): one showroom shot per car (the names
     // against the drawn cars), showroom_<FOLDER>_<n>.png
@@ -8110,24 +10104,126 @@ int screenshots(App& a, const fs::path& dir) {
 
 }  // namespace
 
+namespace {
+// portable mode (1.3.0): `b3launcher --portable on|off [--keep portable|this]`: the same move as the LAUNCHER tab's row,
+// without a window (a script, a support case, the checks): refused while the game plays; with data in both places when
+// turning off, --keep says which stays (the other set aside). Exit 0 done (or nothing to do), 1 refused or failed, 2 usage.
+int portable_cli(const std::string& want, const std::string& keep_arg) {
+    namespace pm = b3launcher::portable;
+    if (want != "on" && want != "off") {
+        std::fprintf(stderr, "b3launcher: --portable on|off, not '%s'\n", want.c_str());
+        return 2;
+    }
+    const bool on = want == "on";
+    if (!b3io::portable_supported(b3io::apple_build(), b3io::in_appimage(), b3io::in_flatpak())) {
+        std::printf("b3launcher: portable mode is not offered here (macOS, an AppImage or a Flatpak)\n");
+        return 1;
+    }
+    if (b3io::getenv(b3io::kUserDirEnv)) {
+        std::printf("b3launcher: %s is set: portable mode does not apply\n", b3io::kUserDirEnv);
+        return 1;
+    }
+    const fs::path exe = b3io::exe_dir(), platform = b3io::platform_user_dir(), now = b3io::user_dir();
+    const pm::Status st = pm::status(exe, false, false, false, false, b3io::dir_writable(exe), false);
+    if (st.on == on) {
+        std::printf("b3launcher: portable mode is %s already: %s\n", on ? "on" : "off", utf8_of(now).c_str());
+        return 0;
+    }
+    Config cfg;
+    load_config(config_file(now), cfg);
+    std::string why = st.why;
+    if (why.empty() && !b3native::save::folder_lock_holder(saves_folder(now, cfg.saves_dir)).empty()) why = "The game is running: close it first.";
+    if (!why.empty()) {
+        std::printf("b3launcher: portable mode: %s\n", why.c_str());
+        return 1;
+    }
+    pm::clean_partials(exe, platform);
+    const std::optional<pm::Plan> p = pm::plan(on, exe, platform, &why);
+    const fs::path lock_root = saves_folder(now, cfg.saves_dir);   // saveflow's lock for the whole move (as the window's)
+    if (p) {
+        std::error_code lec;
+        fs::create_directories(lock_root, lec);
+        std::string holder;
+        if (!b3native::save::acquire_folder_lock(lock_root, b3native::save::kLauncherMoveSlot, unix_now(), &holder)) {
+            std::printf("b3launcher: portable mode: %s uses the save folder: not moved\n", holder.c_str());
+            return 1;
+        }
+    }
+    struct Unlock {
+        std::vector<fs::path> roots;
+        ~Unlock() { for (const fs::path& d : roots) b3native::save::release_folder_lock(d); }
+    } unlock{{lock_root}};
+    if (!p) {
+        std::printf("b3launcher: portable mode: cannot move the data: %s\n", why.c_str());
+        return 1;
+    }
+    pm::Keep keep = pm::Keep::kMoved;
+    if (p->target_has_data) {
+        if (keep_arg == "this") keep = pm::Keep::kExisting;
+        else if (keep_arg != "portable") {
+            std::printf("b3launcher: portable mode: %s already holds data: --keep portable (the appdata folder's, this computer's "
+                        "set aside) or --keep this (this computer's, the appdata folder set aside)\n", utf8_of(platform).c_str());
+            return 1;
+        }
+    }
+    std::printf("b3launcher: portable mode %s: moving %zu files (%ju bytes) from %s to %s\n", want.c_str(), p->files,
+                std::uintmax_t(p->bytes), utf8_of(p->from).c_str(), utf8_of(p->to).c_str());
+    const pm::Result r = pm::move(*p, keep, pm::stamp_now());
+    if (!r.ok) {
+        std::printf("b3launcher: portable mode: not moved (nothing was changed): %s\n", r.why.c_str());
+        return 1;
+    }
+    const fs::path in_use = b3io::user_dir();
+    unlock.roots.push_back(in_use / "saves");
+    if (!r.old_kept.empty()) unlock.roots.push_back(r.old_kept / "saves"), unlock.roots.push_back(r.old_kept / "native" / "saves");
+    Config moved;   // (a save folder chosen inside the data folder moved with it)
+    if (load_config(config_file(in_use), moved)) {
+        const std::string sd = pm::rebase_saves_dir(moved.saves_dir, p->from, p->to);
+        if (sd != moved.saves_dir) {
+            moved.saves_dir = sd;
+            save_config(config_file(in_use), moved);
+        }
+    }
+    pm::Record rec;
+    rec.old_kept = r.old_kept;
+    rec.aside = r.aside;
+    if (!rec.old_kept.empty() || !rec.aside.empty()) pm::write_record(in_use, rec);
+    std::printf("b3launcher: portable mode is %s: %zu files checked; the data folder in use: %s\n", on ? "on" : "off", r.files, utf8_of(in_use).c_str());
+    if (!r.old_kept.empty()) std::printf("b3launcher: the old copy is kept in %s\n", utf8_of(r.old_kept).c_str());
+    if (!r.aside.empty()) std::printf("b3launcher: the data that was in this computer's folder is kept in %s\n", utf8_of(r.aside).c_str());
+    if (!r.note.empty()) std::printf("b3launcher: %s\n", r.note.c_str());
+    return 0;
+}
+}  // namespace
+
 int main(int argc, char** argv) {
-    std::string pref_arg, shot_dir;
+    // robust2: Steam's Flatpak sandbox: the host's data folder when it is reachable (save_store.h; before any thread)
+    const b3native::save::SandboxData sandbox = b3native::save::use_host_data_in_sandbox();
+    // fsrobust: the arguments (--pref) as UTF-8 from the wide command line, as native_play's (SDL's own entry point
+    // builds them from it too on Windows; this says so in one place, whatever SDL's entry does)
+    b3io::utf8_args(argc, argv);
+    std::string pref_arg, shot_dir, portable_arg, keep_arg;
     bool launcher_arg = false;   // launchskip1: --launcher (the launcher shows, whatever the setting)
     int win_w = 1280, win_h = 720;
+    bool size_given = false;   // settingsui: --size, else the default for the display (core.h default_window_size)
     for (int k = 1; k < argc; ++k) {
         const std::string s = argv[k];
         auto next = [&]() -> std::string { return k + 1 < argc ? argv[++k] : std::string(); };
         if (s == "--pref") pref_arg = next();
+        else if (s == "--portable") portable_arg = next();   // portable mode (1.3.0): the move without the window
+        else if (s == "--keep") keep_arg = next();
         else if (s == "--screenshot") shot_dir = next();
         else if (s == "--launcher") launcher_arg = true;
         else if (s == "--size") {
             const std::string v = next();
-            if (std::sscanf(v.c_str(), "%dx%d", &win_w, &win_h) != 2) { win_w = 1280; win_h = 720; }
+            size_given = std::sscanf(v.c_str(), "%dx%d", &win_w, &win_h) == 2;
+            if (!size_given) { win_w = 1280; win_h = 720; }
         } else {
-            std::fprintf(stderr, "usage: b3launcher [--pref DIR] [--size WxH] [--launcher] [--screenshot DIR]\n");
+            std::fprintf(stderr, "usage: b3launcher [--pref DIR] [--size WxH] [--launcher] [--screenshot DIR] [--portable on|off [--keep portable|this]]\n");
             return 2;
         }
     }
+    if (!portable_arg.empty()) return portable_cli(portable_arg, keep_arg);   // portable mode: no window
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     SDL_SetAppMetadata("Burnout 3 Launcher", b3port::version(), "b3port.launcher");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
@@ -8157,11 +10253,29 @@ int main(int argc, char** argv) {
     }
     std::error_code ec;
     a.cwd = fs::current_path(ec);
-    if (!pref_arg.empty()) a.pref = fs::absolute(path_from_utf8(pref_arg), ec);
-    else if (char* p = SDL_GetPrefPath("b3port", "native")) {   // the game window's own folder (src/b3replay/main.cpp)
-        a.pref = path_from_utf8(p);
-        SDL_free(p);
+    // portable mode (1.3.0): one rule for the launcher and the game (b3port/user_dir.h): --pref (given to the game too,
+    // so both use it), else <this folder>/appdata/native when there is an appdata folder here, else this computer's own
+    if (!pref_arg.empty()) {
+        a.pref = fs::absolute(path_from_utf8(pref_arg), ec);
+        b3io::setenv(b3io::kUserDirEnv, utf8_of(a.pref));
+    } else {
+        a.pref = b3io::user_dir();
     }
+    const int pref_override = !pref_arg.empty() ? 1 : b3io::user_dir_choice().kind == b3io::UserDirKind::kOverride ? 2 : 0;
+    // robust2: started by Steam's Flatpak for the first time, with a data folder of the sandbox's own: say where it is
+    const bool sandbox_note = sandbox.sandbox && !sandbox.host && !sandbox.two && pref_arg.empty() && !fs::exists(config_file(a.pref), ec);
+    // ... or with data in the sandbox's folder and in the host's: said once (a marker file in the folder in use)
+    const fs::path two_marker = a.pref / ".two-data-folders-told";
+    const bool two_note = sandbox.two && pref_arg.empty() && !fs::exists(two_marker, ec);
+    if (sandbox.two)
+        std::fprintf(stderr, "b3launcher: Flatpak sandbox: data in two folders: %s is used (it holds saves), %s holds data too\n",
+                     utf8_of(a.pref).c_str(), utf8_of(sandbox.other).c_str());
+    // robust2 review 2: ... or the host's folder used, the sandbox's own holding settings only (left there): said once
+    const fs::path left_marker = a.pref / ".sandbox-settings-left-told";
+    const bool left_note = !sandbox.left.empty() && pref_arg.empty() && !fs::exists(left_marker, ec);
+    if (!sandbox.left.empty())
+        std::fprintf(stderr, "b3launcher: Flatpak sandbox: the host's data folder %s is used; the settings in the sandbox's own %s "
+                     "(no save) are left there\n", utf8_of(a.pref).c_str(), utf8_of(sandbox.left).c_str());
     fs::create_directories(a.pref, ec);
     load_config(config_file(a.pref), a.cfg);
     load_settings(a);
@@ -8175,21 +10289,57 @@ int main(int argc, char** argv) {
         }
     }
     refresh(a);
+    portable_init(a, pref_override);   // portable mode (1.3.0): a move cut short cleaned, the old copy's record read
     // update1: the update check's test hook (an answer file instead of the request) and the day's check, in the
     // background; a --screenshot run never makes a request (its checks feed canned answers)
     if (const char* f = std::getenv("B3LAUNCHER_UPDATE_FILE"); f && *f) a.upd.file = f;
+    a.pads_unfocused = !shot_dir.empty();   // robust2: the checks' virtual pad drives a hidden window
     if (!shot_dir.empty()) a.upd.net = false;
     else if (update::due(a.cfg.update, unix_now())) start_update_check(a);
     if (!a.game.ok) a.page = kGame;   // the first thing to set
     a.in_content = true;              // its first button focused (START GAME, or Choose folder)
+    if (sandbox_note)   // robust2
+        message(a, "Started from Steam's Flatpak",
+                "Steam's Flatpak runs the game in its own sandbox, so the launcher and the game keep their settings, saves and mods in a "
+                "folder of their own: " + utf8_of(a.pref) + ". To use the same data as outside Steam, run this once in a terminal, then "
+                "start the game from Steam again: flatpak override --user --filesystem=~/.local/share/b3port com.valvesoftware.Steam");
+    if (two_note) {   // robust2
+        message(a, "Two data folders",
+                "Steam's Flatpak can reach the data folder you use outside Steam, but the sandbox's own folder holds saves "
+                "too, so it stays in use: " + utf8_of(a.pref) + ". To use the other one from Steam, copy what you want to keep from "
+                "the sandbox's folder into ~/.local/share/b3port/native, then delete the sandbox's folder.");
+        std::ofstream(two_marker) << "told\n";
+    }
+    if (left_note) {   // robust2 review 2
+        message(a, "Sandbox settings left behind",
+                "Steam's Flatpak can now reach the data folder you use outside Steam, so the launcher and the game use it: " +
+                utf8_of(a.pref) + ". The settings written earlier in the sandbox's own folder stay there, unused (the sandbox's "
+                "folder holds no save): " + utf8_of(sandbox.left) + ".");
+        std::ofstream(left_marker) << "told\n";
+    }
 
-    const SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (shot_dir.empty() ? 0 : SDL_WINDOW_HIDDEN);
+    // settingsui: made hidden, sized for the display it opens on, then shown (a check run's window stays hidden)
+    const SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
     a.win = SDL_CreateWindow(("Burnout 3 Launcher - " + std::string(b3port::version()) + " - by u0rhs").c_str(), win_w, win_h, flags);
     if (!a.win) {
         std::fprintf(stderr, "b3launcher: window: %s\n", SDL_GetError());
         return 1;
     }
-    SDL_SetWindowMinimumSize(a.win, 900, 560);
+    {   // settingsui: the size for the display the window is on (larger with room for it: the same 16:9 canvas, sharper),
+        // never larger than its usable area; the minimum 1024x576 (body text 0.8 x, the sidebar's footer clear) or less
+        // on a display smaller than that
+        SDL_Rect usable{};
+        const bool have_usable = SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(a.win), &usable) && usable.w > 0 && usable.h > 0;
+        if (!size_given && shot_dir.empty() && have_usable) {
+            std::tie(win_w, win_h) = default_window_size(usable.w, usable.h);
+            SDL_SetWindowSize(a.win, win_w, win_h);
+            SDL_SetWindowPosition(a.win, SDL_WINDOWPOS_CENTERED_DISPLAY(SDL_GetDisplayForWindow(a.win)),
+                                  SDL_WINDOWPOS_CENTERED_DISPLAY(SDL_GetDisplayForWindow(a.win)));
+        }
+        SDL_SetWindowMinimumSize(a.win, have_usable ? std::min(kMinWindowW, usable.w) : kMinWindowW,
+                                 have_usable ? std::min(kMinWindowH, usable.h) : kMinWindowH);
+        if (shot_dir.empty()) SDL_ShowWindow(a.win);
+    }
     // the B3 icon: beside the launcher (Windows / a release), else the repo's assets/ (a build from the repo)
     SDL_Surface* icon_surface = nullptr;
     for (const fs::path& f : icon_files(a))   // (macpkg1: the .app's Contents/Resources among them)
@@ -8225,8 +10375,10 @@ int main(int argc, char** argv) {
             SDL_free(ids);
         }
     }
+    if (shot_dir.empty()) portable_start_checks(a);   // portable mode: the game's request, the old copy's removal (a question)
     if (shot_dir.empty()) {   // launchskip1: the game at once, unless one of skip_launcher's exceptions holds
         a.skip_block = skip_launcher(skip_input(a, launcher_arg, skip_held(a)));
+        if (a.skip_block == SkipBlock::kNone && a.modal && a.portable.ask) a.skip_block = SkipBlock::kPortable;
         if (a.skip_block == SkipBlock::kNone) {
             std::printf("b3launcher: OPEN THE LAUNCHER AT START is off: starting the game (hold Shift or Back / Select for the launcher)\n");
             begin_skip(a);
@@ -8246,9 +10398,9 @@ int main(int argc, char** argv) {
             a.keys.step(1.0f / 60.0f);
             flow_poll(a);   // remap1
             if (a.now_playing) a.now_playing->set_enabled(a.page == kMusic && a.settings.other_music_apps != 0);   // nowplaying1
-            if (a.flow.state() == b3native::input::RebindFlow::State::Waiting) {   // remap1: a stick pushed to rebind does not move round the page,
-                for (auto& h : a.hold) { h.down = true; h.next = 1e300; }       // not even after it was taken (held: released first)
-                a.trig_l = a.trig_r = true;
+            if (a.flow.state() == b3native::input::RebindFlow::State::Waiting || !launcher_focused(a)) {   // remap1: a stick pushed to rebind does not move round the page,
+                for (auto& h : a.hold) { h.down = true; h.next = 1e300; }       // not even after it was taken (held: released first);
+                a.trig_l = a.trig_r = true;                                      // robust2: nor one held in another window
             } else {
                 poll_pad_nav(a);
             }
@@ -8257,6 +10409,9 @@ int main(int argc, char** argv) {
             poll_child(a);
             poll_update(a);   // update1
             poll_install(a);  // 1.1 one-click updates
+            poll_dj(a);       // 1.3.0 DJ VOICE
+            poll_xbox(a);     // xboximport
+            poll_portable(a); // portable mode
             pads_motion(a);   // pad1
             render(a);
             SDL_RenderPresent(a.ren);
@@ -8265,7 +10420,20 @@ int main(int argc, char** argv) {
     }
     pads_motion(a, true);   // pad1: the triggers free, the sensors off
     end_update_check(a);    // update1
-    if (a.inst.th.joinable()) a.inst.th.join();   // 1.1: an install under way finishes (a swap is never cut short)
+    end_dj_import(a);       // 1.3.0
+    end_xbox_import(a);     // xboximport
+    end_portable_move(a);   // portable mode
+    if (a.inst.th.joinable()) {   // 1.1: an install under way finishes (a swap is never cut short); robust2: a download is stopped
+        cancel_install(a);
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        int step = install_step(a);
+        while (step >= 0 && step < 5 && std::chrono::steady_clock::now() < until) {
+            SDL_Delay(20);
+            step = install_step(a);
+        }
+        if (step >= 5) a.inst.th.join();   // installing (a few renames) or done
+        else a.inst.th.detach();           // a stalled request: left to time out on its own (it owns all it touches)
+    }
     for (SDL_Gamepad* g : a.pads) SDL_CloseGamepad(g);
     if (a.show.tex) SDL_DestroyTexture(a.show.tex);   // photo2
     a.show.view.reset();

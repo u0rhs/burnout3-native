@@ -50,6 +50,18 @@ TEST(a_bound_modifier_is_a_game_key) {   // rebind2: Ctrl can be bound; then a k
     CHECK(!cross(k));
 }
 
+// robust2: player 2 plays with Right Ctrl: holding it does not make player 1's keys window shortcuts
+TEST(the_other_players_bound_ctrl_is_a_game_key) {
+    KeyPad p1;   // the defaults (Z: Cross)
+    KeyPad p2({KeyBinding{SDL_SCANCODE_RCTRL, Ds2::Cross, KeyCtx::Any}});
+    CHECK(!handle_sdl_event(p1, key(SDL_SCANCODE_Z, true, SDL_KMOD_RCTRL)));          // alone: a shortcut, as before
+    CHECK(!cross(p1));
+    CHECK(handle_sdl_event(p1, key(SDL_SCANCODE_Z, true, SDL_KMOD_RCTRL), &p2));      // with player 2's map: the game's
+    CHECK(cross(p1));
+    CHECK(!shortcut_modifiers(p1, SDL_KMOD_RCTRL, &p2) && shortcut_modifiers(p1, SDL_KMOD_LGUI, &p2));
+    CHECK(!handle_sdl_event(p1, key(SDL_SCANCODE_X, true, SDL_KMOD_LGUI), &p2));      // Cmd: still the window's
+}
+
 TEST(focus_loss_releases) {
     KeyPad k;
     handle_sdl_event(k, key(SDL_SCANCODE_Z, true));

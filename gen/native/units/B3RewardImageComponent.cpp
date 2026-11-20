@@ -63,6 +63,7 @@ extern "C" unsigned short * func_003F64D0(void *n0_, int p0, int p1)
         int r0; /* decomp2host T20 */ r0 = func_003F5FB0(p1);
         return func_00271A00(&D_0051BA44, r0);
     }
+    b3host::draft_fall_off("0x003F64D0 reward string: p0 outside 0..3"); /* decomp2host T47: retail leaves the caller's v0 here (b .L003F6584, 0x3F6500) */ return nullptr;
 }
 
 // CB3RewardImageComponent::Construct() -- tiny-function batch (tools/tiny_batch.py, lifted).

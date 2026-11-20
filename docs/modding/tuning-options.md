@@ -5,7 +5,7 @@ physics, boost and score rules, the rivals' driving, cameras, sound, rumble). Th
 order the console shows them: tab, then section, then subsection. Find the row you are looking at under the same
 headings here.
 
-- **Opening the console**: PC SETTINGS > INTERFACE > DEVELOPER > **DEVELOPER MODS** on, then start the game again.
+- **Opening the console**: PC SETTINGS > MODS > DEVELOPER > **DEVELOPER MODS** on, then start the game again.
   From then on **F9** opens the live overlay (in a race or anywhere in the game), and PC SETTINGS has a **DEVELOPER**
   tab with the same pages. How the console works, its keys, search and favourites: [tuning.md](tuning.md).
 - **Changes are live**: a change is written at the next frame. The game uses it where it next reads the value: most are
@@ -1461,7 +1461,7 @@ The bloom per route and the cars' paint and glass values.
 ## RUMBLE
 
 Pad vibration (`Input/rumble.cfg`, one set, read when a jolt fires: a change works at once). On PC you feel it only with
-PC SETTINGS > INTERFACE > CONTROLLER > **RUMBLE** on (off by default; RUMBLE STRENGTH scales it, and the game's
+PC SETTINGS > CONTROLS > FEEDBACK > **RUMBLE** on (off by default; RUMBLE STRENGTH scales it, and the game's
 VIBRATION option in Driver Details still applies). The game's large motor drives the pad's low-frequency motor, its
 small motor the high-frequency one.
 

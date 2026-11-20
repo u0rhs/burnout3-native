@@ -5,12 +5,17 @@
 #include "save_formats.h"
 #include "save_store.h"
 #include "test.h"
+#include "b3port/fileio.h"
+#include <sys/stat.h>
 
+#include <algorithm>
 #include <cstdlib>
+#include <ctime>
 #include <cstring>
 #include <fstream>
 #include <iterator>
 
+#include <sys/wait.h>
 #include <unistd.h>
 
 using namespace b3native::save;
@@ -33,6 +38,14 @@ CardSaveDirectory game_like_save(std::uint8_t seed) {
         return f;
     };
     d.files = {file("icon.sys", 964, 3), file("view.ico", 15234, 5), file("BASLUS-21050", 61772, 11)};
+    // saveflow: a save the game's own check takes (game_save_intact): version 0x10, the word sum before +0xF148 there
+    Bytes& b = d.files[2].content;
+    auto put = [&b](std::size_t o, std::uint32_t v) { for (int i = 0; i < 4; ++i) b[o + i] = static_cast<std::uint8_t>(v >> (8 * i)); };
+    put(0, 0x10);
+    std::uint32_t sum = 0;
+    for (std::size_t o = 0; o < 0xF148; o += 4)
+        sum += std::uint32_t{b[o]} | std::uint32_t{b[o + 1]} << 8 | std::uint32_t{b[o + 2]} << 16 | std::uint32_t{b[o + 3]} << 24;
+    put(0xF148, sum);
     return d;
 }
 
@@ -114,6 +127,25 @@ struct Temp {
     }
     ~Temp() { std::error_code ec; fs::remove_all(root, ec); }
 };
+
+// local noon of a day as Unix time (backup names are local time)
+std::int64_t local_noon(int y, int m, int d) {
+    std::tm tm{};
+    tm.tm_year = y - 1900;
+    tm.tm_mon = m - 1;
+    tm.tm_mday = d;
+    tm.tm_hour = 12;
+    tm.tm_isdst = -1;
+    return static_cast<std::int64_t>(std::mktime(&tm));
+}
+
+std::vector<std::string> backup_names(const fs::path& root) {
+    std::vector<std::string> v;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(root / "backups", ec)) v.push_back(e.path().filename().string());
+    std::sort(v.begin(), v.end());
+    return v;
+}
 
 Bytes read_bytes(const fs::path& p) {
     std::ifstream in(p, std::ios::binary);
@@ -243,6 +275,163 @@ TEST(max_from_mymcplus) {
     CHECK(!read_max(Bytes(100, 0), &err));
 }
 
+TEST(max_padding_past_the_end) {
+    // fsrobust: count 2, 37 unpacked bytes, one 1-byte file: the padding takes the offset to 40, past the end; the
+    // unsigned "bytes left" wrapped and the second record was read outside the buffer
+    Bytes s(37, 0);
+    s[0] = 1;   // the first file: 1 byte
+    std::memcpy(&s[4], "A", 1);
+    s[36] = 0x5A;
+    std::string err;
+    CHECK(!read_max_files(s, 2, "BASLUS-21050", &err) && err.find("ends early") != std::string::npos);
+    auto one = read_max_files(s, 1, "BASLUS-21050", &err);   // the same stream with its true count reads
+    CHECK(one && one->files.size() == 1 && one->files[0].content == Bytes{0x5A});
+    // exactly at the end, and one short of a header
+    CHECK(!read_max_files(Bytes(35, 0), 1, "BASLUS-21050", &err));
+}
+
+TEST(card_file_longer_than_the_card) {
+    // fsrobust: a corrupt entry's length (up to 4 GB) was reserved before the chain was read
+    const Directories dirs = {game_like_save(3)};
+    std::string err;
+    Bytes img = build_card_image(dirs, &err);
+    const std::uint32_t alloc_off = r32(img, 52), root = r32(img, 60);
+    const std::uint32_t dir1 = r32(img, std::size_t{root + alloc_off} * kClusterSize + 2 * 512 + 16);
+    const std::size_t save_entry = std::size_t{dir1 + alloc_off} * kClusterSize + 4 * 512;
+    CHECK(r32(img, save_entry + 4) == dirs[0].files[2].content.size());
+    w32(img, save_entry + 4, 0xFFFFFFF0u);
+    CHECK(!read_card_image(img.data(), img.size(), &err) && err.find("longer than the card") != std::string::npos);
+}
+
+TEST(replace_file_keeps_the_old_one) {
+    // fsrobust: the one way settings, controls, launcher and save files are replaced (include/b3port/fileio.h)
+    Temp t("replace");
+    std::string err;
+    const fs::path f = t.root / "x.ini";
+    CHECK(b3io::replace_file(f, "one\n", &err));
+    CHECK(read_bytes(f) == Bytes({'o', 'n', 'e', '\n'}));
+    CHECK(b3io::replace_file(f, "two", &err) && read_bytes(f) == Bytes({'t', 'w', 'o'}));
+    CHECK(!fs::exists(t.root / "x.ini.tmp"));
+    // a folder that cannot be written: false, the old file as it was, no .tmp left
+    ::chmod(t.root.c_str(), 0555);
+    const bool locked = !std::ofstream(t.root / "probe");   // (root ignores the mode: the check is skipped)
+    if (locked) {
+        CHECK(!b3io::replace_file(f, "three", &err) && !err.empty());
+        CHECK(read_bytes(f) == Bytes({'t', 'w', 'o'}));
+        CHECK(!fs::exists(t.root / "x.ini.tmp"));
+    }
+    ::chmod(t.root.c_str(), 0755);
+    // UTF-8 names (Windows: opened wide)
+    const fs::path u = b3io::u8path("J\xC3\xBCrgen Jos\xC3\xA9 \xE6\x9D\xB1\xE4\xBA\xAC");
+    fs::create_directories(t.root / u);
+    CHECK(b3io::replace_file(t.root / u / "pc_settings.ini", "x", &err));
+    std::FILE* r = b3io::fopen(t.root / u / "pc_settings.ini", "rb");
+    CHECK(r != nullptr);
+    if (r) std::fclose(r);
+    CHECK(b3io::u8string(u) == "J\xC3\xBCrgen Jos\xC3\xA9 \xE6\x9D\xB1\xE4\xBA\xAC");
+    // not UTF-8: read as Latin-1, never a throw
+    CHECK(b3io::u8string(b3io::u8path("caf\xE9")) == "caf\xC3\xA9");
+    CHECK(b3io::latin1_to_utf8("\xC9") == "\xC3\x89");
+}
+
+TEST(failed_save_keeps_the_backups) {
+    // fsrobust (the memory card review): a save that cannot be written keeps profile-N.sav and every backup, and its
+    // retries do not rotate the good backups out
+    Temp t("failsave");
+    std::string err;
+    for (int k = 0; k < 4; ++k) CHECK(store_profile(t.root, 2, {game_like_save(10 + k)}, &err));
+    auto backups = [&] {
+        std::vector<std::string> v;
+        std::error_code ec;
+        for (const auto& e : fs::directory_iterator(t.root / "backups", ec)) v.push_back(e.path().filename().string());
+        std::sort(v.begin(), v.end());
+        return v;
+    };
+    const std::vector<std::string> before = backups();
+    CHECK(before.size() == 3);
+    const Bytes sav = read_bytes(profile_file(t.root, 2));
+    ::chmod(t.root.c_str(), 0555);
+    const bool locked = !std::ofstream(t.root / "probe");
+    if (locked) {
+        for (int k = 0; k < 15; ++k) CHECK(!store_profile(t.root, 2, {game_like_save(20)}, &err));
+        CHECK(!err.empty());
+        CHECK(backups() == before);
+        CHECK(read_bytes(profile_file(t.root, 2)) == sav);
+        CHECK(!fs::exists(b3io::tmp_beside(profile_file(t.root, 2))));
+    }
+    ::chmod(t.root.c_str(), 0755);
+    // writable again: saved, and the file it replaced kept once
+    CHECK(store_profile(t.root, 2, {game_like_save(20)}, &err));
+    CHECK(backups().size() == 4);
+    // the same save again (the game saving the same bytes): nothing written, no copy of it
+    const auto mtime = fs::last_write_time(profile_file(t.root, 2));
+    CHECK(store_profile(t.root, 2, {game_like_save(20)}, &err));
+    CHECK(store_profile(t.root, 2, {game_like_save(20)}, &err));
+    CHECK(backups().size() == 4);
+    CHECK(fs::last_write_time(profile_file(t.root, 2)) == mtime);
+}
+
+TEST(backups_keep_older_days) {
+    // fsrobust: autosaves cannot push every older save out: the newest 8, and the first of each of the last 3 days
+    Temp t("backupdays");
+    std::string err;
+    CHECK(store_profile(t.root, 1, {game_like_save(1)}, &err));
+    for (int day = 1; day <= 4; ++day)
+        for (int k = 0; k < (day == 4 ? 12 : 5); ++k) CHECK(!backup_profile(t.root, 1, local_noon(2026, 11, day) + 60 * k).empty());
+    const std::vector<std::string> names = backup_names(t.root);
+    CHECK(names.size() == 8 + 3);   // day 4's newest 8 and its first, the first of days 3 and 2; day 1 gone
+    CHECK(std::count(names.begin(), names.end(), "profile-1-20261104-120000.sav") == 1);
+    CHECK(std::count(names.begin(), names.end(), "profile-1-20261103-120000.sav") == 1);
+    CHECK(std::count(names.begin(), names.end(), "profile-1-20261102-120000.sav") == 1);
+    CHECK(std::none_of(names.begin(), names.end(), [](const std::string& n) { return n.rfind("profile-1-20261101", 0) == 0; }));
+    CHECK(std::none_of(names.begin(), names.end(), [](const std::string& n) { return n == "profile-1-20261103-120100.sav"; }));
+    // the same second twice: "-2" is the newer one (the names sorted it first)
+    Temp u("backupsame");
+    CHECK(store_profile(u.root, 1, {game_like_save(1)}, &err));
+    for (int k = 0; k < 10; ++k) CHECK(!backup_profile(u.root, 1, local_noon(2026, 11, 5)).empty());
+    const std::vector<std::string> same = backup_names(u.root);
+    CHECK(same.size() == 9);
+    CHECK(std::count(same.begin(), same.end(), "profile-1-20261105-120000.sav") == 1);    // the day's first stays
+    CHECK(std::count(same.begin(), same.end(), "profile-1-20261105-120000-10.sav") == 1); // and the newest
+    CHECK(std::count(same.begin(), same.end(), "profile-1-20261105-120000-2.sav") == 0);  // the second, rotated out
+}
+
+TEST(missing_save_folder_not_made) {
+    // fsrobust: a chosen save folder that has gone (a network folder not connected) is an error, never a new local
+    // folder in its place
+    Temp t("missing");
+    std::string err;
+    const fs::path gone = t.root / "nas" / "B3 saves";
+    CHECK(!store_profile(gone, 1, {game_like_save(1)}, &err) && err.find("not there") != std::string::npos);
+    CHECK(!write_active_slot(gone, 2, &err));
+    write_bytes(t.root / "in.psu", write_psu(game_like_save(9)));
+    CHECK(!import_profile(gone, 1, t.root / "in.psu", 1793762859, &err));
+    CHECK(!fs::exists(t.root / "nas"));
+    CHECK(!saves_root_ready(gone, false, &err) && !fs::exists(gone));
+    CHECK(saves_root_ready(gone, true, &err) && fs::is_directory(gone));   // the default (or a named) folder: made
+    CHECK(store_profile(gone, 1, {game_like_save(1)}, &err));
+}
+
+TEST(import_keeps_the_old_save) {
+    // fsrobust: the import's .bak copy is checked, and the old save is kept with the backups too
+    Temp t("importbak");
+    std::string err;
+    CHECK(store_profile(t.root, 1, {game_like_save(1)}, &err));
+    const Bytes old = read_bytes(profile_file(t.root, 1));
+    write_bytes(t.root / "in.psu", write_psu(game_like_save(9)));
+    CHECK(import_profile(t.root, 1, t.root / "in.psu", 1793762859, &err));
+    CHECK(read_bytes(t.root / "profile-1.sav.bak") == old);
+    const std::vector<std::string> names = backup_names(t.root);
+    CHECK(names.size() == 1 && read_bytes(t.root / "backups" / names[0]) == old);
+    // the .bak cannot be written (a folder in its place): nothing changes
+    const Bytes now = read_bytes(profile_file(t.root, 1));
+    fs::remove(t.root / "profile-1.sav.bak");
+    fs::create_directories(t.root / "profile-1.sav.bak" / "x");
+    write_bytes(t.root / "in2.psu", write_psu(game_like_save(10)));
+    CHECK(!import_profile(t.root, 1, t.root / "in2.psu", 1793762859, &err) && err.find(".bak") != std::string::npos);
+    CHECK(read_bytes(profile_file(t.root, 1)) == now);
+}
+
 TEST(read_any_and_game_save) {
     Temp t("any");
     std::string err;
@@ -299,16 +488,19 @@ TEST(read_any_and_game_save) {
 }
 
 TEST(save_backups) {
-    // mac5 (proposal 1): the old profile-N.sav is copied to backups/ before it is replaced; the newest 10 per slot stay
+    // mac5 (proposal 1): the old profile-N.sav is copied to backups/ before it is replaced; fsrobust: the newest 8 per
+    // slot stay, and the first of the day (13 on one day: 8 + 1)
     Temp t("backups");
     std::string err;
-    CHECK(backup_profile(t.root, 1, 1794211789).empty());          // no file yet: nothing to keep
+    const std::int64_t noon = local_noon(2026, 11, 8);
+    CHECK(backup_profile(t.root, 1, noon).empty());                 // no file yet: nothing to keep
     CHECK(store_profile(t.root, 1, {game_like_save(1)}, &err));     // the first save: no backup
     CHECK(!fs::exists(t.root / "backups") || fs::is_empty(t.root / "backups"));
-    for (int k = 0; k < 13; ++k) CHECK(!backup_profile(t.root, 1, 1794211789 + k).empty());
+    for (int k = 0; k < 13; ++k) CHECK(!backup_profile(t.root, 1, noon + k).empty());
     std::size_t n = 0;
     for (const auto& e : fs::directory_iterator(t.root / "backups")) n += e.path().filename().string().rfind("profile-1-", 0) == 0;
-    CHECK(n == kKeepBackups);
+    CHECK(n == kKeepBackups + 1);
+    CHECK(fs::exists(t.root / "backups" / "profile-1-20261108-120000.sav"));   // the day's first
     // a backup reads back as the save it kept; another slot's files are not counted against slot 1
     CHECK(store_profile(t.root, 3, {game_like_save(3)}, &err) && store_profile(t.root, 3, {game_like_save(4)}, &err));
     std::size_t three = 0;
@@ -375,6 +567,161 @@ TEST(store_profiles) {
 
 // The card the game sees: a save written page by page through the device lands in profile-N.sav once the card is quiet,
 // byte for byte; the next start presents it again.
+TEST(profile_card_failed_save_notice) {
+    // fsrobust: a settled save that cannot be written says so once (the window's notice: pcpage.cpp save_alert), is
+    // retried, and says so again when it is written
+    Temp t("cardfail");
+    setenv("B3NATIVE_CARD_PERSIST", "1", 1);
+    unsetenv("B3NATIVE_CARD_FILE_TIME");
+    unsetenv("B3NATIVE_CARD_CLOCK");
+    std::string err;
+    const Bytes written = build_card_image({game_like_save(8)}, &err);
+    ProfileCard card(t.root);
+    CHECK(card.attach(1, &err));
+    for (std::uint32_t pg = 0; pg < kPageCount; pg += 16)
+        if (std::memcmp(&written[std::size_t{pg} * 512], &card.device().image()[std::size_t{pg} * 512], 16 * 512) != 0)
+            card.device().write_pages(pg, &written[std::size_t{pg} * 512], 16 * 512);
+    card.tick(1000);
+    ::chmod(t.root.c_str(), 0555);
+    if (!std::ofstream(t.root / "probe")) {   // (root ignores the mode: the check is skipped)
+        card.tick(1000 + ProfileCard::kSettleVBlanks);
+        CHECK(card.status().serial == 1 && !card.status().ok && card.status().text.rfind(ProfileCard::kSaveFailed, 0) == 0);
+        std::uint64_t v = 1000 + ProfileCard::kSettleVBlanks;
+        v += ProfileCard::kRetryVBlanks;
+        card.tick(v);   // the retry fails too: no second notice yet
+        CHECK(card.status().serial == 1);
+        v += ProfileCard::kRetryVBlanks;
+        card.tick(v);
+        CHECK(card.status().serial == 1);
+        v += ProfileCard::kRetryVBlanks;
+        card.tick(v);   // the 4th failure (30 s on): the notice again
+        CHECK(card.status().serial == 2 && card.status().text.rfind(ProfileCard::kSaveFailed, 0) == 0);
+        CHECK(!fs::exists(profile_file(t.root, 1)));
+        ::chmod(t.root.c_str(), 0755);
+        card.tick(v + ProfileCard::kRetryVBlanks);
+        CHECK(fs::exists(profile_file(t.root, 1)));
+        CHECK(card.status().serial == 3 && card.status().ok);
+    }
+    ::chmod(t.root.c_str(), 0755);
+}
+
+TEST(profile_card_not_saved_at_exit) {
+    // fsrobust: the session ends with a settled save the save folder will not take: NOT SAVED in the status and the
+    // log, a copy in the rescue folder, and what to tell the player
+    Temp t("cardrescue");
+    setenv("B3NATIVE_CARD_PERSIST", "1", 1);
+    unsetenv("B3NATIVE_CARD_FILE_TIME");
+    unsetenv("B3NATIVE_CARD_CLOCK");
+    std::string err;
+    const fs::path saves = t.root / "saves", rescue = t.root / "unsaved";
+    fs::create_directories(saves);
+    const Bytes written = build_card_image({game_like_save(8)}, &err);
+    ProfileCard card(saves);
+    CHECK(card.attach(1, &err));
+    for (std::uint32_t pg = 0; pg < kPageCount; pg += 16)
+        if (std::memcmp(&written[std::size_t{pg} * 512], &card.device().image()[std::size_t{pg} * 512], 16 * 512) != 0)
+            card.device().write_pages(pg, &written[std::size_t{pg} * 512], 16 * 512);
+    card.tick(1000);
+    ::chmod(saves.c_str(), 0555);
+    if (!std::ofstream(saves / "probe")) {
+        card.tick(1000 + ProfileCard::kSettleVBlanks);   // settled; the flush fails
+        CHECK(!card.writing());
+        const std::string said = card.flush_at_exit(rescue);
+        CHECK(said.find("could not be written") != std::string::npos && said.find(b3io::u8string(rescue)) != std::string::npos);
+        CHECK(card.status().text.find("NOT SAVED AT EXIT") != std::string::npos);
+        std::size_t copies = 0;
+        for (const auto& e : fs::directory_iterator(rescue)) {
+            ++copies;
+            auto kept = read_sav_file(e.path(), &err);
+            CHECK(kept && kept->size() == 1 && (*kept)[0] == game_like_save(8));
+        }
+        CHECK(copies == 1);
+    }
+    ::chmod(saves.c_str(), 0755);
+}
+
+TEST(profile_card_exit_mid_save) {
+    // fsrobust: the session ends while the game is still writing its save: the half-written card does not replace the
+    // last complete save (it goes beside it); a settled card is written as usual
+    Temp t("cardexit");
+    setenv("B3NATIVE_CARD_PERSIST", "1", 1);
+    unsetenv("B3NATIVE_CARD_FILE_TIME");
+    unsetenv("B3NATIVE_CARD_CLOCK");
+    std::string err;
+    const Bytes written = build_card_image({game_like_save(8)}, &err);
+    ProfileCard card(t.root);
+    CHECK(card.attach(1, &err));
+    auto write_all = [&](const Bytes& img) {
+        for (std::uint32_t pg = 0; pg < kPageCount; pg += 16)
+            if (std::memcmp(&img[std::size_t{pg} * 512], &card.device().image()[std::size_t{pg} * 512], 16 * 512) != 0)
+                card.device().write_pages(pg, &img[std::size_t{pg} * 512], 16 * 512);
+    };
+    write_all(written);
+    card.tick(1000);
+    card.tick(1000 + ProfileCard::kSettleVBlanks);   // settled: written
+    const Bytes good = read_bytes(profile_file(t.root, 1));
+    CHECK(!card.writing());
+    // the next save begins: some pages written, then the session ends
+    const Bytes next = build_card_image({game_like_save(9)}, &err);
+    card.device().write_pages(64, &next[64 * 512], 16 * 512);
+    card.tick(2000);
+    CHECK(card.writing());
+    const std::string said = card.flush_at_exit(t.root / "unsaved");
+    CHECK(said.find("still saving") != std::string::npos);
+    CHECK(read_bytes(profile_file(t.root, 1)) == good);
+    CHECK(fs::exists(t.root / "profile-1.sav.unfinished"));
+    // settled before the end: written, nothing to say
+    write_all(next);
+    card.tick(3000);
+    card.tick(3000 + ProfileCard::kSettleVBlanks - 1);
+    CHECK(card.writing());
+    card.tick(3000 + ProfileCard::kSettleVBlanks);
+    CHECK(!card.writing() && card.flush_at_exit(t.root / "unsaved").empty());
+    auto stored = read_sav_file(profile_file(t.root, 1), &err);
+    CHECK(stored && stored->size() == 1 && (*stored)[0] == game_like_save(9));
+}
+
+TEST(profile_card_exit_throwaway) {
+    // a replay's throwaway card: its last write under kSettleVBlanks before the end (still saving) and a save folder
+    // that will not take the save leave no notice, no .unfinished, no rescue copy and no SAVE FAILED status
+    Temp t("cardthrow");
+    setenv("B3NATIVE_CARD_PERSIST", "1", 1);
+    unsetenv("B3NATIVE_CARD_FILE_TIME");
+    unsetenv("B3NATIVE_CARD_CLOCK");
+    std::string err;
+    const fs::path saves = t.root / "saves", rescue = t.root / "unsaved";
+    fs::create_directories(saves);
+    const Bytes written = build_card_image({game_like_save(8)}, &err);
+    {
+        ProfileCard card(saves);
+        CHECK(card.attach(1, &err));
+        card.device().write_pages(64, &written[64 * 512], 16 * 512);
+        card.tick(1000);
+        card.tick(1000 + ProfileCard::kSettleVBlanks - 1);   // the replay ends 59 VBlanks after the write
+        CHECK(card.writing());
+        const std::uint64_t serial = card.status().serial;
+        CHECK(card.flush_at_exit(rescue, true).empty());
+        CHECK(!card.writing());
+        CHECK(card.status().serial == serial);
+        CHECK(!fs::exists(saves / "profile-1.sav.unfinished"));
+        CHECK(!fs::exists(rescue));
+    }   // (the destructor writes nothing either)
+    CHECK(!fs::exists(saves / "profile-1.sav.unfinished") && !fs::exists(rescue));
+    // settled, but the folder will not take it: no rescue copy
+    ProfileCard card(saves);
+    CHECK(card.attach(1, &err));
+    card.device().write_pages(64, &written[64 * 512], 16 * 512);
+    card.tick(2000);
+    ::chmod(saves.c_str(), 0555);
+    if (!std::ofstream(saves / "probe")) {
+        card.tick(2000 + ProfileCard::kSettleVBlanks);
+        CHECK(card.flush_at_exit(rescue, true).empty());
+        CHECK(!fs::exists(rescue));
+        CHECK(card.status().text.find("NOT SAVED AT EXIT") == std::string::npos);
+    }
+    ::chmod(saves.c_str(), 0755);
+}
+
 TEST(profile_card_writes_back) {
     Temp t("card");
     setenv("B3NATIVE_CARD_PERSIST", "1", 1);
@@ -401,9 +748,10 @@ TEST(profile_card_writes_back) {
         auto stored = read_sav_file(profile_file(t.root, 1), &err);
         CHECK(stored && stored->size() == 1 && (*stored)[0] == save);
         // export: the game's save as a .sav anywhere
+        CHECK(card.status().serial == 1 && card.status().ok && card.status().text == ProfileCard::kSaved);   // saveflow: the bubble
         card.post(ProfileCard::Request::kExport, t.root / "out" / "mine.sav");
         card.tick(2000);
-        CHECK(card.status().serial == 1 && card.status().ok);
+        CHECK(card.status().serial == 2 && card.status().ok);
         auto exported = read_sav_file(t.root / "out" / "mine.sav", &err);
         CHECK(exported && exported->size() == 1 && (*exported)[0] == save);
     }
@@ -411,20 +759,25 @@ TEST(profile_card_writes_back) {
         ProfileCard again(t.root);
         CHECK(again.attach(1, &err) && again.source() == ProfileSource::kSav);
         CHECK(again.device().image() == written);   // the same card image the game left
-        // import: profile-1.sav replaced; the running game's later saves no longer written (they would overwrite it)
+        // import: profile-1.sav replaced; the running game's later saves no longer written over it (saveflow: they go
+        // beside it, profile-1-unsaved-<stamp>.sav, and each says so)
         write_bytes(t.root / "in.psu", write_psu(game_like_save(9)));
         again.post(ProfileCard::Request::kImport, t.root / "in.psu");
         again.tick(10);
-        CHECK(again.status().ok && !again.persist());
+        CHECK(again.status().ok && again.persist() && !again.side_file().empty());
         CHECK(again.device().write_pages(100, &written[100 * 512], 512));
         again.tick(10 + 2 * ProfileCard::kSettleVBlanks);
+        again.tick(10 + 4 * ProfileCard::kSettleVBlanks);
         auto now = read_sav_file(profile_file(t.root, 1), &err);
         CHECK(now && same_files((*now)[0], game_like_save(9)));
+        auto side = read_sav_file(again.side_file(), &err);
+        CHECK(side && side->size() == 1 && (*side)[0] == save);
+        CHECK(!again.status().ok && again.status().text.rfind(ProfileCard::kNotSaved, 0) == 0);
         // a file without the game's save: the import fails and says so
         write_bytes(t.root / "other.psu", write_psu(other_save()));
         again.post(ProfileCard::Request::kImport, t.root / "other.psu");
         again.tick(500);
-        CHECK(again.status().serial == 2 && !again.status().ok && again.status().text.find("IMPORT FAILED") == 0);
+        CHECK(!again.status().ok && again.status().text.find("IMPORT FAILED") == 0);
     }
     // an unreadable save file: an empty card, nothing written over the file
     {
@@ -432,7 +785,7 @@ TEST(profile_card_writes_back) {
         write_bytes(profile_file(u.root, 1), Bytes{'B', '3', 'P', 'S', 'A', 'V', 'E', '1', 9, 9});
         ProfileCard card(u.root);
         CHECK(!card.attach(1, &err) && card.device().attached() && !card.persist());
-        CHECK(card.status().text.find("UNREADABLE") != std::string::npos);
+        CHECK(card.status().text.rfind(ProfileCard::kNotSaved, 0) == 0 && card.status().text.find("CAN'T READ PROFILE-1.SAV") != std::string::npos);
         CHECK(card.device().write_pages(0, written.data(), 16 * 512));
         card.tick(0);
         card.tick(1000);
@@ -530,4 +883,421 @@ TEST(pcsx2_card_folders_found) {
     CHECK(found.size() == 1 && found[0].path == h.documents / "PCSX2" / "memcards");
 }
 
-TEST_MAIN("save formats: .sav, card images, .psu, .max, folder cards, the save folder, the card's write-back")
+// ---- saveflow (2026-11-20) ----
+namespace {
+// the game's writes of `written` (a card image) to the card, 16 pages at a time where it differs
+void game_writes(ProfileCard& card, const Bytes& written) {
+    for (std::uint32_t pg = 0; pg < kPageCount; pg += 16)
+        if (std::memcmp(&written[std::size_t{pg} * 512], &card.device().image()[std::size_t{pg} * 512], 16 * 512) != 0)
+            card.device().write_pages(pg, &written[std::size_t{pg} * 512], 16 * 512);
+}
+Bytes& game_file(CardSaveDirectory& d) { return d.files[2].content; }   // BASLUS-21050 in game_like_save's
+std::vector<std::string> names_in(const fs::path& root, const std::string& prefix) {
+    std::vector<std::string> v;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(root, ec))
+        if (e.path().filename().string().rfind(prefix, 0) == 0) v.push_back(e.path().filename().string());
+    std::sort(v.begin(), v.end());
+    return v;
+}
+void write_lock(const fs::path& root, const FolderLock& l) {
+    std::ofstream(root / "game.lock", std::ios::binary) << "pid=" << l.pid << "\nhost=" << l.host << "\nboot=" << l.boot
+                                                         << "\nstart=" << l.start << "\nslot=" << l.slot << "\nsince=" << l.since << "\n";
+}
+}  // namespace
+
+TEST(game_save_intact_synthetic) {
+    // the game's own load check [C func_00421700]: version 0x10, the checksum; a size the game never writes
+    std::string why;
+    const CardSaveDirectory good = game_like_save(3);
+    CHECK(game_save_intact({good}, &why));
+    CardSaveDirectory bad = good;
+    game_file(bad)[0x1234] ^= 0x01;   // one bit in the data: the sum does not match
+    CHECK(!game_save_intact({bad}, &why) && why.find("checksum") != std::string::npos);
+    bad = good;
+    game_file(bad)[0xF148] ^= 0x80;   // the stored sum itself
+    CHECK(!game_save_intact({bad}, &why) && why.find("checksum") != std::string::npos);
+    bad = good;
+    game_file(bad)[0] = 0x11;
+    CHECK(!game_save_intact({bad}, &why) && why.find("version") != std::string::npos);
+    bad = good;
+    game_file(bad).resize(61000);
+    CHECK(!game_save_intact({bad}, &why) && why.find("bytes") != std::string::npos);
+    CHECK(!game_save_intact({other_save()}, &why));
+    // the bytes past the checksum are not in it (the game does not sum them)
+    CardSaveDirectory tail = good;
+    game_file(tail)[0xF14C] ^= 0xFF;
+    CHECK(game_save_intact({tail}, &why));
+}
+
+TEST(game_save_intact_real_saves) {
+    // every real save there is (B3_REAL_SAVES: paths separated by ':' -- a .sav, .psu, .max, a PCSX2 card or folder
+    // card, the port's save folder's profile folder -- read only, never written): each the game takes, and each with
+    // one bit changed it would call corrupt. None given: skipped.
+    const char* e = std::getenv("B3_REAL_SAVES");
+    if (!e || !*e) {
+        std::printf("  (B3_REAL_SAVES not set: no real save checked)\n");
+        return;
+    }
+    const std::string list = e;
+    int checked = 0;
+    for (std::size_t a = 0; a <= list.size();) {
+        std::size_t b = list.find(':', a);
+        if (b == std::string::npos) b = list.size();
+        const fs::path p = list.substr(a, b - a);
+        a = b + 1;
+        if (p.empty()) continue;
+        std::string err, why;
+        const auto all = read_any(p, &err);
+        CHECK(all.has_value());
+        if (!all) { std::printf("  %s: does not read: %s\n", p.string().c_str(), err.c_str()); continue; }
+        auto game = game_save(*all, &err);
+        CHECK(game.has_value());
+        if (!game) { std::printf("  %s: no game save: %s\n", p.string().c_str(), err.c_str()); continue; }
+        const bool ok = game_save_intact(*game, &why);
+        std::printf("  %s: %s%s\n", p.string().c_str(), ok ? "intact" : "DAMAGED: ", ok ? "" : why.c_str());
+        CHECK(ok);
+        for (auto& d : *game)
+            for (auto& f : d.files)
+                if (f.name == kGameSaveDirectory && f.content.size() > 0x200) f.content[0x200] ^= 0x04;
+        CHECK(!game_save_intact(*game, &why));
+        ++checked;
+    }
+    std::printf("  %d real saves checked\n", checked);
+    CHECK(checked > 0);
+}
+
+TEST(corrupt_save_refused_and_reported) {
+    // a save the game would call corrupt: not imported; the launcher's profile_problem names it; the game's card is
+    // empty, nothing written over the file, and a copy kept (profile-1-unreadable-<stamp>.sav, once per content)
+    Temp t("corrupt");
+    setenv("B3NATIVE_CARD_PERSIST", "1", 1);
+    unsetenv("B3NATIVE_CARD_FILE_TIME");
+    unsetenv("B3NATIVE_CARD_CLOCK");
+    std::string err;
+    CardSaveDirectory bad = game_like_save(4);
+    game_file(bad)[0x40] ^= 0x10;
+    write_bytes(t.root / "bad.psu", write_psu(bad));
+    CHECK(store_profile(t.root, 2, {game_like_save(5)}, &err));
+    const Bytes before = read_bytes(profile_file(t.root, 2));
+    CHECK(!import_profile(t.root, 2, t.root / "bad.psu", 1793762859, &err) && err.find("damaged") != std::string::npos);
+    CHECK(read_bytes(profile_file(t.root, 2)) == before && !fs::exists(t.root / "profile-2.sav.bak"));
+    CHECK(profile_problem(t.root, 2).empty());
+    CHECK(profile_problem(t.root, 3).empty());   // an empty slot is fine
+    CHECK(store_profile(t.root, 1, {bad}, &err));
+    const Bytes damaged = read_bytes(profile_file(t.root, 1));
+    CHECK(profile_problem(t.root, 1).find("checksum") != std::string::npos);
+    write_bytes(profile_file(t.root, 3), Bytes{'n', 'o', 'p', 'e'});
+    CHECK(!profile_problem(t.root, 3).empty());
+    for (int run = 0; run < 2; ++run) {
+        ProfileCard card(t.root);
+        CHECK(!card.attach(1, &err) && card.device().attached() && !card.persist());
+        CHECK(card.status().text.rfind(ProfileCard::kNotSaved, 0) == 0);
+        game_writes(card, build_card_image({game_like_save(6)}, &err));
+        card.tick(1000);
+        card.tick(1000 + ProfileCard::kSettleVBlanks);
+        CHECK(card.status().serial == 2 && card.status().text.rfind(ProfileCard::kNotSaved, 0) == 0);   // told again at the save
+    }
+    CHECK(read_bytes(profile_file(t.root, 1)) == damaged);
+    const auto kept = names_in(t.root, "profile-1-unreadable-");
+    CHECK(kept.size() == 1 && read_bytes(t.root / kept[0]) == damaged);   // one copy for two runs
+}
+
+TEST(changed_on_disk_not_overwritten) {
+    // profile-1.sav changed on the disk since the game loaded it (save_tool import, another game, a sync client): the
+    // game's next save goes to profile-1-unsaved-<stamp>.sav and says so; a touch alone (the same bytes) changes nothing
+    Temp t("changed");
+    setenv("B3NATIVE_CARD_PERSIST", "1", 1);
+    unsetenv("B3NATIVE_CARD_FILE_TIME");
+    unsetenv("B3NATIVE_CARD_CLOCK");
+    std::string err;
+    CHECK(store_profile(t.root, 1, {game_like_save(1)}, &err));
+    ProfileCard card(t.root);
+    CHECK(card.attach(1, &err));
+    std::uint64_t v = 100;
+    auto settle = [&] {
+        card.tick(v);
+        v += ProfileCard::kSettleVBlanks;
+        card.tick(v);
+        v += 10;
+    };
+    game_writes(card, build_card_image({game_like_save(2)}, &err));
+    settle();
+    auto now = read_sav_file(profile_file(t.root, 1), &err);
+    CHECK(now && same_files((*now)[0], game_like_save(2)) && card.side_file().empty());
+    // touched: the same bytes, a new time
+    fs::last_write_time(profile_file(t.root, 1), fs::last_write_time(profile_file(t.root, 1)) + std::chrono::hours(1));
+    game_writes(card, build_card_image({game_like_save(3)}, &err));
+    settle();
+    now = read_sav_file(profile_file(t.root, 1), &err);
+    CHECK(now && same_files((*now)[0], game_like_save(3)) && card.side_file().empty());
+    // replaced outside the game
+    CHECK(store_profile(t.root, 1, {game_like_save(7)}, &err));
+    const Bytes outside = read_bytes(profile_file(t.root, 1));
+    game_writes(card, build_card_image({game_like_save(4)}, &err));
+    settle();
+    CHECK(read_bytes(profile_file(t.root, 1)) == outside);
+    CHECK(!card.side_file().empty() && card.side_file().filename().string().rfind("profile-1-unsaved-", 0) == 0);
+    auto side = read_sav_file(card.side_file(), &err);
+    CHECK(side && same_files((*side)[0], game_like_save(4)));
+    CHECK(!card.status().ok && card.status().text.rfind(ProfileCard::kNotSaved, 0) == 0 &&
+          card.status().text.find("CHANGED OUTSIDE THE GAME") != std::string::npos);
+    // removed outside the game: also a change (never made again over what someone chose)
+    Temp u("removed");
+    CHECK(store_profile(u.root, 1, {game_like_save(1)}, &err));
+    ProfileCard c2(u.root);
+    CHECK(c2.attach(1, &err));
+    fs::remove(profile_file(u.root, 1));
+    game_writes(c2, build_card_image({game_like_save(2)}, &err));
+    c2.tick(10);
+    c2.tick(10 + ProfileCard::kSettleVBlanks);
+    CHECK(!fs::exists(profile_file(u.root, 1)) && !c2.side_file().empty() && fs::exists(c2.side_file()));
+}
+
+TEST(held_file_never_redirects) {
+    // Fable: a read of profile-1.sav that fails or comes back short (a sync client or a scanner holding it) is not a
+    // change: the save fails into the SAVE FAILED retry, nothing goes to -unsaved-, and the retry writes profile-1.sav
+    Temp t("held");
+    setenv("B3NATIVE_CARD_PERSIST", "1", 1);
+    unsetenv("B3NATIVE_CARD_FILE_TIME");
+    unsetenv("B3NATIVE_CARD_CLOCK");
+    std::string err;
+    CHECK(store_profile(t.root, 1, {game_like_save(1)}, &err));
+    ProfileCard card(t.root);
+    CHECK(card.attach(1, &err));
+    const Bytes before = read_bytes(profile_file(t.root, 1));
+    // short reads, every try of one save
+    card.fail_reads_for_test = ProfileCard::kMarkTries;
+    game_writes(card, build_card_image({game_like_save(2)}, &err));
+    std::uint64_t v = 100;
+    card.tick(v);
+    v += ProfileCard::kSettleVBlanks;
+    card.tick(v);
+    CHECK(card.side_file().empty() && read_bytes(profile_file(t.root, 1)) == before);
+    CHECK(!card.status().ok && card.status().text.rfind(ProfileCard::kSaveFailed, 0) == 0);
+    CHECK(names_in(t.root, "profile-1-unsaved-").empty());
+    v += ProfileCard::kRetryVBlanks;
+    card.tick(v);   // the retry reads it whole: unchanged, written
+    auto now = read_sav_file(profile_file(t.root, 1), &err);
+    CHECK(now && same_files((*now)[0], game_like_save(2)) && card.side_file().empty());
+    CHECK(card.status().ok);
+    // short for some tries only: the same save goes through at once
+    card.fail_reads_for_test = ProfileCard::kMarkTries - 1;
+    game_writes(card, build_card_image({game_like_save(3)}, &err));
+    v += 10;
+    card.tick(v);
+    v += ProfileCard::kSettleVBlanks;
+    card.tick(v);
+    now = read_sav_file(profile_file(t.root, 1), &err);
+    CHECK(now && same_files((*now)[0], game_like_save(3)) && card.side_file().empty());
+    // a file that cannot be opened at all (its permissions): the same, never a redirect
+    ::chmod(profile_file(t.root, 1).c_str(), 0);
+    if (!std::ifstream(profile_file(t.root, 1))) {   // (root ignores the mode: the check is skipped)
+        game_writes(card, build_card_image({game_like_save(4)}, &err));
+        v += 10;
+        card.tick(v);
+        v += ProfileCard::kSettleVBlanks;
+        card.tick(v);
+        CHECK(card.side_file().empty() && names_in(t.root, "profile-1-unsaved-").empty());
+        CHECK(card.status().text.rfind(ProfileCard::kSaveFailed, 0) == 0);
+        ::chmod(profile_file(t.root, 1).c_str(), 0644);
+        v += ProfileCard::kRetryVBlanks;
+        card.tick(v);
+        now = read_sav_file(profile_file(t.root, 1), &err);
+        CHECK(now && same_files((*now)[0], game_like_save(4)) && card.side_file().empty());
+    }
+    ::chmod(profile_file(t.root, 1).c_str(), 0644);
+}
+
+TEST(use_unsaved_progress) {
+    // the launcher's "Use it" on a save the game put beside profile-1.sav: the newest first; it becomes profile-1.sav as an
+    // import (the current one kept as .bak and in backups/); refused while a game here plays from the folder
+    Temp t("useunsaved");
+    std::string err;
+    CHECK(store_profile(t.root, 1, {game_like_save(1)}, &err));
+    const Bytes current = read_bytes(profile_file(t.root, 1));
+    write_bytes(t.root / "profile-1-unsaved-20261119-200000.sav", write_sav({game_like_save(2)}));
+    write_bytes(t.root / "profile-1-unsaved-20261120-101500.sav", write_sav({game_like_save(3)}));
+    write_bytes(t.root / "profile-2-unsaved-20261120-101500.sav", write_sav({game_like_save(4)}));
+    write_bytes(t.root / "profile-1-unsaved-notes.txt", Bytes{1});
+    const auto list = unsaved_saves(t.root, 1);
+    CHECK(list.size() == 2 && list[0].filename() == "profile-1-unsaved-20261120-101500.sav" &&
+          list[1].filename() == "profile-1-unsaved-20261119-200000.sav");
+    CHECK(unsaved_saves(t.root, 3).empty());
+    // a game playing from the folder: refused, nothing changed
+    CHECK(acquire_folder_lock(t.root, 1, 1793762859));
+    FolderLock other = *read_folder_lock(t.root);
+    other.pid = long(::getppid());
+    other.start = 0;
+    write_lock(t.root, other);
+    CHECK(!use_unsaved(t.root, 1, list[0], 1793762859, &err) && err.find("quit it first") != std::string::npos);
+    CHECK(read_bytes(profile_file(t.root, 1)) == current);
+    fs::remove(t.root / "game.lock");
+    CHECK(use_unsaved(t.root, 1, list[0], 1793762859, &err));
+    auto now = read_sav_file(profile_file(t.root, 1), &err);
+    CHECK(now && now->size() == 1 && same_files((*now)[0], game_like_save(3)));
+    CHECK(read_bytes(t.root / "profile-1.sav.bak") == current && backup_names(t.root).size() == 1);
+}
+
+TEST(folder_lock) {
+    // game.lock: a live game on this computer in this boot counts; a stale one, another computer's or another boot's
+    // is taken over; the launcher's set aside is refused under a live one
+    Temp t("lock");
+    std::string holder;
+    CHECK(acquire_folder_lock(t.root, 1, 1793762859, &holder) && holder.empty());
+    const auto mine = read_folder_lock(t.root);
+    CHECK(mine && mine->pid == long(::getpid()) && mine->slot == 1 && !mine->host.empty() && !mine->boot.empty() && mine->start != 0);
+    CHECK(!folder_lock_live(*mine) && folder_lock_holder(t.root).empty());   // our own
+    CHECK(acquire_folder_lock(t.root, 2, 1793762860, &holder));   // again (attach once more): ours, rewritten
+    release_folder_lock(t.root);
+    CHECK(!fs::exists(t.root / "game.lock"));
+    // a live game: the parent process (this test's runner), on this computer, this boot
+    FolderLock live = *mine;
+    live.pid = long(::getppid());
+    live.start = 0;   // (an older lock without the start time: the pid alone)
+    write_lock(t.root, live);
+    CHECK(folder_lock_live(live));
+    CHECK(!acquire_folder_lock(t.root, 1, 1793762861, &holder) && holder.find("another game on this computer") == 0);
+    CHECK(folder_lock_holder(t.root) == holder);
+    release_folder_lock(t.root);   // not ours: left
+    CHECK(fs::exists(t.root / "game.lock"));
+    // set aside refused while it plays (nothing moved)
+    std::string err;
+    CHECK(store_profile(t.root, 1, {game_like_save(1)}, &err));
+    CHECK(set_aside_profile(t.root, 1, 1793762862, &err).empty() && err.find("quit it first") != std::string::npos);
+    CHECK(fs::exists(profile_file(t.root, 1)));
+    // the same pid started at another time: another program now, not the game
+    FolderLock reused = live;
+    reused.start = 12345;
+    CHECK(!folder_lock_live(reused));
+    // another computer (a cloud-synced folder), another boot of this one, a process gone: ignored and taken over
+    FolderLock foreign = live;
+    foreign.host = "another-pc";
+    CHECK(!folder_lock_live(foreign));
+    FolderLock old_boot = live;
+    old_boot.boot = mine->boot[0] == 't' ? "t1000" : "00000000-0000-0000-0000-000000000000";
+    CHECK(!folder_lock_live(old_boot));
+    FolderLock gone = *mine;
+    const pid_t child = ::fork();
+    if (child == 0) ::_exit(0);
+    int st = 0;
+    ::waitpid(child, &st, 0);
+    gone.pid = long(child);
+    CHECK(!folder_lock_live(gone));
+    for (const FolderLock& l : {foreign, old_boot, gone, reused}) {
+        write_lock(t.root, l);
+        CHECK(folder_lock_holder(t.root).empty());
+        CHECK(acquire_folder_lock(t.root, 3, 1793762863, &holder));
+        const auto now = read_folder_lock(t.root);
+        CHECK(now && now->pid == long(::getpid()) && now->slot == 3);
+    }
+    release_folder_lock(t.root);
+    CHECK(!fs::exists(t.root / "game.lock"));
+    // the game: a ProfileCard holds it from attach to its end, and warns (without refusing) under a live one
+    setenv("B3NATIVE_CARD_PERSIST", "1", 1);
+    {
+        ProfileCard card(t.root);
+        CHECK(card.attach(1, &err));
+        CHECK(read_folder_lock(t.root) && read_folder_lock(t.root)->pid == long(::getpid()));
+    }
+    CHECK(!fs::exists(t.root / "game.lock"));
+    write_lock(t.root, live);
+    {
+        ProfileCard card(t.root);
+        CHECK(card.attach(1, &err) && card.persist());
+        CHECK(card.status().text.rfind(ProfileCard::kSaveWarning, 0) == 0);
+    }
+    CHECK(fs::exists(t.root / "game.lock") && read_folder_lock(t.root)->pid == live.pid);   // the other game's, left
+    // portable mode (1.3.0): the launcher's lock while it moves the data folder (kLauncherMoveSlot): named so, and a game
+    // started meanwhile is told the launcher is moving the data (it still starts; the move stops if it writes)
+    FolderLock moving = live;
+    moving.slot = kLauncherMoveSlot;
+    write_lock(t.root, moving);
+    CHECK(folder_lock_holder(t.root).rfind("the launcher, moving your data folder", 0) == 0);
+    CHECK(!acquire_folder_lock(t.root, kLauncherMoveSlot, 1793762864, &holder) && holder.rfind("the launcher", 0) == 0);   // a second launcher
+    {
+        ProfileCard card(t.root);
+        CHECK(card.attach(1, &err));
+        CHECK(card.status().text.find("THE LAUNCHER IS MOVING YOUR DATA") != std::string::npos);
+    }
+    fs::remove(t.root / "game.lock");
+}
+
+TEST(set_aside) {
+    // the launcher's "Set aside and start fresh": profile-N.sav (and an older profile-N folder) renamed, kept; the slot
+    // empty; all or nothing
+    Temp t("aside");
+    std::string err;
+    CHECK(set_aside_profile(t.root, 1, 1793762859, &err).empty() && err.find("empty") != std::string::npos);
+    CHECK(set_aside_profile(t.root, 4, 1793762859, &err).empty());
+    CHECK(store_profile(t.root, 1, {game_like_save(1)}, &err));
+    const Bytes b1 = read_bytes(profile_file(t.root, 1));
+    const fs::path a1 = set_aside_profile(t.root, 1, 1793762859, &err);
+    CHECK(!a1.empty() && a1.filename().string().rfind("profile-1-set-aside-", 0) == 0 && a1.extension() == ".sav");
+    CHECK(!fs::exists(profile_file(t.root, 1)) && read_bytes(a1) == b1);
+    const auto fresh = load_profile(t.root, 1, &err);
+    CHECK(profile_problem(t.root, 1).empty() && fresh && fresh->source == ProfileSource::kNone && fresh->dirs.empty());   // the slot starts fresh
+    // the same second again: another name
+    CHECK(store_profile(t.root, 1, {game_like_save(2)}, &err));
+    const fs::path a2 = set_aside_profile(t.root, 1, 1793762859, &err);
+    CHECK(!a2.empty() && a2 != a1 && fs::exists(a1) && fs::exists(a2));
+    // a .sav and an older folder: both go
+    CHECK(store_profile(t.root, 2, {game_like_save(3)}, &err));
+    fs::create_directories(legacy_profile_folder(t.root, 2) / kGameSaveDirectory);
+    write_bytes(legacy_profile_folder(t.root, 2) / kGameSaveDirectory / "x", Bytes{1, 2, 3});
+    const fs::path a3 = set_aside_profile(t.root, 2, 1793762900, &err);
+    CHECK(!a3.empty() && !fs::exists(profile_file(t.root, 2)) && !fs::exists(legacy_profile_folder(t.root, 2)));
+    CHECK(fs::is_directory(t.root / a3.stem()) && fs::exists(t.root / a3.stem() / kGameSaveDirectory / "x"));
+    // a folder that will not take the renames: nothing changed
+    CHECK(store_profile(t.root, 3, {game_like_save(4)}, &err));
+    fs::create_directories(legacy_profile_folder(t.root, 3));
+    ::chmod(t.root.c_str(), 0555);
+    if (!std::ofstream(t.root / "probe")) {   // (root ignores the mode: the check is skipped)
+        CHECK(set_aside_profile(t.root, 3, 1793762901, &err).empty() && !err.empty());
+        CHECK(fs::exists(profile_file(t.root, 3)) && fs::is_directory(legacy_profile_folder(t.root, 3)));
+    }
+    ::chmod(t.root.c_str(), 0755);
+}
+
+// robust2: Steam's Flatpak sandbox: the host's data folder when the sandbox can reach and write it, and the sandbox's
+// own holds nothing yet
+TEST(flatpak_sandbox_decision_table) {
+    using b3native::save::sandbox_use;
+    using U = b3native::save::SandboxUse;
+    // robust2 review 2: only a save keeps the sandbox's own folder; settings alone there are left behind (said once)
+    //                      sandbox already reach  write  saves  sett.  host
+    CHECK(sandbox_use(false, false, true,  true,  false, false, true) == U::kOwn);    // no sandbox: nothing changes
+    CHECK(sandbox_use(true,  true,  false, false, false, false, false) == U::kHost);  // XDG_DATA_HOME is the host's already
+    CHECK(sandbox_use(true,  false, false, false, false, false, false) == U::kOwn);   // the host's not given to the sandbox
+    CHECK(sandbox_use(true,  false, false, false, true,  true,  false) == U::kOwn);   // ... with data in the sandbox's
+    CHECK(sandbox_use(true,  false, true,  false, false, false, true) == U::kOwn);    // given read-only: saves would fail
+    CHECK(sandbox_use(true,  false, true,  false, false, true,  true) == U::kOwn);    // ... settings only in the sandbox's
+    CHECK(sandbox_use(true,  false, true,  true,  false, false, false) == U::kHost);  // given, nothing in the sandbox's own
+    CHECK(sandbox_use(true,  false, true,  true,  false, false, true) == U::kHost);   // given, the host's data used
+    // the documented path: the first run wrote settings in the sandbox, then the player gave it the host's folder
+    CHECK(sandbox_use(true,  false, true,  true,  false, true,  true) == U::kHostOwnLeft);    // saves on the host
+    CHECK(sandbox_use(true,  false, true,  true,  false, true,  false) == U::kHostOwnLeft);   // the host's empty
+    CHECK(sandbox_use(true,  false, true,  true,  true,  false, false) == U::kOwn);   // a save in the sandbox's own: kept
+    CHECK(sandbox_use(true,  false, true,  true,  true,  true,  false) == U::kOwn);   // ... with its settings
+    CHECK(sandbox_use(true,  false, true,  true,  true,  false, true) == U::kOwnBothHaveData);   // both: kept, told
+    CHECK(sandbox_use(true,  false, true,  true,  true,  true,  true) == U::kOwnBothHaveData);
+    // what counts as data
+    namespace fs = std::filesystem;
+    const fs::path d = fs::path("build") / "test_save_formats.holds";
+    std::error_code ec;
+    fs::remove_all(d, ec);
+    fs::create_directories(d / "saves", ec);
+    CHECK(!b3native::save::holds_data(d) && !b3native::save::holds_settings(d));   // an empty folder (and an empty saves/)
+    CHECK(!b3native::save::has_saves(d / "saves"));
+    { std::ofstream(d / "pc_settings.ini") << "version = 1\n"; }
+    CHECK(b3native::save::holds_data(d) && b3native::save::holds_settings(d) && !b3native::save::has_saves(d / "saves"));
+    fs::remove(d / "pc_settings.ini", ec);
+    { std::ofstream(d / "launcher.ini") << "game_dir = /x\n"; }
+    CHECK(b3native::save::holds_data(d) && b3native::save::holds_settings(d) && !b3native::save::has_saves(d / "saves"));
+    fs::remove(d / "launcher.ini", ec);
+    { std::ofstream(d / "saves" / "profile-1.sav") << "x"; }
+    CHECK(b3native::save::holds_data(d) && !b3native::save::holds_settings(d) && b3native::save::has_saves(d / "saves"));
+    fs::remove_all(d, ec);
+}
+
+TEST_MAIN("save formats: .sav, card images, .psu, .max, folder cards, the save folder, the card's write-back, the game's own check, the folder's lock, the Flatpak data folder")

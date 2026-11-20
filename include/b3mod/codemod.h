@@ -7,8 +7,10 @@
 //   mod-settings/<id>.ini   a code mod's settings values: "[settings]" then "<key> = <value>" (Off / On, a choice's
 //                           name, a slider's level number); written by native_play when a value changes, and by the
 //                           launcher's Mods page
-//   mods-trusted.ini        the code-mod libraries the user allowed to run: "[trusted]" then "<sha-256> = <id> <version>"
-//                           (the launcher asks once per library; native_play refuses a library not listed, in a window)
+//   mods-trusted.ini        the mods' code the user allowed to run: "[trusted]" then "<sha-256> = <id> <version>", the
+//                           hash over every file the mod's code can run from (trust_files: all its libraries, an
+//                           unsafe script's files); the launcher asks again when any of them changes, and native_play
+//                           refuses a mod whose id and set are not listed, in a window
 //   mods-state.ini          what the last window start did with each code mod ([mod <id>]: status, reason, rows),
 //                           written by native_play, read by the launcher's Mods page
 #ifndef B3MOD_CODEMOD_H
@@ -109,7 +111,25 @@ private:
 fs::path trust_file(const fs::path& pref);   // <pref>/mods-trusted.ini
 // SHA-256 of a file's bytes, 64 hex digits ("" : unreadable)
 std::string library_digest(const fs::path& library);
-bool trusted(const fs::path& pref, const std::string& digest);
+// A file a mod's trust covers (its path inside the mod, '/' between folders, and its bytes)
+struct TrustFile {
+    std::string rel, bytes;
+};
+// Whether a mod needs the user's permission before it runs: a [code] mod, or a [script] with unsafe = yes
+bool needs_trust(const CodeSpec& code, const ScriptSpec& script);
+// A library file by its name: .dll, .so (also .so.<n>) or .dylib, any case
+bool library_file_name(const std::string& name);
+// Every file the mod's code can run from, read now: [code] every library file anywhere in the mod's folder (a library
+// the named one loads is covered too) and the library this system's [code] line names (whatever its name);
+// [script] with unsafe = yes: mod.ini and every file of the script's folder. By path. False (why) when one cannot be
+// read or the folder cannot be listed.
+bool trust_files(const fs::path& dir, const CodeSpec& code, const ScriptSpec& script, std::vector<TrustFile>& out, std::string* why = nullptr);
+// SHA-256 over the set: per file (by path) its path, size and SHA-256. 64 hex digits; "" for an empty set.
+std::string trust_digest(const std::vector<TrustFile>& files);
+// trust_files + trust_digest ("" when a file cannot be read, or the mod needs no trust)
+std::string trust_digest(const fs::path& dir, const CodeSpec& code, const ScriptSpec& script);
+// A record "<digest> = <id> <version>" for this mod id and this set digest (a line for another id does not count)
+bool trusted(const fs::path& pref, const std::string& id, const std::string& digest);
 bool add_trust(const fs::path& pref, const std::string& digest, const std::string& id, const std::string& version, std::string* why = nullptr);
 
 // ---- the last window start's report (native_play writes it, the launcher's Mods page reads it) ----

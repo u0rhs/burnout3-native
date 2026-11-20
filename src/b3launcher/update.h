@@ -7,8 +7,9 @@
 //   User-Agent: b3port-launcher/<version>, Accept: application/vnd.github+json (nothing else is sent)
 // and compares its tag ("v0.2.0") with the running build's version (b3report/version.h: "0.1.0-test+1a2b3c4d"). The
 // answer is remembered in launcher.ini (the update_* keys), so a quick restart (within kInterval) shows the same result
-// without asking again. The launcher never downloads or installs anything: the Play page's banner opens the release page in
-// the system browser.
+// without asking again. The check itself downloads nothing. The Play page's banner opens the release page in the system
+// browser; with a release key built in (update_key.h) it also offers the one-click update, which downloads the
+// release's package, checks it against the signed hash list and installs it (oneclick.h, installer.h).
 #ifndef B3LAUNCHER_UPDATE_H
 #define B3LAUNCHER_UPDATE_H
 

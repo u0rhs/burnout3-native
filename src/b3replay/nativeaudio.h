@@ -22,6 +22,11 @@ public:
     static NativeAudio& instance();
     void open();    // window thread (--native-audio)
     void close();   // window thread, at the end
+    // robust2: window thread, each loop: no device at the start (or it was lost) is tried again every 3 s, and at once
+    // when SDL reports a playback device added; SDL_EVENT_AUDIO_DEVICE_REMOVED of the one in use closes it (silence,
+    // then the retries). A change of the system's default device SDL3 follows by itself (audio_device.h).
+    void poll(std::uint64_t now_ns);
+    void event(const void* sdl_event);   // an SDL_Event*: the audio device events, anything else ignored
     void push(const std::int16_t* lr, std::size_t frames);   // game thread
     std::uint64_t pushed() const { return pushed_; }
     std::uint64_t dropped_closed() const { return dropped_closed_; }
@@ -30,6 +35,7 @@ private:
     std::mutex mu_;
     b3native::AudioDevice dev_;
     bool tried_ = false;
+    b3native::ReopenSchedule reopen_;
     std::uint64_t pushed_ = 0, dropped_closed_ = 0;
 };
 

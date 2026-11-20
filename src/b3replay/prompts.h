@@ -52,7 +52,7 @@ constexpr int kSdlTypePS3 = 4, kSdlTypePS4 = 5, kSdlTypePS5 = 6;           // SD
 constexpr int kSdlLabelA = 1, kSdlLabelB = 2, kSdlLabelCross = 5;          // SDL_GamepadButtonLabel
 PromptDevice prompt_device_for_pad(int sdl_gamepad_type, int sdl_south_label);
 
-// PC SETTINGS > INTERFACE > BUTTON PROMPTS (b3settings::Settings::button_prompts): automatic, or one device's always.
+// PC SETTINGS > GAME > INTERFACE > BUTTON PROMPTS (b3settings::Settings::button_prompts): automatic, or one device's always.
 // The values are the ini's (the modern PlayStation came last, 6); the page lists it after PlayStation (kPromptModeOrder).
 enum class PromptMode : std::uint8_t { kAuto, kPlayStation, kXbox, kNintendo, kGeneric, kKeyboard, kPlayStationModern };
 constexpr int kPromptModes = 7;
@@ -141,6 +141,9 @@ public:
     // than its 33 x 21 box (the title's line lays the words out by it)
     Rect ink(PadButton b, GlyphLayer l) const { return ink_[std::size_t(b) * 2 + std::size_t(l)]; }
     Rect dpad_arm(bool left_right) const { return arms_[left_right ? 1 : 0]; }
+    // Whether button `b`'s cells hold a round button (a disc in a ring: a face button, a stick, a round Start / Select;
+    // the bound position's): prompt_substitute keeps those round on screen
+    bool round(PadButton b) const { return round_[std::size_t(b)]; }
 
 private:
     std::vector<std::uint8_t> rgba_;
@@ -149,14 +152,18 @@ private:
     PromptKeys keys_{};
     std::array<Rect, kPadButtons * 2> cells_{}, ink_{};
     std::array<Rect, 2> arms_{};
+    std::array<bool, kPadButtons> round_{};
 };
 
 // One HUD draw of a button picture redrawn from `atlas`: `tex_name` / `tex_w` x `tex_h` are the draw's raster (its
 // name and size in texels: HudTexture name, w, h), `tri` its triangles. True with `out` set (the same triangles, their
 // UVs into the atlas, a symbol's quad grown to its button's box) when every quad of the draw is a known button piece;
-// false (draw it as it is) otherwise or for the PlayStation.
+// false (draw it as it is) otherwise or for the PlayStation. `unit_aspect` > 0 (promptround): a 2D x unit's width on
+// screen over a y unit's height (the 640 x 448 2D in the 4:3 box: 448 / 480); a round button's quad is then narrowed
+// or widened about its centre so its disc shows round (Impact Time's R1 picture bound to the Xbox A was stretched to an
+// upright oval, 0.88 as wide as high); 0: the quads as the game's pictures lay them out
 bool prompt_substitute(std::string_view tex_name, int tex_w, int tex_h, const std::vector<HudVertex>& tri, const PromptAtlas& atlas,
-                       std::vector<HudVertex>& out);
+                       std::vector<HudVertex>& out, float unit_aspect = 0.0f);
 // mac5 (menu mouse): the pad button (libpad2 index, include/b3live/menu_input.h pad::) piece `piece` (quad: 6 vertices) of a
 // draw of `tex_name` shows by its texel rectangle: -2 the face buttons' ring (part of a button, named by its symbol), -1
 // not a button piece. The game's own draw (its UVs), not a substituted one.

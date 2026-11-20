@@ -58,12 +58,13 @@ struct CoronaStats { int slots[3] = {}, sprites[3] = {}; };
 // "coronaboostred" from GLOBAL.TXD; ALPHA_1 0x68 with FIX 0x80, TEST_1 0x53001 (Z GEQUAL, RGB only), no Z write, no fog).
 class Coronas {
 public:
-    void clear() { for (auto& b : vb_) b = b3gfx::kNone; for (auto& b : ib_) b = b3gfx::kNone; }
+    void clear() { for (auto& b : vb_) b = b3gfx::kNone; for (auto& b : ib_) b = b3gfx::kNone; }   // (draw also drops them after a clear_resources)
     void draw(b3gfx::Device& dev, const Camera& cam, const CoronaArrays& arrays, const b3gfx::TextureId tex[3],
               std::vector<b3gfx::DrawItem>& out, CoronaStats* stats = nullptr, float aspect = 0);
 
 private:
     b3gfx::BufferId vb_[3] = {b3gfx::kNone, b3gfx::kNone, b3gfx::kNone}, ib_[3] = {b3gfx::kNone, b3gfx::kNone, b3gfx::kNone};
+    unsigned epoch_ = 0;   // Device::resource_epoch the buffer ids belong to
     std::vector<b3gfx::Vertex> verts_;
     std::vector<std::uint32_t> idx_;
 };

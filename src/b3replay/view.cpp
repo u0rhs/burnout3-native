@@ -29,6 +29,9 @@ namespace fs = std::filesystem;
 
 namespace b3replay {
 
+// night (1.3.0, owner): the players' own headlights a bit brighter than the other cars' (an arcade racer, not a sim)
+constexpr float kPlayerBeamGain = 1.5f;
+
 namespace {
 
 // ---- asset matching -------------------------------------------------------------------------------------------------
@@ -321,6 +324,8 @@ Frame frame_at(const Timeline& tl, std::size_t i, double frac, bool interpolate,
     f.fx.trails = a.trails;
     f.hud = a.hud;
     f.fe_car = a.fe_car;   // menu1
+    f.race_time = a.race_time.race;   // todrace
+    f.fe_player = a.fe_player;   // padpaint
     f.route_size = a.route_size;   // fe2: the front end's showroom
     f.route_units = a.route_units;
     f.sun = a.sun;
@@ -402,6 +407,7 @@ Frame frame_at(const Timeline& tl, std::size_t i, double frac, bool interpolate,
 void View::clear(b3gfx::Device& dev) {
     dev.clear_resources();
     car_models.clear();
+    for (auto& [file, pm] : paint_maps) pm.tex = b3gfx::kNone;   // carpaint: their textures went with clear_resources (padpaint: the maps stay)
     car_globals = b3view::CarGlobals{};
     hi = b3view::Scene{};
     lo = b3view::Scene{};
@@ -409,6 +415,8 @@ void View::clear(b3gfx::Device& dev) {
     hi_unit.clear(); hi_inst.clear(); lo_unit.clear(); backdrop.clear(); barrier.clear(); always.clear(); prop_items.clear(); item_prop.clear();
     effects.clear();
     coronas.clear();
+    view2_state.effects.clear();   // split screen: player 2's (swap_view2) went with clear_resources too
+    view2_state.coronas.clear();
     hud_textures.clear();
     hud_textures_filtered.clear();   // accessibility
     prompt_tex_filtered = b3gfx::kNone;
@@ -427,6 +435,8 @@ void View::clear(b3gfx::Device& dev) {
     movie_placeholder = b3gfx::kNone;
     hud_vb = hud_ib = b3gfx::kNone;
     host_ui_tex.clear();
+    host_img_tex = b3gfx::kNone;
+    host_img_name.clear();
     host_vb = host_ib = b3gfx::kNone;
     host_built.reset();
     host_items.clear();
@@ -438,6 +448,7 @@ void View::clear(b3gfx::Device& dev) {
     route_size = 0;
     route_units = 0;
     crash_scene = b3view::CrashScene{};
+    sun = b3view::Sun{};   // its corona texture went with clear_resources: a route without ENVIRO.DAT draws no stale sun
     fallback_stage = -1;
 }
 
@@ -517,7 +528,52 @@ bool View::load_track(b3gfx::Device& dev, const std::string& route_dir, std::str
     return load_prepared(dev, prepare_track(route_dir, game), why);
 }
 
+// SUN SHADOWS (remaster-features §20): the route's open-road light, the level a sunlit receiver's vertex light has (the
+// track is prelit, its shadows baked into the vertex colours): the area-weighted 85th percentile of the vertex light
+// (luminance, GS bytes / 128) of the up-facing opaque track triangles (|n.y| > 0.85; world-space draws, not the
+// instanced props). Below it a receiver is in a baked shadow; 0.75 when the route has none to measure.
+static float road_light_level(const b3view::Scene& sc) {
+    const auto& m = sc.model;
+    constexpr int kBins = 512;
+    constexpr float kTop = 2.0f;
+    std::vector<double> hist(kBins, 0.0);
+    double total = 0.0;
+    auto luma = [](std::uint32_t c) {
+        return (0.299f * float(c & 0xFF) + 0.587f * float((c >> 8) & 0xFF) + 0.114f * float((c >> 16) & 0xFF)) / 128.0f;
+    };
+    for (std::size_t k = 0; k < m.draws.size() && k + sc.item_base < sc.items.size(); ++k) {
+        const b3asset::DrawRange& d = m.draws[k];
+        const b3gfx::DrawItem& it = sc.items[k + sc.item_base];
+        if (d.transform >= 0 || it.shading != b3gfx::Shading::kTrack || it.blend == b3gfx::Blend::kAlpha || it.post_fog ||
+            it.track_type == 2 || it.track_type == 3)
+            continue;
+        for (std::uint32_t i = d.first_index; i + 2 < d.first_index + d.index_count && i + 2 < m.indices.size(); i += 3) {
+            const std::uint32_t a = m.indices[i], b = m.indices[i + 1], c = m.indices[i + 2];
+            if (a >= m.vertices.size() || b >= m.vertices.size() || c >= m.vertices.size()) continue;
+            const float* p0 = m.vertices[a].pos;
+            const float* p1 = m.vertices[b].pos;
+            const float* p2 = m.vertices[c].pos;
+            const float u[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]}, v[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
+            const float n[3] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+            const float len = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+            if (!(len > 1e-6f) || std::fabs(n[1]) < 0.85f * len) continue;
+            const float l = (luma(m.vertices[a].rgba) + luma(m.vertices[b].rgba) + luma(m.vertices[c].rgba)) / 3.0f;
+            hist[std::size_t(std::clamp(int(l / kTop * kBins), 0, kBins - 1))] += 0.5 * len;
+            total += 0.5 * len;
+        }
+    }
+    if (!(total > 0.0)) return 0.75f;
+    double acc = 0.0;
+    for (int b = 0; b < kBins; ++b) {
+        acc += hist[std::size_t(b)];
+        if (acc >= 0.85 * total) return std::clamp((float(b) + 0.5f) * kTop / kBins, 0.25f, 1.5f);
+    }
+    return 0.75f;
+}
+
 bool View::load_prepared(b3gfx::Device& dev, TrackPrep&& p, std::string* why) {
+    // perf4: the route's textures and buffers go up in one batch (Device::upload_batch), submitted as it fills and at the end
+    struct Batch { b3gfx::Device& d; Batch(b3gfx::Device& x) : d(x) { d.upload_batch(true); } ~Batch() { d.upload_batch(false); } } batch(dev);
     route = p.route;
     const std::vector<std::uint8_t>& st = p.st;
     const std::vector<std::uint8_t>& sm = p.sm;
@@ -528,6 +584,8 @@ bool View::load_prepared(b3gfx::Device& dev, TrackPrep&& p, std::string* why) {
     }
     if (!b3view::build_scene(dev, std::move(p.mh), true, hi, why) || !b3view::build_scene(dev, std::move(p.ml), true, lo, why, &hi)) return false;
     b3asset::hd_trim();
+    road_light = road_light_level(hi);   // SUN SHADOWS: the open road's vertex light on this route
+    std::fprintf(stderr, "%s: open road vertex light %.3f (sun shadows' reference)\n", route.c_str(), double(road_light));
     auto index = [this](const b3view::Scene& sc, std::map<int, std::vector<int>>* units, std::map<int, std::vector<int>>* inst,
                     std::map<int, std::vector<int>>* bd, std::vector<int>* always) {
         for (std::size_t i = 0; i < sc.model.draws.size(); ++i) {
@@ -583,6 +641,11 @@ bool View::load_prepared(b3gfx::Device& dev, TrackPrep&& p, std::string* why) {
     if (!p.bgd_ok) { crash_scene = b3view::CrashScene{}; w.clear(); }   // (load_crash_scene: no GAMEDATA.BGD)
     else if (!b3view::load_crash_scene(dev, p.bgd, p.global_txd, crash_scene, &w) && !w.empty()) std::fprintf(stderr, "%s\n", w.c_str());
     if (!effects.load(dev, game, &w)) std::fprintf(stderr, "effects: %s (none drawn)\n", w.c_str());
+    else {
+        effects.preload(dev);   // perf4: the effect and corona textures used before (this run, or saved by an earlier one)
+        view2_state.effects.load_shared(dev, effects);   // split screen: player 2's view (its shadows, effect textures, coronas)
+    }
+    night_fixtures_load();
     return true;
 }
 
@@ -591,12 +654,739 @@ void View::car_frame(b3gfx::FrameParams& fp) const {
     fp.car_look = carlook::current();   // reflect2: the enhanced look, live-tunable (carlookpanel.h)
 }
 
+// surface (docs/remaster-features.md §18; off by default): GRAPHICS > SURFACE DETAIL (relief 3, sheen 0.35) and AMBIENT
+// OCCLUSION (0.8 at 1.2 m), or by environment, which then wins over both rows: B3_SURFACE=1 turns relief, sheen and
+// ambient occlusion on at those strengths, B3_SURFACE=0 all off; B3_SURFACE_RELIEF / _SHEEN / _AO / _AO_RADIUS / _FADE /
+// _SKY / _GRAZING set one each (0 = that piece off), B3_SURFACE_DEBUG=1 the false-colour view. Unset and the rows off:
+// every field 0, nothing runs.
+static bool surface_env_set() {
+    for (const char* n : {"B3_SURFACE", "B3_SURFACE_RELIEF", "B3_SURFACE_SHEEN", "B3_SURFACE_AO", "B3_SURFACE_DEBUG"})
+        if (const char* e = std::getenv(n); e && *e) return true;
+    return false;
+}
+static b3gfx::FrameParams::Surface surface_from_env() {
+    b3gfx::FrameParams::Surface s;
+    auto num = [](const char* n, float& v) { if (const char* e = std::getenv(n); e && *e) v = float(std::atof(e)); };
+    if (const char* e = std::getenv("B3_SURFACE"); e && *e && *e != '0') { s.relief = 3.0f; s.sheen = 0.35f; s.ao = 0.8f; }
+    num("B3_SURFACE_RELIEF", s.relief);
+    num("B3_SURFACE_SHEEN", s.sheen);
+    num("B3_SURFACE_AO", s.ao);
+    num("B3_SURFACE_AO_RADIUS", s.ao_radius);
+    num("B3_SURFACE_FADE", s.fade);
+    num("B3_SURFACE_SKY", s.sky);
+    num("B3_SURFACE_GRAZING", s.grazing);
+    if (const char* e = std::getenv("B3_SURFACE_DEBUG"); e && *e && *e != '0') s.debug = true;
+    return s;
+}
+
+void moon_direction(const float to_sun[3], float out[3]) {
+    const float h = std::sqrt(to_sun[0] * to_sun[0] + to_sun[2] * to_sun[2]);
+    const float ax = h > 1e-4f ? to_sun[0] / h : 0.0f, az = h > 1e-4f ? to_sun[2] / h : 1.0f;
+    const float lo = 10.0f * 3.14159265f / 180.0f, hi = 20.0f * 3.14159265f / 180.0f;
+    const float el = std::clamp(std::atan2(to_sun[1], h), lo, hi);
+    out[0] = std::cos(el) * ax;
+    out[1] = std::sin(el);
+    out[2] = std::cos(el) * az;
+}
+
+// nightlights (remaster-features §17.2): a lamp per car at its nose (the shadow box's front, `spot[7]` m above the
+// ground the car stands on, along the car's own axes, so a car in the air keeps its beam), the beam along the car's
+// forward axis dipped `spot[6]` degrees; the players' cars first, then the others by distance to the camera, within
+// 150 m and only when the beam's hull (the lamp and the square around the far end of the cone) is not wholly outside
+// one plane of the view's frustum. More than night.lights: the rest keep their coronas only.
+void View::night_lamps(const Frame& f, b3gfx::FrameParams& fp) const {
+    b3gfx::FrameParams::Night& n = fp.night;
+    n.lamps = 0;
+    n.spot = night.lights > 0;
+    for (int k = 0; k < 3; ++k) n.lamp_colour[k] = night.lamp[k];
+    const float d2r = 3.14159265f / 180.0f;
+    n.spot_shape[0] = std::cos(std::clamp(night.spot[0], 1.0f, 80.0f) * d2r);
+    n.spot_shape[1] = std::cos(std::clamp(night.spot[1], night.spot[0] + 0.5f, 85.0f) * d2r);
+    n.spot_shape[2] = std::max(night.spot[2], 1.0f);
+    n.spot_shape[3] = std::max(night.spot[3], 0.0f);
+    n.spot_range[0] = std::max(night.spot[4], 1.0f);
+    n.spot_range[1] = std::max(night.spot[5], n.spot_range[0] + 1.0f);
+    n.spot_core[0] = std::cos(std::clamp(night.spot[8], 0.5f, 60.0f) * d2r);
+    n.spot_core[1] = std::cos(std::clamp(night.spot[9], night.spot[8] + 0.5f, 70.0f) * d2r);
+    n.spot_core[2] = std::max(night.spot[10], 0.0f);
+    if (!n.spot) return;
+    struct Cand { float pos[3], dir[3], gain, key; };
+    std::vector<Cand> cand;
+    const float* eye = f.cam.m.r[3];
+    const float dip = night.spot[6] * d2r, height = night.spot[7];
+    const float reach = n.spot_range[1], wide = reach * std::tan(std::clamp(night.spot[1], 1.0f, 85.0f) * d2r);
+    const float* vp = fp.view_proj;
+    auto clip = [&](const float p[3], float c[4]) {
+        for (int r = 0; r < 4; ++r) c[r] = vp[r] * p[0] + vp[4 + r] * p[1] + vp[8 + r] * p[2] + vp[12 + r];
+    };
+    for (std::size_t i = 0; i < f.vehicles.size(); ++i) {
+        const Vehicle& v = f.vehicles[i];
+        if (v.kind == VehicleKind::kCrashed) continue;
+        if (v.kind == VehicleKind::kTraffic && !(v.shadow.cast || v.corona.submit)) continue;
+        const float gain = v.kind == VehicleKind::kTraffic ? traffic_fade(v, f.fx.now, eye) : 1.0f;
+        if (!(gain > 0.01f)) continue;
+        const Vehicle::Shadow& s = v.shadow;
+        const float* rt = s.ess.r[0];
+        const float* up = s.ess.r[1];
+        const float* at = s.ess.r[2];
+        const float front = s.sup[2] > 0.5f ? s.sup[2] : 2.0f;
+        const float lift = height - (s.radius > 0.05f ? s.radius : 0.33f);   // the origin sits about a wheel radius up
+        Cand c{};
+        float dl = 0;
+        for (int k = 0; k < 3; ++k) {
+            c.pos[k] = s.ess.r[3][k] + at[k] * front + up[k] * lift;
+            c.dir[k] = at[k] * std::cos(dip) - up[k] * std::sin(dip);
+            dl += c.dir[k] * c.dir[k];
+        }
+        if (!(dl > 1e-6f)) continue;
+        dl = std::sqrt(dl);
+        for (float& x : c.dir) x /= dl;
+        const float de = std::sqrt((c.pos[0] - eye[0]) * (c.pos[0] - eye[0]) + (c.pos[1] - eye[1]) * (c.pos[1] - eye[1]) +
+                                   (c.pos[2] - eye[2]) * (c.pos[2] - eye[2]));
+        if (!(de < 150.0f)) continue;
+        // the hull: the lamp and the four corners of the square around the cone's far end
+        float pts[5][3];
+        for (int k = 0; k < 3; ++k) pts[0][k] = c.pos[k];
+        for (int q = 0; q < 4; ++q) {
+            const float sx = (q & 1) ? 1.0f : -1.0f, sy = (q & 2) ? 1.0f : -1.0f;
+            for (int k = 0; k < 3; ++k) pts[1 + q][k] = c.pos[k] + c.dir[k] * reach + (rt[k] * sx + up[k] * sy) * wide;
+        }
+        int out_mask = 0x3F;
+        for (const auto& p : pts) {
+            float cl[4];
+            clip(p, cl);
+            int m = 0;
+            if (cl[0] < -cl[3]) m |= 1;
+            if (cl[0] > cl[3]) m |= 2;
+            if (cl[1] < -cl[3]) m |= 4;
+            if (cl[1] > cl[3]) m |= 8;
+            if (cl[2] > cl[3]) m |= 16;   // reverse-Z: nearer than the near plane
+            if (cl[3] <= 0) m |= 32;      // behind the eye
+            out_mask &= m;
+        }
+        if (out_mask) continue;
+        c.gain = gain * (v.player >= 0 ? kPlayerBeamGain : 1.0f);   // the players' own cars a little brighter (an arcade racer)
+        c.key = (v.player >= 0 ? 0.0f : 1000.0f) + de;
+        cand.push_back(c);
+    }
+    std::sort(cand.begin(), cand.end(), [](const Cand& a, const Cand& b) { return a.key < b.key; });
+    const int cap = std::min({night.lights, int(b3gfx::FrameParams::Night::kMaxLamps), int(cand.size())});
+    for (int k = 0; k < cap; ++k) {
+        b3gfx::FrameParams::Night::Lamp& l = n.lamp[k];
+        std::memcpy(l.pos, cand[std::size_t(k)].pos, sizeof l.pos);
+        std::memcpy(l.dir, cand[std::size_t(k)].dir, sizeof l.dir);
+        l.gain = cand[std::size_t(k)].gain;
+    }
+    n.lamps = cap;
+}
+
+static std::string route_region(const std::string& route) {
+    std::string r = route;
+    while (!r.empty() && (r.back() == '/' || r.back() == '\\')) r.pop_back();
+    const std::size_t a = r.find_last_of("/\\");
+    if (a == std::string::npos) return {};
+    const std::string parent = r.substr(0, a);
+    const std::size_t b = parent.find_last_of("/\\");
+    return b == std::string::npos ? parent : parent.substr(b + 1);
+}
+
+// street lights (§17.2): the lamp textures per region, from $B3_NIGHT_LAMPSCAN's list and checked by eye; a tint per
+// entry: 0 sodium orange (streets, motorways), 1 warm white (town and park lamps, gas lamps, docks). Whole lamp posts
+// (the pole and the head in one texture) and heads alike: night_street_load takes each post's highest point. Left out:
+// road and pavement textures named after lights (Chgo_Rd*Light, WF_paveGASLAMP), shop fronts (WF_gaslampSHOP*), lit
+// windows (HK_ResLite), tunnel lamps (the tunnel fade lights them), traffic light posts, a lighthouse, grass.
+struct NightLampName { const char* name; int tint; };
+static const std::vector<NightLampName>& night_lamp_names(const std::string& region) {
+    static const std::map<std::string, std::vector<NightLampName>> names = {
+        {"AS", {{"HK_Spotlight", 1}, {"HK_DockLite", 1}, {"KS_lamppost", 1}}},
+        {"EU", {{"light", 1}, {"walllamp", 1}, {"lamppost", 1}, {"riverside_lamppost", 1}, {"ATB_Lamp", 0}, {"ATB_LampostG", 0},
+                {"ATB_Lamp_Toll", 0}, {"R_Triplelampost", 0}}},
+        {"US", {{"Chgo_GrnLpst_03", 0}, {"Chgo_GrnLpst_New", 0}, {"Chgo_OrnateLamp", 1}, {"GL_streetlight2", 0},
+                {"WF_OrnateLamp1", 1}, {"WF_LAMP_Post", 0}, {"WF_Glamp1", 1}, {"WF_Glamp1b", 1}, {"WF_gaslamp1", 1},
+                {"WF_gaslamp2", 1}, {"WF_gaslamp2b", 1}, {"WF_gaslamp3", 1}, {"WF_gaslamp4", 1}, {"WF_gaslamp5", 1},
+                {"WF_gaslampOLD1", 1}, {"WF_Cparklight2", 0}}},
+    };
+    static const std::vector<NightLampName> none;
+    const auto it = names.find(region);
+    return it == names.end() ? none : it->second;
+}
+
+// The lamps: every triangle of a listed texture (instanced ones through their placement), grouped by 1.5 m cells over
+// x / z (neighbouring cells joined), the group's highest vertex 0.3 m down as the lamp; groups whose lamps lie within
+// 3.5 m of each other merge (a post's arm and pole, a head and its post in two textures)
+void View::night_street_load() {
+    night_streets.clear();
+    const std::vector<NightLampName>& list = night_lamp_names(route_region(route));
+    if (list.empty()) return;
+    const auto t0 = std::chrono::steady_clock::now();
+    const b3asset::Model& m = hi.model;
+    constexpr float kCell = 1.5f;
+    struct Cell { float top[3]; int tint; bool used; };
+    std::map<std::pair<int, int>, Cell> cells;
+    for (const b3asset::DrawRange& d : m.draws) {
+        if (d.texture < 0 || std::size_t(d.texture) >= m.textures.size()) continue;
+        const std::string& name = m.textures[std::size_t(d.texture)].name;
+        int tint = -1;
+        for (const NightLampName& l : list) if (name == l.name) tint = l.tint;
+        if (tint < 0) continue;
+        const float* T = d.transform >= 0 && std::size_t(d.transform) < m.transforms.size() ? m.transforms[std::size_t(d.transform)].data() : nullptr;
+        for (std::uint32_t i = d.first_index; i < d.first_index + d.index_count && i < m.indices.size(); ++i) {
+            const float* p = m.vertices[m.indices[i]].pos;
+            float w[3] = {p[0], p[1], p[2]};
+            if (T) for (int k = 0; k < 3; ++k) w[k] = T[k] * p[0] + T[4 + k] * p[1] + T[8 + k] * p[2] + T[12 + k];
+            const std::pair<int, int> key{int(std::floor(w[0] / kCell)), int(std::floor(w[2] / kCell))};
+            auto it = cells.find(key);
+            if (it == cells.end()) cells[key] = Cell{{w[0], w[1], w[2]}, tint, false};
+            else if (w[1] > it->second.top[1]) { std::memcpy(it->second.top, w, sizeof w); it->second.tint = tint; }
+        }
+    }
+    // join neighbouring cells (flood fill), each group's highest point
+    for (auto& [key, c] : cells) {
+        if (c.used) continue;
+        std::vector<std::pair<int, int>> stack{key};
+        c.used = true;
+        Cell best = c;
+        while (!stack.empty()) {
+            const auto k = stack.back();
+            stack.pop_back();
+            for (int dx = -1; dx <= 1; ++dx)
+                for (int dz = -1; dz <= 1; ++dz) {
+                    auto it = cells.find({k.first + dx, k.second + dz});
+                    if (it == cells.end() || it->second.used) continue;
+                    it->second.used = true;
+                    if (it->second.top[1] > best.top[1]) best = it->second;
+                    stack.push_back(it->first);
+                }
+        }
+        NightStreet l{{best.top[0], best.top[1] - 0.3f, best.top[2]}, {1, 1, 1}};
+        static const float kTint[2][3] = {{1.0f, 0.62f, 0.30f}, {1.0f, 0.86f, 0.66f}};
+        std::memcpy(l.colour, kTint[best.tint == 0 ? 0 : 1], sizeof l.colour);
+        bool merged = false;
+        for (NightStreet& o : night_streets) {
+            const float dx = o.pos[0] - l.pos[0], dy = o.pos[1] - l.pos[1], dz = o.pos[2] - l.pos[2];
+            if (dx * dx + dy * dy + dz * dz < 3.5f * 3.5f) {
+                if (l.pos[1] > o.pos[1]) o = l;
+                merged = true;
+                break;
+            }
+        }
+        if (!merged) night_streets.push_back(l);
+    }
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    std::fprintf(stderr, "[b3night] street lights %s: %zu lamps (%zu cells), %.1f ms\n", route.c_str(), night_streets.size(), cells.size(), ms);
+}
+
+// Per frame: the nearest lamps within 120 m whose pool (a sphere of the fade's reach under the lamp) is not wholly
+// outside the view
+void View::night_street_frame(const Frame& f, b3gfx::FrameParams& fp) const {
+    b3gfx::FrameParams::Night& n = fp.night;
+    n.streets = 0;
+    const float d2r = 3.14159265f / 180.0f;
+    const float* sh = night.street_shape;
+    n.street_shape[0] = std::cos(std::clamp(sh[0], 1.0f, 89.0f) * d2r);
+    n.street_shape[1] = std::cos(std::clamp(sh[1], sh[0] + 0.5f, 89.5f) * d2r);
+    n.street_shape[2] = std::max(sh[2], 0.5f);
+    n.street_shape[3] = std::max(sh[3], 0.0f);
+    n.street_range[0] = std::max(sh[4], 1.0f);
+    n.street_range[1] = std::max(sh[5], n.street_range[0] + 1.0f);
+    const int cap = std::min(night.street >= 0 ? night.street : (night.lights >= 8 ? 24 : night.lights >= 4 ? 8 : 0),
+                             int(b3gfx::FrameParams::Night::kMaxStreet));
+    if (cap <= 0 || night_streets.empty() || !n.spot) return;
+    const float* eye = f.cam.m.r[3];
+    const float* vp = fp.view_proj;
+    const float r = n.street_range[1];
+    std::vector<std::pair<float, int>> cand;
+    for (std::size_t i = 0; i < night_streets.size(); ++i) {
+        const float* p = night_streets[i].pos;
+        const float d2 = (p[0] - eye[0]) * (p[0] - eye[0]) + (p[1] - eye[1]) * (p[1] - eye[1]) + (p[2] - eye[2]) * (p[2] - eye[2]);
+        if (d2 > 120.0f * 120.0f) continue;
+        // the pool's sphere (centre half its reach below the lamp) against the frustum's side planes (clip space)
+        const float c[3] = {p[0], p[1] - 0.5f * r, p[2]};
+        float cl[4];
+        for (int k = 0; k < 4; ++k) cl[k] = vp[k] * c[0] + vp[4 + k] * c[1] + vp[8 + k] * c[2] + vp[12 + k];
+        const float rr = r * 1.2f;
+        if (cl[3] < -rr || cl[0] < -cl[3] - rr * 2.0f || cl[0] > cl[3] + rr * 2.0f || cl[1] < -cl[3] - rr * 2.0f || cl[1] > cl[3] + rr * 2.0f) continue;
+        cand.emplace_back(d2, int(i));
+    }
+    std::sort(cand.begin(), cand.end());
+    const int k = std::min(cap, int(cand.size()));
+    for (int i = 0; i < k; ++i) {
+        const NightStreet& l = night_streets[std::size_t(cand[std::size_t(i)].second)];
+        std::memcpy(n.street[i].pos, l.pos, sizeof l.pos);
+        std::memcpy(n.street[i].colour, l.colour, sizeof l.colour);
+    }
+    n.streets = k;
+}
+
+// nightlights (§17.2, D.2): what gives light at night, by texture name, one table per region (the TRACKS/<region>
+// folder of the route): tunnel lamps, neon, lit signs and shop fronts, lit advertising panels, traffic and lane signals,
+// lamp heads with their own texture. Found with $B3_NIGHT_TEXLOG (1: textures drawn inside tunnels, 2: every texture
+// drawn) and each checked by eye in night shots with $B3_NIGHT_FIXTURES. A plain name glows where its texel is bright
+// (the brightest channel above ~0.6, so coloured neon keeps its colour and the housing, the frame or the painted part
+// stays dark); a name ending in '*' glows whole (a backlit panel, where a threshold would speckle a photograph).
+// Painted signs, posters, road signs and road markings are left out.
+static const std::vector<std::string>& night_fixture_names(const std::string& region) {
+    static const std::map<std::string, std::vector<std::string>> names = {
+        // Asia (HK)
+        {"AS", {
+            "HK_INS_LightRig", "HK_INS_LightRigTop",          // the tunnel's ceiling light rigs (AS/C2_V1)
+            "HK_Spotlight", "HK_ResLite",                     // lamps under the terminal roof, lit residential windows
+            "HK_Neon", "HK_Shop01", "HK_DepStore",            // neon, shop fronts, the department store
+            "bk_Lit_inter1", "bk_Lit_inter2",                 // lit interiors
+            "HK_BigBilly01*", "HK_BigBilly02*", "HK_BigBilly03*", "HK_BigBilly04*",   // billboards (backlit)
+            "HK_OfficalADV01*", "HK_OfficalADV02*",           // advertising panels (backlit)
+            "KS_lantern",                                     // the lanterns of the island route (AS/C3_V2)
+            "HK_DockLite", "KS_lamppost",                     // lamp heads (street lights, night_lamp_names)
+        }},
+        // Europe
+        {"EU", {
+            "light", "walllamp",                              // the street lamps' heads, wall lamps (EU/P1_V2's town)
+            "lamppost", "riverside_lamppost", "ATB_Lamp", "ATB_LampostG", "R_Triplelampost",   // lamp posts: their lit heads
+            "shop1", "nushop1", "nushop2", "nushop3", "nushop4",
+            "nushop5", "nushop6", "nushop7", "nushop8",       // the lit shop fronts (EU/P1_V2)
+            "trafficbox",                                     // the traffic lights
+            "ATB_Sign_Info_Flash", "ATB_Sign_Info_Flash2",    // the motorway's lit information boards (EU/C1_V1)
+            "adboard*", "ATB_Billbds1*", "VIEN_Billbds3*",    // billboards (backlit)
+        }},
+        // USA
+        {"US", {
+            "WF_illumnated1",                                 // the strip lights of US/C1_V1's covered road
+            "Chgo_TunLght",                                   // the city's tunnel lamps
+            "Chgo_ShopSigns", "Chgo_UpT_Shop", "Chgo_UpT_Shop_03",   // shop signs, neon and shop fronts (US/C2_V2)
+            "Chgo_words", "Chgo_words2",                      // lit lettering
+            "Chgo_TrafficBox", "WF_tlightPost",               // the traffic lights
+            "WF_gaslampSHOP1",                                // the waterfront's gas-lamp shop front (US/C1_V2)
+            "Chgo_GrnLpst_03", "Chgo_GrnLpst_New", "Chgo_OrnateLamp", "GL_streetlight2", "WF_OrnateLamp1",
+            "WF_LAMP_Post", "WF_Glamp1", "WF_gaslamp1", "WF_gaslamp2", "WF_gaslamp3", "WF_gaslamp4",   // lamp posts: their lit heads
+            "Chgo_BigAdverts_03*", "AXE_AD_TSUNAMI*", "AXE_AD_VOODOO*",   // billboards (backlit)
+        }},
+    };
+    static const std::vector<std::string> none;
+    const auto it = names.find(region);
+    return it == names.end() ? none : it->second;
+}
+
+
+static std::uint64_t night_cell_key(int x, int z) { return std::uint64_t(std::uint32_t(x)) << 32 | std::uint32_t(z); }
+
+void View::night_cover_build() const {
+    NightCover& g = night_cover_grid;
+    g = NightCover{};
+    g.built = true;
+    constexpr float kCell = 8.0f;
+    const auto t0 = std::chrono::steady_clock::now();
+    const b3asset::Model& m = hi.model;
+    std::vector<std::pair<std::uint64_t, std::uint32_t>> pairs;
+    for (const b3asset::DrawRange& d : m.draws) {
+        int u = 0;
+        if (d.transform >= 0 || d.blend == b3asset::DrawRange::kBlend || std::sscanf(d.part.c_str(), "unit %d", &u) != 1 ||
+            d.part.find("instance") != std::string::npos)
+            continue;
+        for (std::uint32_t i = d.first_index; i + 2 < d.first_index + d.index_count && i + 2 < m.indices.size(); i += 3) {
+            float lo[2] = {1e30f, 1e30f}, hi2[2] = {-1e30f, -1e30f};
+            for (int c = 0; c < 3; ++c) {
+                const float* p = m.vertices[m.indices[i + std::uint32_t(c)]].pos;
+                lo[0] = std::min(lo[0], p[0]); hi2[0] = std::max(hi2[0], p[0]);
+                lo[1] = std::min(lo[1], p[2]); hi2[1] = std::max(hi2[1], p[2]);
+            }
+            const int x0 = int(std::floor(lo[0] / kCell)), x1 = int(std::floor(hi2[0] / kCell));
+            const int z0 = int(std::floor(lo[1] / kCell)), z1 = int(std::floor(hi2[1] / kCell));
+            if ((x1 - x0) > 64 || (z1 - z0) > 64) continue;   // (a degenerate or huge triangle: not a ceiling)
+            const std::uint32_t t = std::uint32_t(g.tri.size() / 9);
+            for (int c = 0; c < 3; ++c)
+                for (int k = 0; k < 3; ++k) g.tri.push_back(m.vertices[m.indices[i + std::uint32_t(c)]].pos[k]);
+            for (int x = x0; x <= x1; ++x)
+                for (int z = z0; z <= z1; ++z) pairs.emplace_back(night_cell_key(x, z), t);
+        }
+    }
+    std::sort(pairs.begin(), pairs.end());
+    g.ids.reserve(pairs.size());
+    for (std::size_t k = 0; k < pairs.size(); ++k) {
+        if (k == 0 || pairs[k].first != pairs[k - 1].first) {
+            g.keys.push_back(pairs[k].first);
+            g.first.push_back(std::uint32_t(g.ids.size()));
+        }
+        g.ids.push_back(pairs[k].second);
+    }
+    g.first.push_back(std::uint32_t(g.ids.size()));
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    const double mb = double(g.tri.size() * 4 + g.keys.size() * 8 + g.first.size() * 4 + g.ids.size() * 4) / 1048576.0;
+    std::fprintf(stderr, "[b3night] cover grid %s: %zu triangles, %zu cells, %.1f ms, %.1f MB\n", route.c_str(), g.tri.size() / 9,
+                 g.keys.size(), ms, mb);
+}
+
+float View::night_cover(const float pos[3]) const {
+    NightCover& g = night_cover_grid;
+    constexpr float kCell = 8.0f, kRange = 40.0f;
+    if (!g.built) night_cover_build();
+    if (g.tri.empty()) return 0.0f;
+    const float o[3] = {pos[0], pos[1] + 1.5f, pos[2]};   // above the car's roof
+    const float s35 = 0.5736f, c35 = 0.8192f;
+    int hits = 0, rays = 0;
+    for (int r = 0; r < 9; ++r) {
+        float d[3] = {0, 1, 0};
+        if (r > 0) {
+            const float a = float(r - 1) * 0.7853982f;
+            d[0] = s35 * std::cos(a); d[1] = c35; d[2] = s35 * std::sin(a);
+        }
+        ++rays;
+        bool hit = false;
+        std::pair<int, int> last{1 << 30, 0};
+        for (float t = 0; t <= kRange && !hit; t += kCell * 0.5f) {
+            const std::pair<int, int> key{int(std::floor((o[0] + d[0] * t) / kCell)), int(std::floor((o[2] + d[2] * t) / kCell))};
+            if (key == last) continue;
+            last = key;
+            const std::uint64_t ck = night_cell_key(key.first, key.second);
+            const auto it = std::lower_bound(g.keys.begin(), g.keys.end(), ck);
+            if (it == g.keys.end() || *it != ck) continue;
+            const std::size_t c = std::size_t(it - g.keys.begin());
+            for (std::uint32_t qi = g.first[c]; qi < g.first[c + 1]; ++qi) {   // Moller-Trumbore, both faces
+                const std::uint32_t ti = g.ids[qi];
+                const float* v = &g.tri[std::size_t(ti) * 9];
+                const float e1[3] = {v[3] - v[0], v[4] - v[1], v[5] - v[2]}, e2[3] = {v[6] - v[0], v[7] - v[1], v[8] - v[2]};
+                const float p[3] = {d[1] * e2[2] - d[2] * e2[1], d[2] * e2[0] - d[0] * e2[2], d[0] * e2[1] - d[1] * e2[0]};
+                const float det = e1[0] * p[0] + e1[1] * p[1] + e1[2] * p[2];
+                if (std::fabs(det) < 1e-8f) continue;
+                const float inv = 1.0f / det;
+                const float tv[3] = {o[0] - v[0], o[1] - v[1], o[2] - v[2]};
+                const float uu = (tv[0] * p[0] + tv[1] * p[1] + tv[2] * p[2]) * inv;
+                if (uu < 0.0f || uu > 1.0f) continue;
+                const float q[3] = {tv[1] * e1[2] - tv[2] * e1[1], tv[2] * e1[0] - tv[0] * e1[2], tv[0] * e1[1] - tv[1] * e1[0]};
+                const float vv = (d[0] * q[0] + d[1] * q[1] + d[2] * q[2]) * inv;
+                if (vv < 0.0f || uu + vv > 1.0f) continue;
+                const float th = (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]) * inv;
+                if (th > 0.05f && th < kRange) { hit = true; break; }
+            }
+        }
+        hits += hit ? 1 : 0;
+    }
+    return float(hits) / float(rays);
+}
+
+void View::night_fixtures_load() {
+    night_cover_grid = NightCover{};
+    // at the load, not on the first night frame (else built when night is turned on); todrace: the race's own choice too
+    if (load_race_time ? load_race_time == 2 : night.on) night_cover_build();
+    night_street_load();   // street lights: the lamps (a few ms; also by day, so turning night on needs no reload)
+    night_texinfo.clear();
+    night_texlogged.clear();
+    std::vector<std::string> list = night_fixture_names(route_region(route));
+    if (const char* e = std::getenv("B3_NIGHT_FIXTURES"); e && *e) {   // (finding the names: this list instead, any region)
+        list.clear();
+        for (const char* p = e; *p;) {
+            const char* c = std::strchr(p, ',');
+            list.emplace_back(p, c ? std::size_t(c - p) : std::strlen(p));
+            if (!c) break;
+            p = c + 1;
+        }
+    }
+    for (b3view::Scene* sc : {&hi, &lo}) {
+        const std::size_t base = sc->item_base;
+        for (std::size_t i = 0; i < sc->model.draws.size() && i + base < sc->items.size(); ++i) {
+            const int t = sc->model.draws[i].texture;
+            if (t < 0 || std::size_t(t) >= sc->model.textures.size()) continue;
+            const std::string& name = sc->model.textures[std::size_t(t)].name;
+            // a name ending in '*': the whole texture glows (a backlit panel), else its bright texels only
+            std::uint8_t mode = 0;
+            for (const std::string& l : list)
+                if (l == name) mode = 1;
+                else if (!l.empty() && l.back() == '*' && l.compare(0, l.size() - 1, name) == 0 && l.size() - 1 == name.size()) mode = 2;
+            sc->items[i + base].night_emissive = mode;
+        }
+    }
+    // (diagnostics: $B3_NIGHT_LAMPSCAN=1 counts the lamps a street-light pass would find: the triangles of every lamp-like
+    // texture name, their centres clustered within 2 m, per texture)
+    if (const char* ls = std::getenv("B3_NIGHT_LAMPSCAN"); ls && *ls && *ls != '0') {
+        const b3asset::Model& m = hi.model;
+        std::map<std::string, std::vector<std::array<float, 3>>> pts;
+        for (const b3asset::DrawRange& d : m.draws) {
+            if (d.texture < 0 || std::size_t(d.texture) >= m.textures.size()) continue;
+            std::string name = m.textures[std::size_t(d.texture)].name, low = name;
+            for (char& c : low) c = char(std::tolower(static_cast<unsigned char>(c)));
+            if (low.find("lamp") == std::string::npos && low.find("light") == std::string::npos && low.find("lght") == std::string::npos &&
+                low.find("lpst") == std::string::npos && low.find("lite") == std::string::npos && low.find("lantern") == std::string::npos)
+                continue;
+            const float* T = d.transform >= 0 && std::size_t(d.transform) < m.transforms.size() ? m.transforms[std::size_t(d.transform)].data() : nullptr;
+            for (std::uint32_t i = d.first_index; i + 2 < d.first_index + d.index_count && i + 2 < m.indices.size(); i += 3) {
+                float c[3] = {0, 0, 0};
+                for (int v = 0; v < 3; ++v)
+                    for (int k = 0; k < 3; ++k) c[k] += m.vertices[m.indices[i + std::uint32_t(v)]].pos[k] / 3.0f;
+                std::array<float, 3> w{c[0], c[1], c[2]};
+                if (T) for (int k = 0; k < 3; ++k) w[std::size_t(k)] = T[k] * c[0] + T[4 + k] * c[1] + T[8 + k] * c[2] + T[12 + k];
+                pts[name].push_back(w);
+            }
+        }
+        for (const auto& [name, v] : pts) {
+            std::vector<std::array<float, 3>> cl;
+            for (const auto& p : v) {
+                bool found = false;
+                for (const auto& c : cl)
+                    if ((p[0] - c[0]) * (p[0] - c[0]) + (p[1] - c[1]) * (p[1] - c[1]) + (p[2] - c[2]) * (p[2] - c[2]) < 4.0f) { found = true; break; }
+                if (!found) cl.push_back(p);
+            }
+            std::fprintf(stderr, "[b3night] lampscan %s tex %s triangles %zu lamps %zu\n", route_region(route).c_str(), name.c_str(), v.size(), cl.size());
+        }
+    }
+    const char* e = std::getenv("B3_NIGHT_TEXLOG");
+    if (!(e && *e && *e != '0')) return;
+    for (const b3view::Scene* sc : {&hi, &lo})
+        for (std::size_t t = 0; t < sc->model.textures.size() && t < sc->textures.size(); ++t) {
+            const b3asset::Texture& tx = sc->model.textures[t];
+            const std::vector<b3asset::Image>& lv = !tx.original.empty() ? tx.original : tx.levels;
+            NightTex ni;
+            ni.name = tx.name;
+            if (!lv.empty() && !lv[0].rgba.empty()) {
+                const std::vector<std::uint8_t>& px = lv[0].rgba;
+                double lum = 0, sat = 0, bright = 0;
+                const std::size_t n = px.size() / 4;
+                for (std::size_t k = 0; k < n; ++k) {
+                    const float r = px[4 * k] / 255.0f, g = px[4 * k + 1] / 255.0f, b = px[4 * k + 2] / 255.0f;
+                    const float l = 0.299f * r + 0.587f * g + 0.114f * b;
+                    const float mx = std::max({r, g, b}), mn = std::min({r, g, b});
+                    const float st = mx > 1e-3f ? (mx - mn) / mx : 0.0f;
+                    lum += l;
+                    sat += st;
+                    if (l > 0.6f && st < 0.3f) bright += 1;
+                }
+                if (n) { ni.lum = float(lum / double(n)); ni.sat = float(sat / double(n)); ni.bright = float(bright / double(n)); }
+            }
+            night_texinfo[sc->textures[t]] = ni;
+        }
+}
+
+void View::night_texlog(const std::vector<b3gfx::DrawItem>& out, std::size_t first) const {
+    static const bool all = [] { const char* e = std::getenv("B3_NIGHT_TEXLOG"); return e && *e == '2'; }();   // 2: every texture drawn
+    if (!all && night_tunnel.enclosed <= 0.5f) return;
+    for (std::size_t i = first; i < out.size(); ++i) {
+        const auto it = night_texinfo.find(out[i].texture);
+        if (it == night_texinfo.end() || !night_texlogged.insert(it->second.name).second) continue;
+        std::fprintf(stderr, "[b3night] texlog %s tex %s lum %.3f sat %.3f bright %.3f enclosed %.2f\n", route_region(route).c_str(),
+                     it->second.name.c_str(), double(it->second.lum), double(it->second.sat), double(it->second.bright), double(night_tunnel.enclosed));
+    }
+}
+
+// nightlights (§17.2): the tunnel signal. The view's car (the players' car nearest the camera, within 80 m, with its 9
+// SH coefficients) and its sky_open (carscene.cpp: the upward share of its irradiance, ~1 open, ~0.2 in a tunnel);
+// enclosed = (1 - smoothstep(lo, hi, sky_open)) x the rays' cover (night_cover: the logs showed sky_open alone also
+// low under a shop's arcade on an open street), smoothed exponentially over tau seconds of the world clock (a jump or
+// the first frame takes it at once). $B3_NIGHT_SKYLOG=1 logs it each frame (the numbers were set from such logs).
+void View::night_tunnel_frame(const Frame& f, b3gfx::FrameParams& fp) const {
+    b3gfx::FrameParams::Night& n = fp.night;
+    n.tunnel[0] = std::clamp(night.tunnel[3], 0.0f, 1.0f);
+    n.tunnel[1] = std::max(night.tunnel[4], 0.0f);
+    n.tunnel[2] = std::max(night.tunnel[5], n.tunnel[1] + 1.0f);
+    const float* eye = f.cam.m.r[3];
+    const Vehicle* car = nullptr;
+    float best = 80.0f * 80.0f;
+    for (const Vehicle& v : f.vehicles) {
+        if (v.player < 0 || v.sh_count < 9 || v.kind != VehicleKind::kRaceCar) continue;
+        float d = 0;
+        for (int k = 0; k < 3; ++k) d += (v.main.r[3][k] - eye[k]) * (v.main.r[3][k] - eye[k]);
+        if (d < best) { best = d; car = &v; }
+    }
+    const float sky_open = car && car->sh[0] > 1e-3f ? std::clamp((car->sh[1] / car->sh[0] - 0.15f) / 0.35f, 0.0f, 1.0f) : 1.0f;
+    const float lo = night.tunnel[0], hi = std::max(night.tunnel[1], night.tunnel[0] + 1e-3f);
+    const float u = std::clamp((sky_open - lo) / (hi - lo), 0.0f, 1.0f);
+    // the second signal (the logs: the car's sky_open alone also drops to 0.05 under a shop's arcade on an open street,
+    // EU/P1_V2): the share of the rays from the car that hit the track's geometry, at least 7 of 9 for a tunnel
+    const float cover = car && u < 1.0f ? night_cover(car->main.r[3]) : 0.0f;
+    const float cu = std::clamp((cover - 0.6f) / 0.3f, 0.0f, 1.0f);
+    const float target = (1.0f - u * u * (3.0f - 2.0f * u)) * cu * cu * (3.0f - 2.0f * cu);
+    NightTunnel& t = night_tunnel;
+    const float dt = f.fx.now - t.now;
+    if (!t.valid || dt < 0.0f || dt > 1.0f) t.enclosed = target;
+    else if (dt > 0.0f) t.enclosed += (target - t.enclosed) * (1.0f - std::exp(-dt / std::max(night.tunnel[2], 0.01f)));
+    t.now = f.fx.now;
+    t.valid = true;
+    n.enclosed = n.tunnel[0] > 0 ? t.enclosed : 0.0f;
+    static const bool log = [] { const char* e = std::getenv("B3_NIGHT_SKYLOG"); return e && *e && *e != '0'; }();
+    if (log)
+        std::fprintf(stderr, "[b3night] skylog tick %u now %.3f car %s pos %.1f %.1f %.1f sky_open %.3f enclosed %.3f lamps %d cover %.2f\n",
+                     unsigned(f.tick), double(f.fx.now), car ? (car->player == 0 ? "p1" : "p2") : "-", car ? double(car->main.r[3][0]) : 0.0,
+                     car ? double(car->main.r[3][1]) : 0.0, car ? double(car->main.r[3][2]) : 0.0, double(sky_open), double(n.enclosed), n.lamps, double(cover));
+}
+
+// SUN SHADOWS (remaster-features §20): the box's half side and depth (m), how far ahead of the car its centre sits (m),
+// the lowest light used (degrees: under 5 nothing is cast; below 12 the light is raised to 12, so the shadows stay a
+// few metres long at sunset) and the darkening at full shadow by a bright key light
+constexpr float kSunBoxHalf = 30.0f, kSunBoxDepth = 80.0f, kSunBoxAhead = 10.0f, kSunMinElev = 5.0f, kSunLowElev = 12.0f;
+constexpr float kSunShadowDark = 0.62f;   // the colour x 0.38 at full shadow: about as dark as the track's baked shadows
+
+// the share of sky a vehicle sees (b3view's car scene: CarParams::sky_open), from its SH or, for traffic and wrecks
+// (L00 only), the nearest race car's
+static float vehicle_sky_open(const Vehicle& v, const std::vector<Vehicle>& all) {
+    const Vehicle* s = &v;
+    if (v.sh_count < 9) {
+        float best = 1e30f;
+        s = nullptr;
+        for (const auto& u : all) {
+            if (u.sh_count < 9 || !(u.sh[0] > 0)) continue;
+            float d2 = 0;
+            for (int k = 0; k < 3; ++k) d2 += (u.main.r[3][k] - v.main.r[3][k]) * (u.main.r[3][k] - v.main.r[3][k]);
+            if (d2 < best) { best = d2; s = &u; }
+        }
+        if (!s) return 1.0f;
+    }
+    return s->sh[0] > 1e-3f ? std::clamp((s->sh[1] / s->sh[0] - 0.15f) / 0.35f, 0.0f, 1.0f) : 1.0f;
+}
+
+bool View::sun_shadow_box(const Frame& f, const float to_light[3], b3gfx::FrameParams::SunShadow& out) const {
+    if (!sun_shadows || !f.cam.valid) return false;
+    float L[3] = {to_light[0], to_light[1], to_light[2]};
+    const float ll = std::sqrt(L[0] * L[0] + L[1] * L[1] + L[2] * L[2]);
+    if (!(ll > 1e-6f)) return false;
+    for (float& c : L) c /= ll;
+    const float deg = 3.14159265f / 180.0f;
+    if (std::asin(std::clamp(L[1], -1.0f, 1.0f)) < kSunMinElev * deg) return false;
+    if (std::asin(std::clamp(L[1], -1.0f, 1.0f)) < kSunLowElev * deg) {   // the bearing kept, raised to 12 degrees
+        const float h = std::sqrt(L[0] * L[0] + L[2] * L[2]);
+        L[0] = std::cos(kSunLowElev * deg) * L[0] / h;
+        L[2] = std::cos(kSunLowElev * deg) * L[2] / h;
+        L[1] = std::sin(kSunLowElev * deg);
+    }
+    // the view's car: the env map's (the game follows it), else the race car nearest to a point just ahead of the camera
+    const Vehicle* car = nullptr;
+    if (f.env_car != 0)
+        for (const Vehicle& v : f.vehicles) if (v.kind == VehicleKind::kRaceCar && v.id == f.env_car) car = &v;
+    if (!car) {
+        float best = 1e30f;
+        const float* e = f.cam.m.r[3];
+        const float* a = f.cam.m.r[2];
+        for (const Vehicle& v : f.vehicles) {
+            if (v.kind != VehicleKind::kRaceCar) continue;
+            float d2 = 0;
+            for (int k = 0; k < 3; ++k) d2 += (v.main.r[3][k] - e[k] - 6.0f * a[k]) * (v.main.r[3][k] - e[k] - 6.0f * a[k]);
+            if (d2 < best) { best = d2; car = &v; }
+        }
+        if (!car || best > 40.0f * 40.0f) return false;
+    }
+    // the centre a little ahead: along the camera's view (a free camera, photo mode: the car's own heading, so turning the
+    // camera does not move the shadows)
+    const float* fw = free_view ? car->main.r[2] : f.cam.m.r[2];
+    const float fl = std::sqrt(fw[0] * fw[0] + fw[2] * fw[2]);
+    float c[3] = {car->main.r[3][0], car->main.r[3][1], car->main.r[3][2]};
+    if (fl > 1e-4f) { c[0] += kSunBoxAhead * fw[0] / fl; c[2] += kSunBoxAhead * fw[2] / fl; }
+    // the light's frame: R, U across the map, L towards the light
+    const bool high = std::fabs(L[1]) > 0.99f;   // (the sun overhead: +Z as the reference instead of +Y)
+    const float ref[3] = {0.0f, high ? 0.0f : 1.0f, high ? 1.0f : 0.0f};
+    float R[3] = {ref[1] * L[2] - ref[2] * L[1], ref[2] * L[0] - ref[0] * L[2], ref[0] * L[1] - ref[1] * L[0]};
+    const float rl = std::sqrt(R[0] * R[0] + R[1] * R[1] + R[2] * R[2]);
+    for (float& x : R) x /= rl;
+    const float U[3] = {L[1] * R[2] - L[2] * R[1], L[2] * R[0] - L[0] * R[2], L[0] * R[1] - L[1] * R[0]};
+    // the centre snapped to whole texels across the map, so the shadows' edges do not crawl as the box moves
+    const int side = std::clamp(sun_shadow_size, 256, 4096);
+    const float texel = 2.0f * kSunBoxHalf / float(side);
+    const float cx = std::floor((R[0] * c[0] + R[1] * c[1] + R[2] * c[2]) / texel + 0.5f) * texel;
+    const float cy = std::floor((U[0] * c[0] + U[1] * c[1] + U[2] * c[2]) / texel + 0.5f) * texel;
+    const float cz = L[0] * c[0] + L[1] * c[1] + L[2] * c[2];
+    const float h = kSunBoxHalf, zr = 0.5f * kSunBoxDepth;
+    float* m = out.view_proj;   // column-major: x = (p.R - cx) / h, y = (p.U - cy) / h, z = (cz + zr - p.L) / (2 zr)
+    for (int k = 0; k < 16; ++k) m[k] = 0.0f;
+    for (int k = 0; k < 3; ++k) {
+        m[4 * k + 0] = R[k] / h;
+        m[4 * k + 1] = U[k] / h;
+        m[4 * k + 2] = -L[k] / (2.0f * zr);
+    }
+    m[12] = -cx / h;
+    m[13] = -cy / h;
+    m[14] = (cz + zr) / (2.0f * zr);
+    m[15] = 1.0f;
+    static const bool trace = std::getenv("B3_SUN_SHADOW_TRACE") != nullptr;   // diagnostics: the view car's sky share by tick
+    static std::size_t trace_tick = ~std::size_t(0);
+    if (trace && f.tick != trace_tick) {
+        trace_tick = f.tick;
+        std::printf("[b3sun] tick %zu car %08x at (%.1f %.1f %.1f) sky_open %.2f light (%.2f %.2f %.2f)\n", f.tick, unsigned(car->id),
+                    car->main.r[3][0], car->main.r[3][1], car->main.r[3][2], vehicle_sky_open(*car, f.vehicles), L[0], L[1], L[2]);
+    }
+    out.on = true;
+    out.depth = kSunBoxDepth;
+    out.rise = L[1];
+    out.size = side;
+    out.filter = sun_shadow_filter;
+    return true;
+}
+
 void View::post_frame(const Frame& f, float display_aspect, b3gfx::FrameParams& fp) const {
+    static const bool surface_env = surface_env_set();
+    static const b3gfx::FrameParams::Surface surface = surface_from_env();
+    fp.surface = surface;
+    if (!surface_env) {   // the settings rows (the environment's prototype values win when set)
+        fp.surface = b3gfx::FrameParams::Surface{};
+        if (surface_detail) { fp.surface.relief = 3.0f; fp.surface.sheen = 0.35f; }
+        if (ambient_occlusion) fp.surface.ao = 0.8f;
+    }
     blur_frame(f, fp);
     bloom_frame(f, fp);
+    // the key light (FrameParams::KeyLight): the ENVIRO sun by day
+    std::memcpy(fp.key_light.dir, fp.to_sun, sizeof fp.key_light.dir);
+    for (int k = 0; k < 3; ++k) fp.key_light.colour[k] = fp.sun_colour[3] > 0 ? std::min(fp.sun_colour[k], 1.0f) : 0.5f;
+    fp.key_light.night = false;
+    fp.night = b3gfx::FrameParams::Night{};   // night mode (remaster-features §17): the race's frames only (not the front end's)
+    if (night_on(f)) {
+        b3gfx::FrameParams::Night& n = fp.night;
+        n.on = true;
+        std::memcpy(n.world, night.world, sizeof n.world);
+        n.sat = night.sat;
+        n.gamma = night.gamma;
+        n.pivot = night.pivot;
+        std::memcpy(n.sky, night.sky, sizeof n.sky);
+        std::memcpy(n.zenith, night.zenith, sizeof n.zenith);
+        std::memcpy(n.horizon, night.horizon, sizeof n.horizon);
+        n.stars = night.stars;
+        n.cloud = night.cloud;
+        // the moon at the sun's bearing: every light from the route's sun comes from it (the cars' glint, the track's
+        // specular, the relief), so to_sun is the moon's direction from here on
+        moon_direction(fp.to_sun, n.moon_dir);
+        std::memcpy(fp.to_sun, n.moon_dir, sizeof fp.to_sun);
+        std::memcpy(n.car, night.car, sizeof n.car);
+        if (night.moon) {
+            std::memcpy(n.moon_colour, night.moon_disc, sizeof n.moon_colour);
+            n.moon_size = night.moon_size;
+            n.halo = night.halo;
+            std::memcpy(n.moon_light, night.moonlight, sizeof n.moon_light);
+            n.facing = night.facing;
+            if (fp.surface.relief <= 0) fp.surface.relief = night.relief;   // the moon lights the track's relief
+            if (fp.surface.sheen <= 0) fp.surface.sheen = 0.12f;              // and a glare on the asphalt towards it
+        } else {
+            n.cloud = 0;
+            n.car[2] = 0;
+        }
+        // the track's full-screen specular (ROAD SHINE): the moon's colour instead of the sun's
+        for (int k = 0; k < 3; ++k)
+            if (fp.specular[0] > 0 || fp.specular[1] > 0 || fp.specular[2] > 0) fp.specular[k] = night.moon ? 0.3f * night.moonlight[k] : 0.0f;
+        // the cars' env map: the moon where the sun's blob was (car.frag's glint follows it); none with the moon off
+        for (int k = 0; k < 3; ++k) fp.sun_colour[k] = std::min(1.0f, 0.8f * night.moon_disc[k]);
+        fp.sun_colour[3] = night.moon && fp.sun_colour[3] > 0 ? 1.0f : 0.0f;
+        // the fog: a colour that the grade turns into the night sky's horizon (distant scenery fades into the sky)
+        if (fp.fog_colour[3] > 0)
+            for (int k = 0; k < 3; ++k)
+                fp.fog_colour[k] = std::pow(night.horizon[k] / night.pivot, 1.0f / std::max(night.gamma, 0.1f)) * night.pivot / std::max(night.world[k], 1e-3f);
+        std::memcpy(fp.key_light.dir, n.moon_dir, sizeof fp.key_light.dir);
+        std::memcpy(fp.key_light.colour, n.moon_light, sizeof fp.key_light.colour);
+        fp.key_light.night = true;
+        std::memcpy(n.fixture, night.fixture, sizeof n.fixture);
+        night_lamps(f, fp);
+        night_street_frame(f, fp);
+        night_tunnel_frame(f, fp);
+    }
+    // SUN SHADOWS (§19): the box around the view's car towards the key light, darker under a brighter light (an overcast
+    // route a faint shadow); none without the light (night with the moon off)
+    fp.sun_shadow = b3gfx::FrameParams::SunShadow{};
+    if (sun_shadows && sky.has_enviro) {
+        const float* kc = fp.key_light.colour;
+        const float k = std::max(kc[0], std::max(kc[1], kc[2]));
+        static const float dark = [] { const char* e = std::getenv("B3_SUN_SHADOW_STRENGTH"); return e && *e ? float(std::atof(e)) : kSunShadowDark; }();
+        b3gfx::FrameParams::SunShadow s;
+        if (k > 0.0f && dark > 0.0f && sun_shadow_box(f, fp.key_light.dir, s)) {
+            s.strength = std::clamp(dark * std::clamp(k * 1.25f, 0.35f, 1.0f), 0.0f, 1.0f);
+            static const float lit = [] { const char* e = std::getenv("B3_SUN_SHADOW_LIT"); return e && *e ? float(std::atof(e)) : 0.0f; }();
+            s.lit = lit > 0.0f ? lit : road_light;   // the route's open road (B3_SUN_SHADOW_LIT: a fixed level instead)
+            fp.sun_shadow = s;
+        }
+    }
     if (std::getenv("B3_FRAME_UNITS")) fp.present_scale = 1.0f;   // diagnostics: the output shows the GS frame's bytes, not the display
     fp.sun_sprites.clear();
-    if (!show_sun || !sky.has_enviro) return;
+    if (!show_sun || !sky.has_enviro || night_on(f)) return;   // night mode: no sun corona or lens flare
     // SetupCamera's mrAspectRatio = record +0x200 x +0x20C x sizeY / sizeX; graphics manager +0 scales the radius
     const SunCam& c = f.sun;
     const float aspect = c.valid && c.size[0] > 0 ? c.f200 * c.f20C * c.size[1] / c.size[0] : 0.0f;
@@ -716,6 +1506,61 @@ b3view::CarModel* View::car_model(b3gfx::Device& dev, int file, int paint, int l
         return nullptr;
     }
     return slot.get();
+}
+
+CarPaint car_paint_env(int p, CarPaint base) {
+    if (const char* e = std::getenv(p == 0 ? "B3_PAINT" : "B3_PAINT_P2")) {
+        std::uint32_t rgb = 0;
+        if (!std::strcmp(e, "game")) base.custom = false;
+        else if (b3asset::parse_rgb(e, rgb)) { base.custom = true; base.rgb = rgb; }
+    }
+    if (const char* e = std::getenv("B3_PAINT_SECOND")) {
+        std::uint32_t rgb = 0;
+        if (b3asset::parse_rgb(e, rgb)) { base.second = true; base.rgb2 = rgb; }
+    }
+    if (const char* e = std::getenv("B3_DECALS")) {
+        if (!std::strcmp(e, "0")) base.decals = false;
+        else if (!std::strcmp(e, "1")) base.decals = true;
+    }
+    if (const char* e = std::getenv("B3_PAINT_FINISH")) {   // padpaint
+        if (!std::strcmp(e, "gloss")) base.finish = 0;
+        else if (!std::strcmp(e, "metallic")) base.finish = 1;
+        else if (!std::strcmp(e, "pearl")) base.finish = 2;
+    }
+    return base;
+}
+
+const View::PaintMap* View::paint_map(b3gfx::Device& dev, int file) {
+    if (file < 0 || std::size_t(file) >= cars.size()) return nullptr;
+    auto it = paint_maps.find(file);
+    if (it == paint_maps.end()) {   // the first need: the map made (padpaint: on a worker in the window)
+        PaintMap& pm = paint_maps[file];
+        pm.pending = true;
+        auto make = [&pm, bytes = cars[std::size_t(file)].bytes]() {
+            std::string why;
+            const auto t0 = std::chrono::steady_clock::now();
+            const bool ok = b3asset::car_paint_map(b3asset::Bytes{bytes.data(), bytes.size()}, pm.map, &why);
+            pm.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+            return std::pair<bool, std::string>(ok, why);
+        };
+        pm.job = std::async(async_paint ? std::launch::async : std::launch::deferred, std::move(make));
+        it = paint_maps.find(file);
+    }
+    PaintMap& pm = it->second;
+    if (pm.pending) {
+        if (async_paint && pm.job.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return nullptr;   // the game's paint meanwhile
+        const auto [ok, why] = pm.job.get();
+        pm.pending = false;
+        pm.ok = ok;
+        if (!ok) std::fprintf(stderr, "car paint: %s: %s (drawn as the game's)\n", cars[std::size_t(file)].path.c_str(), why.c_str());
+        else
+            std::fprintf(stderr, "car paint: %s: %d paints, reference %d, %d decal islands, %d parts kept (%.0f ms%s)\n",
+                         cars[std::size_t(file)].path.c_str(), pm.map.palettes, pm.map.ref, pm.map.decal_islands, pm.map.parts_kept, pm.ms,
+                         async_paint ? ", on a worker" : "");
+    }
+    if (!pm.ok) return nullptr;
+    if (pm.tex == b3gfx::kNone) pm.tex = b3view::upload_texture(dev, {pm.map.mask});
+    return &pm;
 }
 
 namespace {
@@ -931,7 +1776,7 @@ void View::draw_list(b3gfx::Device& dev, const Frame& f, const std::vector<Model
     // high block +0x6E names (plain static objects) and the +0x30 object +0x6F names through material type 7, whose
     // program 0x47E300 mirrors every vertex about y = the block's +0x70 [C asm 0x0055-0x005C: view matrix y column
     // negated, translation + 2 level y column]: the river's reflections. Before live2 every water object was drawn
-    // as is, so the reflection geometry stood unmirrored over the road (race1's bridge exit, the user's "pop-in").
+    // as is, so the reflection geometry stood unmirrored over the road (race1's bridge exit: it looked like pop-in).
     // water1 (§21): the reflection's type-7 shading (= type 0, no back-face test), as RenderWater does
     // (b3view::WaterTable::append; the same table draws b3view's water).
     if (f.water_on != 0) water.append(hi, f.current_unit, out, skip_water);
@@ -944,6 +1789,7 @@ void View::draw_list(b3gfx::Device& dev, const Frame& f, const std::vector<Model
             out.push_back(d);
         }
     }
+    if (night_on(f) && !night_texinfo.empty()) night_texlog(out, 0);
     lap(0);
     // Cars (render5): RenderVehicle's draws per vehicle, at the LOD the game's Draw code picks from its camera
     frame_now = f.fx.now;   // traffic-popin: the clock the traffic fade-in (Vehicle::since) is measured on
@@ -960,7 +1806,31 @@ void View::draw_list(b3gfx::Device& dev, const Frame& f, const std::vector<Model
     // and the props; b3gfx draws DrawItem::effect after everything else, in this order
     fx_stats = EffectStats{};
     effects.particles = show_particles;
-    if (show_effects) effects.draw(dev, f.vehicles, f.fx, out, &fx_stats, &vehicle_fades);
+    // SUN SHADOWS (§19): where a car casts a sun shadow its blob fades to 30%, so the two do not stack to black (the box and
+    // the gate as post_frame and b3gfx's caster pass make them: towards the ENVIRO sun, the moon at night)
+    const std::vector<float>* blob = &vehicle_fades;
+    std::vector<float> blob_fades;
+    b3gfx::FrameParams::SunShadow box;
+    if (sun_shadows && sky.has_enviro && (!night_on(f) || night.moon) && show_effects) {
+        float L[3];
+        if (night_on(f)) moon_direction(sky.enviro.to_sun, L);
+        else std::memcpy(L, sky.enviro.to_sun, sizeof L);
+        if (sun_shadow_box(f, L, box)) {
+            blob_fades = vehicle_fades;
+            const float* m = box.view_proj;
+            for (std::size_t k = 0; k < f.vehicles.size(); ++k) {
+                const float* p = f.vehicles[k].main.r[3];
+                const float x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+                const float in = 1.0f - std::clamp((std::max(std::fabs(x), std::fabs(y)) - 0.85f) / 0.1f, 0.0f, 1.0f);
+                blob_fades[k] *= 1.0f - 0.7f * in * b3gfx::sun_shadow_gate(vehicle_sky_open(f.vehicles[k], f.vehicles));
+            }
+            blob = &blob_fades;
+        }
+    }
+    if (show_effects) effects.draw(dev, f.vehicles, f.fx, out, &fx_stats, blob);
+    // night mode (remaster-features §17): the headlight pools, drawn after the frame is darkened (b3gfx's post-fog stage);
+    // nightlights (§17.2): only on the presets without the projected beams (night.lights 0; else post_frame's lamps)
+    if (night_on(f) && night.lights <= 0 && f.fx.valid) effects.draw_headlights(dev, f.vehicles, night.shape, night.lamp, out, &vehicle_fades);
     lap(2);
     // then CB3GameData::Draw after the fog pass, then func_0021C010's STATIC +0x28 entry (crash2)
     crash_draws(f, out);
@@ -984,7 +1854,14 @@ void View::draw_list(b3gfx::Device& dev, const Frame& f, const std::vector<Model
         const Camera& cam = corona_view ? *corona_view : f.cam;
         float pos[3], point[3];
         for (int k = 0; k < 3; ++k) { pos[k] = cam.m.r[3][k]; point[k] = pos[k] - 2.0f * cam.m.r[2][k]; }
-        build_coronas(ci, f.vehicles, point, pos, corona_arrays, &vehicle_fades);
+        if (night_on(f)) {   // night mode: the race cars' and traffic's head and tail lights on (drawn only: a copy of the frame's)
+            std::vector<Vehicle> lit = f.vehicles;
+            for (Vehicle& v : lit)
+                if (v.corona.valid && v.kind != VehicleKind::kCrashed) v.corona.lights |= 0x0C;
+            build_coronas(ci, lit, point, pos, corona_arrays, &vehicle_fades);
+        } else {
+            build_coronas(ci, f.vehicles, point, pos, corona_arrays, &vehicle_fades);
+        }
         b3gfx::TextureId tex[3];
         for (int a = 0; a < 3; ++a) tex[a] = effects.texture(dev, ci.k->texture[a]);
         coronas.draw(dev, cam, corona_arrays, tex, out, &corona_stats, render_aspect);
@@ -1043,7 +1920,14 @@ void View::vehicle_draws(b3gfx::Device& dev, const Camera& cam, const std::vecto
         const int file = car_file(heads[std::size_t(v.model)]);
         if (file < 0) continue;
         const int lod = car_lod >= 0 ? car_lod : game_lod(cam, v);
-        b3view::CarModel* cm = car_model(dev, file, v.paint, lod);
+        // carpaint: a local player's own paint. A custom colour is drawn over the reference paint's texture (the
+        // brightest: the most shading levels; an HD pack's replacement of it too); decals off with the game's paint keeps
+        // the game's texture and fills the livery with that paint's colour
+        const int who = v.kind != VehicleKind::kRaceCar ? -1 : v.player >= 0 ? v.player
+                      : paint_frontend && v.id == paint_fe_car ? paint_fe_player : -1;   // padpaint: each car its own player's
+        const CarPaint* own = who >= 0 && who < 2 && car_paint[who].on() ? &car_paint[who] : nullptr;
+        const PaintMap* pm = own ? paint_map(dev, file) : nullptr;
+        b3view::CarModel* cm = car_model(dev, file, pm && own->custom ? pm->map.ref : v.paint, lod);
         if (!cm) continue;
         b3view::CarPose p;
         p.main = row(v.main);
@@ -1088,6 +1972,23 @@ void View::vehicle_draws(b3gfx::Device& dev, const Camera& cam, const std::vecto
         if (!(fade >= 1.0f / 256.0f)) continue;
         const std::size_t first = out.size();
         b3view::add_car_draws(*cm, globals, p, eye, cam.lod_pos, out);
+        if (pm && !cm->scene.textures.empty()) {   // carpaint: the atlas's draws take the paint map
+            const b3gfx::TextureId atlas = cm->scene.textures.front();
+            float paint[3], paint2[3];
+            if (own->custom) b3asset::custom_paint_texel(own->rgb, paint);
+            else for (int c = 0; c < 3; ++c) paint[c] = pm->map.main[std::clamp(int(v.paint), 0, pm->map.palettes - 1)][c];
+            if (own->custom && own->second) b3asset::custom_paint_texel(own->rgb2, paint2);
+            else std::memcpy(paint2, paint, sizeof paint2);
+            for (std::size_t k = first; k < out.size(); ++k) {
+                if (out[k].texture != atlas) continue;
+                b3gfx::CarParams& c = out[k].car_mut();
+                c.paint_mode = (own->custom ? 1 : 0) | (own->decals ? 0 : 2) | (own->finish == 1 ? 4 : own->finish == 2 ? 8 : 0);
+                std::memcpy(c.paint, paint, sizeof c.paint);
+                std::memcpy(c.paint2, paint2, sizeof c.paint2);
+                c.paint_ref = pm->map.ref_level;
+                c.paint_mask = pm->tex;
+            }
+        }
         apply_car_reflections(out, first, globals.env_frame_units ? 0.0f : v.kind == VehicleKind::kTraffic ? carlook::current().traffic : 1.0f);
         if (fade < 1.0f)
             for (std::size_t k = first; k < out.size(); ++k) out[k].car_mut().fade = -fade;
@@ -1909,7 +2810,11 @@ void View::hud_list(b3gfx::Device& dev, const std::shared_ptr<const HudFrame>& h
                 const auto t = textures.find(dp->texture);
                 if (t != textures.end() && prompt_texture(t->second->name)) {
                     std::vector<HudVertex> tri;
-                    prompt_sub = prompt_substitute(t->second->name, t->second->w, t->second->h, dp->tri, prompt_atlas, tri);
+                    // promptround: the 2D's units in the 4:3 box (an x unit over a y unit: 448 / 480), so a round button stays round
+                    // (0 in the split-screen own layout: split_hud then places the 2D with its own scale, where dev's
+                    // quads were already round; the review found the 4:3 correction made them 5% too wide there)
+                    const float unit_aspect = hud_split_pass_ ? 0.0f : (4.0f / 3.0f) * float(hud->height) / float(hud->width);
+                    prompt_sub = prompt_substitute(t->second->name, t->second->w, t->second->h, dp->tri, prompt_atlas, tri, unit_aspect);
                     if (prompt_sub) {
                         prompt_draw = *dp;
                         prompt_draw.tri = std::move(tri);
@@ -2427,6 +3332,17 @@ void View::host_ui_list(b3gfx::Device& dev, const std::shared_ptr<const HostUi>&
                 if (p.empty()) {
                     const std::uint8_t white[4] = {255, 255, 255, 255};
                     id = dev.create_texture({b3gfx::TextureLevel{1, 1, white}});
+                } else if (p.rfind("img:", 0) == 0) {
+                    // settingsui: a picture the host made (the page's button glyphs). One texture slot, refilled when the
+                    // picture changes (a new device or a rebound key), so a change does not keep the old one until a reset
+                    if (p == host_img_name) return host_img_tex;
+                    for (const auto& im : ui->images)
+                        if (im && "img:" + im->name == p && im->w > 0 && im->h > 0 && im->rgba.size() >= std::size_t(im->w) * std::size_t(im->h) * 4) {
+                            dev.update_texture(host_img_tex, im->w, im->h, im->rgba.data());
+                            host_img_name = host_img_tex == b3gfx::kNone ? std::string() : p;
+                            break;
+                        }
+                    return p == host_img_name ? host_img_tex : b3gfx::kNone;
                 } else if (p.rfind("hudtex:", 0) == 0) {   // mac5: a captured HUD texture by raster (the PC SETTINGS page's fonts)
                     const std::uint32_t raster = std::uint32_t(std::strtoul(p.c_str() + 7, nullptr, 16));
                     if (host_ui_hud_textures)
@@ -2609,7 +3525,9 @@ void View::split_frame(b3gfx::Device& dev, const Frame& f, const std::vector<Mod
     // front end's panels over both views (the pause menu, the event intro: perf1's hud_overlay_panels) is one screen's,
     // laid out over the whole window as the game's layout does
     if (own_layout && !(f.hud && hud_overlay_panels(*f.hud))) {
+        hud_split_pass_ = true;
         hud_list(dev, f.hud, hud_textures, 4.0f / 3.0f, overlay, out_h, out_w, nullptr);
+        hud_split_pass_ = false;
         if (f.hud) split_hud(*f.hud, f, views, view_half_w, out_w, out_h, overlay);
         return;
     }
@@ -2881,12 +3799,22 @@ void View::frontend_frame(b3gfx::Device& dev, const Frame& f, const std::vector<
         }
         const Vehicle* car = nullptr;
         for (const auto& v : f.vehicles) if (v.id == f.fe_car) car = &v;
+        paint_fe_car = f.fe_car;   // padpaint: the car on show takes its world slot's player's paint
+        paint_fe_player = car && car->player >= 0 ? car->player : f.fe_player == 1 ? 1 : 0;
+        if ((car_paint[0].on() || car_paint[1].on()) && paint_fe_logged != f.fe_player * 4 + paint_fe_player) {
+            paint_fe_logged = f.fe_player * 4 + paint_fe_player;
+            std::fprintf(stderr, "car paint: the front end's car (%s): player %d's paint\n",
+                         car && car->player >= 0 ? "a player's car" : f.fe_player >= 0 ? "the car select's player" : "not the car select",
+                         paint_fe_player + 1);
+        }
         if (!sr) {   // menu1's frame: the car alone on black
             b3view::frame_params(sky, f.cam.m.r[3], f.cam.m.r[2], false, false, fp);
             frontend_params(fp);   // the game's frame model (half-intensity frame, doubled on present); frame_params left it for an unlit scene
             game_view_proj(f.cam, aspect, fp.view_proj);
             car_frame(fp);
+            paint_frontend = true;   // carpaint
             vehicle_draws(dev, f.cam, f.vehicles, f.vehicles, heads, false, fp.eye, car_globals, out);
+            paint_frontend = false;
         } else {
             // fe2 (§24): RenderFrontEnd's order [C matched 0x275EF0]: the environment's backdrop texture, sky, sun blob and
             // clouds; RenderAllBackdrops range 0; the car's floor reflection, the car; range 1, the full-screen specular,
@@ -2913,11 +3841,13 @@ void View::frontend_frame(b3gfx::Device& dev, const Frame& f, const std::vector<
             std::memcpy(fp.sun_colour, globals.sun_colour, sizeof fp.sun_colour);
             out.insert(out.end(), sr->sky.items.begin(), sr->sky.items.end());
             for (int k : sr->range[0]) out.push_back(sr->hi.items[std::size_t(k)]);
+            paint_frontend = true;   // carpaint: the showroom's car (and its floor reflection) is player 1's
             if (room_reflection && car) {
                 const std::vector<Vehicle> mirrored{floor_reflection(*car)};
                 vehicle_draws(dev, f.cam, mirrored, mirrored, heads, false, fp.eye, globals, out);
             }
             vehicle_draws(dev, f.cam, f.vehicles, f.vehicles, heads, false, fp.eye, globals, out);
+            paint_frontend = false;
             for (int g = 1; g < 3; ++g) for (int k : sr->range[g]) out.push_back(sr->hi.items[std::size_t(k)]);
             if (room_shadow && car && car->model >= 0 && std::size_t(car->model) < heads.size()) {
                 Vehicle::Shadow s;

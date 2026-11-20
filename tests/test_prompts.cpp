@@ -3,8 +3,11 @@
 // the game's button draws (the prompt bar's buttons from "Buttons", the d-pad hint's arms from "dpad") as captured.
 #include "test.h"
 
+#include "glyphdraw.h"
 #include "prompts.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -348,6 +351,68 @@ TEST(default_pad_stick_click_glyphs) {
     own.build(PromptDevice::kPlayStation, {}, 1080);
     moved.build(PromptDevice::kPlayStation, k, 1080);
     CHECK(own.rgba() != moved.rgba());
+}
+
+// promptround: a round button drawn in a box that is not its own (Impact Time's R1 picture bound to the Xbox A) stays
+// round on screen, its letter shrinks with its disc, and the menu's face buttons (already square on screen) keep their
+// quads; one letter is centred on its strokes' weight
+TEST(round_buttons_stay_round_on_screen) {
+    using b3native::input::Ds2;
+    std::array<Ds2, 16> def{};
+    for (int b = 0; b < 16; ++b) def[std::size_t(b)] = Ds2(b);
+    def[std::size_t(Ds2::R1)] = Ds2::Cross;
+    const PromptKeys k = b3replay::prompt_pad_glyphs(def);
+    CHECK(k.shown(PadButton::kR1) == PadButton::kCross);
+    PromptAtlas a;
+    a.build(PromptDevice::kXbox, k, 720);
+    CHECK(a.round(PadButton::kR1) && a.round(PadButton::kCross) && !a.round(PadButton::kL1) && !a.round(PadButton::kR2));
+    const float ua = 448.0f / 480.0f;   // the 640 x 448 2D in the 4:3 box
+    // the ink's size on screen (y units) of layer `l` of the six vertices from `o`, its cell button `b`
+    auto ink_on_screen = [&](const std::vector<HudVertex>& out, std::size_t o, PadButton b, GlyphLayer l, float& w, float& h) {
+        float x0 = 1e30f, x1 = -1e30f, y0 = 1e30f, y1 = -1e30f;
+        for (std::size_t i = o; i < o + 6; ++i) { x0 = std::min(x0, out[i].x); x1 = std::max(x1, out[i].x); y0 = std::min(y0, out[i].y); y1 = std::max(y1, out[i].y); }
+        const PromptAtlas::Rect c = a.cell(b, l), ink = a.ink(b, l);
+        w = (x1 - x0) * ua * (ink.u1 - ink.u0) / (c.u1 - c.u0);
+        h = (y1 - y0) * (ink.v1 - ink.v0) / (c.v1 - c.v0);
+    };
+    std::vector<HudVertex> r1, out;
+    quad(r1, 443.38f, 28.88f, 487.38f, 51.31f, 1, 1, 64, 32, 64, 32);   // as captured (the crash run, poll 12100)
+    CHECK(b3replay::prompt_substitute("R1Button", 64, 32, r1, a, out, ua) && out.size() == 12);
+    if (out.size() == 12) {
+        float bw = 0, bh = 0, sw = 0, sh = 0;
+        ink_on_screen(out, 0, PadButton::kR1, GlyphLayer::kBase, bw, bh);
+        ink_on_screen(out, 6, PadButton::kR1, GlyphLayer::kSymbol, sw, sh);
+        CHECK(std::fabs(bw / bh - 1.0f) < 0.03f);   // was 0.87: an upright oval
+        // the symbol's quad the base's (the same centre and size)
+        for (std::size_t i = 0; i < 6; ++i) CHECK(std::fabs(out[i].x - out[i + 6].x) < 1e-3f && std::fabs(out[i].y - out[i + 6].y) < 1e-3f);
+        // the disc's middle where the picture's middle was
+        CHECK(std::fabs(0.5f * (out[0].x + out[2].x) - (443.38f + 44.0f * 31.0f / 63.0f)) < 0.01f);
+        // the letter as big against its ring as in a face button's own box (it was 0.81, over the ring's edge)
+        PromptAtlas::Rect fb = a.ink(PadButton::kCross, GlyphLayer::kBase), fs = a.ink(PadButton::kCross, GlyphLayer::kSymbol);
+        PromptAtlas::Rect rb = a.ink(PadButton::kR1, GlyphLayer::kBase), rs = a.ink(PadButton::kR1, GlyphLayer::kSymbol);
+        const float own = (fs.v1 - fs.v0) / (fb.v1 - fb.v0), in_r1 = (rs.v1 - rs.v0) / (rb.v1 - rb.v0);
+        CHECK(std::fabs(own - in_r1) < 0.08f && in_r1 < 0.7f);
+    }
+    // the menu's prompt bar (the select mode page, as traced): the ring 21 x 19.62 is square on screen, so kept
+    std::vector<HudVertex> menu, mo;
+    quad(menu, 34.5f, 407.81f, 55.5f, 427.44f, 1, 33, 22, 54, 128, 64);
+    quad(menu, 38.5f, 411.56f, 51.5f, 423.69f, 15, 2, 28, 15, 128, 64);
+    CHECK(b3replay::prompt_substitute("Buttons", 128, 64, menu, a, mo, ua) && mo.size() == 12);
+    if (mo.size() == 12) {
+        CHECK(std::fabs(mo[0].x - 34.5f) < 0.05f && std::fabs(mo[2].x - 55.5f) < 0.05f && std::fabs(mo[0].y - 407.81f) < 0.05f);
+        CHECK(std::fabs(0.5f * (mo[6].x + mo[8].x) - 45.0f) < 1e-3f && std::fabs(0.5f * (mo[6].y + mo[8].y) - 417.625f) < 1e-3f);
+    }
+    // a pill (not round) is left as the game's picture lays it out
+    std::vector<HudVertex> l1, lo;
+    quad(l1, 100, 100, 135, 115, 7, 5, 57, 26, 64, 32);
+    quad(l1, 100, 100, 135, 115, 7, 5, 57, 26, 64, 32);
+    CHECK(b3replay::prompt_substitute("L1Button", 64, 32, l1, a, lo, ua) && lo.size() == 12 && near(lo[0].x, 100) && near(lo[2].x, 135));
+    // one letter on its strokes' weight: B's stem pulls it left of its box's middle; A and X are symmetric
+    using b3replay::glyph::text_mass_x;
+    using b3replay::glyph::text_width;
+    CHECK(text_mass_x("B", 100, 10) < 0.5f * text_width("B", 100, 10) - 1.0f);
+    CHECK(std::fabs(text_mass_x("A", 100, 10) - 0.5f * text_width("A", 100, 10)) < 0.01f);
+    CHECK(std::fabs(text_mass_x("X", 100, 10) - 0.5f * text_width("X", 100, 10)) < 0.01f);
 }
 
 TEST(substitutes_the_dpad_arms) {

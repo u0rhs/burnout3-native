@@ -37,6 +37,11 @@ struct ArtImage {
     std::vector<std::uint8_t> rgba;    // straight RGBA8
 };
 
+// settingsui: the box of a picture's visible pixels (alpha above `threshold`), grown by `margin` and kept inside the
+// picture; x1 / y1 one past the last. A picture with none visible: the whole picture.
+struct PixelBox { int x0 = 0, y0 = 0, x1 = 0, y1 = 0; };
+PixelBox visible_box(const ArtImage& im, int margin = 0, int threshold = 8);
+
 struct FontGlyph {
     float u = 0, v = 0, w = 0, h = 0, ox = 0, oy = 0, advance = 0;
     std::uint16_t code = 0;

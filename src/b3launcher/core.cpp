@@ -1,8 +1,11 @@
 // core.cpp -- see core.h
 #include "core.h"
+#include "b3port/fileio.h"   // fsrobust
+#include "b3port/user_dir.h"   // portable mode: folders inside the install kept relative to it
 
 #include "../native/custom_music.h"
 #include "../native/save_card.h"
+#include "../native/save_store.h"   // saveflow: profile_problem
 #include "b3asset/discfs.h"
 
 #include <algorithm>
@@ -67,6 +70,7 @@ std::string config_to_ini(const Config& c) {
     if (!c.steam_cover.empty()) o << "steam_cover = " << c.steam_cover << "\n";   // issue #8
     if (!c.steam_hero.empty()) o << "steam_hero = " << c.steam_hero << "\n";
     if (!c.steam_logo.empty()) o << "steam_logo = " << c.steam_logo << "\n";
+    for (const std::string& n : c.unsaved_left) o << "unsaved_left = " << n << "\n";   // saveflow
     return o.str();
 }
 
@@ -86,6 +90,7 @@ Config config_from_ini(std::string_view text) {
         else if (key == "steam_cover") c.steam_cover = std::string(val);   // issue #8
         else if (key == "steam_hero") c.steam_hero = std::string(val);
         else if (key == "steam_logo") c.steam_logo = std::string(val);
+        else if (key == "unsaved_left") { if (!val.empty()) c.unsaved_left.emplace_back(val); }   // saveflow
         else update::read_ini_key(c.update, key, val);   // update1
     }
     return c;
@@ -97,28 +102,25 @@ bool load_config(const fs::path& path, Config& c) {
     std::ostringstream ss;
     ss << f.rdbuf();
     c = config_from_ini(ss.str());
+    config_paths_from_install(c, b3io::exe_dir());
     return true;
+}
+
+// portable mode (1.3.0): the folders inside the install kept relative to it (b3port/user_dir.h install_relative)
+void config_paths_to_install(Config& c, const fs::path& install) {
+    for (std::string* p : {&c.game_dir, &c.saves_dir, &c.steam_cover, &c.steam_hero, &c.steam_logo}) *p = b3io::install_relative(*p, install);
+}
+void config_paths_from_install(Config& c, const fs::path& install) {
+    for (std::string* p : {&c.game_dir, &c.saves_dir, &c.steam_cover, &c.steam_hero, &c.steam_logo}) *p = b3io::install_resolved(*p, install);
 }
 
 bool save_config(const fs::path& path, const Config& c, std::string* why) {
     std::error_code ec;
     if (path.has_parent_path()) fs::create_directories(path.parent_path(), ec);
-    fs::path tmp = path;
-    tmp += ".tmp";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (f) f << config_to_ini(c);
-        if (!f) {
-            if (why) *why = "cannot write " + tmp.string();
-            return false;
-        }
-    }
-    fs::rename(tmp, path, ec);   // replaces the old file (std::filesystem does on Windows too)
-    if (ec) {
-        if (why) *why = "cannot replace " + path.string() + ": " + ec.message();
-        return false;
-    }
-    return true;
+    // fsrobust: path.tmp written, flushed to the disk and checked, then one atomic replace (the old file kept on a failure)
+    Config out = c;
+    config_paths_to_install(out, b3io::exe_dir());
+    return b3io::replace_file(path, config_to_ini(out), why);
 }
 
 fs::path settings_file(const fs::path& pref) { return pref / "pc_settings.ini"; }
@@ -154,11 +156,16 @@ std::vector<GameItem> game_items() {
 // The items of `dir` (no search below it); false when the folder is not there.
 // iso1: `dir` may be a disc image (.iso / .bin / chd1: .chd): its root is checked the same way (b3asset/discfs.h)
 bool check_items(const fs::path& dir, std::vector<GameItem>& items, std::vector<fs::path>* children = nullptr) {
-    if (dir.empty() || !b3asset::disc::is_dir(dir)) return false;
     std::vector<std::pair<std::string, bool>> names;   // lower case name, is a folder
-    for (const b3asset::disc::Entry& e : b3asset::disc::list_dir(dir)) {
-        names.emplace_back(lower(e.name), e.dir);
-        if (e.dir && children) children->push_back(e.path);
+    try {   // fsrobust: one odd file (an image whose names or contents throw) is "not the game", never the launcher's end
+        if (dir.empty() || !b3asset::disc::is_dir(dir)) return false;
+        for (const b3asset::disc::Entry& e : b3asset::disc::list_dir(dir)) {
+            names.emplace_back(lower(e.name), e.dir);
+            if (e.dir && children) children->push_back(e.path);
+        }
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "launcher: cannot read %s: %s\n", b3io::u8string(dir).c_str(), e.what());
+        return false;
     }
     for (GameItem& i : items) {
         const std::string want = lower(i.name);
@@ -263,7 +270,11 @@ GameCheck check_game_folder(const fs::path& dir) {
     g.ok = all_required(g.items);
     if (g.ok) {
         g.summary = file ? "Every game file the port needs is in this disc image." : "Every game file the port needs is there.";
-        g.warning = game_data_warning(dir, file);
+        try {
+            g.warning = game_data_warning(dir, file);
+        } catch (const std::exception& e) {   // fsrobust
+            g.warning = std::string("The game data could not be checked: ") + e.what();
+        }
         return g;
     }
     // the folder above the game's (an install with game/ inside, the repo's data/game, a disc copy in a subfolder)
@@ -279,8 +290,9 @@ GameCheck check_game_folder(const fs::path& dir) {
     if (g.suggestion.empty() && !file) {
         std::vector<fs::path> images;
         for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
-            const std::string ext = lower(it->path().extension().string());
-            if ((ext == ".iso" || ext == ".bin" || ext == ".chd") && it->is_regular_file(ec)) images.push_back(it->path());
+            std::error_code e2;
+            const std::string ext = lower(b3io::u8string(it->path().extension()));
+            if ((ext == ".iso" || ext == ".bin" || ext == ".chd") && it->is_regular_file(e2)) images.push_back(it->path());
         }
         std::sort(images.begin(), images.end());
         for (const fs::path& c : images) {
@@ -491,6 +503,13 @@ std::vector<SaveSlot> list_save_slots(const fs::path& root) {
             const auto t = fs::last_write_time(folder, ec);
             if (!ec) s.modified = unix_time(t);
         }
+        if (s.sav || s.legacy) s.problem = b3native::save::profile_problem(root, n);   // saveflow
+        for (const fs::path& u : b3native::save::unsaved_saves(root, n)) {          // saveflow
+            SaveSlot::Unsaved x{u, std::nullopt};
+            const auto t = fs::last_write_time(u, ec);
+            if (!ec) x.modified = unix_time(t);
+            s.unsaved.push_back(x);
+        }
         out.push_back(s);
     }
     return out;
@@ -565,6 +584,7 @@ std::string skip_block_text(SkipBlock b) {
     case SkipBlock::kBadGameData: return "The launcher opened because the game data will not run (see Game data below).";
     case SkipBlock::kNoProgram: return "The launcher opened because the game program is not beside it.";
     case SkipBlock::kLastRun: return "The launcher opened because the last run did not end cleanly.";
+    case SkipBlock::kPortable: return "The launcher opened because portable mode needs your answer.";
     }
     return {};
 }
@@ -672,16 +692,59 @@ std::vector<KeyRow> key_rows(const std::vector<b3native::input::KeyBinding>& map
     return rows;
 }
 
+StripLayout strip_layout(const std::vector<float>& text_w, float w, std::size_t sel) {
+    StripLayout l;
+    const std::size_t n = text_w.size();
+    if (n == 0) return l;
+    sel = std::min(sel, n - 1);
+    float text = 0;
+    for (float t : text_w) text += t;
+    const float pad = std::clamp((w - text) / float(n), 16.0f, 40.0f);
+    std::vector<float> tw;
+    for (float t : text_w) {
+        tw.push_back(t + pad);
+        l.total += t + pad;
+    }
+    l.over = l.total > w + 0.5f;   // (filled exactly: no scrolling for a rounding)
+    if (l.over) {
+        float left = 0;
+        for (std::size_t k = 0; k < sel; ++k) left += tw[k];
+        l.shift = std::clamp(left + tw[sel] * 0.5f - w * 0.5f, 0.0f, l.total - w + kStripEdge);
+    }
+    float x = -l.shift;
+    for (float t : tw) {
+        l.spans.push_back({x, t});
+        x += t;
+    }
+    return l;
+}
+
+std::pair<int, int> default_window_size(int usable_w, int usable_h) {
+    int w = 1280, h = 720;
+    if (usable_h >= 900 && usable_w >= 1440) w = 1440, h = 810;
+    if (usable_w > 0 && usable_h > 0 && (w > usable_w || h > usable_h)) {   // a small display: within its usable area
+        const double k = std::min(double(usable_w) / w, double(usable_h) / h);
+        w = std::max(1, int(w * k));
+        h = std::max(1, int(h * k));
+    }
+    return {w, h};
+}
+
 b3settings::Content settings_content(const b3settings::Settings& s, const std::string& hd_status, bool hd_has_images,
-                                     const std::vector<std::pair<std::string, std::string>>& languages, const std::string& language_status) {
+                                     const std::vector<std::pair<std::string, std::string>>& languages, const std::string& language_status,
+                                     bool xbox_imported, const std::vector<b3settings::Env::DjVoice>& dj, const std::string& dj_status) {
     b3settings::Env env;
     env.languages = languages;                 // 1.0.1: LANGUAGE and IMPORT LANGUAGES
     env.language_import = true;
     env.language_status = language_status;
+    env.dj_voices = dj;                        // 1.3.0
+    env.dj_status = dj_status;
     env.hd_pack = !s.hd_pack_dir.empty();      // the HD TEXTURES row with a folder chosen
     env.hd_pack_loaded = hd_has_images;        // "(in use)": used from the next start
     env.hd_pack_status = hd_status;
+    env.xbox_textures = xbox_imported;         // xboximport: XBOX TEXTURES
     env.profile = 0;                           // no SAVES tab: the launcher's SAVES page
+    env.launcher = true;                       // settingsui: rows that open its Controllers, Music and HD Textures pages
     b3settings::Content c = b3settings::build_content(s, env);
     b3settings::translate(c, b3settings::ui_language(s, env));   // 1.1: our own text in the player's language
     return c;

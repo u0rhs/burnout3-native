@@ -74,7 +74,7 @@ void TuneConsole::set_user_dir(const std::string& dir) {
     std::lock_guard<std::mutex> l(mu_);
     std::string path;
     if (const char* e = std::getenv("B3TUNE_FAVOURITES"); e && *e) path = e;
-    else if (!dir.empty()) path = (std::filesystem::path(dir) / "tuning_console.ini").string();
+    else if (!dir.empty()) path = b3io::u8string(b3io::u8path(dir) / "tuning_console.ini");
     if (path == usage_path_) return;
     usage_path_ = path;
     if (!path.empty() && usage_.load(path)) {
@@ -90,7 +90,7 @@ void TuneConsole::save_usage(bool now) {
     if (!now && t - usage_saved_ns_ < 1000000000ull) return;
     usage_saved_ns_ = t;
     std::error_code ec;
-    std::filesystem::create_directories(std::filesystem::path(usage_path_).parent_path(), ec);
+    std::filesystem::create_directories(b3io::u8path(usage_path_).parent_path(), ec);
     if (!usage_.save(usage_path_)) std::printf("[b3tune] favourites: cannot write %s\n", usage_path_.c_str());
 }
 

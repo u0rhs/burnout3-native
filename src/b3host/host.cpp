@@ -29,6 +29,14 @@ void diag(const char* tag, std::uint32_t a, std::uint32_t b, std::uint32_t c, st
     static const bool on = [] { const char* v = std::getenv("B3HOST_DIAG"); return v && *v && *v != '0'; }();
     if (on) std::fprintf(stderr, "diag %s %08X %u %u %u %u\n", tag, a, b, c, d, e);
 }
+void draft_fall_off(const char* site) {
+    static std::mutex m;
+    static std::vector<const char*> seen;
+    const std::lock_guard<std::mutex> lock(m);
+    if (std::find(seen.begin(), seen.end(), site) != seen.end()) return;
+    seen.push_back(site);
+    std::fprintf(stderr, "b3host: draft path reached (no retail value, returning a defined one; noted once): %s\n", site);
+}
 void fatal(const std::string& message) {
     static const bool abort_on = [] { const char* e = std::getenv("B3HOST_FATAL_ABORT"); return e && *e == '1'; }();
     const std::string full = g_fatal_context ? message + "; " + g_fatal_context() : message;

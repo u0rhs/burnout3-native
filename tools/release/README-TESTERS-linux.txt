@@ -45,7 +45,7 @@ HOW TO START
 
 Always start the game with the launcher. To skip its pages, turn on "Start the game directly next time (skip this
 launcher)" on the Play page: starting the launcher then starts the game at once. To get the launcher back, hold Shift
-(or Back / Select on a controller) while it starts, or start ./b3launcher --launcher, or turn SETTINGS > INTERFACE >
+(or Back / Select on a controller) while it starts, or start ./b3launcher --launcher, or turn SETTINGS > GAME > STARTING AND LOADING >
 OPEN THE LAUNCHER AT START back on in the game. It also shows by itself when the game data is missing or the last run
 did not end cleanly.
 
@@ -99,7 +99,7 @@ look, the mouse wheel or - / = zoom, Z / C tilt, R back to the game's view, H hi
 Gamepad: left stick move, right stick look, RT / LT up / down, LB / RB tilt, D-pad zoom. P, Escape or B / Circle leave
 it; the race is still paused.
 
-Your own music: SETTINGS > INTERFACE > MUSIC. Choose a folder (MP3, FLAC, Ogg Vorbis or WAV; subfolders too) and the
+Your own music: SETTINGS > AUDIO > MUSIC. Choose a folder (MP3, FLAC, Ogg Vorbis or WAV; subfolders too) and the
 PLAYLIST: EA Trax only (the original, the default), Custom only, or Mixed. Your songs play through the game's radio
 (its volume, shuffle and the EA TRAX popup with the song's title / artist / album from its tags). Changes apply from the
 next song. Note: a bug report's input recording replays exactly only with the same music settings.
