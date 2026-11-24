@@ -13,13 +13,21 @@
 
 namespace b3launcher::showroom {
 
+// showroom2: the series, as SELECT CAR groups the cars (EB3MenuCarClasses): 0..4 the five classes, 5 the specials, 6 the
+// heavyweights, 7 TRAFFIC, 8 TRAFFIC SPECIAL (trafficseries), 10 CUSTOM, 11 BETA (customseries: the player's cars)
+enum : int { kSeriesSpecial = 5, kSeriesHeavy = 6, kSeriesTraffic = 7, kSeriesTrafficSpecial = 8, kSeriesCustom = 10, kSeriesBeta = 11 };
+
 // One player car file: PVEH/<folder>/CARn.BGV
 struct CarEntry {
     std::string folder;            // COMP, MSCL, CUPE, SPRT, SUPR, HSPC, HEVY
     int number = 0;                // n of CARn.BGV
     std::filesystem::path file;    // in the game folder (or the disc image)
-    std::string kind;              // "Compact", ..., "Heavyweight"
+    // "Compact", ..., "Heavyweight" (list_cars); list_more_cars' series exactly "Traffic", "Traffic special", "Custom" and
+    // "Beta": the showroom's series selector (showroom2) keys on these four strings
+    std::string kind;
     std::string name;              // the game's name, else "<kind> <n>"
+    std::string label;             // where it is from, as the page shows it ("PVEH/COMP/CAR3.BGV", "cars/custom/COMP/CAR7.BGV")
+    int page = 0;                  // showpages: a CUSTOM / BETA car's page (0-based: 19 cars each, as SELECT CAR's; extra_series.h)
 };
 
 // The game's string table (DATA/GLOBALUS.BIN): u32 count at +0x08, the offset table's position at +0x0C, then one u32
@@ -39,7 +47,40 @@ int name_index(const std::string& folder, int number);
 
 // The player cars of `game_dir` (a folder or a disc image: b3asset/discfs.h) in the game's order, named from its string
 // table. `note`: what was missing (no PVEH folder, no string table), empty when all is there.
-std::vector<CarEntry> list_cars(const std::filesystem::path& game_dir, std::string* note = nullptr);
+std::vector<CarEntry> list_cars(const std::filesystem::path& game_dir, std::string* note = nullptr,
+                                std::vector<std::string>* strings = nullptr);   // (the string table, for series_name)
+
+// showroom2: a series' name as SELECT CAR shows it: the game's string (GetClassString 0x42DA70: 0xBEF.. for 0..6, the
+// specials 0xBF5, the heavyweights 0xBF4; trafficseries' 380 / 381), "CUSTOM" / "BETA" for the player's; a fallback
+// when the table has none
+// showpages: CUSTOM's and BETA's pages are series of their own, as in the game (carpacks: the series codes 10, 12, 14,
+// ... CUSTOM's, 11, 13, ... BETA's: tools/native/extra_series.h extra_page_series), named as SELECT CAR names them:
+// extra_words(`language`) (the launcher's language code: "" English, FR, GE, IT, SP, DU, SW), " 2", " 3", ... from the
+// second page
+std::string series_name(int series, const std::vector<std::string>& strings, const std::string& language = {});
+// A car's series: the extra cars' by their kind ("Traffic", "Traffic special", "Custom", "Beta": customseries'
+// list_more_cars; CUSTOM's and BETA's by their page too), the disc's by their folder (the specials and the fire truck:
+// name_index 50-56)
+int car_series(const CarEntry& c);
+// A series and its cars (indices into a car list), in SELECT CAR's order: the series with cars only
+struct SeriesEntry {
+    int id = 0;
+    std::string name;
+    std::vector<std::size_t> cars;
+};
+std::vector<SeriesEntry> group_series(const std::vector<CarEntry>& cars, const std::vector<std::string>& strings,
+                                      const std::string& language = {});   // (showpages: CUSTOM's and BETA's pages' names)
+
+// trafficseries / customseries: the cars SELECT CAR offers beyond the disc's player cars, in its order after them: the
+// TRAFFIC and TRAFFIC SPECIAL series (the traffic vehicles' .BTV files, named by the program's traffic table:
+// tools/native/traffic_series.h), then the CUSTOM and BETA series (the player's car folders `custom` and `beta`, read
+// as the game reads them: tools/native/extra_series.h extra_scan_all). `left_out`: each extra car file not shown, with
+// why (as the game's log has it).
+std::vector<CarEntry> list_more_cars(const std::filesystem::path& game_dir, const std::filesystem::path& custom,
+                                     const std::filesystem::path& beta, std::vector<std::string>* left_out = nullptr);
+// The traffic vehicles' names in the traffic table's order (traffic_series.h traffic_table): the program's string ids
+// D_004CDD40[40] [C func_003EACC0 kind 1] in the game's string table; empty when the program or the table is not there
+std::vector<std::string> traffic_names(const std::filesystem::path& game_dir);
 
 // The turntable: the car turning by itself, turned with the mouse (drag) or the right stick, the camera's height and
 // distance with them (vertical drag / stick, the wheel / triggers). A drag or stick stops the spin for a few seconds.

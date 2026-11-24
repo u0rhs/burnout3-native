@@ -20,17 +20,23 @@
 #include <array>
 #include <functional>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 #include "a11y.h"
+#include "xboxglow.h"   // xboxglow: tunnel_lights_env
 #include "b3asset/carpaint.h"
+#include "b3report/sysinfo.h"   // hdcache: b3port::ProcessMemory (the HD prepare's log)
 #include "b3asset/crash.h"
 #include "b3gfx/b3gfx.h"
 #include "capture.h"
 #include "coronas.h"
+#include "rain.h"     // weather: the falling rain
 #include "effects.h"
 #include "menumouse.h"
 #include "prompts.h"
+#include "hudmods.h"   // hudmods: the race HUD's opt-in additions (RPM METER, BOOST BAR SHAKE)
+#include "trackrays.h"   // orbitcam2
 #include "../b3view/carscene.h"
 #include "../b3view/crashscene.h"
 #include "../b3view/scene.h"
@@ -54,9 +60,23 @@ std::vector<const Tick*> route_samples(const Ticks& ticks, std::size_t first, st
     return out;
 }
 
-struct CarFile { std::string path; std::vector<std::uint8_t> bytes; };
+// A car file the renderer can draw. carpacks: an extra car's (the player's car folders: up to 200) is read header-only
+// (its first 0x100 bytes: match_car's 0x70) until it is drawn; full() reads the whole file then (every use past the
+// header goes through it)
+struct CarFile {
+    std::string path;
+    std::vector<std::uint8_t> bytes;
+    bool partial = false;
+    std::vector<std::uint8_t>& full();
+};
 std::vector<CarFile> scan_cars(const std::string& game);
-// Car files whose header bytes 0x00..0x4C equal the captured vehicle data's; -1 if none (`candidates`: how many).
+}  // namespace b3replay
+namespace b3native { struct ExtraScan; }
+namespace b3replay {
+// customseries: the extra cars folders as the game reads them (tools/native/extra_series.h extra_scan_all)
+b3native::ExtraScan extra_cars_now();
+// Car files whose header bytes 0x00..0x4C equal the captured vehicle data's and whose later header words do too, relocated
+// by one load offset (carmatch.h: the taxis share the first 0x4C); -1 if none (`candidates`: how many).
 int match_car(const std::vector<CarFile>& cars, const ModelHead& head, int* candidates);
 
 // ---- interpolation --------------------------------------------------------------------------------------------------
@@ -67,9 +87,13 @@ Vehicle lerp(const Vehicle& a, const Vehicle& b, float t);
 // What one displayed frame shows: the tick's track state, its vehicles and camera, blended towards the next tick.
 struct Frame {
     Camera tick_cam;             // fx2: the tick's game camera as captured (not interpolated)
+    // orbitcam1 (orbitcam.h): how far each view (0: cam, 1: cam2) is turned from the game's camera, 0 (the game's) .. 1
+    // (kOrbitMarkerFade or more): the game's world-anchored markers drawn where the game projected them shrink away by it
+    float orbit_away[2] = {0.0f, 0.0f};
     std::size_t tick = 0;
     float alpha = 0;
-    std::uint8_t race_time = 0;  // todrace (Tick::race_time.race): 0 the TIME OF DAY row's, 1 day, 2 night (drawn only)
+    std::uint8_t race_time = 0;  // todrace (Tick::race_time.race): 0 the TIME OF DAY row's, 1 day, 2 night; weather: 3 rain, 4 night rain (drawn only)
+    bool mirror = false;         // gameopts (Tick::race_time.game_options bit 0): MIRROR MODE's race, the 3D drawn mirrored
     Camera cam;
     std::vector<Vehicle> vehicles;
     int slot_unit[17], slot_kind[17];
@@ -94,8 +118,10 @@ struct Frame {
     float anim_now = 0;
     // HUD / 2D (hud1, §17): the tick's Gt2d frame, held (not interpolated) until the next tick's
     std::shared_ptr<const HudFrame> hud;
+    std::shared_ptr<const HostCarousel> carousel;   // paint3: the carousel slots whose model is not their picture's (Tick::carousel)
     std::uint32_t fe_car = 0;            // menu1 (§22): the front end's car is drawn (Tick::fe_car)
     int fe_player = -1;                  // padpaint: whose car it is (Tick::fe_player)
+    int fe_viewer = -1;                  // gamemods1: the CAR VIEWER's car and background colour (Tick::fe_viewer), -1 not
     // fe2 (§24): the tick's static-track fingerprint (Tick::route_size / route_units): the front end's showroom
     std::uint32_t route_size = 0;
     int route_units = 0;
@@ -178,6 +204,11 @@ struct TrafficProbeStats {
 void traffic_probe(const Timeline& tl, std::size_t i, TrafficProbeStats* stats = nullptr);
 
 // hud4 (§17.13): what the displayed frame's 3D was drawn with, so world-anchored HUD markers can be projected again
+// camfixes: the chased car of camera `c` among `vehicles` as View::apply_fov takes it: `car_id` (0: any race car, the
+// choice before camfixes); its id (0: none), `best` its distance along the view less a share of its radius, `best_rear`
+// its rear's distance (view.cpp)
+std::uint32_t chase_target(const Camera& c, const std::vector<Vehicle>& vehicles, std::uint32_t car_id, float& best, float& best_rear);
+
 struct HudProjection {
     float view_proj[16] = {};                   // the 3D pass's view-projection (b3gfx column-major, clip y up)
     const std::vector<Vehicle>* vehicles = nullptr;   // the frame's (interpolated) vehicles
@@ -235,14 +266,18 @@ inline int bloom_level_env(int fallback) {
 // paint drawn in `rgb` (0xRRGGBB) instead of the game's paint; `second`: the livery's second colour in `rgb2` (else a
 // shade of `rgb`); `decals` false: logos, numbers and second colours drawn over in the paint. The game's paint index
 // is never touched. Off (the default) draws the cars exactly as before.
-// padpaint: `finish` 0 gloss (the game's), 1 metallic, 2 pearl (car.frag, paint mode bits 2 / 3).
+// padpaint: `finish` 0 gloss (the game's), 1 metallic, 2 pearl, 3 chrome (options3) (car.frag, paint mode bits 2 / 3; chrome both).
 struct CarPaint {
     bool custom = false;
     std::uint32_t rgb = 0xC31E1E, rgb2 = 0x202020;
     bool second = false;
     bool decals = true;
     int finish = 0;
-    bool on() const { return custom || !decals || finish != 0; }
+    // paint2: the other layers (0xRRGGBB as on screen), each used only while its switch is on: the decals' colour (the
+    // logos, numbers and stripes), the wheels' (the rims; the tyres stay dark), the boost glow's (coronas.h)
+    bool decal_custom = false, wheel_custom = false, flame_custom = false;
+    std::uint32_t decal_rgb = 0xF0F0F0, wheel_rgb = 0xA5A5B4, flame_rgb = 0xFF7800;
+    bool on() const { return custom || !decals || finish != 0 || decal_custom || wheel_custom; }
     bool operator==(const CarPaint&) const = default;
 };
 // The environment's paint for player `p` (0 / 1), over `base`: $B3_PAINT = RRGGBB (player 1; $B3_PAINT_P2 player 2) a
@@ -274,6 +309,10 @@ struct NightLook {
     float moonlight[3] = {0.55f, 0.66f, 0.88f};      // the moon's light: silver-blue (frame units)
     float car[3] = {0.95f, 0.45f, 0.8f};             // cars: SH scale, env scale, moon key gain
     float facing = 0.55f;                            // track: moonlit faces
+    float flat = 0.5f;                               // track: the baked daylight's contrast flattened (nightfix; $B3_NIGHT_FLAT)
+    // the street lamps' coronas (nightfix, View::night_lamp_coronas): colour gain (GS units on the lamp's tint), half
+    // size (m), the least half size as a share of the view's half width ($B3_NIGHT_LAMP_CORONA; gain 0: none)
+    float lamp_corona[3] = {230.0f, 2.2f, 0.012f};
     float relief = 1.6f;                             // the track's relief by the moon when SURFACE DETAIL is off
     float lamp[3] = {1.0f, 0.93f, 0.80f};
     float shape[4] = {0.26f, 80.0f, 2.0f, 1.6f};     // light.frag: tan of the half angle, range, pool gain, throw gain
@@ -284,20 +323,47 @@ struct NightLook {
     // how many cars get a projected beam: 8 (HIGH, ULTRA), 4 (MEDIUM), 0 = the ground quads (LOW, PS2 ORIGINAL);
     // pcsettings from the preset, $B3_NIGHT_LIGHTS wins
     int lights = 8;
-    // tunnels: enclosed = (1 - smoothstep(lo, hi, sky_open)) x smoothstep(0.6, 0.9, the rays' cover), smoothed over `tau`
-    // s; the grade loses fade x enclosed of its strength within near m, full again at far m ($B3_NIGHT_TUNNEL = "lo, hi,
-    // tau, fade, near, far"; fade 0: off). Set from logged routes (§17.2): tunnels 0.04-0.20, a cliff wall 0.28-0.45
-    // (cover low), open road 0.6-1
+    // tunnels: enclosed = smoothstep(0.6, 0.9, the roof rays' cover) x smoothstep(0.75, 0.95, the 60-degree ring's), the
+    // rays cast while sky_open < 0.6 (nightfix, §35.1: sky_open jumps 0..0.37 inside a tunnel, so it only gates; lo and
+    // hi are kept for the variable's layout and unused), smoothed over `tau` s; the grade loses fade x enclosed of its
+    // strength within near m, full again at far m ($B3_NIGHT_TUNNEL = "lo, hi, tau, fade, near, far"; fade 0: off)
     float tunnel[6] = {0.15f, 0.35f, 0.5f, 0.8f, 60.0f, 140.0f};
     // the tunnels' light fixtures (DrawItem::night_emissive): gain over the pre-grade colour, texel luminance ramp
     // ($B3_NIGHT_FIXTURE; $B3_NIGHT_FIXTURES = "name,name,..." replaces the route's name list, to find the names)
     float fixture[3] = {1.0f, 0.6f, 0.8f};
-    // street lights (§17.2): how many lamps light the road (24 HIGH / ULTRA, 8 MEDIUM, 0 LOW / PS2: from `lights`);
-    // $B3_NIGHT_STREET = the count, $B3_NIGHT_STREET_SHAPE = "inner deg, outer deg, d0 m, gain, fade start m, fade end m"
+    // street lights (§17.2): how many lamps light the road (32 HIGH / ULTRA, 8 MEDIUM, 0 LOW / PS2: from `lights`);
+    // $B3_NIGHT_STREET = the count, $B3_NIGHT_STREET_SHAPE = "inner deg, outer deg, d0 m, gain, fade start m, fade end m, reference height m" (nightfix: d0
+    // and the fade scale with the lamp's height over the reference, 0.75..2)
     int street = -1;                                  // -1: from `lights`
-    float street_shape[6] = {45.0f, 72.0f, 7.0f, 2.2f, 14.0f, 24.0f};
+    float street_shape[7] = {45.0f, 72.0f, 7.0f, 4.0f, 14.0f, 24.0f, 12.0f};   // (gain 2.2 -> 4.0: round 3, the pools were too faint)
+};
+// weather (remaster-features §38): the rain's look. By day the night grade's pass with day values (b3gfx Night::lit
+// false): the world greyer and a little darker, its baked sun stripes softened, the sky an overcast grey over a ghost of
+// the original (its clouds and backdrop), no sun, sun shadows or lens flare, a nearer grey fog, the cars' env map dimmer.
+// At night: the night's grade without stars or moon (behind the clouds), a dull sky a little lighter (the town's light
+// on the clouds), the moonlight weak. Frame units (the present doubles them).
+struct WeatherLook {
+    float world[3] = {0.80f, 0.82f, 0.86f};
+    float sat = 0.62f;
+    float sky[3] = {0.30f, 0.31f, 0.33f};            // the original sky's share
+    float zenith[3] = {0.19f, 0.20f, 0.22f};         // the overcast overhead
+    float horizon[3] = {0.27f, 0.28f, 0.30f};        // and at the horizon (the fog's colour)
+    float car[3] = {0.85f, 0.55f, 0.0f};             // the cars: SH scale, env scale, no key light (no sun)
+    float flat = 0.35f;                              // the baked sun's contrast flattened (Night::flat)
+    float sky_grey = 0.75f;                          // by day: the sky dome and backdrops this far to their own grey (DrawItem::overcast)
+    float wet = 1.0f;                                // the wet road (FrameParams::Surface::wet)
+    float reflect[3] = {0.28f, 0.29f, 0.31f};        // by day: the wet road's sky (the full-screen specular's colour)
+    float night_reflect[3] = {0.05f, 0.05f, 0.055f}; // at night: the town's light on the clouds, mirrored
+    float fog_near = 1.8f;                           // the fog as at this times the distance
+    float fog_max = 0.8f;                            // at least this much fog far away
+    float night_sky[3] = {0.040f, 0.038f, 0.042f};   // night rain: the clouds lit by the town
+    float night_horizon[3] = {0.060f, 0.055f, 0.055f};
+    float night_moonlight = 0.35f;                   // the moonlight's share
 };
 inline bool night_env_set() { const char* e = std::getenv("B3_NIGHT"); return e && *e; }
+// weather (remaster-features §38): $B3_WEATHER = rain / 1 (on) or dry / 0 (off) wins over the WEATHER row
+inline bool weather_env_set() { const char* e = std::getenv("B3_WEATHER"); return e && *e; }
+inline bool weather_env_rain() { const char* e = std::getenv("B3_WEATHER"); return e && (*e == '1' || *e == 'r'); }
 inline NightLook night_env() {
     NightLook n;
     const char* e = std::getenv("B3_NIGHT");
@@ -326,8 +392,10 @@ inline NightLook night_env() {
     read("B3_NIGHT_SPOT", n.spot, 11);
     read("B3_NIGHT_TUNNEL", n.tunnel, 6);
     read("B3_NIGHT_FIXTURE", n.fixture, 3);
-    if (const char* l = std::getenv("B3_NIGHT_STREET"); l && *l) n.street = std::clamp(std::atoi(l), 0, 24);
-    read("B3_NIGHT_STREET_SHAPE", n.street_shape, 6);
+    if (const char* l = std::getenv("B3_NIGHT_STREET"); l && *l) n.street = std::clamp(std::atoi(l), 0, 32);
+    read("B3_NIGHT_STREET_SHAPE", n.street_shape, 7);
+    read("B3_NIGHT_FLAT", &n.flat, 1);
+    read("B3_NIGHT_LAMP_CORONA", n.lamp_corona, 3);
     if (const char* l = std::getenv("B3_NIGHT_LIGHTS"); l && *l) n.lights = std::clamp(std::atoi(l), 0, 8);
     return n;
 }
@@ -339,13 +407,56 @@ struct View {
     NightLook night = night_env();              // night mode (remaster-features §17), set in post_frame / draw_list
     // todrace: whether frame `f` is drawn at night: the race's own choice on a track page (Frame::race_time,
     // tools/native/race_time.h: 1 day, 2 night), else night.on (TIME OF DAY, $B3_NIGHT). Drawn only.
-    bool night_on(const Frame& f) const { return f.race_time ? f.race_time == 2 : night.on; }
+    bool night_on(const Frame& f) const { return f.race_time ? f.race_time == 2 || f.race_time == 4 : night.on; }
+    // weather (§38): whether frame `f` is drawn in the rain: the race's CONDITIONS (3 rain, 4 night rain; 1 / 2 dry), else
+    // WEATHER (`rain`; held back: $B3_WEATHER only). Drawn only.
+    bool rain = weather_env_rain();
+    WeatherLook weather_look;
+    void rain_frame(const Frame& f, float aspect, b3gfx::FrameParams& fp) const;   // the rain's grade (post_frame)
+    void rain_sky_tint(const Frame& f, b3gfx::DrawItem& it) const;   // the rain's sky (draw_list)
+    float follow_speed(const Frame& f, float dir[3]) const;          // the followed race car's speed (its wheels) and heading
+    void rain_audio_frame(const Frame& f, const b3gfx::FrameParams& fp) const;   // the rain's sound (NativeAudio)
+    float rain_audio_volume() const;   // rainfe: RAIN VOLUME as the sound takes it ($B3_RAIN_VOLUME wins)
+    float rain_volume = 1.0f;   // RAIN VOLUME (pcsettings: held back with weather, so 100 %), x the game's EFFECTS volume
+    mutable float rain_clock_now = -1.0f;                            // (the race's clock seen last, and when: the pause)
+    // weather (§38): the camera under a roof (a bridge, an overpass, a tunnel): 0..1, smoothed (~0.3 s in, ~0.5 s out, so
+    // a bridge's shadow or a lattice does not flicker it); per view (split screen swaps it)
+    struct RainCover { float v = 0; float now = 0; bool valid = false; };
+    mutable RainCover rain_cover;
+    float rain_cover_frame(const Frame& f) const;
+    mutable float rain_log_last[3] = {-1.0f, -1.0f, -1.0f};   // (B3_RAIN_AUDIO_LOG: the last printed on / cover / enclosed)
+    mutable std::chrono::steady_clock::time_point rain_clock_wall{};
+    void lens_drops_frame(const Frame& f, b3gfx::FrameParams& fp, float enclosed, float aspect) const;   // the lens drops (rain_frame)
+    bool lens_drops_on = [] { const char* e = std::getenv("B3_RAIN_DROPS"); return !(e && *e == '0'); }();   // $B3_RAIN_DROPS=0: none
+    bool rain_on(const Frame& f) const { return f.race_time ? f.race_time >= 3 : rain; }
+    // taillights: frame f's brake levels (Vehicle::brake) from the timeline it was built from (frame_at(tl, i, frac)),
+    // only where the lights are on (night, rain); called with apply_fov after frame_at where a race is drawn
+    void frame_lights(const Timeline& tl, std::size_t i, double frac, Frame& f) const;
+    bool night_at_load() const { return load_race_time ? load_race_time == 2 || load_race_time == 4 : night.on; }
+    bool rain_at_load() const { return load_race_time ? load_race_time >= 3 : rain; }
+    // the falling rain (rain.h; per view: split screen swaps it with player 2's) and its roofs (rain_sheltered)
+    mutable Rain rain_layer;
+    RainLook rain_look;
+    mutable std::unordered_map<std::uint64_t, bool> rain_roof;
+    bool rain_sheltered(const float p[3]) const;
+    bool rain_dry_built = false;
+    void rain_dry_build();   // DrawItem::dry per track draw (at the load in the rain, else on the first rain frame)
+    // the lights' streaks on the wet road (rain.h wet_reflection; per view) and the ground under a light (rain_ground)
+    mutable QuadLayer wet_layer;
+    mutable Spray spray_layer;   // the spray from the wheels (rain.h; per view)
+    // draw_list's quads of a frame (the lamps' heads, the light streaks, the rain, the spray): kept, so their capacity is
+    // reused (no allocation per frame); the layers build them afresh each frame
+    std::vector<CoronaQuad> scratch_lamps, scratch_wet, scratch_rain, scratch_mist;
+    SprayLook spray_look;
+    mutable std::unordered_map<std::uint64_t, float> rain_floor;
+    bool rain_ground(const float p[3], float& y) const;
     std::uint8_t load_race_time = 0;   // todrace: the race's choice when its route loads (the tunnel cover grid is built then)
     // surface (remaster-features §18): GRAPHICS > SURFACE DETAIL / AMBIENT OCCLUSION (pcsettings); $B3_SURFACE* win
     bool surface_detail = false, ambient_occlusion = false;
     // SUN SHADOWS (remaster-features §20): GRAPHICS > SUN SHADOWS (pcsettings: the map's side and kernel from ANTI-ALIASING);
     // $B3_SUN_SHADOWS=0 / 1 wins over the row, $B3_SUN_SHADOW_SIZE / _FILTER / _STRENGTH (tuning) over the rest
     bool sun_shadows = false;
+    bool prop_shadows = false;   // propshadow1 (PROP SHADOWS): props and instances cast too, while sun_shadows is on
     int sun_shadow_size = 2048, sun_shadow_filter = 0;
     float road_light = 0.75f;   // the route's open-road vertex light (load_prepared: road_light_level), FrameParams::SunShadow::lit
     // The frame's shadow box (FrameParams::SunShadow without the strength) towards `to_light`, around the view's car
@@ -368,9 +479,28 @@ struct View {
     // sigcam (1.2): and only the game's chase cameras (Camera::chase), so its takedown and crash cameras stay too
     float chase_distance = 1.0f;
     float chase_height = 0.0f;
-    void apply_fov(Camera& c, const std::vector<Vehicle>& vehicles) const;
+    // camfixes (2026-11-22): the chased car is the view's own player car (`car_id`; view 0: kPlayerRaceCar), never
+    // another car that happens to be ahead (a car passing between the camera and the player's, the car behind in a
+    // look-back view: the offsets then jumped to it, or pushed the eye into the player's own car)
+    void apply_fov(Camera& c, const std::vector<Vehicle>& vehicles, std::uint32_t car_id = kPlayerRaceCar) const;
+    // camfixes2: the game's time of the frame apply_fov is given next, in polls (fractional between ticks; the live
+    // view sets it). With it the offsets ease in and out over kChaseEase polls when the player's car starts or stops
+    // being chased (a takedown camera's blend, a swinging camera turning off the car, back from a look-back), instead
+    // of a step; a camera cut (the view turning faster than 30 degrees per poll) drops them at once (an old offset is
+    // never put on another camera); a jump in time (the first frame, a seek) takes the frame's own weight (an isolated
+    // shot matches the running view). Negative (the replay tools): no easing, as before.
+    mutable double chase_clock = -1.0;
+    static constexpr double kChaseEase = 10.0;
+    struct ChaseEase {
+        float w = 0.0f;                  // the offsets' weight now (0..1)
+        double t = -1.0;                 // chase_clock at the last frame
+        float at[3] = {};                // the view axis at the last frame
+        float move = 0.0f, back = 0.0f, up = 0.0f, d = 0.0f;   // the full offsets last applied (w 1), the aim's distance
+    };
+    mutable ChaseEase chase_ease;
     std::vector<CarFile> cars;                  // scan_cars(game), once
     std::map<ModelHead, int> head_file;         // model header -> index into cars (-1 unmatched)
+    std::set<std::uint64_t> payload_logged;     // payloads1: vehicles (x2, + released) whose payload draw was logged once
     std::string route;                          // the loaded route folder ("" = none)
     std::uint32_t route_size = 0;
     int route_units = 0;
@@ -473,6 +603,45 @@ struct View {
     // title's "Press START button to continue": its START drawn as the device's Start button (prompts.h title_start_swap)
     std::shared_ptr<const HostFonts> hud_fonts, hud_built_fonts;
     std::map<std::uint64_t, b3gfx::TextureId> hud_textures;   // by HudTexture key (uploaded on first use)
+    // paint2 / paint3: the car pages' thumbnails in the player's paint (drawn from the cars: render_car_picture), by (HudTexture key, the paint's
+    // signature); hud_built_thumb: the signature the built items used (0: the game's thumbnails)
+    // paint3: a car picture on its way (car_picture_begin: drawn on black and on white; car_picture_take)
+    struct PictureJob {
+        int ids[2] = {0, 0};          // Device::picture_begin's, 0: taken (or none)
+        std::vector<std::uint8_t> px[2];
+        bool failed = false;
+        int w = 0, h = 0, file = -1;
+        std::uint64_t begun_tick = 0; // hud_tick when begun (thumb_job_expired: given up)
+        bool on() const { return ids[0] != 0 || ids[1] != 0; }
+    };
+    struct ThumbSlot {   // one texture per thumbnail, refilled
+        std::uint64_t sig = 0;        // the paint its picture has (0: none yet)
+        b3gfx::TextureId id = b3gfx::kNone;
+        std::uint64_t drawn_tick = 0; // when its last picture was begun (hud_tick)
+        PictureJob job;               // the picture on its way, for job_sig
+        std::uint64_t job_sig = 0;
+        std::uint64_t failed_sig = 0; // a picture for this paint was given up: not begun again, the game's picture stays
+    };
+    // paint3: a thumbnail's car (cars index) by its name, and each car's framing fitted to the game's picture
+    std::map<std::string, int> thumb_file_of;
+    struct ThumbFit { bool done = false; float s = 1.0f, ox = 0.0f, oy = 0.0f; PictureJob job; };
+    static constexpr std::uint64_t kThumbRefreshTicks = 3;   // paint3: a stale thumbnail's picture at most every 0.1 s (30 polls a second)
+    std::uint64_t hud_tick = 0;      // paint3: the frame's tick (Frame::tick; set before hud_list)
+    bool thumb_wait = false;         // paint3: every thumbnail drawn and waited for in its build (deterministic shots: all but the
+                                     // live window, !async_paint)
+    int thumb_budget = 0;            // paint3: pictures still to begin in this build (1 a build; thumb_wait: no limit)
+    bool thumb_busy = false;         // paint3: a thumbnail waits for its picture: the HUD built again next frame
+    std::set<int> thumb_files_used;  // paint3: the cars this build's thumbnails are drawn from
+    std::vector<PictureJob> thumb_orphans;   // paint3: jobs of thumbnails no longer drawn, taken when done
+    // paint3: car models loaded only for thumbnails (car_model called from car_picture_begin, never for the scene): given
+    // back once no thumbnail of theirs is drawn or on its way
+    std::set<std::tuple<int, int, int>> thumb_only_models;
+    bool thumb_model_ = false;
+    double thumb_build_ms = 0;       // paint3 diagnostics (B3_THUMB_LOG)
+    std::map<int, ThumbFit> thumb_fit;
+    std::map<std::uint64_t, ThumbSlot> hud_thumb_textures;
+    std::vector<b3gfx::TextureId> hud_thumb_free;   // slots of thumbnails no longer drawn (their textures refilled next)
+    std::uint64_t hud_built_thumb = 0;
     // Accessibility (a11y.h; PC SETTINGS > GAME > ACCESSIBILITY): HUD COLOUR FILTER (0 off, 1 deuteranopia, 2
     // protanopia, 3 tritanopia) remaps the 2D's colours (hud_list, host_ui_list: vertex colours and remapped copies of
     // the textures; not the movies, not the globe); SCREEN FLASHES Reduced caps full-screen bright fills. Off / Full:
@@ -488,11 +657,14 @@ struct View {
     // textsize1: HUD SIZE (0 100 % .. 3 150 %, a11y.h hud_size_scale): the race HUD's components scaled about their
     // EHUDAlign anchors (hud_list, not the front end); 0: nothing of it runs
     int hud_size = 0, hud_built_size = 0;
+    // hudmods (hudmods.h): RPM METER and BOOST BAR SHAKE, made on a copy of the frame before it is laid out (both off:
+    // nothing of it runs)
+    HudModOptions hud_mod_options;
+    HudMods hud_mods;
     // carsel1 (PC SETTINGS > CAR SERIES ON L1 / R1, input_keys.h ShoulderSeries): the device's L1 / R1 glyphs beside the
     // car select's series arrows (prompts.h series_glyphs; drawn only); off: nothing of it runs
     bool series_glyphs = false, hud_built_series = false;
     std::uint64_t series_glyph_frames = 0;   // frames drawn with them (the log)
-    int host_built_filter = 0;
     std::uint64_t flash_cuts = 0;   // draws capped so far (the log)
     std::uint64_t static_stills = 0;   // TV static frames drawn still (the log)
     a11y::FlashDraw hud_flash_draw(const HudFrame& hud, const HudDraw& d, const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>& textures,
@@ -511,16 +683,21 @@ struct View {
     bool show_host_ui = true;
     // mac5: the HUD textures a "hudtex:<raster hex>" host-UI path names (the PC SETTINGS page's font quads); null: none
     const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>* host_ui_hud_textures = nullptr;
+    // options3: `slot` 1 is a second build of its own (its own buffers), for a layer drawn in the same frame as another
+    // (DRIVER LABELS over the race with the race's other host-UI layers)
     void host_ui_list(b3gfx::Device& dev, const std::shared_ptr<const HostUi>& ui, float aspect, std::vector<b3gfx::DrawItem>& out,
-                      int out_h, int out_w);
+                      int out_h, int out_w, int slot = 0);
     std::map<std::string, b3gfx::TextureId> host_ui_tex;   // by path ("" white); kNone: unreadable
     b3gfx::TextureId host_img_tex = b3gfx::kNone;   // settingsui: the host's picture ("img:" path; one slot, refilled on a change)
     std::string host_img_name;                      // the "img:" path it holds
-    b3gfx::BufferId host_vb = b3gfx::kNone, host_ib = b3gfx::kNone;
-    std::shared_ptr<const HostUi> host_built;
-    float host_aspect = 0;
-    int host_built_h = 0, host_built_w = 0;
-    std::vector<b3gfx::DrawItem> host_items;
+    struct HostUiBuild {   // a host-UI layer's build: its buffers and what it was built from
+        b3gfx::BufferId vb = b3gfx::kNone, ib = b3gfx::kNone;
+        std::shared_ptr<const HostUi> built;
+        float aspect = 0;
+        int h = 0, w = 0, filter = 0;
+        std::vector<b3gfx::DrawItem> items;
+    };
+    HostUiBuild host_build[2];
     // fe2 (§24): the World Tour globe (HudFrame::globes) among the 2D draws; off with --no-globe
     bool show_globe = true;
     void globe_items(const HudGlobe& g, const std::function<b3gfx::TextureId(std::uint64_t)>& tex, float fw, float fh, int out_w,
@@ -528,12 +705,24 @@ struct View {
                      std::vector<b3gfx::DrawItem>& items) const;
     // hud4: markers projected per displayed frame (--hud-markers frame, default | tick: as captured; key K)
     bool hud_reproject = true;
+    // orbitcam1: the frame's Frame::orbit_away (set by draw_list / split_frame / frontend_frame): a marker hud_list places
+    // where the game projected it (no hud4 reprojection: the split screen's top / bottom, --hud-markers tick) is scaled
+    // about its point by 1 - away, hidden at 1 (the game projected it with its own camera, not the turned one)
+    float orbit_away[2] = {0.0f, 0.0f};
+    // orbitcam2 (trackrays.h): the route's walls for the orbit camera, built on a worker as the track loads; null
+    // before a track (waits for the build the first time)
+    const TrackRays* track_rays() const { return rays_job.get(); }
+    std::shared_ptr<const TrackRays> track_rays_shared() const { return rays_job.shared(); }
+    mutable TrackRaysJob rays_job;   // (declared after `hi`: its worker reads it; reset in clear and destroyed first)
     std::vector<int> hud_item_marker;           // per hud_items entry: its HudFrame::markers index, -1 none
     std::vector<int> hud_item_draw;             // splitlayout1: per hud_items entry: its HudFrame::draws index, -1 none
     std::vector<std::array<float, 16>> hud_item_model;   // per entry: its 2D -> clip matrix as built
     std::vector<std::uint32_t> hud_item_count;  // per entry: its index count as built
     struct MarkerPlace { bool shown = true; float dx = 0, dy = 0, r = 1; float x = 0, y = 0; };
     std::vector<MarkerPlace> hud_marker_place;  // of the last hud_list call (per HudFrame::markers entry)
+    // gameopts (MIRROR MODE): the last draw_list's frame was mirrored, so hud_list / split_hud place the world-anchored
+    // markers at their mirrored points (each about its view's middle; the marker itself is not reversed)
+    bool hud_mirror = false;
     // mac5 (menu mouse, menumouse.h): the last hud_list build's draws as drawn, per draw (HudFrame::draws) its pieces (a
     // quad's 6 vertices, else a triangle's 3) in output fractions (0..1, y down) after the wide layout; none for a draw
     // not drawn. `hud_pieces_frame`: the frame they are of.
@@ -576,7 +765,8 @@ struct View {
     // IsPlayerVisible is false (Vehicle::own_hidden).
     void vehicle_draws(b3gfx::Device& dev, const Camera& cam, const std::vector<Vehicle>& vehicles, const std::vector<Vehicle>& lights,
                        const std::vector<ModelHead>& heads, bool game_cull, const float eye[3], const b3view::CarGlobals& globals,
-                       std::vector<b3gfx::DrawItem>& out, bool hide_own = false);
+                       std::vector<b3gfx::DrawItem>& out, bool hide_own = false, float tail = -1.0f);
+    // (taillights: `tail` >= 0, night or rain, the rear lamps glow at that level up to full with each car's brake level)
     std::vector<float> vehicle_fades;   // traffic-popin: the frame's traffic_fade per vehicle (the shadows')
     float frame_now = 0;   // traffic-popin: the displayed frame's world clock (Frame::fx.now; draw_list sets it) for traffic_fade
     // ghost1 (ghost.h; PC SETTINGS > GAME > MODES > GHOST): the Time Attack ghost, drawn after the cars while `ghost` is set
@@ -599,6 +789,43 @@ struct View {
     bool load_prepared(b3gfx::Device& dev, TrackPrep&& p, std::string* why);
     int car_file(const ModelHead& head);
     b3view::CarModel* car_model(b3gfx::Device& dev, int file, int paint, int lod);
+    // The paint a vehicle's model is drawn in (vehicle_draws; vpreload the same): the game's v.paint, or a local player's
+    // own paint (carpaint: a custom colour over the reference paint's texture, another model in the cache); own / pm the
+    // player's CarPaint and PaintMap when one applies
+    struct DrawPaint { const CarPaint* own = nullptr; const PaintMap* pm = nullptr; int paint = 0; };
+    DrawPaint draw_paint(b3gfx::Device& dev, int file, const Vehicle& v);
+    int hd_prefetched = 0;        // hdcache: the vehicle files preload_vehicles had the HD pack convert ahead (0: none)
+    double hd_prefetch_ms = 0;    // ... and the time it took
+    bool hd_prefetch_cut = false; // ... stopped by the wait's end or the budget (the rest converts at first draw)
+    b3port::ProcessMemory hd_prefetch_mem[2];   // ... the process's memory before and after it
+    // vpreload (fastforward.h): the models of `vehicles` (each in its drawn paint, LOD blocks 0-4) loaded now (the scene
+    // wait), within `budget_ms` and while `go()`; nothing without vehicles (a load out of a race); first, with an HD pack, every
+    // file of `heads` has its replacements converted (hdcache). Returns the models loaded;
+    // `stop`: "" all of them, else why it stopped early.
+    int preload_vehicles(b3gfx::Device& dev, const std::vector<Vehicle>& vehicles, const std::vector<ModelHead>& heads,
+                         double budget_ms, const std::function<bool()>& go, std::string& stop);
+    void paint_car_items(std::vector<b3gfx::DrawItem>& out, std::size_t first, const b3view::CarModel& cm, const PaintMap& pm,
+                         const CarPaint& own, int game_paint) const;   // paint3: the player's paint on a car's draws
+    int thumb_file(const std::string& name);                         // paint3: a thumbnail's car file (cars index), -1 none
+    // paint3: the thumbnails' view: yaw, pitch, vertical field of view (degrees; B3_THUMB_YAW / _PITCH / _FOV)
+    float thumb_angles[3] = {[] { const char* e = std::getenv("B3_THUMB_YAW"); return float(e && *e ? std::atof(e) : -44.0); }(),
+                             [] { const char* e = std::getenv("B3_THUMB_PITCH"); return float(e && *e ? std::atof(e) : 18.0); }(),
+                             [] { const char* e = std::getenv("B3_THUMB_FOV"); return float(e && *e ? std::atof(e) : 30.0); }()};
+    bool car_picture_begin(b3gfx::Device& dev, int file, int paint, const CarPaint* own, float s, float ox, float oy, int w, int h, PictureJob& job);
+    int car_picture_take(b3gfx::Device& dev, PictureJob& job, bool wait, std::vector<std::uint8_t>& rgba);
+    void thumb_search(b3gfx::Device& dev, const HudTexture& t, int file);
+    void thumb_models_release(b3gfx::Device& dev);
+    b3gfx::TextureId thumb_texture(b3gfx::Device& dev, const HudTexture& t, int file, int palette, const CarPaint* own, std::uint64_t key,
+                                   std::uint64_t sig, std::vector<std::uint64_t>& used);   // paint3 (view.cpp)
+    b3gfx::TextureId game_texture(b3gfx::Device& dev, std::uint64_t key, const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>& textures);
+    // paint3: the tick's carousel slots whose model is not their picture's (set before hud_list; Frame::carousel)
+    std::shared_ptr<const HostCarousel> hud_carousel, hud_built_carousel;
+    // paint3 (reusable for any car file, e.g. a series' cars without pictures of their own): one car file's picture as the
+    // car pages' thumbnails show a car (a 3/4 front view from above, on nothing: RGBA with coverage), in game paint `paint`
+    // and, with `own`, the player's paint layers; `s` / `ox` / `oy`: the framing's scale and NDC offset. false: not ready
+    // (its paint map is being made) or not drawable. view.cpp has the tuning variables.
+    bool render_car_picture(b3gfx::Device& dev, int file, int paint, const CarPaint* own, float s, float ox, float oy, int w, int h,
+                            std::vector<std::uint8_t>& rgba);
     // `eye`: the render camera (car lighting view direction, env pass); LOD and panel order use the game's camera.
     void draw_list(b3gfx::Device& dev, const Frame& f, const std::vector<ModelHead>& heads, bool game_cull,
                    const float eye[3], std::vector<b3gfx::DrawItem>& out);
@@ -633,10 +860,48 @@ struct View {
     // view's car upwards and 35 degrees off the vertical in eight directions, the share of them that hit within 40 m.
     // A flat table: the occupied cells' keys sorted, each with its run of triangle indices (no per-cell allocation)
     // street lights (§17.2): the route's lamps (head position, tint), found at load from the region's lamp textures
-    struct NightStreet { float pos[3], colour[3]; };
-    std::vector<NightStreet> night_streets;
-    void night_street_load();
+    // height: above its foot (m); extent: its group's vertical extent (m: a pole alone, or an arm / a head)
+    // base: the x / z of its group's lowest point (a pole's foot, or where an arm leaves its pole); arm: the lamp is
+    // 1 m or more out from its base (an arm's lens), else on its base's vertical (a pole top, a bend, a head on a post)
+    struct NightStreet { float pos[3], colour[3], height, extent = 0, base[2] = {0, 0}; bool arm = false; std::uint8_t kind = 0; };
+    // the pool's size for a lamp this high (m): the shape's d0 and fade x height / the reference height (street_shape[6]),
+    // kept within 0.75..2
+    float night_street_scale(float height) const { return std::clamp(height / std::max(night.street_shape[6], 1.0f), 0.75f, 2.0f); }
+    // (nightfix: loaded at the route's load only when the race is at night or $B3_NIGHT is set, else on the first night
+    // frame: no load time by day)
+    mutable std::vector<NightStreet> night_streets;
+    mutable bool night_streets_loaded = false;
+    void night_street_load() const;
+    void night_lamps_build(bool fittings_only, std::vector<NightStreet>& out) const;
+    // TUNNEL LIGHTS (§35.4): GRAPHICS > LIGHTING (pcsettings; $B3_TUNNEL_LIGHTS wins): 1 the fittings glow by day too
+    // (Glow), 2 as the Xbox draws them (Xbox; xboxglow §35.5: the fittings' alpha glow masks, self-lit). Without
+    // settings (the offscreen tools): $B3_TUNNEL_LIGHTS (tunnel_lights_env), else Game
+    int tunnel_lights = [] { const char* e = std::getenv("B3_TUNNEL_LIGHTS"); return e && *e ? tunnel_lights_env(e) : 0; }();
+    // the fittings for the day halos: built on a worker at the route's load when the route has any (whatever the setting:
+    // it reaches the view after the load), taken on the first day frame that draws them (waiting if not done: a few ms
+    // after the load). day_route: the route has fittings, else no day glow pass runs. (Declared after `hi`, which the
+    // worker reads: destroyed first, so the future's wait comes before.)
+    mutable std::vector<NightStreet> day_fittings;
+    mutable std::future<std::vector<NightStreet>> day_fittings_job;
+    bool day_route = false;
+    void day_fittings_reset();
+    // xboxglow (§35.5): the route's textures with a glow mask, by the drawn texture (two textures of one name on a route are
+    // told apart: the GPU texture the draw samples)
+    mutable std::map<b3gfx::TextureId, bool> glow_masks;
     void night_street_frame(const Frame& f, b3gfx::FrameParams& fp) const;
+    void night_lamp_coronas(const Camera& cam, std::vector<CoronaQuad>& quads, bool day = false) const;   // nightfix: the lamps' coronas
+    // nightfix: the front-lit billboards' floodlights (the '+' boards of the region's fixture table): per board plane
+    // 1-4 fixtures along its bottom edge, 1 m out on each side (the camera's side lights it), aimed at the board's middle
+    struct NightBoard { float pos[3], axis[3], normal[3], size; };
+    mutable std::vector<NightBoard> night_boards;
+    void night_board_load() const;
+    void night_board_frame(const Frame& f, b3gfx::FrameParams& fp) const;
+    static std::array<std::uint8_t, 3> night_window_grid(const b3asset::Texture& tx);   // nightfix: mean, columns, rows
+    // round 3b: the neon and LED signs (the region's '!' fixtures) as coronas: one per sign (its triangles in 3 m cells,
+    // neighbours joined), at its centre, its size, the colour of its lit texels (loaded with the lamps)
+    struct NightGlow { float pos[3], colour[3], half; };
+    mutable std::vector<NightGlow> night_glows;
+    void night_glow_load() const;
     struct NightCover {
         bool built = false;
         std::vector<float> tri;                                      // 9 floats per triangle
@@ -646,7 +911,7 @@ struct View {
     };
     mutable NightCover night_cover_grid;
     void night_cover_build() const;
-    float night_cover(const float pos[3]) const;
+    float night_cover(const float pos[3], float* wide = nullptr) const;   // wide: the 60-degree ring's share (nightfix)
     void blur_frame(const Frame& f, b3gfx::FrameParams& fp) const;   // the zoom blur part of post_frame
     void bloom_frame(const Frame& f, b3gfx::FrameParams& fp) const;  // the bloom part of post_frame
     // The HUD frame's draws as 2D-stage items (b3gfx DrawItem::overlay) for an output of `aspect` = width / height:
@@ -690,7 +955,7 @@ struct View {
     // nightlights: the tunnel signal's smoothing (per view: split screen swaps it with player 2's)
     struct NightTunnel { float enclosed = 0; float now = 0; bool valid = false; };
     mutable NightTunnel night_tunnel;
-    struct View2State { Effects effects; Coronas coronas; double bloom_last = -1; EffectStats fx_stats; CoronaArrays corona_arrays; CoronaStats corona_stats; NightTunnel night_tunnel; };
+    struct View2State { Effects effects; Coronas coronas; double bloom_last = -1; EffectStats fx_stats; CoronaArrays corona_arrays; CoronaStats corona_stats; NightTunnel night_tunnel; Rain rain; QuadLayer wet; Spray spray; RainCover rain_cover; };
     View2State view2_state;
     void swap_view2() {
         std::swap(effects, view2_state.effects);
@@ -700,6 +965,10 @@ struct View {
         std::swap(corona_arrays, view2_state.corona_arrays);
         std::swap(corona_stats, view2_state.corona_stats);
         std::swap(night_tunnel, view2_state.night_tunnel);
+        std::swap(rain_layer, view2_state.rain);
+        std::swap(wet_layer, view2_state.wet);
+        std::swap(spray_layer, view2_state.spray);
+        std::swap(rain_cover, view2_state.rain_cover);
     }
     // wide1: `frontend` (front-end frames, frontend_frame) lays the 2D out as the game's 4:3 picture centred, with no
     // object anchors: only draws spanning the whole width (bands, panels, the grid) reach the output's edges (a
@@ -736,7 +1005,22 @@ struct View {
     bool car_env_world = car_env_override() != 0;
     int env_slot = 0;                           // alternates: a split screen's two views each keep their own map
     std::vector<std::array<float, 6>> lo_boxes; // world box (lo xyz, hi xyz) per lo item; lo > hi: none (never culled)
-    std::uint32_t env_world_map(b3gfx::Device& dev, const Frame& f, const std::vector<ModelHead>& heads);
+    std::uint32_t env_world_map(b3gfx::Device& dev, const Frame& f, const std::vector<ModelHead>& heads,
+                                const b3view::CarGlobals* globals = nullptr);
+    // reflect2 (docs/car-shading.md §10; Settings::reflect_*): env_far the map's far plane (100: the game's, and only the
+    // slots its env cameras see; more: every streamed slot's LOD block within it), env_props the props within kEnvPropReach
+    // (static and dynamic, as draw_list draws them), env_every_second the map redrawn every second call per view (the
+    // other call returns the last one)
+    float env_far = 100.0f;
+    bool env_props = false;
+    bool env_cars = false;                      // reflect2 C (REFLECTION DETAIL Track, props and cars): the other vehicles
+                                                // within kEnvCarReach, at LOD 1, their own env lookup off (no feedback)
+    bool env_every_second = false;
+    int env_face = 128;                         // reflect2 D: REFLECTION RESOLUTION, the cube faces' size (128 / 256)
+    static constexpr float kEnvPropReach = 60.0f, kEnvCarReach = 50.0f;
+    std::vector<std::array<float, 6>> hi_local_boxes;   // reflect2: per hi item its mesh's box in its own space (lo > hi: none)
+    struct EnvKeep { std::uint32_t car = 0; std::uint32_t map = 0xFFFFFFFFu; unsigned calls = 0; };
+    EnvKeep env_keep[2];                        // reflect2: per view (env_slot's alternation is per call), the last map
     bool movie_fill = true;                     // fe3: the backdrop's blurred side fill (--movie-fill blur); false: black
     // fe3: blurred copies for the side fill: per guest movie picture buffer (what it was made from), per still texture
     std::map<std::uint32_t, std::pair<std::shared_ptr<const HudPicture>, b3gfx::TextureId>> fill_movie;

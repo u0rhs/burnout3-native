@@ -40,6 +40,7 @@
 #include "oneclick.h"        // 1.1 one-click updates: the signed release's package
 #include "installer.h"       // ... put in place of this one (the previous version kept)
 #include "portable.h"        // portable mode (1.3.0): the data folder moved beside the launcher
+#include "b3port/trigger_rumble.h"  // issue #16
 #include "b3port/user_dir.h"  // ... and the rule that finds it
 #include "steam.h"           // issue #8: ADD TO STEAM (Settings > Launcher)
 #include "steam_art.h"
@@ -49,7 +50,9 @@
 #include "b3asset/discfs.h"   // patches3: the game folder's files a mod's patches apply to
 #include "b3asset/language.h"   // 1.0.1: LANGUAGE, IMPORT LANGUAGES
 #include "b3asset/xboximport.h"   // xboximport (1.3.0): Import Xbox textures (the HD Textures page)
+#include "b3asset/betaimport.h"   // betaimport: Import prototype cars (the Game Data page; the BETA series)
 #include "b3asset/hdpack.h"   // showhd1: the showroom's HD packs (the game's list) and its check's test pack
+#include "b3asset/hdcache.h"   // hdcache: the HD texture cache's size and Clear (the HD Textures page)
 #include "b3asset/png.h"
 #include "b3mod/archive.h"   // modkit1b: Add mod (a .zip / .b3mod)
 #include "b3mod/mods.h"
@@ -69,6 +72,8 @@
 #include "../native/replay_file.h"
 #include "../native/save_stats.h"
 #include "../native/save_store.h"
+#include "../../tools/native/extra_series.h"   // customseries: the CUSTOM series' cars folder, read as the game reads it
+#include "carpack.h"   // carpacks: Import car pack
 #include "../b3replay/glyphdraw.h"
 #include "../b3replay/prompts.h"
 
@@ -182,7 +187,11 @@ struct Widget {
 enum class DialogKind { kHdFolder, kGameFolder, kExport, kImportFile, kImportFolder, kGameImage, kMusicFolder, kModArchive, kLanguageImage, kSavesFolder,
                         kSteamCover, kSteamHero, kSteamLogo,   // issue #8: ADD TO STEAM's own pictures
                         kModFolder,                            // item 11: Add folder (a mod's folder, or a pack of the game's files)
-                        kXboxImage };                          // xboximport: the player's Xbox disc image
+                        kXboxImage,                            // xboximport: the player's Xbox disc image
+                        kProtoImage,                           // betaimport: the player's June 2004 prototype / demo disc image
+                        kProtoFiles, kProtoFolder,            // betaimport: prototype car files (.BGV / .BTV) / a folder of them
+                        kCustomCars,                           // customseries: Custom cars' Import from folder
+                        kCarPack };                            // carpacks: Custom cars' Import car pack (a .zip or a folder)
 
 struct Modal {
     std::string title, text;
@@ -234,6 +243,7 @@ struct DialogResult {
     bool ok = false;        // a path chosen
     bool failed = false;    // no dialog on this system
     std::string path, error;
+    std::vector<std::string> paths;   // betaimport: every file chosen (kProtoFiles: several at once)
 };
 
 struct App;
@@ -259,6 +269,9 @@ struct App {
     std::string hd_checked;      // the folder `hd` is of
     unsigned hd_gen = 0;         // showhd1: +1 each time it is scanned again (the showroom indexes its packs again)
     std::string hd_note;
+    b3asset::hdcache::Usage hd_cache;   // hdcache: the HD texture cache's size (measured at most every 5 s while the page shows)
+    std::uint64_t hd_cache_at = 0;      // ... when (SDL_GetTicks; 0: not yet)
+    std::string hd_cache_note;          // ... the last Clear's result
     MusicCheck music;            // the music folder's songs (the game's scan)
     std::string music_checked;   // the folder `music` is of
     std::string music_note;      // the last choice's result, in the in-game page's words
@@ -286,6 +299,8 @@ struct App {
         std::string note;                                // the last result
         std::vector<b3settings::Env::DjVoice> rows;
         int widget = -1;                                 // the first DJ VOICE import row as last drawn (the checks)
+        bool no_english = false;                         // the screenshot walk's check: its stand-in banks are not
+                                                         // checked against the game folder's English ones
     } dj;
     // nowplaying1: OTHER MUSIC APPS' reader for the Music page's "Detected" line (made the first time the page shows
     // with the option on; it reads only while that page shows and the option is on)
@@ -295,6 +310,10 @@ struct App {
     b3mod::Order mod_order;      // merged with what is installed (new mods at the end, off)
     std::string mods_note;
     bool mods_note_bad = false;
+    b3native::ExtraScan custom_cars;   // customseries: <user data>/cars/custom as the game will read it (Game Data, Showroom)
+    std::unique_ptr<b3launcher::carpack::Plan> car_plan;   // carpacks: a pack read, its import not yet confirmed
+    std::string custom_note;           // customseries: the last import / removal
+    bool custom_note_bad = false;
     // modkit1b: what the next start would run with (select: [requires]), its overlay (no file reads) and the paths
     // more than one of those mods has
     b3mod::Selection mod_sel;
@@ -446,6 +465,25 @@ struct App {
         std::string note;                     // the last import / removal in words
         int level = 0;                        // 0 a hint, 1 done, 2 not done
     } xbox;
+    // betaimport: Import prototype cars (b3asset/betaimport.h) on a thread of its own, as the Xbox import (a few
+    // seconds: no Cancel); its step shown in a modal
+    struct BetaJob {
+        std::mutex m;
+        std::string step;
+        bool done = false;
+        b3asset::beta::Result r;
+    };
+    using bi_FileDonor = b3asset::beta::FileDonor;
+    struct BetaUi {
+        std::shared_ptr<BetaJob> job;
+        std::thread th;
+        std::vector<b3asset::beta::Imported> cars;   // the imported cars (each car folder's car.ini)
+        std::vector<fs::path> pending;               // files whose car the player is asked for (needs_donor)
+        std::vector<bi_FileDonor> chosen;            // their answers so far
+        std::vector<std::string> ready;              // the files answered (imported again with `chosen`)
+        std::string note;                // the last import / removal in words
+        int level = 0;                   // 0 a hint, 1 done, 2 not done
+    } beta;
     // portable mode (1.3.0, portable.h): the data folder in <install>/appdata or this computer's user folder. The move
     // runs on a thread of its own, as the Xbox import: its progress polled each frame into a modal with Cancel
     struct PortableJob {
@@ -498,7 +536,10 @@ struct App {
     // the SHOWROOM page (photo2): the cars of the game data, the 3D view (made on the first visit) and its picture
     struct Show {
         std::vector<showroom::CarEntry> cars;
+        std::vector<showroom::SeriesEntry> series;   // showroom2: the series with cars, SELECT CAR's order
+        std::size_t series_i = 0;                    // the one shown (its id remembered: launcher.ini showroom_series)
         std::string listed_for, note, error;
+        std::vector<std::string> left_out;   // customseries: the extra car files the game leaves out, with why
         std::size_t sel = 0, loaded_index = std::size_t(-1);
         int paint = 0, loaded_paint = -1;
         b3settings::Settings saved_settings;   // padpaint: the screenshots' paint shots put the settings back
@@ -546,6 +587,19 @@ void load_settings(App& a) {
     }
     if (b3settings::load_file(utf8_of(file), a.settings, &why) && !why.empty()) a.settings_note = "Read with notes: " + why;
     a.settings_base = a.settings;
+    if (a.settings.extra_custom_cars < 0 || a.settings.extra_beta_cars < 0) {   // extras: an older install's extra cars, by folder
+        const bool custom = !b3native::extra_scan(a.pref / "cars" / "custom", b3native::kCustomSeries).cars.empty();
+        const bool beta = !b3native::extra_scan(a.pref / "cars" / "beta", b3native::kBetaSeries).cars.empty();
+        if (b3settings::resolve_extra_cars(a.settings, custom, beta)) save_settings(a);
+    }
+}
+
+// extras: an import of cars turns its series on (EXTRAS > SELECT CAR: CUSTOM CARS / BETA CARS): the player asked for them
+void extra_cars_on(App& a, bool custom, bool beta) {
+    bool changed = false;
+    if (custom && a.settings.extra_custom_cars != 1) { a.settings.extra_custom_cars = 1; changed = true; }
+    if (beta && a.settings.extra_beta_cars != 1) { a.settings.extra_beta_cars = 1; changed = true; }
+    if (changed) save_settings(a);
 }
 
 // settingsui: the file read again and only the launcher's own changes written, so that a running game's edits stay
@@ -627,6 +681,8 @@ void update_mod_set(App& a) {
     a.mod_conflicts = b3mod::conflicts(a.mod_overlay);
 }
 
+fs::path custom_cars_folder(const App& a) { return a.pref / "cars" / "custom"; }   // customseries (extra_cars.h custom_dir)
+void refresh_custom_cars(App& a) { a.custom_cars = b3native::extra_scan(custom_cars_folder(a)); }   // customseries
 void refresh_mods(App& a) {
     a.mods = b3mod::discover(b3mod::mods_folder(a.pref));
     b3mod::Order saved;
@@ -750,6 +806,7 @@ void load_replays(App& a) {
 void refresh_languages(App& a);   // 1.0.1 (the SETTINGS page)
 void dj_disc_chosen(App& a, const fs::path& disc);   // 1.3.0
 void refresh_xbox(App& a);        // xboximport (the HD Textures page)
+void refresh_beta(App& a);        // betaimport (the Game Data page)
 
 void refresh(App& a) {
     a.game = check_game_folder(a.game_dir);
@@ -762,6 +819,7 @@ void refresh(App& a) {
     refresh_music(a);
     refresh_languages(a);   // 1.0.1
     refresh_xbox(a);        // xboximport
+    refresh_beta(a);        // betaimport
     refresh_mods(a);
 }
 
@@ -1105,6 +1163,172 @@ void end_xbox_import(App& a) {
     if (!a.xbox.th.joinable()) return;
     a.xbox.job->cancel = true;
     a.xbox.th.join();
+}
+
+// ---- betaimport: Import prototype cars (b3asset/betaimport.h): the BETA series' cars from the player's own disc image
+// of a June 2004 prototype or demo, converted into <pref>/cars/beta with the game's cars as donors ----
+
+namespace bi = b3asset::beta;
+fs::path beta_folder(const App& a) { return a.pref / "cars" / "beta"; }
+bool beta_running(const App& a);
+void refresh_beta(App& a) {
+    a.beta.cars.clear();
+    if (!beta_running(a))   // extrastart: an earlier disc's copy left beside its later version (a removal that failed) goes now
+        for (const std::string& t : bi::tidy_replaced(beta_folder(a))) std::printf("[b3launcher] BETA: %s\n", t.c_str());
+    a.beta.cars = bi::imported(beta_folder(a));
+}
+bool beta_running(const App& a) { return a.beta.job != nullptr; }
+
+// The import (`run`: one of b3asset::beta's) on its thread; its step shown by poll_beta
+void start_beta_job(App& a, std::function<bi::Result(void (*)(const std::string&, void*), void*)> run) {
+    if (a.beta.job) return;
+    auto job = std::make_shared<App::BetaJob>();
+    a.beta.job = job;
+    a.beta.note.clear();
+    a.beta.th = std::thread([job, run]() {
+        bi::Result r;
+        try {   // (nothing may leave this thread: std::terminate would close the launcher)
+            r = run(
+                [](const std::string& step, void* p) {
+                    auto* j = static_cast<App::BetaJob*>(p);
+                    std::lock_guard<std::mutex> l(j->m);
+                    j->step = step;
+                },
+                job.get());
+        } catch (...) {
+            r = bi::Result{};
+            r.error = "the import stopped: an unknown error";
+        }
+        std::lock_guard<std::mutex> l(job->m);
+        job->r = std::move(r);
+        job->done = true;
+    });
+}
+void start_beta_import(App& a, const fs::path& image) {
+    const fs::path game = a.game_dir, out = beta_folder(a);
+    a.beta.chosen.clear();
+    start_beta_job(a, [image, game, out](auto progress, void* ctx) { return bi::import_cars(image, game, out, progress, ctx); });
+}
+void start_beta_files(App& a, const std::vector<std::string>& files) {
+    std::vector<fs::path> v;
+    for (const std::string& f : files) v.push_back(path_from_utf8(f));
+    const fs::path game = a.game_dir, out = beta_folder(a);
+    const std::vector<bi::FileDonor> donors = a.beta.chosen;
+    start_beta_job(a, [v, game, out, donors](auto progress, void* ctx) { return bi::import_files(v, game, out, progress, ctx, donors); });
+}
+void start_beta_folder(App& a, const fs::path& dir) {
+    const fs::path game = a.game_dir, out = beta_folder(a);
+    a.beta.chosen.clear();
+    start_beta_job(a, [dir, game, out](auto progress, void* ctx) { return bi::import_folder(dir, game, out, progress, ctx); });
+}
+
+void open_dialog(App& a, DialogKind kind, const std::string& start);
+
+// A prototype file whose car is not known (a renamed file): the player picks its class, then the game car it takes
+// the engine and handling of; once every such file has one (or was skipped), they are imported with them
+void ask_beta_donor(App& a);
+void ask_beta_slot(App& a, const std::string& cls) {
+    Modal m;
+    m.title = "Which car is it?";
+    m.text = utf8_of(a.beta.pending.front().filename()) + ": the game car whose engine sound and handling it takes (" + cls + ").";
+    for (const std::string& d : bi::donor_choices(a.game_dir, cls))
+        m.buttons.push_back({d.substr(d.find('/') + 1), [&a, d]() {
+                                 a.beta.chosen.push_back({a.beta.pending.front(), d});
+                                 a.beta.ready.push_back(utf8_of(a.beta.pending.front()));
+                                 a.beta.pending.erase(a.beta.pending.begin());
+                                 ask_beta_donor(a);
+                             }});
+    m.buttons.push_back({"Back", [&a]() { ask_beta_donor(a); }});
+    a.modal = m;
+}
+void ask_beta_donor(App& a) {
+    if (a.beta.pending.empty()) {
+        if (!a.beta.ready.empty()) start_beta_files(a, a.beta.ready);
+        a.beta.ready.clear();
+        return;
+    }
+    Modal m;
+    m.title = "Which car is it?";
+    m.text = utf8_of(a.beta.pending.front().filename()) + " is a prototype car file whose name does not say which car it is. Choose its "
+             "class, then the game car whose engine sound and handling it takes.";
+    for (const char* c : {"COMP", "MSCL", "CUPE", "SPRT", "SUPR", "HSPC", "HEVY"})
+        m.buttons.push_back({c, [&a, c]() { ask_beta_slot(a, c); }});
+    m.buttons.push_back({"Skip", [&a]() {
+                             a.beta.pending.erase(a.beta.pending.begin());
+                             ask_beta_donor(a);
+                         }});
+    a.modal = m;
+}
+
+// Each frame while an import runs: its modal; once it is done, the result. True when one came.
+bool poll_beta(App& a) {
+    if (!a.beta.job) return false;
+    std::string step;
+    bool done;
+    {
+        std::lock_guard<std::mutex> l(a.beta.job->m);
+        step = a.beta.job->step;
+        done = a.beta.job->done;
+    }
+    if (!done) {
+        Modal m;
+        m.title = "Importing prototype cars";
+        m.text = step.empty() ? std::string("Reading...") : "Converting the cars: " + step + ".";
+        a.modal = m;
+        return false;
+    }
+    if (a.beta.th.joinable()) a.beta.th.join();
+    const bi::Result r = a.beta.job->r;
+    a.beta.job.reset();
+    a.modal.reset();
+    if (!r.imported.empty()) extra_cars_on(a, false, true);   // extras: EXTRAS > BETA CARS on
+    refresh_beta(a);
+    std::string skipped;
+    for (const std::string& k : r.skipped) skipped += (skipped.empty() ? "" : "; ") + k;
+    const std::string from = r.disc ? std::string(" from ") + r.disc->label : std::string();
+    if (!r.ok() && r.imported.empty()) {
+        a.beta.level = 2;
+        a.beta.note = "Nothing was imported: " + r.error + ".";
+    } else if (r.imported.empty()) {
+        a.beta.level = r.needs_donor.empty() ? 2 : 0;
+        a.beta.note = "No car was imported" + from + ": " + skipped + ".";
+    } else {
+        a.beta.level = 1;
+        a.beta.note = std::to_string(r.imported.size()) + (r.imported.size() == 1 ? " car" : " cars") + " imported" + from +
+                      ". They are the BETA series on SELECT CAR (SINGLE EVENT) from the next start.";
+        if (!skipped.empty()) a.beta.note += " Not imported: " + skipped + ".";
+        if (!r.ok()) a.beta.note += " " + r.error + ".";
+    }
+    if (r.other_files) a.beta.note += " " + std::to_string(r.other_files) + " other files in the folder were not car files.";
+    if (r.walk_stopped) a.beta.note += " The folder holds more than the import looks through: choose the folder with the car files.";
+    std::printf("b3launcher: prototype cars: %s: %zu imported, %zu skipped, %zu to choose%s%s\n", r.disc ? r.disc->key : "files",
+                r.imported.size(), r.skipped.size(), r.needs_donor.size(), r.error.empty() ? "" : "; ", r.error.c_str());
+    // the files whose car is not known: the player picks it (then those are imported again)
+    a.beta.chosen.clear();
+    a.beta.ready.clear();
+    a.beta.pending = r.needs_donor;
+    if (!a.beta.pending.empty()) ask_beta_donor(a);
+    return true;
+}
+
+// Remove: asks first, then deletes <pref>/cars/beta (modsec: b3mod::remove_tree, no link followed)
+void confirm_beta_remove(App& a) {
+    Modal m;
+    m.title = "Remove the prototype cars?";
+    m.text = "The converted cars are deleted (your disc image is not touched). You can import them again at any time.";
+    m.buttons = {{"Remove", [&a]() {
+                      const bool ok = b3mod::remove_tree(beta_folder(a));
+                      refresh_beta(a);
+                      a.beta.level = ok ? 0 : 2;
+                      a.beta.note = ok ? "The prototype cars were removed." : "The folder could not be removed: " + utf8_of(beta_folder(a)) + ".";
+                  }, true},
+                 {"Cancel", nullptr}};
+    m.focus = 1;
+    a.modal = m;
+}
+
+void end_beta_import(App& a) {
+    if (a.beta.th.joinable()) a.beta.th.join();
 }
 
 // ---- portable mode (1.3.0): the data folder beside the launcher (portable.h; the rule: b3port/user_dir.h) ----
@@ -1550,6 +1774,7 @@ void SDLCALL dialog_done(void* user, const char* const* files, int) {
     } else if (files[0]) {
         r.ok = true;
         r.path = files[0];
+        for (int k = 0; files[k]; ++k) r.paths.push_back(files[k]);
     }
     std::lock_guard<std::mutex> l(g_app->dlg_m);
     g_app->dlg_results.push_back(r);
@@ -1623,7 +1848,10 @@ void open_dialog(App& a, DialogKind kind, const std::string& start) {
     } else if (kind == DialogKind::kXboxImage) {   // xboximport
         static const SDL_DialogFileFilter f[] = {{"Xbox disc images (*.iso, *.xiso)", "iso;xiso"}, {"All files", "*"}};
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
-    } else if (kind == DialogKind::kGameImage || kind == DialogKind::kLanguageImage) {   // iso1: the disc image, read in place (b3asset/discfs.h)
+    } else if (kind == DialogKind::kProtoFiles) {   // betaimport: one or several car files
+        static const SDL_DialogFileFilter f[] = {{"Prototype car files (*.bgv, *.btv)", "bgv;btv"}, {"All files", "*"}};
+        SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, true);
+    } else if (kind == DialogKind::kGameImage || kind == DialogKind::kLanguageImage || kind == DialogKind::kProtoImage) {   // iso1: the disc image, read in place (b3asset/discfs.h)
         static const SDL_DialogFileFilter f[] = {{"Disc images (*.iso, *.bin, *.chd)", "iso;bin;chd"}, {"All files", "*"}};   // chd1: .chd
         SDL_ShowOpenFileDialog(dialog_done, user, a.win, f, 2, loc, false);
     } else {
@@ -1706,9 +1934,14 @@ const char* browse_title(DialogKind k) {
     case DialogKind::kGameImage: return "Choose the game's disc image or folder";
     case DialogKind::kLanguageImage: return "Choose a European disc image of the game (its languages are copied)";
     case DialogKind::kXboxImage: return "Choose your Xbox disc image of the game (.iso or .xiso)";   // xboximport
+    case DialogKind::kProtoImage: return "Choose your disc image of a June 2004 prototype or demo (.iso, .bin or .chd)";   // betaimport
+    case DialogKind::kProtoFiles: return "Choose a prototype car file (.BGV or .BTV)";
+    case DialogKind::kProtoFolder: return "Choose a folder with prototype car files (its folders are searched too)";
     case DialogKind::kMusicFolder: return "Choose your music folder";
     case DialogKind::kModArchive: return "Add a mod: choose its .b3mod or .zip file";
     case DialogKind::kModFolder: return "Add a mod: choose its folder (a mod, or a pack of the game's files)";
+    case DialogKind::kCustomCars: return "Custom cars: choose the folder of a car mod";   // customseries
+    case DialogKind::kCarPack: return "Custom cars: choose a car pack (a .zip file, or its folder)";   // carpacks
     case DialogKind::kImportFile: return "Import a save file";
     case DialogKind::kImportFolder: return "Import a folder card";
     case DialogKind::kExport: return "Export the save to a folder";
@@ -1746,6 +1979,17 @@ void browse_status(Browser& b) {
         b.status = files ? "Disc images here: A on one imports its textures." : "No disc images here: open the folder that holds your Xbox disc image.";
         b.status_level = files ? 1 : 0;
         break;
+    case DialogKind::kProtoImage:   // betaimport
+        b.status = files ? "Disc images here: A on one imports its prototype cars." : "No disc images here: open the folder that holds your prototype disc image.";
+        b.status_level = files ? 1 : 0;
+        break;
+    case DialogKind::kProtoFiles:
+        b.status = files ? "Car files here: A on one imports it." : "No car files here: open the folder that holds them.";
+        b.status_level = files ? 1 : 0;
+        break;
+    case DialogKind::kProtoFolder:
+        b.status = "Start imports every car file in the folder shown and its folders.";
+        break;
     case DialogKind::kLanguageImage:   // 1.0.1
         b.status = files ? "Disc images here: A on one copies its languages (a European copy of the game)."
                          : "No disc images here: open the folder that holds your European disc image.";
@@ -1772,6 +2016,12 @@ void browse_status(Browser& b) {
         break;
     case DialogKind::kModFolder:   // item 11
         b.status = "Open the mod's folder, then Start: it is copied into the mods folder.";
+        break;
+    case DialogKind::kCustomCars:   // customseries
+        b.status = "Open the car mod's folder, then Start: its cars are copied into the custom cars folder.";
+        break;
+    case DialogKind::kCarPack:   // carpacks
+        b.status = files ? "A on the pack's .zip chooses it; or open the pack's folder, then Start." : "Open the pack's folder, then Start.";
         break;
     case DialogKind::kModArchive:
     case DialogKind::kSteamCover:   // issue #8
@@ -1829,10 +2079,15 @@ void open_browser(App& a, DialogKind kind, const std::string& start, const std::
     case DialogKind::kGameImage: b.exts = {"iso", "bin", "chd"}; b.pick_files = true; break;   // a folder, or a disc image (chd1: .chd)
     case DialogKind::kLanguageImage: b.exts = {"iso", "bin", "chd"}; b.pick_files = true; break;   // 1.0.1
     case DialogKind::kXboxImage: b.exts = {"iso", "xiso"}; b.pick_files = true; b.pick_folder = false; break;   // xboximport
+    case DialogKind::kProtoImage: b.exts = {"iso", "bin", "chd"}; b.pick_files = true; b.pick_folder = false; break;   // betaimport
+    case DialogKind::kProtoFiles: b.exts = {"bgv", "btv"}; b.pick_files = true; b.pick_folder = false; break;
+    case DialogKind::kProtoFolder: b.exts = {"bgv", "btv"}; b.pick_files = false; b.pick_folder = true; break;
     case DialogKind::kHdFolder: b.exts = {"dds", "png"}; break;                          // shown, not chosen
     case DialogKind::kMusicFolder: b.exts = {"mp3", "flac", "ogg", "oga", "wav"}; break;
     case DialogKind::kModArchive: b.exts = {"b3mod", "zip"}; b.pick_files = true; b.pick_folder = false; break;
     case DialogKind::kModFolder: break;   // item 11: a folder (the one shown)
+    case DialogKind::kCustomCars: b.exts = {"bgv"}; break;   // customseries: a folder (its car files shown)
+    case DialogKind::kCarPack: b.exts = {"zip"}; b.pick_files = true; break;   // carpacks: a .zip, or a folder
     case DialogKind::kImportFile: b.exts = {"sav", "psu", "max", "ps2", "mcd", "bin"}; b.pick_files = true; b.pick_folder = false; break;
     case DialogKind::kImportFolder: break;
     case DialogKind::kExport: b.export_name = start.empty() ? "Burnout3-save.sav" : start; break;
@@ -1872,6 +2127,8 @@ void open_browser(App& a, DialogKind kind, const std::string& start, const std::
 }
 
 // A choice made: the folder list closes and the page takes the path
+void import_custom_cars(App& a, const fs::path& from);   // customseries (the Game Data page)
+void read_car_pack(App& a, const fs::path& from);        // carpacks
 void browse_done(App& a, DialogKind kind, const fs::path p) {   // (p by value: it may be the list's, gone with it)
     a.browser.reset();
     handle_path(a, kind, utf8_of(p));
@@ -1959,6 +2216,9 @@ void browse_nav(App& a, Nav n) {
 
 void choose_saves_folder(App& a, const fs::path& to);   // 1.1 (the SAVES page)
 void start_xbox_import(App& a, const fs::path& image);   // xboximport (the HD Textures page)
+void start_beta_import(App& a, const fs::path& image);   // betaimport (the Game Data page)
+void start_beta_files(App& a, const std::vector<std::string>& files);
+void start_beta_folder(App& a, const fs::path& dir);
 void steam_choose(App& a, DialogKind kind, const fs::path& p);   // issue #8 (Settings > Launcher)
 
 void handle_path(App& a, DialogKind kind, const std::string& path) {
@@ -1995,6 +2255,12 @@ void handle_path(App& a, DialogKind kind, const std::string& path) {
     case DialogKind::kModFolder:    // item 11
         add_mod(a, p, false);
         break;
+    case DialogKind::kCustomCars:   // customseries
+        import_custom_cars(a, p);
+        break;
+    case DialogKind::kCarPack:   // carpacks
+        read_car_pack(a, p);
+        break;
     case DialogKind::kSavesFolder:   // 1.1
         choose_saves_folder(a, p);
         return;   // (refreshed there; a question may be open)
@@ -2005,6 +2271,15 @@ void handle_path(App& a, DialogKind kind, const std::string& path) {
         return;
     case DialogKind::kXboxImage:   // xboximport
         start_xbox_import(a, p);
+        return;
+    case DialogKind::kProtoImage:   // betaimport
+        start_beta_import(a, p);
+        return;
+    case DialogKind::kProtoFiles:
+        start_beta_files(a, {utf8_of(p)});
+        return;
+    case DialogKind::kProtoFolder:
+        start_beta_folder(a, p);
         return;
     case DialogKind::kLanguageImage: {   // 1.0.1: copy the disc's languages into <pref>/languages (b3asset/language.h)
         std::string why;
@@ -2057,7 +2332,8 @@ void poll_dialogs(App& a) {
     }
     a.dialogs_open = std::max(0, a.dialogs_open - int(r.size()));
     for (const DialogResult& d : r) {
-        if (d.ok) handle_path(a, d.kind, d.path);
+        if (d.ok && d.kind == DialogKind::kProtoFiles && d.paths.size() > 1) start_beta_files(a, d.paths);   // betaimport: several
+        else if (d.ok) handle_path(a, d.kind, d.path);
         else if (d.failed) {   // osk1: no file dialog on this system: the launcher's own list (it can also type a path)
             open_browser(a, d.kind, a.dialog_start, "There is no file dialog on this system (" + d.error + "): choose here, or type the path.");
         }
@@ -2776,7 +3052,7 @@ void start_dj_import(App& a, const std::string& code, b3asset::language::Pack pa
     a.dj.note.clear();
     a.dj.started = std::chrono::steady_clock::now();
     const b3asset::language::DjVoice voice = *v;
-    const fs::path pref = a.pref, english = a.game.ok ? a.game_dir : fs::path();
+    const fs::path pref = a.pref, english = a.game.ok && !a.dj.no_english ? a.game_dir : fs::path();
     a.dj.th = std::thread([job, voice, pref, english, pack]() {
         bool ok = false;
         std::string why;
@@ -3552,6 +3828,29 @@ void page_hd(App& a, Ui& ui, float x, float y, float w) {
         };
         y += h + 22;
     }
+    {   // hdcache (b3asset/hdcache.h): the converted textures kept in the user data folder, their size and Clear
+        const fs::path dir = b3asset::hdcache::folder(a.pref);
+        const std::uint64_t now = SDL_GetTicks();
+        if (!a.hd_cache_at || now - a.hd_cache_at > 5000) {
+            a.hd_cache = b3asset::hdcache::usage(dir);
+            a.hd_cache_at = now ? now : 1;
+        }
+        const std::uint64_t mb = (a.hd_cache.bytes + (1u << 19)) >> 20;
+        const std::string body = a.hd_cache.entries ? std::to_string(mb) + " MB of textures converted from the pack, read back on later races."
+                                                    : std::string("Empty: the game fills it as it draws the pack's textures.");
+        y += status_line(a, x + 4, y, w - 8, a.hd_cache.entries ? col::ok : col::faint, "HD texture cache", body);
+        if (!a.hd_cache_note.empty()) y += status_line(a, x + 4, y, w - 8, col::faint, "Last change", a.hd_cache_note);
+        y += 6;
+        Flow f(ui, x, y, w, 48);
+        f.button(190, "Clear cache", Style::kDanger, a.hd_cache.entries > 0,
+                 "Deletes the converted textures. The game converts them again as it draws them, and the first race on each track loads a little longer.",
+                 [&a, dir]() {
+                     std::string why;
+                     a.hd_cache_note = b3asset::hdcache::clear(dir, &why) ? std::string("Cleared.") : why;
+                     a.hd_cache_at = 0;
+                 });
+        y = f.end() + 22;
+    }
     y += paragraph(a, "Packs made for PCSX2 work as they are: choose the pack's SLUS-21050 folder (in PCSX2's textures "
                       "folder), or the folder above it. The game reads it at its next start; this page only checks that "
                       "the folder has images in it.",
@@ -3588,7 +3887,7 @@ void page_hd(App& a, Ui& ui, float x, float y, float w) {
 
 // ---- the CREDITS page (2026-11-10) ----
 // The author and the thank-yous, the same list as README.md's Acknowledgements. Each entry is a row that opens its
-// web page (Enter / A or a click). The licences themselves ship as THIRD-PARTY-NOTICES.txt and LICENSES/ beside the game.
+// web page (Enter / A or a click; an entry without one, url nullptr, is text only). The licences themselves ship as THIRD-PARTY-NOTICES.txt and LICENSES/ beside the game.
 
 struct Credit { const char* name; const char* what; const char* url; };
 const Credit kCreditList[] = {
@@ -3603,11 +3902,29 @@ const Credit kCreditList[] = {
      "https://github.com/antoxa2584x/burnout3-sw"},
     {"Nahelam", "The most extensive public reverse engineering of the retail game, and its function names.",
      "https://github.com/Nahelam/PS2-Game-Mods"},
+    {"Nahelam: PS2 mods", "Their PS2 mods inspired MIRROR MODE, CRASHBREAKER IN EVERY MODE, the PARTY MODES and the race options (rival "
+     "names and distances, rivals' cars, standing start, Road Rage time limit and rival style, Burnout points, "
+     "varied traffic, DEFORMATION, the Chrome finish, the crash camera switch), START AT, the idle pause and "
+     "long-event switches, the Crashbreaker's full blast, the car viewer and the replay viewer: the ideas only, none "
+     "of their code.",
+     "https://github.com/Nahelam/PS2-Game-Mods"},
     {"ThirteenAG and Aero_", "Their PS2 widescreen patches located the game's widescreen and HUD code.",
      "https://github.com/ThirteenAG/WidescreenFixesPack"},
+    // one entry for bryan's ideas (the list of what they inspired grows with each batch built from them); then the
+    // others whose mods were a source of ideas (credits140: the ideas only, none of their code; no links but Nahelam's)
+    {"bryan (Braia)", "The PCSX2 mods that inspired the RPM meter, the boost bar shake, the takedown streak pitch, camera roll, the "
+     "finish camera's set pieces, manual gears, TIMED ELIMINATION, the traffic presets, traffic checking in "
+     "two-player races, loose parts in Road Rage, car stats, the rivals' turn signals, the paint picker, painted car "
+     "pictures and the reflections that reach further (ideas only, none of their code).", nullptr},
+    {"escape209", "The Heavyweights-in-the-garage mod behind the Heavyweights in Single Event.", nullptr},
+    {"Fresh_Burnout3", "The traffic-checking edit behind TRAFFIC CHECK (2 PLAYERS) Extreme.", nullptr},
+    {"KaylinMajeure", "The Traffic Checking mod restoring Burnout Revenge's code, the reference for TRAFFIC CHECK (2 PLAYERS) "
+     "Revenge.", nullptr},
+    {"Remco (SuperType1)", "The Revenge-style orbit camera mod behind the orbit camera's feel.", nullptr},
     {"librw (aap)", "A reference for RenderWare's PS2 rasters and geometry packets.", "https://github.com/aap/librw"},
     {"Burn3 (UwUCammie)", "Another PC project for the game.", "https://github.com/UwUCammie/Burn3"},
-    {"PS2Recomp (ran-j) and burnout3-pc", "Other PC projects for the game.", "https://github.com/ran-j/PS2Recomp"},
+    {"PS2Recomp (ran-j)", "Another PC project for the game.", "https://github.com/ran-j/PS2Recomp"},
+    {"burnout3-pc (danielgomesvieira2000)", "Another PC project for the game.", "https://github.com/danielgomesvieira2000/burnout3-pc"},
     {"Panda_Venom", "The Burnout 3: Takedown USA HD Remaster, the HD texture pack for PCSX2 that the HD Textures page "
      "links to and this port can use.", "https://gbatemp.net/threads/burnout-3-takedown-usa-hd-remaster.621068/"},
     {"PCSX2 and mymcplus", "Their texture-pack and memory-card formats, which this port reads, and PS2 save tooling.",
@@ -3649,13 +3966,16 @@ void page_credits(App& a, Ui& ui, float x, float y, float w) {
     for (const Credit& c : kCreditList) {
         const float pad = 14;
         const auto lines = a.text->wrap(c.what, kSmall, w - 2 * pad);
-        const float h = pad + a.text->line_height(kBody) + 4 + lines.size() * a.text->line_height(kSmall) + 4 +
-                        a.text->line_height(kSmall - 1) + pad;
+        const bool link = c.url != nullptr;
+        const float h = pad + a.text->line_height(kBody) + 4 + lines.size() * a.text->line_height(kSmall) +
+                        (link ? 4 + a.text->line_height(kSmall - 1) : 0.0f) + pad;
         Widget wd;
         wd.r = SDL_FRect{x, y, w, h};
-        wd.desc = std::string("Opens ") + c.url + " in your browser.";
-        const std::string url = c.url;
-        wd.activate = [url]() { SDL_OpenURL(url.c_str()); };
+        if (link) {
+            wd.desc = std::string("Opens ") + c.url + " in your browser.";
+            const std::string url = c.url;
+            wd.activate = [url]() { SDL_OpenURL(url.c_str()); };
+        }
         const int i = ui.add(std::move(wd));
         const bool f = ui.focused(i), hv = ui.hovered(i);
         D::round_rect(SDL_FRect{x, y, w, h}, 10, f || hv ? col::panel3 : col::panel);
@@ -3667,7 +3987,7 @@ void page_credits(App& a, Ui& ui, float x, float y, float w) {
             text(a, l, x + pad, ty, kSmall, col::dim);
             ty += a.text->line_height(kSmall);
         }
-        text(a, c.url, x + pad, ty + 4, kSmall - 1, col::accent);
+        if (link) text(a, c.url, x + pad, ty + 4, kSmall - 1, col::accent);
         y += h + 10;
     }
     y += 12;
@@ -3759,6 +4079,8 @@ void page_music(App& a, Ui& ui, float x, float y, float w) {
     setting_row(a, ui, playlist_row(a.settings), x, y, w, 46);
     y += 46 + 22;
     setting_row(a, ui, custom_music_volume_row(a.settings), x, y, w, 46);   // musicvol1
+    y += 46 + 22;
+    setting_row(a, ui, custom_music_loudness_row(a.settings), x, y, w, 46);   // musicloud
     y += 46 + 22;
 
     // nowplaying1: OTHER MUSIC APPS (src/native/now_playing.h) -- what the system's media controls say plays now
@@ -4116,6 +4438,281 @@ void page_mods(App& a, Ui& ui, float x, float y, float w) {
 
 // ---- the GAME DATA page ----
 
+// customseries: Custom cars: players' car mods as the CUSTOM series in SINGLE EVENT (tools/native/extra_series.h), each
+// car with Remove, Import from folder / Open. Returns the y below it.
+void import_custom_cars(App& a, const fs::path& from) {
+    const b3native::ExtraImport r = b3native::extra_import(from, custom_cars_folder(a));
+    if (!r.done.empty()) extra_cars_on(a, true, false);   // extras
+    refresh_custom_cars(a);
+    a.show.listed_for.clear();   // the showroom's list again
+    std::string n;
+    if (!r.done.empty()) {
+        n = ltrf(a, "Imported: {}", std::to_string(r.done.size())) + " (";
+        for (std::size_t i = 0; i < r.done.size(); ++i) n += (i ? ", " : "") + r.done[i];
+        n += ").";
+    }
+    for (const auto& [what, why] : r.refused) n += (n.empty() ? "" : " ") + what + ": " + a.text->translated(why) + ".";
+    a.custom_note = verbatim(n);
+    a.custom_note_bad = r.done.empty();
+}
+void confirm_custom_remove(App& a, const b3native::ExtraCar& c) {
+    Modal m;
+    m.title = "Remove this custom car?";
+    m.text = verbatim(c.source + "  " + a.text->translated("Its files are deleted from the custom cars folder."));
+    m.buttons = {{"Remove", [&a, c]() {
+                      const bool ok = b3native::extra_remove(custom_cars_folder(a), c);
+                      refresh_custom_cars(a);
+                      a.show.listed_for.clear();
+                      a.custom_note = ok ? verbatim(ltrf(a, "Removed: {}", c.source) + ".") : verbatim(ltrf(a, "Not removed: {}", c.source) + ".");
+                      a.custom_note_bad = !ok;
+                  }, true},
+                 {"Cancel", nullptr}};
+    m.focus = 1;
+    a.modal = m;
+}
+// carpacks: a pack's files -- a .zip (b3mod's reader: names checked, sizes capped) or a folder (no symbolic links) -- the
+// car files, banks, vehicle list and VDB.XML only, at most 2 MB each and 512 MB in all; then the plan (carpack.h)
+void read_car_pack(App& a, const fs::path& from) {
+    namespace cp = b3launcher::carpack;
+    a.car_plan.reset();
+    std::vector<cp::InFile> files;
+    std::uint64_t total = 0;
+    std::string why;
+    auto wanted = [](const std::string& name) {
+        std::string u;
+        for (char c : name) u += char(std::toupper(static_cast<unsigned char>(c)));
+        for (const char* e : {".BGV", ".BTV", ".HWD", ".LWD", "VLIST.BIN", "VDB.XML"})
+            if (u.size() >= std::strlen(e) && u.compare(u.size() - std::strlen(e), std::strlen(e), e) == 0) return true;
+        return false;
+    };
+    constexpr std::uint64_t kFileMax = 2u << 20, kAllMax = 512u << 20;
+    std::error_code ec;
+    if (fs::is_regular_file(from, ec)) {
+        b3mod::ZipReader z;
+        if (!z.open(from, &why)) { a.custom_note = verbatim(utf8_of(from.filename()) + ": " + why); a.custom_note_bad = true; return; }
+        for (const b3mod::ZipEntry& e : z.entries()) {
+            if (e.dir() || e.link() || !b3mod::unsafe_entry_name(e.name).empty() || !wanted(e.name) || e.usize > kFileMax) continue;
+            if ((total += e.usize) > kAllMax) break;
+            cp::InFile f{e.name, {}};
+            if (z.read_all(e, kFileMax, f.bytes, &why)) files.push_back(std::move(f));
+        }
+    } else if (fs::is_directory(from, ec)) {
+        for (fs::recursive_directory_iterator it(from, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->is_symlink(ec)) { it.disable_recursion_pending(); continue; }
+            if (it.depth() > 6) { it.disable_recursion_pending(); continue; }
+            if (!it->is_regular_file(ec) || !wanted(utf8_of(it->path().filename()))) continue;
+            const std::uintmax_t n = it->file_size(ec);
+            if (ec || n > kFileMax || (total += n) > kAllMax) continue;
+            cp::InFile f{utf8_of(fs::relative(it->path(), from, ec)), {}};
+            if (b3native::extra_read_file(it->path(), f.bytes, kFileMax)) files.push_back(std::move(f));
+        }
+    }
+    if (files.empty()) {
+        a.custom_note = verbatim(utf8_of(from.filename()) + ": " + a.text->translated("no car files in it (.BGV)"));
+        a.custom_note_bad = true;
+        return;
+    }
+    std::vector<std::string> names;   // the game's car names, for a car the pack's table does not name
+    {
+        std::vector<std::uint8_t> bin;
+        const fs::path strings = b3asset::disc::resolve_ci(a.game_dir, "DATA/GLOBALUS.BIN");
+        if (!strings.empty() && b3asset::disc::read_file(strings, bin)) names = showroom::car_names(showroom::read_strings(bin));
+    }
+    const fs::path game = a.game_dir;
+    auto disc = [game](const std::string& rel, std::vector<std::uint8_t>& b) {
+        const fs::path p = b3asset::disc::resolve_ci(game, rel);
+        return !p.empty() && b3asset::disc::read_file(p, b);
+    };
+    auto slot_name = [names](const std::string& slot) {
+        const std::size_t sl = slot.find('/');
+        const int k = showroom::name_index(slot.substr(0, sl), std::atoi(slot.c_str() + sl + 4));
+        return k >= 0 && std::size_t(k) < names.size() ? names[std::size_t(k)] : std::string();
+    };
+    std::string stem = utf8_of(from.stem());
+    a.car_plan = std::make_unique<cp::Plan>(cp::plan(std::move(files), stem, disc, slot_name, custom_cars_folder(a), a.pref / "cars" / "beta"));
+    a.custom_note.clear();
+}
+void import_car_pack(App& a) {   // carpacks: the plan's chosen cars written
+    namespace cp = b3launcher::carpack;
+    if (!a.car_plan) return;
+    const fs::path beta = a.pref / "cars" / "beta", game = a.game_dir;
+    // an old-layout prototype file: Beta / Prototype cars' converter (betaimport's import_bytes: a known car by its bytes,
+    // else the car its path names; a traffic slot takes trafficseries' donor)
+    auto proto = [beta, game](const cp::Item& it, const std::vector<std::uint8_t>& bytes) -> std::string {
+        const b3asset::beta::Result r = b3asset::beta::import_bytes(it.rel, bytes, game, beta);
+        if (!r.ok()) return r.error;
+        if (!r.imported.empty()) return {};
+        if (!r.needs_donor.empty()) return "its car is not known: import it with Beta / Prototype cars > Import files...";
+        return r.skipped.empty() ? std::string("not imported") : r.skipped.front();
+    };
+    const cp::Done d = cp::write(*a.car_plan, custom_cars_folder(a), beta, proto);
+    std::map<std::string, int> why;
+    for (const auto& [rel, w] : d.skipped) ++why[w.rfind("already a BETA car", 0) == 0 ? std::string("already a BETA car") : w];
+    std::string n = ltrf(a, "Imported: {}", std::to_string(d.imported.size())) + ".";
+    for (const auto& [w, k] : why) {
+        std::string t = a.text->translated(w);
+        if (!t.empty() && t[0] >= 'a' && t[0] <= 'z') t[0] = char(t[0] - 'a' + 'A');
+        n += " " + t + ": " + std::to_string(k) + ".";
+    }
+    a.custom_note = verbatim(n);
+    a.custom_note_bad = d.imported.empty();
+    if (!d.imported.empty())   // extras: the pack's cars went to CUSTOM and / or BETA
+        extra_cars_on(a, !b3native::extra_scan(custom_cars_folder(a), b3native::kCustomSeries).cars.empty(),
+                      !b3native::extra_scan(a.pref / "cars" / "beta", b3native::kBetaSeries).cars.empty());
+    a.car_plan.reset();
+    refresh_custom_cars(a);
+    a.show.listed_for.clear();
+    refresh_beta(a);
+}
+// carpacks: the pack read, before its import: what it has by group (each a toggle), what is left out and why
+float car_pack_panel(App& a, Ui& ui, float x, float y, float w) {
+    namespace cp = b3launcher::carpack;
+    cp::Plan& p = *a.car_plan;
+    y += section(a, verbatim(p.pack), x + 4, y);
+    std::map<cp::Group, int> in, chosen;
+    std::map<std::string, int> out;
+    for (const cp::Item& it : p.items) {
+        if (it.dest == cp::Dest::kSkip) { ++out[it.why.rfind("already a BETA car", 0) == 0 ? std::string("already a BETA car") : it.why]; continue; }
+        ++in[it.group];
+        if (it.chosen) ++chosen[it.group];
+    }
+    int total = 0;
+    for (const auto& [g, n] : in) {
+        const bool on = chosen[g] > 0;
+        total += chosen[g];
+        const std::string label = verbatim(std::string(on ? "[x] " : "[ ] ") + a.text->translated(cp::group_name(g)) + ": " + std::to_string(n));
+        button(ui, SDL_FRect{x + 4, y, std::min(w - 8, 460.0f), 38}, label, Style::kNormal, true,
+               "Choose whether these cars are imported.", [&a, g, on]() {
+                   for (cp::Item& it : a.car_plan->items)
+                       if (it.group == g && it.dest != cp::Dest::kSkip) it.chosen = !on;
+               });
+        y += 44;
+    }
+    if (in.count(cp::Group::kBeta))   // (Fable's review: a repaint of a cut car is that car)
+        y += paragraph(a, "A cut car's file, whatever its paint, is that BETA car (matched by its shape): it goes into the BETA series "
+                          "once, not as a car of its own.", x + 4, y, w - 8, kSmall, col::dim) + 6;
+    for (const auto& [w2, n] : out) y += status_line(a, x + 4, y, w - 8, col::faint, verbatim(std::to_string(n)), w2);
+    for (const auto& [f, w2] : p.left_out) y += status_line(a, x + 4, y, w - 8, col::faint, verbatim(f), w2);
+    y += 6;
+    Flow f(ui, x, y, w, 48);
+    f.button(240, verbatim(ltrf(a, "Import {} cars", std::to_string(total))), Style::kPrimary, total > 0,
+             "Writes the chosen cars into the custom cars folder (the cut cars of the BETA series into its folder).",
+             [&a]() { import_car_pack(a); });
+    f.button(150, "Cancel", Style::kNormal, true, "Nothing is written.", [&a]() { a.car_plan.reset(); });
+    return f.end() + 16;
+}
+
+float page_game_custom(App& a, Ui& ui, float x, float y, float w) {
+    y += section(a, "Custom cars", x + 4, y);
+    y += paragraph(a, "Car mods as cars of their own: they race as the CUSTOM series in SINGLE EVENT, after the game's cars, "
+                      "never in place of one, each with the engine sound and handling of the car it was made to replace. Races "
+                      "with them keep their results apart from your records.",
+                   x + 4, y, w - 8, kBody, col::text) + 10;
+    const auto& cars = a.custom_cars.cars;
+    const std::string st = cars.empty() ? std::string("None.") : verbatim(ltrf(a, "On SELECT CAR: {}", std::to_string(cars.size())) + ".");
+    y += status_line(a, x + 4, y, w - 8, cars.empty() ? col::faint : col::ok, "Status", st);
+    const float bw = std::max(120.0f, button_need(a, "Remove", Style::kNormal, 32));
+    // carpacks: a pack's cars (its folder's: <pack>/<car>/...) as one line with Remove pack; the others each their own
+    std::map<std::string, int> packs;
+    for (const b3native::ExtraCar& c : cars)
+        if (std::count(c.source.begin(), c.source.end(), '/') >= 2) ++packs[c.source.substr(0, c.source.find('/'))];
+    for (const auto& [pack, n] : packs) {
+        const float h = status_line(a, x + 4, y, w - 8 - bw - 12, col::ok, verbatim(pack), verbatim(ltrf(a, "{} cars", std::to_string(n))));
+        button(ui, SDL_FRect{x + w - bw, y - 4, bw, 34}, "Remove", Style::kNormal, true, "Deletes this pack's cars from the custom cars folder.",
+               [&a, pack]() {
+                   Modal m;
+                   m.title = "Remove this car pack?";
+                   m.text = verbatim(pack + "  " + a.text->translated("Its cars are deleted from the custom cars folder."));
+                   m.buttons = {{"Remove", [&a, pack]() {
+                                     std::error_code ec;
+                                     const bool ok = fs::remove_all(custom_cars_folder(a) / path_from_utf8(pack), ec) > 0 && !ec;
+                                     refresh_custom_cars(a);
+                                     a.show.listed_for.clear();
+                                     a.custom_note = verbatim(ltrf(a, ok ? "Removed: {}" : "Not removed: {}", pack) + ".");
+                                     a.custom_note_bad = !ok;
+                                 }, true},
+                                {"Cancel", nullptr}};
+                   m.focus = 1;
+                   a.modal = m;
+               });
+        y += std::max(h, 40.0f);
+    }
+    for (const b3native::ExtraCar& c : cars) {
+        if (std::count(c.source.begin(), c.source.end(), '/') >= 2) continue;
+        const std::string body = verbatim(ltrf(a, "{}'s handling", (c.name.empty() ? std::string() : c.name + ", ") + c.donor_cls + "/" + c.donor_car));
+        const float h = status_line(a, x + 4, y, w - 8 - bw - 12, col::ok, verbatim(c.source), body);
+        button(ui, SDL_FRect{x + w - bw, y - 4, bw, 34}, "Remove", Style::kNormal, true,
+               "Deletes this car's files from the custom cars folder.", [&a, c]() { confirm_custom_remove(a, c); });
+        y += std::max(h, 40.0f);
+    }
+    for (const auto& [what, why] : a.custom_cars.refused) y += status_line(a, x + 4, y, w - 8, col::warn, verbatim(what), why);
+    if (!a.custom_note.empty()) y += status_line(a, x + 4, y, w - 8, a.custom_note_bad ? col::bad : col::ok, "Last change", a.custom_note);
+    if (a.car_plan) y = car_pack_panel(a, ui, x, y + 8, w);   // carpacks: a pack read, its import to confirm
+    y += 10;
+    const fs::path folder = custom_cars_folder(a);
+    Flow f(ui, x, y, w, 48);
+    f.button(240, "Import car pack...", Style::kPrimary, a.game.ok,
+             a.game.ok ? "A car pack made to replace the game's cars (a .zip, or its folder): the cars it changes become cars of their "
+                         "own, never in place of the game's. Cars your disc already has, BETA cars you have and cars imported before "
+                         "are left out."
+                       : "Choose the game's own data first (above): a pack's cars are compared with your disc's.",
+             [&a]() { open_dialog(a, DialogKind::kCarPack, ""); });
+    f.button(260, "Import from folder...", Style::kNormal, true,
+             "Choose a car mod's folder: its car files (named after the car they replace, in a folder named after its class: "
+             "COMP/CAR7.BGV) or its folders with a car.ini are checked and copied into the custom cars folder.",
+             [&a, folder]() { open_dialog(a, DialogKind::kCustomCars, ""); });
+    f.button(150, "Open", Style::kNormal, true, "Opens the custom cars folder in the file manager (made when it is not there yet).",
+             [&a, folder]() {
+                 std::error_code ec;
+                 fs::create_directories(folder, ec);
+                 open_folder(folder, &a.custom_note);
+             });
+    f.button(170, "Look again", Style::kNormal, true, "Reads the custom cars folder again (cars added or removed since).", [&a]() {
+        refresh_custom_cars(a);
+        a.show.listed_for.clear();
+        a.custom_note = verbatim(ltrf(a, "On SELECT CAR: {}", std::to_string(a.custom_cars.cars.size())) + ".");
+        a.custom_note_bad = false;
+    });
+    return f.end() + 22;
+}
+
+// betaimport: Prototype cars: the BETA series' cars from the player's own disc image of a June 2004 prototype or demo
+// (b3asset/betaimport.h), its status, Import / Open / Remove. Returns the y below it.
+float page_game_beta(App& a, Ui& ui, float x, float y, float w) {
+    y += section(a, "Beta / Prototype cars", x + 4, y);
+    y += paragraph(a, "Cars that were cut from the game, from your own disc image of an early version (the June 8, 2004 "
+                      "PS2 prototype or the June 21, 2004 PS2 demo: .iso, .bin or .chd) or from its car files (.BGV, .BTV). "
+                      "They are converted on this computer and race as the BETA series in SINGLE EVENT, each with the engine "
+                      "sound and handling of a car of the game. Races with them keep their results apart from your records. "
+                      "Nothing is downloaded or shared.",
+                   x + 4, y, w - 8, kBody, col::text) + 10;
+    if (a.beta.cars.empty()) y += status_line(a, x + 4, y, w - 8, col::faint, "Status", "Not imported.");
+    for (const bi::Imported& c : a.beta.cars)   // one line per car, as the Custom cars below
+        y += status_line(a, x + 4, y, w - 8, col::ok, c.name.empty() ? c.folder : c.name,
+                         c.source == "file" ? "from the car file " + c.from : c.from + " (" + (c.source == "jun08" ? "June 8 prototype" : "June 21 demo") + ")");
+    if (!a.beta.note.empty())
+        y += status_line(a, x + 4, y, w - 8, a.beta.level == 1 ? col::ok : a.beta.level == 2 ? col::bad : col::faint, "Last change", a.beta.note);
+    y += 10;
+    const bool can = !beta_running(a) && a.game.ok;
+    const std::string need = "Choose the game's own data first (above): the prototype cars take their engine sound from its cars.";
+    const std::string start = utf8_of(a.game_dir.parent_path());
+    Flow f(ui, x, y, w, 48);
+    f.button(230, "Import from disc...", Style::kPrimary, can,
+             a.game.ok ? "Your disc image of the June 8, 2004 prototype or the June 21, 2004 demo (.iso, .bin or .chd). A few seconds." : need,
+             [&a, start]() { open_dialog(a, DialogKind::kProtoImage, start); });
+    f.button(240, "Import from folder...", Style::kNormal, can,
+             a.game.ok ? "A folder with prototype car files (.BGV, .BTV), e.g. a copy of the disc's VEHICLES folder: its folders are searched too."
+                       : need,
+             [&a, start]() { open_dialog(a, DialogKind::kProtoFolder, start); });
+    f.button(190, "Import files...", Style::kNormal, can, a.game.ok ? "One or more prototype car files (.BGV, .BTV)." : need,
+             [&a, start]() { open_dialog(a, DialogKind::kProtoFiles, start); });
+    f.button(130, "Open", Style::kNormal, !a.beta.cars.empty(), "Opens the folder in the file manager.",
+             [&a]() { open_folder(beta_folder(a), &a.beta.note); });
+    f.button(150, "Remove", Style::kDanger, !a.beta.cars.empty() && !beta_running(a), "Deletes the converted cars (your disc image and files are not touched).",
+             [&a]() { confirm_beta_remove(a); });
+    return f.end() + 22;
+}
+
 void page_game(App& a, Ui& ui, float x, float y, float w) {
     const float top = y;
     auto body = [&](bool draw_it) {
@@ -4196,6 +4793,8 @@ void page_game(App& a, Ui& ui, float x, float y, float w) {
                       "into one folder and choose that folder. A .chd image of the disc works too. The game reads its files "
                       "from it each start (native_play --game). Nothing in it is changed.",
                    x + 4, y, w - 8, kSmall, col::faint);
+    y = page_game_beta(a, ui, x, y + 26, w);
+    y = page_game_custom(a, ui, x, y, w);   // customseries: Custom cars, after Beta / Prototype cars
     a.content_h = y;
 }
 
@@ -5395,7 +5994,7 @@ float controls_editor(App& a, Ui& ui, float x, float y, float w) {
     if (shortcuts) {
         for (int pa = 0; pa < in::kPortActions; ++pa) {
             const in::PortAction act = in::PortAction(pa);
-            if (dev == in::Device::Gamepad && !in::port_has_pad(act)) continue;
+            if (!in::port_listed(act) || (dev == in::Device::Gamepad && !in::port_has_pad(act))) continue;   // 1.3.0: TIME OF DAY held back
             Row r;
             r.label = lower_words(a.text->translated(in::port_label(act)));   // 1.2.1: in the player's language
             r.desc = std::string(in::port_use(act)) + " " + hint + (dev == in::Device::Gamepad ? " A controller shortcut is every input of it held together." : "");
@@ -5693,7 +6292,7 @@ void page_pads(App& a, Ui& ui, float x, float y, float w) {
 // The car list again when the game folder changed; the GPU device on the first visit
 void showroom_refresh(App& a) {
     auto& s = a.show;
-    const std::string key = utf8_of(a.game_dir) + (a.game.ok ? "|ok" : "|no");
+    const std::string key = utf8_of(a.game_dir) + (a.game.ok ? "|ok" : "|no") + "|" + (a.text ? a.text->language() : std::string());   // (showpages: the pages' names)
     if (s.listed_for == key) return;
     s.listed_for = key;
     s.cars.clear();
@@ -5701,8 +6300,38 @@ void showroom_refresh(App& a) {
     s.error.clear();
     s.loaded_index = std::size_t(-1);
     if (!a.game.ok) return;
-    s.cars = showroom::list_cars(a.game_dir, &s.note);
-    if (s.sel >= s.cars.size()) s.sel = 0;
+    std::vector<std::string> strings;
+    s.cars = showroom::list_cars(a.game_dir, &s.note, &strings);
+    // trafficseries / customseries: TRAFFIC, TRAFFIC SPECIAL, CUSTOM and BETA after the disc's player cars, as SELECT CAR
+    s.left_out.clear();
+    for (showroom::CarEntry& c : showroom::list_more_cars(a.game_dir, custom_cars_folder(a), a.pref / "cars" / "beta", &s.left_out))
+        s.cars.push_back(std::move(c));
+    s.series = showroom::group_series(s.cars, strings, a.text ? a.text->language() : std::string());
+    // showroom2: the remembered series (else the first), on its first car
+    s.series_i = 0;
+    for (std::size_t k = 0; k < s.series.size(); ++k)
+        if (s.series[k].id == a.cfg.showroom_series) s.series_i = k;
+    s.sel = s.series.empty() ? 0 : s.series[s.series_i].cars.front();
+}
+
+// showroom2: car `k` of the list, its series with it (the screenshots)
+void showroom_select(App& a, std::size_t k) {
+    auto& s = a.show;
+    if (k >= s.cars.size()) return;
+    s.sel = k;
+    for (std::size_t i = 0; i < s.series.size(); ++i)
+        if (s.series[i].id == showroom::car_series(s.cars[k])) s.series_i = i;
+}
+
+// showroom2: another series (dir -1 / +1), on its first car; the choice remembered in launcher.ini
+void showroom_series_step(App& a, int dir) {
+    auto& s = a.show;
+    if (s.series.size() < 2) return;
+    s.series_i = (s.series_i + s.series.size() + std::size_t(dir < 0 ? s.series.size() - 1 : 1)) % s.series.size();
+    s.sel = s.series[s.series_i].cars.front();
+    s.paint = 0;
+    a.cfg.showroom_series = s.series[s.series_i].id;
+    save_cfg(a);
 }
 
 // showhd1: the HD packs the game would start with now (b3replay_main's hd_enable: the mods' [textures] packs of the set
@@ -5726,7 +6355,7 @@ void showroom_load(App& a) {
         p.rgb = std::uint32_t(std::clamp(a.settings.paint_red, 0, 255)) << 16 | std::uint32_t(std::clamp(a.settings.paint_green, 0, 255)) << 8 |
                 std::uint32_t(std::clamp(a.settings.paint_blue, 0, 255));
         p.decals = a.settings.car_decals;
-        p.finish = std::clamp(a.settings.paint_finish, 0, 2);
+        p.finish = std::clamp(a.settings.paint_finish, 0, 3);
         if (s.view->set_paint(p)) s.loaded_index = std::size_t(-1);
     }
     if (s.loaded_index == s.sel && s.loaded_paint == s.paint) return;
@@ -5741,10 +6370,13 @@ void showroom_load(App& a) {
     }
 }
 
-void showroom_step(App& a, int dir) {
+void showroom_step(App& a, int dir) {   // (showroom2: within the series shown)
     auto& s = a.show;
-    if (s.cars.empty()) return;
-    s.sel = (s.sel + s.cars.size() + std::size_t(dir < 0 ? s.cars.size() - 1 : 1)) % s.cars.size();
+    if (s.cars.empty() || s.series.empty()) return;
+    const std::vector<std::size_t>& in = s.series[s.series_i].cars;
+    std::size_t at = 0;
+    for (std::size_t k = 0; k < in.size(); ++k) if (in[k] == s.sel) at = k;
+    s.sel = in[(at + in.size() + std::size_t(dir < 0 ? in.size() - 1 : 1)) % in.size()];
     s.paint = 0;
 }
 
@@ -5780,7 +6412,7 @@ void page_showroom(App& a, Ui& ui, float x, float y, float w) {
     s.tt.stick(rx, ry, dt);
     if (!s.drag) s.tt.step(dt);
     // the view: as wide as the page, at most 16:9 and what leaves room for the rows below
-    const float view_h = std::max(220.0f, std::min(w * 9.0f / 16.0f, a.H - kHeaderH - kFooterH - 150));
+    const float view_h = std::max(220.0f, std::min(w * 9.0f / 16.0f, a.H - kHeaderH - kFooterH - 204));   // (showroom2: the series row too)
     const SDL_FRect vr{x, y, w, view_h};
     s.rect = vr;
     D::round_rect(vr, 12, col::panel);
@@ -5807,16 +6439,44 @@ void page_showroom(App& a, Ui& ui, float x, float y, float w) {
     const showroom::CarEntry& c = s.cars[s.sel];
     D::gradient(SDL_FRect{vr.x, vr.y + vr.h - 70, vr.w, 70}, D::alpha(col::bg, 0), D::alpha(col::bg, 0), D::alpha(col::bg, 0.75f), D::alpha(col::bg, 0.75f));
     text(a, upper(c.name), x + 22, y + view_h - 62, 24, col::text, true);
-    const std::string sub = c.kind + "   " + std::to_string(s.sel + 1) + " of " + std::to_string(s.cars.size()) + "   PVEH/" + c.folder + "/CAR" +
-                            std::to_string(c.number) + ".BGV";
+    // showroom2: the place in its series, and where it is from
+    const auto& in = s.series[s.series_i].cars;
+    std::size_t at = 0;
+    for (std::size_t k = 0; k < in.size(); ++k) if (in[k] == s.sel) at = k;
+    const std::string sub = verbatim(a.text->translated(c.kind) + "   " + std::to_string(at + 1) + " " + a.text->translated("of") + " " +
+                                     std::to_string(in.size()) + "   " + c.label);
     text(a, sub, x + 24, y + view_h - 28, kSmall, col::dim);
     float ly = y + view_h + 12;
+    // showroom2: the series (left / right), SELECT CAR's grouping and names; the cars below are that series'
+    {
+        Widget ser;
+        ser.r = SDL_FRect{x, ly, w, 44};
+        ser.desc = "Left / right: the series (as SELECT CAR groups the cars: the classes, the specials, the heavyweights, the traffic, "
+                   "your own cars); down: its cars.";
+        ser.change = [&a](int d) { showroom_series_step(a, d); };
+        ser.activate = [&a]() { showroom_series_step(a, 1); };
+        ser.click = [&a, r = ser.r](float cx, float) { showroom_series_step(a, cx < r.x + r.w * 0.5f ? -1 : 1); };
+        const int si = ui.add(std::move(ser));
+        const SDL_FRect r = ui.out[std::size_t(si)].r;
+        const bool f = ui.focused(si), h = ui.hovered(si);
+        D::round_rect(r, 8, f || h ? col::panel3 : col::panel2);
+        if (a.look.on) D::round_rect_outline(r, 8, 1.0f, col::edge);
+        if (f) focus_ring(r, 8);
+        const float ty = r.y + (r.h - a.text->line_height(kBody)) * 0.5f;
+        if (s.series.size() > 1) {
+            text(a, "<", r.x + 16, ty, kBody, col::accent, true);
+            text_right(a, ">", r.x + r.w - 16, ty, kBody, col::accent, true);
+        }
+        const std::string label = s.series[s.series_i].name + "   (" + std::to_string(s.series_i + 1) + " / " + std::to_string(s.series.size()) + ")";
+        text_center(a, a.text->elide(label, kBody, r.w - 70, true), r.x + r.w * 0.5f, ty, kBody, col::text, true);
+        ly += 44 + 10;
+    }
     // the rows: the car (left / right) on its own row; below it its paint and the spin (up / down moves between the rows
     // on a pad or the keys: left / right change the focused one)
     const float bw = (w - 10) / 2;
     Widget car;
     car.r = SDL_FRect{x, ly, w, 44};
-    car.desc = "Left / right (or LT / RT, PgUp / PgDn): the previous / next car; down: its paint, then the turning. Drag the picture (or the right stick) to turn it, the wheel to come nearer.";
+    car.desc = "Left / right (or LT / RT, PgUp / PgDn): the previous / next car of the series; up: the series; down: its paint, then the turning. Drag the picture (or the right stick) to turn it, the wheel to come nearer.";
     car.change = [&a](int d) { showroom_step(a, d); };
     car.activate = [&a]() { showroom_step(a, 1); };
     car.click = [&a, r = car.r](float cx, float) { showroom_step(a, cx < r.x + r.w * 0.5f ? -1 : 1); };
@@ -5856,9 +6516,12 @@ void page_showroom(App& a, Ui& ui, float x, float y, float w) {
            "The turntable turning by itself, on or off. Up: the paint.", [&a]() { a.show.tt.spin = !a.show.tt.spin; });
     ui.chain(ci, int(ui.out.size()) - 1);   // launcherux1: up / down car -> paint -> turning (left / right change the first two)
     ly += 44 + 10;
-    ly += paragraph(a, "Every player car on your disc, in the game's own car model. Looking here changes nothing: it unlocks nothing and the save files are not read." +
+    ly += paragraph(a, "Every player car on your disc, in the game's own car model, then the traffic vehicles and your custom and "
+                       "prototype cars as SELECT CAR offers them. Looking here changes nothing: it unlocks nothing and the save files are not read." +
                            (s.note.empty() ? std::string() : "  (" + s.note + ")"),
                     x + 4, ly, w - 8, kSmall, col::faint);
+    for (const std::string& l : s.left_out)   // customseries: an extra car file the game leaves out, with why
+        ly += status_line(a, x + 4, ly + 4, w - 8, col::warn, "Not shown", verbatim(l));
     a.content_h = ly;
 }
 
@@ -6273,7 +6936,19 @@ void draw_modal(App& a) {
     const float tx = 0, inner = w - 56;
     (void)tx;
     const auto lines = a.text->wrap(m.text, kBody, inner);
+    // betaimport: the buttons in rows of what fits (each row right-aligned; one row as before)
+    std::vector<float> bws;
+    for (const auto& b : m.buttons) bws.push_back(std::max(120.0f, a.text->width(b.label, kBody, true) + 40));
+    std::vector<std::pair<std::size_t, std::size_t>> rows;
+    for (std::size_t i = 0; i < bws.size();) {
+        float rw = bws[i];
+        std::size_t j = i + 1;
+        while (j < bws.size() && rw + 12 + bws[j] <= inner) rw += 12 + bws[j++];
+        rows.push_back({i, j});
+        i = j;
+    }
     float h = 30 + a.text->line_height(22) + 12 + float(lines.size()) * a.text->line_height(kBody) + 28 + 48 + 28;
+    if (rows.size() > 1) h += float(rows.size() - 1) * 58;
     if (m.input) h += 56;
     if (m.progress >= 0) h += 26;   // xboximport
     const float x = (a.W - w) * 0.5f, y = std::max(20.0f, (a.H - h) * 0.5f);
@@ -6298,19 +6973,22 @@ void draw_modal(App& a) {
     }
     yy += 8;
     m.rects.clear();
-    float bx = x + w - 28;
-    for (std::size_t k = m.buttons.size(); k-- > 0;) {
-        const auto& b = m.buttons[k];
-        const float bw = std::max(120.0f, a.text->width(b.label, kBody, true) + 40);
-        bx -= bw;
-        const SDL_FRect r{bx, yy, bw, 46};
-        bx -= 12;
-        m.rects.insert(m.rects.begin(), r);
-        const bool f = k == m.focus;
-        const bool hv = a.mouse_on && a.mouse_x >= r.x && a.mouse_x < r.x + r.w && a.mouse_y >= r.y && a.mouse_y < r.y + r.h;
-        SDL_FColor fill = f ? (b.danger ? col::bad : col::accent) : hv ? col::panel3 : col::panel;
-        D::round_rect(r, 8, fill);
-        text_center(a, b.label, r.x + r.w * 0.5f, r.y + (46 - a.text->line_height(kBody)) * 0.5f, kBody, f ? col::ink : col::text, true);
+    for (const auto& [from, to] : rows) {
+        float rw = 0;
+        for (std::size_t k = from; k < to; ++k) rw += bws[k] + (k > from ? 12 : 0);
+        float bx = x + w - 28 - rw;
+        for (std::size_t k = from; k < to; ++k) {
+            const auto& b = m.buttons[k];
+            const SDL_FRect r{bx, yy, bws[k], 46};
+            bx += bws[k] + 12;
+            m.rects.push_back(r);
+            const bool f = k == m.focus;
+            const bool hv = a.mouse_on && a.mouse_x >= r.x && a.mouse_x < r.x + r.w && a.mouse_y >= r.y && a.mouse_y < r.y + r.h;
+            SDL_FColor fill = f ? (b.danger ? col::bad : col::accent) : hv ? col::panel3 : col::panel;
+            D::round_rect(r, 8, fill);
+            text_center(a, b.label, r.x + r.w * 0.5f, r.y + (46 - a.text->line_height(kBody)) * 0.5f, kBody, f ? col::ink : col::text, true);
+        }
+        yy += 58;
     }
 }
 
@@ -6656,6 +7334,10 @@ void go_page(App& a, int p) {
     refresh(a);
     if (a.page == kMusic) refresh_music(a, true);   // songs added to the folder since
     if (a.page == kMods) refresh_mods(a);            // mods added or removed since
+    if (a.page == kGame || a.page == kShowroom) {     // customseries: the custom cars folder again
+        refresh_custom_cars(a);
+        a.show.listed_for.clear();
+    }
     if (a.page == kReplays) load_replays(a);         // replay1: recorded since
 }
 
@@ -7378,7 +8060,7 @@ int showroom_hd_check(App& a, const fs::path& dir, ShowroomHdCheck& st) {
     struct Pic { std::vector<std::uint8_t> px; std::size_t replaced = 0; bool ok = false; };
     auto draw = [&](int paint, bool with_car = true) {
         Pic r;
-        s.sel = 0;
+        showroom_select(a, 0);   // (showroom2: its series with it)
         s.paint = paint;
         showroom_load(a);   // as the page each frame: loads again when the car, the paint or the HD packs changed
         r.ok = s.error.empty() && s.view->loaded() && s.view->draw(tt, W, H, r.px, with_car);
@@ -7480,7 +8162,7 @@ int showroom_hd_check(App& a, const fs::path& dir, ShowroomHdCheck& st) {
     }
     // the window's shot next: HD TEXTURES on with the test pack, the first car, paint 1
     a.settings.hd_textures = true;
-    s.sel = 0;
+    showroom_select(a, 0);
     s.paint = 0;
     return ok ? 0 : 1;
 }
@@ -9304,7 +9986,6 @@ bool steam_check_refusals(App& a, const SteamCheck& c, bool running) {
 struct DjCheck {
     fs::path base;
     int bad = 0;
-    bool game_ok = false;   // the real game folder's state, put back at the end: its English banks are not the test banks
 };
 void dj_check_report(DjCheck& c, bool ok, const std::string& what) {
     std::printf("b3launcher: dj voice check %s: %s\n", ok ? "PASS" : "FAIL", what.c_str());
@@ -9339,9 +10020,10 @@ void dj_check_begin(App& a, DjCheck& c) {
     c.base = a.pref / "dj-check";
     fs::remove_all(c.base, ec);
     // the synthetic banks are checked against themselves, not the real disc's English banks (a real game folder's E_ banks
-    // differ from the test banks: the import would rightly refuse them)
-    c.game_ok = a.game.ok;
-    a.game.ok = false;
+    // differ from the test banks: the import would rightly refuse them). A flag of the import's own: a.game.ok, cleared
+    // here before, came back with every page change (go_page -> refresh), so with a game folder in launcher.ini the
+    // German and Italian imports were refused ("its header's size differs from the English bank's").
+    a.dj.no_english = true;
     for (const std::string& code : L::dj_codes()) L::dj_remove(a.pref, code);
     const auto put = [&](const fs::path& p, const std::vector<std::uint8_t>& b) {
         fs::create_directories(p.parent_path(), ec);
@@ -9420,7 +10102,7 @@ void dj_check_end(App& a, DjCheck& c) {
     a.dj.found_training.clear();
     a.dj.disc.clear();
     a.dj.note.clear();
-    a.game.ok = c.game_ok;
+    a.dj.no_english = false;
     refresh_dj(a);
 }
 
@@ -9442,6 +10124,7 @@ int screenshots(App& a, const fs::path& dir) {
     ShowroomHdCheck hd_check;
     SteamCheck steam_check;   // issue #8
     DjCheck dj_check;         // 1.3.0
+    bool beta_made = false;   // betaimport: game_beta made two car folders (removed at the next shot)
     a.steam_ui.checks = true;
     auto steam_shot = [&]() {   // Settings with Add to Steam focused (the page scrolled to it)
         a.modal.reset();
@@ -9458,6 +10141,14 @@ int screenshots(App& a, const fs::path& dir) {
         {"settings_display", [&]() { go_page(a, kSettings); a.settings_tab = 0; a.in_content = true; a.focus = 3; }},
         {"settings_graphics", [&]() { a.settings_tab = 1; a.focus = 2; }},
         {"settings_effects", [&]() { a.settings_tab = 2; a.focus = 2; a.scroll[kSettings] = 0; }},
+        {"settings_extras", [&]() {   // extras: the EXTRAS tab (all off: the game as it shipped)
+             const auto tabs = settings_content(a.settings, "", false, a.languages, a.language_note, a.xbox.status.present, a.dj.rows, a.dj.note).tabs;
+             for (std::size_t t = 0; t < tabs.size(); ++t) if (tabs[t].label == "EXTRAS") a.settings_tab = t;
+             go_page(a, kSettings);
+             a.in_content = true;
+             a.focus = 0;
+             a.scroll[kSettings] = 0;
+         }},
         {"settings_reset_confirm", [&]() { confirm_reset(a); }},
         // issue #8: Add to Steam into a made-up Steam folder: added, again (with the player's own pictures), Steam
         // running, no Steam
@@ -9516,7 +10207,52 @@ int screenshots(App& a, const fs::path& dir) {
         {"mods", [&]() { go_page(a, kMods); a.in_content = true; a.focus = 2; }},   // modkit1
         {"mods_last", [&]() { go_page(a, kMods); a.in_content = true; a.focus = 14; }},   // the fourth card (errors / notes; modkit1b: after Add mod; sdk2b: and Developer mods)
         {"game", [&]() { go_page(a, kGame); a.in_content = false; }},
-        {"saves", [&]() { go_page(a, kSaves); a.in_content = true; a.focus = 4; }},   // (1.1: after Choose save folder... and Use the default folder: File 2)
+        // betaimport: Prototype cars with two made-up imported cars (two car folders, made only when there are none, read
+        // by refresh_beta and removed at the next shot), scrolled to it
+        {"game_beta", [&]() {
+             const fs::path bf = beta_folder(a);
+             std::error_code e2;
+             if (!fs::exists(bf, e2)) {
+                 for (const char* f : {"01-jun21-hevy-car4", "04-jun21-hevy-car36"}) {
+                     fs::create_directories(bf / f, e2);
+                     std::ofstream(bf / f / "car.bgv") << "x";
+                     std::ofstream(bf / f / "car.ini") << "name = " << (f[1] == '1' ? "SUV" : "Early Fire Truck") << "\ndonor = HEVY/CAR4\nmodel = car.bgv\n"
+                                                       << "source = jun21\nfrom = VEHICLES/HEVY/CAR" << (f[1] == '1' ? "4" : "36") << ".BGV\n";
+                 }
+                 beta_made = true;
+                 refresh_beta(a);
+                 if (a.beta.cars.size() != 2 || a.beta.cars[1].name != "Early Fire Truck") {
+                     std::fprintf(stderr, "b3launcher: check failed: the prototype cars' status from their car.ini\n");
+                     ++bad_checks;
+                 }
+             }
+             a.beta.note = "2 cars imported from the June 21, 2004 PS2 demo. They are the BETA series on SELECT CAR (SINGLE EVENT) from the next start.";
+             a.beta.level = 1;
+             go_page(a, kGame);
+             a.in_content = false;
+             a.scroll[kGame] = 1e6f;
+         }},
+        // betaimport: the question for a renamed car file
+        {"game_beta_donor", [&]() {
+             a.beta.pending = {fs::path("mycar.bgv")};
+             ask_beta_donor(a);
+             if (!a.modal || a.modal->buttons.size() != 8 || a.modal->text.find("mycar.bgv") == std::string::npos) {
+                 std::fprintf(stderr, "b3launcher: check failed: the prototype car's class question\n");
+                 ++bad_checks;
+             }
+         }},
+        {"saves", [&]() {
+             a.modal.reset();
+             a.beta.pending.clear();
+             if (beta_made) {   // betaimport: game_beta's made-up car folders removed
+                 std::error_code e2;
+                 fs::remove_all(beta_folder(a), e2);
+                 refresh_beta(a);
+                 a.beta.note.clear();
+                 beta_made = false;
+             }
+             go_page(a, kSaves); a.in_content = true; a.focus = 4;
+         }},   // (1.1: after Choose save folder... and Use the default folder: File 2)
         // 1.3.0 DJ VOICE: offered, importing (the progress as drawn), imported, a cancel, the removal question, removed
         {"settings_dj_offer", [&]() { dj_check_begin(a, dj_check); }},
         {"settings_dj_importing", [&]() {   // (after the page is shown: going to it refreshes the rows)
@@ -9543,17 +10279,71 @@ int screenshots(App& a, const fs::path& dir) {
         {"showroom", [&]() { go_page(a, kShowroom); a.in_content = true; a.focus = 0; a.show.tt.reset(); a.show.tt.spin = false; }},
         {"showroom_super", [&]() {
              showroom_refresh(a);
-             for (std::size_t k = 0; k < a.show.cars.size(); ++k) if (a.show.cars[k].folder == "SUPR" && a.show.cars[k].number == 10) a.show.sel = k;
+             for (std::size_t k = 0; k < a.show.cars.size(); ++k) if (a.show.cars[k].folder == "SUPR" && a.show.cars[k].number == 10) showroom_select(a, k);
              a.show.paint = 1;
              a.show.tt.yaw = 2.4f;
              a.show.tt.pitch = 0.12f;
          }},
         {"showroom_heavy", [&]() {
-             for (std::size_t k = 0; k < a.show.cars.size(); ++k) if (a.show.cars[k].folder == "HEVY" && a.show.cars[k].number == 9) a.show.sel = k;
+             for (std::size_t k = 0; k < a.show.cars.size(); ++k)
+                 if (a.show.cars[k].folder == "HEVY" && a.show.cars[k].number == 9) showroom_select(a, k);
              a.show.paint = 0;
              a.show.tt.yaw = -0.6f;
              a.show.tt.pitch = 0.35f;
              a.show.tt.zoom = 1.1f;
+         }},
+        // showroom2: the series row's step (left from the heavyweights: the specials), remembered in launcher.ini
+        {"showroom_series_step", [&]() { showroom_series_step(a, -1); a.focus = 0; }},
+        // trafficseries / customseries: the series after the disc's player cars (a custom car needs one in the --pref's
+        // cars/custom; the shot then shows the first)
+        {"showroom_traffic", [&]() {
+             showroom_refresh(a);
+             for (std::size_t k = 0; k < a.show.cars.size(); ++k) if (a.show.cars[k].folder == "COMP" && a.show.cars[k].kind == "Traffic" && a.show.cars[k].number == 18) showroom_select(a, k);
+             a.show.paint = 0;
+             a.show.tt.yaw = 0.8f;
+             a.show.tt.pitch = 0.2f;
+             a.show.tt.zoom = 1.0f;
+         }},
+        {"showroom_custom", [&]() {
+             showroom_refresh(a);
+             for (std::size_t k = a.show.cars.size(); k-- > 0;) if (a.show.cars[k].kind == "Custom") showroom_select(a, k);
+             a.show.paint = 0;
+             a.show.tt.yaw = 2.2f;
+             a.show.tt.pitch = 0.15f;
+         }},
+        // showpages: CUSTOM's second page (the series row one step right from CUSTOM: "CUSTOM 2"; with more than 19 cars in
+        // the --pref's cars/custom), then the last custom car (its page: "CUSTOM 3" with 40), the row focused
+        {"showroom_custom_page", [&]() { showroom_series_step(a, 1); a.show.tt.yaw = 2.2f; a.focus = 0; }},
+        {"showroom_custom_last", [&]() {
+             showroom_refresh(a);
+             for (std::size_t k = 0; k < a.show.cars.size(); ++k) if (a.show.cars[k].kind == "Custom") showroom_select(a, k);
+             a.show.paint = 0;
+             a.show.tt.yaw = 1.4f;
+             a.focus = 0;
+         }},
+        // showroom2: the page's end, where a car file left out shows its "Not shown" line (customseries)
+        {"showroom_left_out", [&]() { a.in_content = false; a.scroll[kShowroom] = 1e6f; }},
+        // showroom2: the BETA series (a car in the --pref's cars/beta), the series row focused
+        {"showroom_beta", [&]() {
+             showroom_refresh(a);
+             for (std::size_t k = a.show.cars.size(); k-- > 0;) if (a.show.cars[k].kind == "Beta") showroom_select(a, k);
+             a.show.paint = 0;
+             a.show.tt.yaw = 0.6f;
+             a.focus = 0;
+         }},
+        {"game_custom", [&]() { go_page(a, kGame); a.in_content = false; a.scroll[kGame] = 1e6f; }},
+        // carpacks: B3LAUNCHER_SHOT_CARPACK=<a pack's .zip or folder> (checks): the pack read, its plan; then imported
+        {"game_carpack", [&]() {
+             if (const char* e = std::getenv("B3LAUNCHER_SHOT_CARPACK"); e && *e) read_car_pack(a, path_from_utf8(e));
+             go_page(a, kGame);
+             a.in_content = false;
+             a.scroll[kGame] = 1e6f;
+         }},
+        {"game_carpack_done", [&]() {
+             import_car_pack(a);
+             go_page(a, kGame);
+             a.in_content = false;
+             a.scroll[kGame] = 1e6f;
          }},
         // showhd1: the first car with a test HD pack made from the disc (showroom_hd_check), then everything back
         {"showroom_hd", [&]() {
@@ -9575,13 +10365,13 @@ int screenshots(App& a, const fs::path& dir) {
              go_page(a, kShowroom);
              a.in_content = true;
              a.focus = 0;
-             a.show.sel = 0;
+             showroom_select(a, 0);
              a.show.tt.reset();
              a.show.tt.spin = false;
              a.show.tt.yaw = 0.7f;
          }},
         {"showroom_paint_pearl", [&]() {
-             for (std::size_t k = 0; k < a.show.cars.size(); ++k) if (a.show.cars[k].folder == "MSCL" && a.show.cars[k].number == 1) a.show.sel = k;
+             for (std::size_t k = 0; k < a.show.cars.size(); ++k) if (a.show.cars[k].folder == "MSCL" && a.show.cars[k].number == 1) showroom_select(a, k);
              a.settings.paint_red = 225; a.settings.paint_green = 45; a.settings.paint_blue = 90;
              a.settings.paint_finish = 2;
              a.show.tt.yaw = 2.4f;
@@ -9603,6 +10393,10 @@ int screenshots(App& a, const fs::path& dir) {
          }},
         {"settings_paint_end", [&]() { a.settings = a.show.saved_settings; a.focus = 2; a.scroll[kSettings] = 0; }},
         {"credits", [&]() { go_page(a, kCredits); a.in_content = true; a.focus = 0; }},
+        // credits140: the thank-yous further down (the mods' authors, then the end), each language's wrapping
+        {"credits_mid", [&]() { go_page(a, kCredits); a.in_content = true; a.focus = 0; a.reveal_focus = false; a.scroll[kCredits] = 520.0f; }},
+        {"credits_mods", [&]() { go_page(a, kCredits); a.in_content = true; a.focus = 0; a.reveal_focus = false; a.scroll[kCredits] = 860.0f; }},
+        {"credits_end", [&]() { go_page(a, kCredits); a.in_content = true; a.focus = 0; a.reveal_focus = false; a.scroll[kCredits] = 1e6f; }},
         {"controllers_pad", [&]() {
              go_page(a, kPads);
              a.pads_tab = 0;   // settingsui: TEST
@@ -9714,10 +10508,21 @@ int screenshots(App& a, const fs::path& dir) {
              a.ctl_device = 0;
              a.reveal_focus = true;
              render(a);
-             a.focus = a.ctl_first_widget + int(in::PortAction::RaceTime);
+             // 1.3.0 (held back with night, input_bindings.h kRaceTimeThisRelease): not listed (no row's description is its
+             // use), the last row the one before it
+             int listed = 0, rows_of_it = 0;
+             for (int pa = 0; pa < in::kPortActions; ++pa) listed += in::port_listed(in::PortAction(pa)) ? 1 : 0;
+             const std::string use = in::port_use(in::PortAction::RaceTime);
+             for (std::size_t w = std::size_t(std::max(a.ctl_first_widget, 0)); w < a.widgets.size(); ++w)
+                 rows_of_it += a.widgets[w].desc.compare(0, use.size(), use) == 0 ? 1 : 0;
+             if (!in::kRaceTimeThisRelease)
+                 std::printf("b3launcher: race time hidden check %s (%d rows for TIME OF DAY PER RACE; %d of %d shortcuts listed)\n",
+                             rows_of_it == 0 && a.ctl_first_widget >= 0 ? "PASS" : "FAIL", rows_of_it, listed, in::kPortActions);
+             a.focus = a.ctl_first_widget + (in::kRaceTimeThisRelease ? int(in::PortAction::RaceTime) : listed - 1);
          }},
         {"controls_race_time_refused", [&]() {   // todrace: Enter (the pages' Confirm) refused, the flow still waiting
              namespace in = b3native::input;
+             if (!in::kRaceTimeThisRelease) return;   // 1.3.0: held back (no row to rebind; the unit tests keep the refusal)
              a.flow.begin_port(in::PortAction::RaceTime, in::Device::Keyboard, false);
              a.flow_t = a.now();
              const auto st = a.flow.input(a.controls, {in::Device::Keyboard, 40, in::PadInput::None});   // Return
@@ -9789,7 +10594,7 @@ int screenshots(App& a, const fs::path& dir) {
              a.modal.reset();
              go_page(a, kShowroom);
              a.in_content = true;
-             a.focus = 0;
+             a.focus = 1;   // the car's row (showpages: showroom2's series row is the first, 0, above it)
              a.show.paint = 0;
              render(a);
              const std::size_t car0 = a.show.sel;
@@ -10085,7 +10890,7 @@ int screenshots(App& a, const fs::path& dir) {
             int n = 0;
             if (std::sscanf(item.c_str(), "%7[A-Za-z]/%d", folder, &n) != 2) continue;
             for (std::size_t k = 0; k < a.show.cars.size(); ++k)
-                if (a.show.cars[k].folder == upper(folder) && a.show.cars[k].number == n) a.show.sel = k;
+                if (a.show.cars[k].folder == upper(folder) && a.show.cars[k].number == n) showroom_select(a, k);
             a.show.paint = 0;
             a.show.tt.reset();
             a.show.tt.spin = false;
@@ -10225,6 +11030,21 @@ int main(int argc, char** argv) {
     }
     if (!portable_arg.empty()) return portable_cli(portable_arg, keep_arg);   // portable mode: no window
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    {   // issue #16 (b3port/trigger_rumble.h): TRIGGER RUMBLE on Windows: the RawInput controller path, before SDL_Init, from
+        // the pc_settings.ini of the folder this launcher is about to use (--pref, else the user folder; read again later)
+        std::error_code hec;
+        const fs::path hpref = !pref_arg.empty() ? fs::absolute(path_from_utf8(pref_arg), hec) : b3io::user_dir();
+        bool triggers = false;
+        if (!hpref.empty()) {
+            std::ifstream hf(settings_file(hpref), std::ios::binary);
+            if (hf) {
+                const std::string text((std::istreambuf_iterator<char>(hf)), std::istreambuf_iterator<char>());
+                triggers = b3settings::from_ini(text).rumble_triggers;
+            }
+        }
+        if (b3port::apply_trigger_rumble_hints(triggers))
+            std::fprintf(stderr, "b3launcher: TRIGGER RUMBLE: SDL's RawInput controller path\n");
+    }
     SDL_SetAppMetadata("Burnout 3 Launcher", b3port::version(), "b3port.launcher");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         std::fprintf(stderr, "b3launcher: SDL_Init: %s\n", SDL_GetError());
@@ -10411,6 +11231,7 @@ int main(int argc, char** argv) {
             poll_install(a);  // 1.1 one-click updates
             poll_dj(a);       // 1.3.0 DJ VOICE
             poll_xbox(a);     // xboximport
+            poll_beta(a);     // betaimport
             poll_portable(a); // portable mode
             pads_motion(a);   // pad1
             render(a);
@@ -10422,6 +11243,7 @@ int main(int argc, char** argv) {
     end_update_check(a);    // update1
     end_dj_import(a);       // 1.3.0
     end_xbox_import(a);     // xboximport
+    end_beta_import(a);     // betaimport
     end_portable_move(a);   // portable mode
     if (a.inst.th.joinable()) {   // 1.1: an install under way finishes (a swap is never cut short); robust2: a download is stopped
         cancel_install(a);

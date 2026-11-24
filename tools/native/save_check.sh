@@ -61,13 +61,13 @@ for line in sys.stdin:
 shown1=$(card_shown "$OUT/run1/log.txt")
 [ -z "$shown1" ] || why="${why:+$why; }run 1 showed card messages: $shown1"
 cp "$OUT/card/profile-1.sav" "$OUT/run1/profile-1.sav"
-# run 2: load it, then SETTINGS (main menu row 6: Down x5) > SAVES (the 8th tab, settingsui: R1 x7) > EXPORT SAVE (Down x3)
+# run 2: load it, then SETTINGS (main menu row 6: Down x5) > SAVES (the 9th tab since EXTRAS: R1 x8) > EXPORT SAVE (Down x3)
 # (the page reads the pad on the renderer's frames, which an unpaced run may space out: page keys are held 40 VBlanks)
 K2="$(press 9000 41),$(press 9600 29),$(press 10200 29)"
 for v in 11600 11660 11720 11780 11840; do K2="$K2,$(press $v 81)"; done
 K2="$K2,$(press 12000 29)"
-for v in 12300 12400 12500 12600 12700 12800 12900; do K2="$K2,$(press $v 21 40)"; done
-K2="$K2,$(press 13000 81 40),$(press 13100 81 40),$(press 13200 81 40),$(press 13300 29 40),$(press 13700 41 40)"
+for v in 12300 12400 12500 12600 12700 12800 12900 13000; do K2="$K2,$(press $v 21 40)"; done
+K2="$K2,$(press 13100 81 40),$(press 13200 81 40),$(press 13300 81 40),$(press 13400 29 40),$(press 13800 41 40)"
 run run2 14200 "$K2" 4800,5300,6200,6540
 grep -q '^crash:' "$OUT/run2/log.txt" && why="${why:+$why; }run 2 crashed"
 grep -qF "card_silence: message 205 (type 2) not shown, answered OK" "$OUT/run2/log.txt" || why="${why:+$why; }run 2: the profile did not load (no \"Load successful\")"
@@ -88,7 +88,7 @@ with wave.open(sys.argv[1] + '/01 Save Check - Long Tone.wav', 'wb') as w:
     w.writeframes(b''.join(struct.pack('<h', int(5000 * math.sin(2 * math.pi * 440 * k / 22050))) for k in range(22050 * 240)))
 PY
 ENVS=(B3HOST_FATAL_ABORT=1 B3NATIVE_SAVES_ROOT="$OUT/card3" B3NATIVE_CARD_PRESENT_VBLANK=0 B3NATIVE_MUSIC_DIR="$OUT/music"
-      B3NATIVE_MUSIC_MODE=1 B3NATIVE_MUSIC_MODES_FILE=-)
+      B3NATIVE_MUSIC_MODE=1 B3NATIVE_MUSIC_MODES_FILE=- B3NATIVE_MUSIC_LOUDNESS_FILE=-)
 run run3 13000 "$K1" 6400
 grep -q '^crash:' "$OUT/run3/log.txt" && why="${why:+$why; }run 3 crashed"
 grep -q 'custom_music: VBlank [0-9]*: stream [0-9A-F]* plays' "$OUT/run3/log.txt" || why="${why:+$why; }run 3: no custom song played"

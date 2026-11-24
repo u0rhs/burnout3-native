@@ -210,7 +210,7 @@ public:
     }
     bool in_race() const {
         const std::uint32_t n = u32(sa::kRaceCarCount);
-        return n >= 1 && n <= 6 && u32(sa::kRaceCarList) == sa::kPlayerCar;
+        return n >= 1 && n <= 8 && u32(sa::kRaceCarList) == sa::kPlayerCar;   // (8: MORE RIVALS' races)
     }
     bool wants(int e) const { return std::find(wants_.begin(), wants_.end(), event_list(e)) != wants_.end(); }
 

@@ -8,6 +8,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
+
+#include "audio_queue.h"
 
 namespace b3native {
 
@@ -32,44 +35,44 @@ public:
     // the playback devices) still listed.
     bool still_playing_after_removal(uint32_t which);
 
-    // Queues frames (L, R interleaved). Frames pushed while closed are counted and dropped.
+    // Queues frames (L, R interleaved) in the output queue (audio_queue.h) the device's stream pulls from, and sets the
+    // stream's frequency ratio from the queue's rate control. Frames pushed while closed are counted and dropped.
     void push(const int16_t* lr, size_t frames);
-    // Frames queued and not yet played.
+    // Frames queued and not yet played (the output queue's).
     size_t queued_frames() const;
 
-    // Drift guard for a host-paced loop: keeps the queue at most target + band frames by dropping (too much queued: a
-    // fast host or a burst), and pads silence up to the target when the device ran the queue dry (an underrun: a slow
-    // host, a hitch, a breakpoint), in whole 800-frame frames; counts both. Call once per pushed frame, after push().
-    // robust2 (review): the target is at least the device's own block (SDL_GetAudioDeviceFormat's sample frames, at
-    // 48 kHz) plus one frame, so a device that pulls large blocks always finds one; and the cushion pads only when the
-    // queue was empty before this push (the device was starving), never because it is merely low between two large
-    // pulls (that would put gaps into continuous sound). The first pad is logged.
-    void regulate(size_t target = 2880, size_t band = 4800);   // 60 ms target, +100 ms band
-    // The rules, without SDL (tests/test_audio_device.cpp): the target used with a device block of `block` frames, and
-    // the silence to pad when `queued_before_push` frames were queued before the last push and `queued` are now
+    // audioq (2026-11-22): the drift guard is the output queue's now (audio_queue.h: the rate follows the game's mix,
+    // a stall fades out and back in, a burst is dropped with a crossfade; nothing cut into 800-frame pieces). Kept for
+    // the callers: sets the queue's target (at least the device's block and a frame).
+    void regulate(size_t target = 2880, size_t band = 7200);
+    // The target used with a device block of `block` frames (tests/test_audio_device.cpp)
     static size_t effective_target(size_t target, size_t block) { return target > block + 800 ? target : block + 800; }
-    static size_t pad_frames(size_t queued_before_push, size_t queued, size_t target) {
-        if (queued_before_push != 0) return 0;
-        size_t n = 0;
-        for (size_t have = queued; have < target; have += 800) n += 800;
-        return n;
-    }
     // The device's block in 48 kHz frames (0: unknown)
     size_t block_frames() const { return block_; }
 
     uint64_t pushed() const { return pushed_; }
-    uint64_t dropped() const { return dropped_; }
-    uint64_t padded() const { return padded_; }
+    uint64_t dropped() const { return queue_.dropped(); }
+    uint64_t padded() const { return queue_.padded(); }
+    uint64_t underruns() const { return queue_.underruns(); }
+    uint64_t quiet_underruns() const { return queue_.quiet_underruns(); }   // loadaudio (audio_queue.h set_quiet)
+    uint64_t quiet_padded() const { return queue_.quiet_padded(); }
+    void set_quiet(bool on) { queue_.set_quiet(on); }
+    uint64_t drops() const { return queue_.drops(); }
+    double ratio() const { return queue_.ratio(); }
+    const OutputQueue& queue() const { return queue_; }
 
 private:
     bool told_ = false;        // "no playback device" logged once (retries are quiet)
     uint32_t physical_ = 0;    // the physical playback device under the stream (0: not found)
     size_t block_ = 0;         // the device's block, 48 kHz frames (0: unknown)
-    size_t before_push_ = 0;   // the queue before the last push (0: ran dry)
-    bool told_pad_ = false;    // the first pad logged
+    bool told_pad_ = false;    // the first underrun logged
+    double ratio_set_ = 1.0;   // the stream's frequency ratio as last set
     uint32_t find_physical() const;
+    static void pull(void* self, void* stream, int additional, int total);   // SDL's get callback (the device's thread)
     void* stream_ = nullptr;   // SDL_AudioStream*
-    uint64_t pushed_ = 0, dropped_ = 0, padded_ = 0;
+    OutputQueue queue_;
+    std::vector<int16_t> pull_buf_;   // (the device's thread; sized at the open: no allocation in the callback)
+    uint64_t pushed_ = 0;
 };
 
 // robust2: when to try opening the device again after there was none (or it was lost): every `period_ns`, and at once

@@ -59,6 +59,8 @@ public:
     // them (published at each frame)
     int music(char* folder, int n);
     int music_volume();   // musicvol1: CUSTOM MUSIC VOLUME in percent, as the page last had it (any thread, b3r_music_volume)
+    int music_loudness();   // musicloud: CUSTOM MUSIC LOUDNESS (0 Off, 1 Even out), as the page last had it (any thread)
+    int sound_output();   // audioq: SOUND OUTPUT (0 Clean, 1 Original), as the page last had it (any thread, b3r_sound_output)
     // nowplaying1: what OTHER MUSIC APPS detects (any thread: native_play's game thread), shown in its description
     void set_now_playing(const std::string& line) {
         std::lock_guard<std::mutex> lock(music_m_);
@@ -68,6 +70,21 @@ public:
     // Any thread: open (from b3r_settings_open); true while open.
     void request_open() { open_requested_.store(true); }
     bool active() const { return active_.load(); }
+    // paintsel (tools/native/paint_select.h): the car paint panel on SELECT CAR -- the CAR tab's paint rows of the page's
+    // player (b3settings::paint_panel_content) in a small box over the page (Menu::panel_items), opened and closed by
+    // native_play at the VBlank of the CAR PAINT PANEL button (paint_toggle; the presses: NativePad::take_paint_presses,
+    // P or a controller's menus Circle while SELECT CAR takes input), closed by Back too and when the page goes. While it
+    // is open active() is true as for the page (the game sees a neutral pad); it reads the pad's reports queued on the
+    // VBlank grid (NativePad::panel_feed); its edits apply at once (frame() returns true) and the ini is saved when it
+    // closes, as the page's.
+    bool panel_open() const { return paint_open_.load(); }
+    // Any thread (native_play's game thread, b3r_paint_game): the game's own colour changed on SELECT CAR for `player`
+    // (0 / 1): that player's CAR PAINT goes back to Game at the next frame (saved), so the car shows the colour chosen
+    void paint_game(int player) { if (player == 0 || player == 1) paint_game_pending_.fetch_or(1 << player); }
+    // Any thread (native_play's game thread, b3r_paint_toggle, at the VBlank of the panel's button): opens the panel for
+    // `player` at once (1: active() from now; the render thread lays it out at its next frame; the pad's reports are
+    // queued for it from this VBlank: NativePad::panel_feed), or asks an open one to close (0); -1 while PC SETTINGS is open
+    int paint_toggle(int player);
 
     // Render thread, once per frame: opens on request, runs the model on `pad` (a DS2 report), returns true when the
     // settings changed (the caller applies `settings()`). Saves `ini` when the page closes.
@@ -78,13 +95,26 @@ public:
     b3settings::Settings& settings() { return settings_; }
     // The settings as read from the ini at the start (settingsui: the page then writes only the keys it changed, merged
     // into the file as it is at the close: the launcher's edits meanwhile stay)
-    void load_settings(const b3settings::Settings& s) { settings_ = saved_ = s; }
+    void load_settings(const b3settings::Settings& s) {
+        settings_ = saved_ = s;
+        if (!started_set_) started_ = s, started_set_ = true;   // nextstart: the values this run started with
+        publish_music();
+        loaded_.store(true);
+    }
+    void publish_music();   // (pcpage.cpp: the custom soundtrack's values for the game's thread)
+    // extrastart: the renderer has loaded the settings (before that, settings() holds the defaults)
+    bool loaded() const { return loaded_.load(); }
+    // nextstart: PC SETTINGS' APPLY AND RESTART chosen (once: taken by native_play through b3r_restart_requested)
+    bool take_restart() { return restart_requested_.exchange(false); }
+    // nextstart: the question box's context, from the window's frame: a race on (APPLY AND RESTART ends it: said), a
+    // replay file playing (no APPLY AND RESTART: its settings are the recording's)
+    void set_context(bool in_race, bool replay_playback) { in_race_ = in_race, replay_playback_ = replay_playback; }
     // hdkey (1.2): the language our own text is shown in ("" English): LANGUAGE when the disc has it (render thread; hdkey's notice)
     std::string ui_language();
     // mac5: the tab buttons' labels follow the prompts' device (L1 / R1, LB / RB, L / R, the bound keys)
     void set_prompts(PromptDevice d, const PromptKeys& keys) { prompt_device_ = d; prompt_keys_ = keys; }
     // Offscreen shots: the page's animation clock in game time (b3settings::Menu::set_clock)
-    void set_clock(float seconds) { menu_.set_clock(seconds); }
+    void set_clock(float seconds) { menu_.set_clock(seconds); paint_menu_.set_clock(seconds); }
     // sdk2b, any thread (native_play through b3r_mod_*): the code mods' settings rows (b3mod::rows_to_text; the MODS
     // tab), a value changed by the game side (a script, a replay), and the page's changes for the game, one at a time
     // ("<mod>.<key>=<value>"; 0: none), which native_play applies at its next VBlank
@@ -121,8 +151,40 @@ private:
                              const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>& textures) const;
 
     std::atomic<bool> open_requested_{false}, active_{false};
+    // paintsel: the car paint panel (its own menu model: the page's focus memory stays the page's)
+    std::atomic<bool> paint_open_{false};
+    std::atomic<int> paint_game_pending_{0};   // a bit per player: the game's colour changed (b3r_paint_game)
+    std::atomic<bool> paint_close_asked_{false};
+    std::atomic<int> paint_player_{0};
+    bool paint_laid_ = false;   // the render thread has opened the panel's menu (paint_menu_.open)
+    b3settings::Menu paint_menu_;
+    std::uint64_t paint_edits_ = 0;
+    bool paint_step(const std::string& ini);   // the game's colour, the panel laid out, the page's going: true when settings changed
+    bool paint_frame(const std::array<std::uint8_t, 32>& pad, float seconds, const std::string& ini, const MenuMouse::PagePointer* mouse);
+    bool paint_step_report(const std::array<std::uint8_t, 32>& pad, float seconds, const MenuMouse::PagePointer* mouse);
+    std::array<std::uint8_t, 32> paint_last_ = b3native::input::neutral_sample();   // the last report taken (held keys repeat)
+    bool paint_back_ = false;   // Back taken from a report: the panel closes after this frame's reports
+    int paint_layer_ = 0;       // paint2: the layer the panel's colour rows edit (b3settings kLayerBody ..)
+    b3settings::ColourPicker paint_picker_;   // paint2: the colour picker (on: it takes the pad)
+    int paint_saved_custom_ = 0;               // the layer's switch when the picker opened (BACK puts it back)
+    float paint_aspect_ = 4.0f / 3.0f;
+    void paint_close(const std::string& ini, const char* why);
+    bool save_now(const std::string& ini, std::string& why);   // the merged save (as the page's close); true when saved
     b3settings::Settings settings_;
     b3settings::Settings saved_;   // settingsui: what the ini held when last read or written by the page
+    // nextstart: the question box (page.h restart_ask_content) when the page closes with a next-start row changed
+    b3settings::Settings started_, visit_;   // the values at this run's start and at the page's opening
+    bool started_set_ = false;
+    std::atomic<bool> loaded_{false};   // extrastart: load_settings has run
+    int visit_next_profile_ = 0;             // SAVE FILE AT START (active-slot.txt) at the page's opening
+    bool visit_capture_ = false;             // (taken with the first rows after the opening)
+    bool ask_open_ = false;
+    b3settings::Menu ask_menu_;
+    std::vector<b3settings::PendingChange> ask_changes_;   // translated
+    std::atomic<bool> restart_requested_{false};
+    bool in_race_ = false, replay_playback_ = false;
+    bool ask_frame(const b3settings::Input& in, const b3settings::Env& env, const std::string& ini);
+    bool close_page(const std::string& ini);   // the page's close: the controls flushed, the ini merged and saved
     b3settings::Menu menu_;
     std::uint64_t edits_ = 0, serial_ = 0, built_serial_ = ~0ull;
     std::shared_ptr<const HostUi> built_;
@@ -174,6 +236,8 @@ private:
     std::string now_playing_;   // nowplaying1 (music_m_)
     int playlist_mode_pub_ = 0;
     int music_volume_pub_ = 100;   // musicvol1: CUSTOM MUSIC VOLUME
+    int sound_output_pub_ = 0;     // audioq: SOUND OUTPUT
+    int music_loudness_pub_ = 1;   // musicloud: CUSTOM MUSIC LOUDNESS
     std::mutex mod_m_;            // sdk2b: the code mods' rows and the changes made here
     std::vector<b3mod::SettingRow> mod_rows_;
     std::deque<std::string> mod_changes_;

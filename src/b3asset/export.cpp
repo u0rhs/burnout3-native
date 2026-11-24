@@ -1,4 +1,5 @@
 #include "b3asset/export.h"
+#include "b3port/fileio.h"   // texpack: UTF-8 paths on Windows
 
 #include <cstdio>
 
@@ -8,7 +9,13 @@
 namespace b3asset {
 
 // a host file or a file in a disc image (b3asset/discfs.h): every disc reader of the renderer comes through here
-bool read_file(const std::string& path, std::vector<std::uint8_t>& out) { return disc::read_file(path, out); }
+bool read_file(const std::string& path, std::vector<std::uint8_t>& out) {   // (a UTF-8 path: on Windows through b3io, not the ANSI code page)
+#ifdef _WIN32
+    return disc::read_file(b3io::u8path(path), out);
+#else
+    return disc::read_file(path, out);
+#endif
+}
 
 bool write_obj(const Model& m, const std::string& dir, const std::string& stem) {
     for (std::size_t t = 0; t < m.textures.size(); ++t) {

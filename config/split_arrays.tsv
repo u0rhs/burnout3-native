@@ -1,0 +1,47 @@
+# The game's per-car arrays (MORE RIVALS): decomp2host's split_arrays.py pass (tools/decomp2host/split_census.py finds the
+# sites). After an edit: make native-bundle, commit gen/native. One array a line:
+# <class> <offset hex> <element bytes> <count> <item> <how> <what>   (how: split = split_array, pool = the next pool
+#   takes the overflow (network objects, unused offline), flat = the memory after it is the natural extension (a longer
+#   list), hook = a native replacement, none = not reached in a Single Event Race (said why); item: the research row)
+CB3World          12AD28  4      6  w.cars        split the race car list (ptr[6]; the counters follow)
+CB3World          12FCF0  0x2460 5  w.ai          pool  the AI car pool (5 x CB3AICar; the network pool follows)
+CB3RaceCar        1894    4      6  car.dist      split race distance to each other car
+CB3Score          438     1      6  sc.438        split near miss / crash escape per opponent
+CB3Score          440     4      6  sc.440        split 
+CB3Score          458     4      6  sc.458        split 
+CB3Score          470     4      6  sc.470        split 
+CB3Score          488     4      6  sc.488        split 
+CB3Score          4A0     4      6  sc.4A0        split 
+CB3Score          4D8     4      6  sc.4D8        split 
+CB3Score          4F0     1      6  sc.4F0        split 
+CB3Score          4F6     1      6  sc.4F6        split 
+CB3Score          510     4      6  sc.510        split 
+CB3Score          528     4      6  sc.528        split 
+CB3Score          540     4      6  sc.540        split 
+CB3Score          558     1      6  sc.558        split 
+CB3Score          55E     1      6  sc.55E        split 
+CB3Score          5B9     1      6  sc.5B9        split 
+CB3ScoreBonus     F8      4      6  sb.F8         split takedown time per victim
+CB3PhysicsManager 0       16     6  pm.nm         split near-miss traffic lists u8[6][16]
+CB3PhysicsManager 60      1      6  pm.nmn        split their counts
+CB3PhysicsManager 7C      0x30   6  pm.rcp        flat  race car physics per car index -- the head of the active-body list (+0x70, 0x30 each): other bodies start at the car count, so cars 7+ extend it
+CB3PhysicsManager 50      0x30   6  pm.rcp50      flat  the same table seen from +0x50 (its +0x2C is the physics pointer)
+CB3PhysicsManager 1CB80   0x1580 2  pm.pbody      pool  player car physics bodies (the AI pool follows)
+CB3PhysicsManager 256A0   0x1580 5  pm.aibody     pool  AI car physics bodies (the network pool follows)
+CB3TrafficSystem  34454   0x3F8  6  ts.dist       split traffic distance per race car [6][254] i32
+CB3TrafficSystem  35C24   0xFE   6  ts.idx        split traffic index per race car [6][254] u8
+CB3TrafficSystem  36218   0x19   6  ts.bucket     split update buckets per race car [6][25]
+CB3TrafficSystem  362AE   8      6  ts.362AE      split [6][8]
+CB3TrafficSystem  36350   1      6  ts.36350      split u8[6]
+CB3TrafficSystem  36356   1      6  ts.36356      split u8[6]
+CB3TrafficSystem  3635C   1      6  ts.3635C      split u8[6]
+CB3TrafficVehicle F0      4      6  tv.F0         split forward distance to each race car (x254 vehicles)
+CB3CrashActionDirector 110 0x3C   6  cad.car       split per-car crash state (6 x 0x3C ending at +0x278, where the traffic ram data begins: cars 7-8 overwrote its first entries)
+AIPreRaceRpmSpikes 0  0x1C   6  ai.spike      split the AI's pre-race rev spikes (_grSpikeGen, by car index: car 8's would overwrite mRPCArguments at 0x66DF80)
+CB3SoundCrashManager 10 0x40  6  snd.scrape    split the crash sounds' per-car scrapes (CarToCar sets the colliding car's by its index; the 6 are updated / released, 7-8's stay silent)
+CB3RacePosition   0       4      6  rp.state      split marker draw state per car
+CB3GameData       370     4      6  gd.start      split start point pointers (6 per track)
+CB3OfflineRoadRageLogic 50      4      6  rr.50         split respawn timer per car
+CB3HUDScoreList   50      4      5  hud.50        none  listed cars: prepared only in HUD mode 9 (CB3HUDManager 0x1A0AF0 case 9; PrepareScoreList
+#   0x1A1210 from the online logic 0x38F830), never in a Single Event Race; its 12 objects (2 a car + 1) would overflow with 7+ cars
+CB3SoundRaceCarManager 540     4      5  snd.540       hook  AI / network engine models (more_rivals.h: RequestRaceCar / RequestESM hand out 2 more)

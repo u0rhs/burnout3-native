@@ -169,6 +169,29 @@ CarMeshConstants car_mesh_constants(const CarScene& sc, const CarMeshInput& in) 
     return o;
 }
 
+float rear_lamp_level(std::uint16_t mask, float tail, float brake) {
+    if (mask & 0x10) return std::max(tail, brake);
+    if (mask & 0x08) return tail;
+    return -1.0f;
+}
+
+CarMeshConstants car_mesh_constants_level(const CarScene& sc, const CarMeshInput& in, float level) {
+    CarMeshInput off = in, on = in;
+    off.lit_bits = std::uint16_t(in.lit_bits & ~0x18u);
+    on.lit_bits = std::uint16_t(in.lit_bits | (in.mask & 0x18u));
+    const CarMeshConstants a = car_mesh_constants(sc, off), b = car_mesh_constants(sc, on);
+    const float t = std::clamp(level, 0.0f, 1.0f);
+    if (t >= 1.0f || (off.lit_bits & in.mask & 0xFC) != 0) return b;   // full, or lit by another of its bits
+    if (t <= 0.0f) return a;
+    CarMeshConstants o = a;   // the unlit pass set-up (its env pass fading out as the lamp comes on)
+    for (int i = 0; i < 4; ++i) {
+        o.base[i] = a.base[i] + t * (b.base[i] - a.base[i]);
+        o.full[i] = a.full[i] + t * (b.full[i] - a.full[i]);
+        o.env[i] = ftoi0(float(a.env[i]) + t * float(b.env[i] - a.env[i]));
+    }
+    return o;
+}
+
 // ---- VU1 0x46BB80 [C listing; structure: 0x004 prepare the part transform (once per part, 965.w), 0x025 deform
 // (1013.z zones) or 0x0DB, the lighting loop 0x0F3 / 0x0B3, 0x11C the env pass (1013.y == 0) 0x12F..0x1B2 or the UV
 // expansion 0x1B5, then the projection 0x1C5 (0x1EC with the guard-band clip, 1013.x bit 1; 0x219/0x24C with the

@@ -230,3 +230,56 @@ gets the sky-only map and no env pass at all; CAR REFLECTIONS Off returns before
 this. `B3_ENV_TRACE=1` prints the map's centre and item count per frame; `B3_ENV_DUMP=<file.ppm>` writes the atlas; `B3_ENV_TIME=1` waits for each pass and prints its time (an RTX 4080 SUPER, race1 polls 5000-9000: p50 0.30 ms record + submit + GPU, 43 LOD items, 107 face draws)
 (colour x 2, then alpha).
 
+## 10. Further, with props: REFLECTION DISTANCE / DETAIL / UPDATE (reflect2, 2026-11-22)
+
+Players asked for the reflections to reach further and to show the roadside. Three rows after CAR REFLECTIONS (CAR > CAR
+LOOK, 610-612; ini `reflect_distance`, `reflect_detail`, `reflect_update`), drawn only, all at the game's map by default
+and on HIGH (the defaults), MEDIUM, LOW and PS2 ORIGINAL; ULTRA sets 200 m with the props and the cars:
+
+- **REFLECTION DISTANCE** Game / 200 m / 300 m (`View::env_far`): the env pass's far plane. Game is §9 exactly: 100 m and
+  only the slots the game's env cameras see (visibility bits 2..7). Further takes every streamed slot's LOD block,
+  culled by its box's distance from the map's centre and per face, as before.
+- **REFLECTION DETAIL** Track / Track and props (`View::env_props`): also the props draw_list draws (the static ones not
+  hidden or dynamised, the dynamic list at its live matrices) and the streamed units' instances (hi_inst: lamp posts,
+  signs, gantries, barriers), each within 60 m (`kEnvPropReach`) and culled per face by its mesh's box. The game pushes
+  only the instances flagged +0x3E & 2 into its env cameras [L draft 0x21C780]: this shows more than the PS2.
+  **Track, props and cars** (`View::env_cars`) adds the other vehicles within 50 m of the centre (`kEnvCarReach`; not
+  the car the map is round), drawn by `vehicle_draws` at LOD 1 (the game's 30-60 m race-car level) with their own env
+  pass off (env_mode 0, no env map or sky: nothing samples the map being drawn, and a reflection holds no reflections).
+  `render_env` takes their kCar draws through the car pipeline (the env target has the scene's format and samples),
+  culled per face by a 3 m box round each part; car alpha (1 - keep) is their cover, so the sky shows through glass.
+- **REFLECTION RESOLUTION** Standard / High (`View::env_face`): the cube faces at 128 px (the game's; the Xbox build's
+  cube has the same edge) or 256 (car.frag takes the face size from the texture). ULTRA sets High. Switched live,
+  render_env makes its targets again at the new size (`B3_ENV_FACE_CYCLE=<n>`, diagnostics: 128 / 256 every n maps;
+  a race with n = 3 and every 2nd frame on: no GPU errors, the shots clean).
+- **REFLECTION UPDATE** Every frame / Every 2nd frame (`View::env_every_second`): per view, every second call returns
+  the map drawn the call before (env_slot is not stepped, so the next map goes to the other slot and the kept one is
+  not overwritten while in use).
+
+Measured (`B3_ENV_TIME=1`, `B3_ENV_TRACE=1`: the trace also gives the track / prop items and the far plane), race
+scenario US/C2_V2 at its shots, offscreen in WSL (its GPU path is slow: the game's map takes ~14 ms there against 0.30 ms
+on an RTX 4080 SUPER in a window, so the ratios are what count):
+
+| Map | items | face draws | pass p50 |
+|---|---|---|---|
+| Game (100 m, track) | 59 | 157 | 14.0 ms |
+| 200 m, track | 101 | 207 | 18.1 ms (+29 %) |
+| 200 m, track and props | 138 | 252 | 22.4 ms (+60 %) |
+| 300 m, track and props (props without the instances) | 160 | 278 | 22.0 ms |
+| 200 m, track, props and cars | 226 | 380 | 27.6 ms (+97 %) |
+| ULTRA: the same at 256 px faces | 226 | 379 | 28.2 ms |
+
+Crash event AS/C2_V2: 41 / 124 face draws (10.8 ms) at Game, 75 / 176 (13.9 ms) at 200 m with the props (before the
+instances). Every 2nd frame halves the passes (42 for 84 frames). At night (`B3_NIGHT=1`) the counts are the same; the
+map is not graded (the car pixel takes the night grade after).
+
+**Night lamps in the map** (reflect2 G): at night, with REFLECTION DETAIL at Track and props or more, the map's fixtures
+(DrawItem::night_emissive: tunnel strips, lit panels, front-lit boards, as nightlights tags them) are drawn once more per
+face through the emissive pipeline (`EnvPass::night_glow`, `env_night_glow`), their bright texels at a constant warm
+colour x a gain of 1 / (the cars' night env scale x the grade's world luminance), 1..8 (US/C2_V2: 6.12): the car pixel
+dims what it reflects by both, so a lamp reads near its own brightness on the paint. emissive.frag takes its colour from
+a source fetched at the pixel; in the map that is a constant texture the atlas's size (made before the pass). Night race
+US/C2_V2 with 200 m and props: only car pixels change, warm glints along the roof and the edges where the lamps are. Atlas dumps
+(`B3_ENV_DUMP`) show the 200 m map's further buildings, the trees and a lamp post where the Game map has sky. From the
+chase camera the paint shows the difference only faintly; up close (the garage, photo mode) more.
+

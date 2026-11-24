@@ -175,6 +175,15 @@ public:
     bool request_enter(const char* how);
     // render thread: a race picture (one view) is on screen and no page (PC SETTINGS) over it: it can be photographed
     void set_scene(bool on);
+    // replaycams: the replay viewer's free camera: while the game's replay plays (on), photo mode can be entered with the
+    // game running (the replay goes on under it: the camera is the only thing that changes); off ends it unless paused
+    void set_live_ok(bool on);
+    // replaycams: FREE CAMERA: enter (when it can be) or leave. True when it changed
+    bool toggle_live(const char* how);
+    // render thread, gameopts (MIRROR MODE): the race is drawn mirrored, so the camera's horizontal controls (look, move
+    // sideways, roll) act reversed in the world and stay right on screen. Any other free camera over a mirrored frame
+    // (orbitcam) flips its horizontal input the same way (View's Frame::mirror / hud_mirror says when)
+    void set_mirror(bool on) { std::lock_guard<std::mutex> l(mu_); mirror_ = on; }
 
     // A key (an SDL scancode) down / up from the window or a script. Returns true when photo mode took it (a key down
     // while on, or the key that turned it on); key ups are recorded and still passed on (the pad releases its keys).
@@ -242,7 +251,9 @@ private:
     void cycle_ui_locked();
 
     mutable std::mutex mu_;
+    bool mirror_ = false;   // gameopts: set_mirror
     bool paused_ = false, scene_ = false, active_ = false, started_ = false;
+    bool live_ok_ = false;   // replaycams
     PhotoUi ui_ = PhotoUi::kFull;
     bool ui_fresh_ = false;      // photo mode was entered: the UI slides in again (draw_help)
     PhotoKeys keys_;

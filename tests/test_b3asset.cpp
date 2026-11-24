@@ -552,20 +552,22 @@ TEST(car_reader_checks_file_offsets) {
     std::vector<std::uint8_t> v(0x10, 0);
     put32(v, 0, 0x17);
     CHECK(bad(v, {}, "too short"));   // npanel / nwheel and the LOD table past the end
-    v.assign(0x200, 0);
+    v.assign(0x1800, 0);     // (the retail layout: the first LOD block at 0x16F0, carmods1's car_layout.h)
     put32(v, 0, 0x17);
-    put32(v, 0x60, 0x1F0);   // the texture's header runs past the end
+    put32(v, 0x60, 0x17F0);  // the texture's header runs past the end
     CarOptions tex;
     tex.texture = true;
     CHECK(bad(v, tex, "car texture outside the file"));
     put32(v, 0x60, 0);
-    put32(v, 0x4C, 0x100);   // LOD 0 block
-    put32(v, 0x100, 0xFC);   // list 0 at 0x1FC: its count bytes and entries offset past the end
+    put32(v, 0x4C, 0x16F0);  // LOD 0 block
+    put32(v, 0x16F0, 0x10C); // list 0 at 0x17FC: its count bytes and entries offset past the end
     CHECK(bad(v, {}, "car list outside the file"));
-    put32(v, 0x100, 0x80);   // list 0 at 0x180: one entry at 0x1F8, 16 bytes past the end
-    v[0x180] = 1;
-    put32(v, 0x184, 0x78);
+    put32(v, 0x16F0, 0x90);  // list 0 at 0x1780: one entry at 0x17F8, 16 bytes past the end
+    v[0x1780] = 1;
+    put32(v, 0x1784, 0x78);
     CHECK(bad(v, {}, "car list entry outside the file"));
+    put32(v, 0x4C, 0x100);   // carmods1: a first LOD block below 0x16F0 (the prototype disc's layout) is refused first
+    CHECK(bad(v, {}, "prototype-disc car file"));
 }
 TEST(gif_transfer_stays_in_the_file) {   // a PACKED A+D tag whose loop runs past the end of the file
     std::vector<std::uint8_t> v(32, 0);
@@ -886,6 +888,18 @@ TEST(corona_program_model_synthetic) {
     // Z of the second corner: zShift + zScale / (10 - 1) + 2 / 10
     CHECK(std::abs(int(s.z[1]) - int(1174.5 + 5032309.0 / 9.0 + 0.2)) <= 1);
     CHECK(t::bitsf(s.st[0][0]) == 0.0f && t::bitsf(s.st[1][0]) == t::bitsf(s.st[1][2]));   // ST (0, 0) -> (1, 1) after / Q
+}
+
+// whitesky: the sky components' GS FRAME mask as Construct sets it, for every route alike (maDefinitions): the blended
+// ones (2: the race's clouds, 5: the car environment map's) keep the frame alpha (FBMSK 0xFF000000), the dome's (0, 1,
+// 3, 4) write theirs (component 0's alpha 0x20 below the horizon, 0 elsewhere)
+TEST(sky_blended_components_mask_the_frame_alpha) {
+    for (int c = 0; c < 6; ++c) {
+        const b3asset::SkyLayer l = b3asset::build_sky_layer(c);
+        CHECK(l.blend == (c == 2 || c == 5));
+        CHECK(l.fbmsk == (l.blend ? 0xFF000000u : 0u));
+        if (!l.blend) CHECK(l.rgba[3] == (c == 0 ? 0x20 : 0));
+    }
 }
 
 TEST_MAIN("b3asset")

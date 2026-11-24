@@ -30,7 +30,7 @@ from the file start unless the table says otherwise.
 
 | Offset | Size | Type | Meaning | Evidence |
 |---|---|---|---|---|
-| 0x00 | 4 | u32 | version 0x17 (all 107 files) | [D], [P car.cpp checks it] |
+| 0x00 | 4 | u32 | version 0x17 (all 107 files); car mods from earlier builds carry 0x15 / 0x16, which the game runs the same way (its loader never reads the word: `FixUpVehicleData` 0x220B70) and the port's readers take too (carmods1) | [D], [C], [P car.cpp checks 0x15 .. 0x17] |
 | 0x04 | 4 | u32 | 0 | [D all] |
 | 0x08 | 4 | u32 | file size (equal to the file's length in all 107) | [D] |
 | 0x0C | 1 | u8 | number of panel frames (0..6) | [C `CB3RaceCar::Prepare` 0x152AF0 copies that many from +0xD00] |
@@ -151,3 +151,27 @@ traffic system (`B3TrafficSystemLoadAndRender` 0x3093E0) [C].
   copies, not a mod's ([DESIGN.md](../DESIGN.md) §1.2).
 - **Unknown areas** (+0x14, +0x6C..+0xB7F, +0x16C0) are kept byte for byte by any future writer; their meaning is not
   traced.
+- **Other versions** (carmods1). Car mods made from earlier builds carry version 0x15 or 0x16 at +0x00. The game runs
+  them: `FixUpVehicleData` (0x220B70) never reads the word and relocates the same header offsets, so for everything the
+  game reads such a file has this layout. The port's readers (the renderer, the Showroom, the mod tool, the paint panel)
+  take 0x15 to 0x17 the same way, every offset still checked; any other version is refused with the version named, and
+  that car is not drawn by the port.
+- **The June-prototype disc's own files.** They also say 0x15, but their layout is older: 16 bytes fewer before the
+  first LOD block (at 0x16E0, where every retail file has it at 0x16F0), and the engine sound in separate .HSM / .LSM
+  files. The word cannot tell them from a players' 0x15 mod, so the port looks at the bytes: a file whose first LOD
+  block (the smallest non-zero offset at +0x4C) lies below 0x16F0 is refused with "a prototype-disc car file (old layout:
+  its first LOD block at 0x16E0, ...): not supported" (`b3asset/car_layout.h`). The readers refuse it, and so does the mod
+  overlay: a mod's car file of that layout (or of another version) is left out with that note and the game keeps its
+  own car, since the game would read such a file's fields 16 bytes off. The port converts them to the game's layout
+  (`b3asset::convert_prototype_car`, `include/b3asset/carconvert.h`; the BETA SERIES import):
+  - it inserts 0x100 bytes at 0x16E0: the 16 header bytes and padding, so that every packet keeps its 256-byte alignment;
+  - it moves every file-start offset the game's `FixUpVehicleData` relocates;
+  - in version 0x14 (the June 21 demo) the LOD blocks' list offsets are from the file's start, and it rebases them
+    onto the block;
+  - it appends a game car's engine-sound structures (their offsets are from themselves) and sets the version to 0x17.
+  The 0x14 texture's 4-paint CLUT block (32 x 32 entries, palette table {0, 4, 8, 12}) is a raster form the game reads
+  as it is. One June 21 file's +0x64 list counts a second entry of stray bytes, which the converter leaves out of the
+  count. Of the two discs' 132 car files, 130 convert and read at every LOD; two are refused as too big for the car
+  memory block once the engine sound is added.
+- **Xbox files.** The Xbox release's car files also say 0x17, but their meshes are Xbox vertex data, not PS2 VIF
+  packets: neither the PS2 game nor the port can use them (the port's log: "car mesh is not a DMA RET packet").

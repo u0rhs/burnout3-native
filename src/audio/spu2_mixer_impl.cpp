@@ -48,6 +48,7 @@
 #include <cstdlib>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace b3audio {
@@ -142,6 +143,38 @@ void Spu2MixerImpl::decode_block(const uint8_t* block, int32_t& h1, int32_t& h2,
 const int16_t* Spu2MixerImpl::gauss_table() { return kGauss; }
 const int16_t* Spu2MixerImpl::reverb_fir() { return kReverbFir; }
 
+int16_t Spu2MixerImpl::soft_limit(int64_t v) {
+    const int64_t a = v < 0 ? -v : v;
+    if (a <= kSoftKnee) return static_cast<int16_t>(v);
+    const double room = 32767.0 - kSoftKnee;
+    const double y = kSoftKnee + room * std::tanh(double(a - kSoftKnee) / room);   // slope 1 at the knee, 32767 at infinity
+    const int32_t r = std::min(32767, int32_t(std::lround(y)));
+    return static_cast<int16_t>(v < 0 ? -r : r);
+}
+
+void Spu2MixerImpl::Limiter::step(int64_t l, int64_t r, int16_t& out_l, int16_t& out_r) {
+    static const double kRelease = 1.0 - std::exp(-1.0 / (kReleaseSeconds * 48000.0));
+    static const double kAttack = 1.0 - std::exp(-5.0 / kLookahead);   // ~99 % of the way within the lookahead
+    // the oldest frame goes out; the new one takes its place
+    const int64_t ol = ring[pos][0], orr = ring[pos][1];
+    ring[pos][0] = l;
+    ring[pos][1] = r;
+    const int64_t peak = std::max(l < 0 ? -l : l, r < 0 ? -r : r);
+    need[pos] = peak > kSoftKnee ? double(kSoftKnee) / double(peak) : 1.0;
+    pos = (pos + 1) % (kLookahead + 1);
+    double gmin = 1.0;
+    for (const double n : need) gmin = std::min(gmin, n);   // the lowest gain the coming millisecond needs
+    if (gmin < g) g += (gmin - g) * kAttack;
+    else if (g < 1.0) g = 1.0 - g < 1e-6 ? 1.0 : std::min(1.0, g + (1.0 - g) * kRelease);   // release (to exactly 1)
+    if (g >= 1.0) {   // (the identity: the hardware's value whenever it was in range)
+        out_l = soft_limit(ol);
+        out_r = soft_limit(orr);
+        return;
+    }
+    out_l = soft_limit(std::llround(double(ol) * g));
+    out_r = soft_limit(std::llround(double(orr) * g));
+}
+
 int32_t Spu2MixerImpl::gauss(uint32_t i, int32_t oldest, int32_t older, int32_t old, int32_t newest) {
     i &= 0xFF;
     return ((kGauss[0x0FF - i] * oldest) >> 15) + ((kGauss[0x1FF - i] * older) >> 15) +
@@ -155,6 +188,10 @@ Spu2MixerImpl::Spu2MixerImpl(size_t output_frames)
     : ram_(kRamBytes, 0), out_(std::max<size_t>(1, output_frames) * 2, 0), out_cap_(std::max<size_t>(1, output_frames)) {
     const char* e = std::getenv("B3_SPU_STALE_LOG");
     stale_log_ = e && *e && *e != '0';
+    {   // audioq: B3_AUDIO_HARD_CLIP=1: the output clamped as the hardware's (no soft limit)
+        const char* h = std::getenv("B3_AUDIO_HARD_CLIP");
+        hard_env_ = hard_clip_ = h && *h == '1';
+    }
     if (stale_log_) { wgen_.assign(kRamBytes / 16, 0); pgen_.assign(kRamBytes / 16, 0); }
 }
 
@@ -435,11 +472,14 @@ void Spu2MixerImpl::render_one() {
         const int32_t min_l = (static_cast<int16_t>(rd16(mi + pos)) * k.bvol[0]) >> 15;
         const int32_t min_r = (static_cast<int16_t>(rd16(mi + 0x200 + pos)) * k.bvol[1]) >> 15;
         int32_t sin_l = 0, sin_r = 0;
+        int64_t hsin_l = 0, hsin_r = 0;   // audioq: core 0's unclamped output through AVOL (the host's path)
         if (c == 1) {
             wr16(0x800 + pos, core_[0].out_l);
             wr16(0xA00 + pos, core_[0].out_r);
             sin_l = (core_[0].out_l * k.avol[0]) >> 15;
             sin_r = (core_[0].out_r * k.avol[1]) >> 15;
+            hsin_l = (core_[0].host_l * k.avol[0]) >> 15;
+            hsin_r = (core_[0].host_r * k.avol[1]) >> 15;
         }
         const uint16_t m = k.mmix;   // sdmacro SD_MMIX_*: 0x800 MSNDL .. 0x100 MSNDER, 0x80 MINL .., 0x8 SINL ..
         const int32_t dry_l = clamp16((m & 0x800 ? vdl : 0) + (m & 0x80 ? min_l : 0) + (m & 0x8 ? sin_l : 0));
@@ -487,6 +527,12 @@ void Spu2MixerImpl::render_one() {
         if (k.mute) out_l = out_r = 0;
         k.out_l = out_l;
         k.out_r = out_r;
+        {   // audioq: the host's path, the same sums without the dry and output clamps (the wet path is the hardware's)
+            const int64_t hd_l = (m & 0x800 ? int64_t(mix[0]) : 0) + (m & 0x80 ? min_l : 0) + (m & 0x8 ? hsin_l : 0);
+            const int64_t hd_r = (m & 0x400 ? int64_t(mix[1]) : 0) + (m & 0x40 ? min_r : 0) + (m & 0x4 ? hsin_r : 0);
+            k.host_l = k.mute ? 0 : ((hd_l + ((rev_l * k.evol[0]) >> 15)) * k.mvol[0].level) >> 15;
+            k.host_r = k.mute ? 0 : ((hd_r + ((rev_r * k.evol[1]) >> 15)) * k.mvol[1].level) >> 15;
+        }
     }
     // The rings were accessed at `pos` this sample.
     for (int c = 0; c < 2; ++c) {
@@ -504,8 +550,13 @@ void Spu2MixerImpl::render_one() {
     } else {
         ++out_size_;
     }
-    out_[2 * i] = static_cast<int16_t>(core_[1].out_l);
-    out_[2 * i + 1] = static_cast<int16_t>(core_[1].out_r);
+    // audioq: the host's output through the limiter (the hardware's clamped value with hard_clip_)
+    if (hard_clip_) {
+        out_[2 * i] = static_cast<int16_t>(core_[1].out_l);
+        out_[2 * i + 1] = static_cast<int16_t>(core_[1].out_r);
+    } else {
+        limiter_.step(core_[1].host_l, core_[1].host_r, out_[2 * i], out_[2 * i + 1]);
+    }
     ++t_;
 }
 

@@ -16,6 +16,7 @@
 #include <string>
 
 #include "../native/input_bindings.h"
+#include "driverlabels.h"
 #include "hud.h"
 #include "prompts.h"
 
@@ -57,6 +58,92 @@ private:
         std::string language;
         bool operator==(const Key&) const = default;
     } built_key_;
+    std::shared_ptr<const HostUi> built_;
+    std::shared_ptr<const HostUi::Image> glyph_;
+    float glyph_aspect_ = 0;
+    std::uint32_t serial_ = 0;
+};
+
+// elim1 (tools/native/single_eliminator.h): TIMED ELIMINATION's countdown in a race, in the lettering of the race's own
+// captions ("6th PLACE ELIMINATED!": the HUD's primary message, func_003D56D0 -> CB3StylisedText2dObject func_003D0710,
+// its layout func_003CDB80 and _RenderNormal 0x3CFE40 / func_003CE290): the graphics manager's font (D_00665ED0.pFont,
+// the captured fonts' first), 1.5 wide, the tightened advance, sheared 0.4, the black outline ring and drop shadow, the
+// four-stop ramp (0, 0.48, 0.51, 1) of the caption's style 1 (the elimination caption's gold); a small lead-in (the "\2"
+// size, 0.625) and the big seconds (1.0) on one baseline, as "6th PLACE" and "ELIMINATED!". kElimH high (the real caption
+// is 44), centred under the HUD's top row, above where the caption shows. In the last kElimWarnSeconds the seconds take
+// the game's warning captions' style (4: the HUD's +0x50 to +0x60). In `language` (FR GE IT SP DU SW; else English).
+constexpr float kElimMid = 320.0f, kElimTop = 50.0f, kElimH = 34.0f;
+constexpr int kElimWarnSeconds = 5;
+std::string elim_countdown_text(int seconds, const std::string& language);   // the lead-in (the seconds drawn after it)
+class ElimCountdown {
+public:
+    // The countdown as host-UI quads (View::host_ui_list), kept while nothing changes; null while none (`seconds` < 0) or
+    // before the game's fonts are captured
+    std::shared_ptr<const HostUi> ui(const std::shared_ptr<const HostFonts>& fonts,
+                                     const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>& textures,
+                                     const HostElimTimer& t, const std::string& language);
+
+private:
+    const HostFonts* fonts_ = nullptr;
+    std::uint32_t font_serial_ = 0;
+    int seconds_ = -2;
+    std::uint32_t colours_[4] = {};
+    std::string language_;
+    std::shared_ptr<const HostUi> built_;
+    std::uint32_t serial_ = 0;
+};
+
+// gearbox (tools/native/gearbox.h): the manual gearbox's gear on the race HUD, drawn as the HUD draws its POS (CB3HUDPos
+// 0x335AB0 / 0x3356A0: the graphics manager's font; the label as its labels, 27 units in its label colour +0x40; the gear
+// as its position digits, 56 units, 1.5 wide, the blend +0x60 -> +0x60 / +0x30 at 0.75; the four-way black outline):
+// "GEAR" and 1..6, N, R, right-aligned above the speedometer
+constexpr float kGearRight = 606.0f, kGearTop = 328.0f;
+std::string gear_label(const std::string& language);
+std::string gear_text(int gear);   // "R", "N", "1".."9"
+class GearIndicator {
+public:
+    std::shared_ptr<const HostUi> ui(const std::shared_ptr<const HostFonts>& fonts,
+                                     const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>& textures, const HostGear& g,
+                                     const std::string& language);
+
+private:
+    const HostFonts* fonts_ = nullptr;
+    std::uint32_t font_serial_ = 0, colours_[4] = {}, serial_ = 0;
+    int gear_ = -3;
+    std::string language_;
+    std::shared_ptr<const HostUi> built_;
+};
+
+// options3: DRIVER LABELS (driverlabels.h has the layout)
+class DriverLabels {
+public:
+    // The labels as host-UI quads (View::host_ui_list slot 1), cover 4 (over the wide picture); null for none, the
+    // setting Off or before the game's fonts are captured
+    std::shared_ptr<const HostUi> ui(const std::shared_ptr<const HostFonts>& fonts,
+                                     const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>& textures,
+                                     const std::vector<DriverLabel>& labels, int mode, int speed_units);
+
+private:
+    std::uint32_t serial_ = 0;
+};
+
+// replayview (tools/native/replay_view.h): the REPLAY prompt on a race's results page (the record 'HRV1' state 1): the
+// REPLAY action's button as the prompts draw it for the device in use (Square / X; the keyboard's key cap, F6) and
+// "Replay" in the game's font, in the bar's blue, right-aligned at kReplayPromptRight, left of the page's own Continue
+constexpr float kReplayPromptRight = 500.0f, kReplayPromptMid = 418.5f, kReplayPromptH = 25.0f, kReplayPromptGlyphH = 19.0f;
+class ReplayPrompt {
+public:
+    // null while hidden (`shown` false) or before the game's fonts are captured; `key`: the REPLAY key (0 none)
+    std::shared_ptr<const HostUi> ui(const std::shared_ptr<const HostFonts>& fonts,
+                                     const std::map<std::uint64_t, std::shared_ptr<const HudTexture>>& textures, bool shown,
+                                     PromptDevice d, std::uint16_t key, const std::string& language);
+
+private:
+    const HostFonts* fonts_ = nullptr;
+    std::uint32_t font_serial_ = 0;
+    PromptDevice device_ = PromptDevice::kPlayStation;
+    std::uint16_t key_ = 0;
+    std::string language_;
     std::shared_ptr<const HostUi> built_;
     std::shared_ptr<const HostUi::Image> glyph_;
     float glyph_aspect_ = 0;

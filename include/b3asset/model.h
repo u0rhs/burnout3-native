@@ -59,6 +59,7 @@ struct Texture {
     std::vector<Image> levels;
     bool translucent = false;
     std::vector<Image> original;   // hdkey: `levels` are an HD replacement of these (DecodedRaster::original)
+    bool hd = false;               // texpack: `levels` are an HD pack's replacement (DecodedRaster::hd; any pack, a mod's too)
 };
 
 struct Model {

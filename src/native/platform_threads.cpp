@@ -12,6 +12,7 @@
 // backend's and is kept per thread across a switch; b3asm's register file is thread_local, so per thread already. A
 // terminated thread that is parked is unwound (ThreadUnwind thrown where it parked) before its terminator goes on; an
 // error thrown on a guest thread's host thread is carried to the main host context and rethrown there.
+#include "sampler.h"   // slowcpu
 #include "platform.h"
 
 #include "b3host/call.h"
@@ -304,6 +305,8 @@ void leave_ended(Thread& t) {
 
 void thread_main(HostCtx* c) {
     t_ctx = c;
+    b3native::sampler::register_this_thread();   // slowcpu: B3_SAMPLE samples the thread holding the baton
+    struct SamplerOut { ~SamplerOut() { b3native::sampler::unregister_this_thread(); } } sampler_out;   // (before its TLS goes)
     b3port::name_this_thread(("guest " + std::to_string(c->thread)).c_str());   // split2p (the crash report)
     {
         std::unique_lock<std::mutex> l(baton_mutex());
@@ -661,5 +664,10 @@ void delete_sema(const CallArgs& a, CallResult& r) {
     ret(r, 0);
     maybe_preempt();
 }
+
+// slowcpu (sampler.h): which host thread runs the game now
+const void* const* host_ctx_slot() { return reinterpret_cast<const void* const*>(&t_ctx); }
+const void* host_ctx_main() { return &main_ctx(); }
+const void* host_baton() { return g_baton; }
 
 }  // namespace b3native::platform

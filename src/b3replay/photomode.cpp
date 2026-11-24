@@ -117,7 +117,10 @@ float stick(float v) {   // a dead zone, then rescaled to full
 // One step of the free camera: `dt` seconds of the held keys and the pad, plus the mouse / wheel moved since the last
 // (the window's viewer, advance(); game time replays the keys alone, 1/60 s a poll)
 void step(PhotoCam& cam, PhotoDof& dof, float dt, const std::array<bool, 512>& held, const PhotoPad& p, float mouse_dx, float mouse_dy,
-          float wheel, const b3native::input::PortControls& b) {
+          float wheel, const b3native::input::PortControls& b, bool mirror = false) {
+    // gameopts (MIRROR MODE): the picture is the world reversed left to right, so what turns, rolls or moves the camera
+    // right on screen does so to the world's left
+    const float hx = mirror ? -1.0f : 1.0f;
     using b3native::input::PortAction;
     // an action's keys: 1 when any is held
     auto k = [&](PortAction a) {
@@ -135,14 +138,14 @@ void step(PhotoCam& cam, PhotoDof& dof, float dt, const std::array<bool, 512>& h
     if (focus != 0) dof.focus(focus * kFocusRate * opt * focus_m * dt);
     // look: the mouse (scaled with the field of view, so a zoomed view turns as finely), the arrows, the right stick
     const float fs = cam.fov / (60.0f * kPi / 180.0f);
-    cam.yaw -= mouse_dx * kMouseRate * fs;
+    cam.yaw -= hx * mouse_dx * kMouseRate * fs;
     cam.pitch -= mouse_dy * kMouseRate * fs;
-    cam.yaw += (k(PortAction::PhotoLookLeft) - k(PortAction::PhotoLookRight) - stick(p.rx)) * kLookRate * fs * dt;
+    cam.yaw += hx * (k(PortAction::PhotoLookLeft) - k(PortAction::PhotoLookRight) - stick(p.rx)) * kLookRate * fs * dt;
     cam.pitch += (k(PortAction::PhotoLookUp) - k(PortAction::PhotoLookDown) - stick(p.ry)) * kLookRate * fs * dt;
     cam.pitch = std::clamp(cam.pitch, -kMaxPitch, kMaxPitch);
     cam.yaw = std::remainder(cam.yaw, 2.0f * kPi);
     // roll
-    const float roll = k(PortAction::PhotoRollRight) - k(PortAction::PhotoRollLeft) + (p.r1 ? 1.0f : 0.0f) - (p.l1 ? 1.0f : 0.0f);
+    const float roll = hx * (k(PortAction::PhotoRollRight) - k(PortAction::PhotoRollLeft) + (p.r1 ? 1.0f : 0.0f) - (p.l1 ? 1.0f : 0.0f));
     const float roll_m = hold_rate(cam.hold_roll, roll, dt);
     if (roll != 0) {
         cam.roll += roll * kRollRate * opt * roll_m * dt;
@@ -160,7 +163,7 @@ void step(PhotoCam& cam, PhotoDof& dof, float dt, const std::array<bool, 512>& h
     if (k(PortAction::PhotoFast) > 0 || p.south) speed *= 4.0f;
     if (k(PortAction::PhotoSlow) > 0 || p.slow) speed *= 0.25f;
     const float fwd = k(PortAction::PhotoForward) - k(PortAction::PhotoBackward) - stick(p.ly);
-    const float side = k(PortAction::PhotoRight) - k(PortAction::PhotoLeft) + stick(p.lx);
+    const float side = hx * (k(PortAction::PhotoRight) - k(PortAction::PhotoLeft) + stick(p.lx));
     const float up = k(PortAction::PhotoUp) - k(PortAction::PhotoDown) + (p.rt > 0.1f ? p.rt : 0.0f) - (p.lt > 0.1f ? p.lt : 0.0f);
     float f[3], r[3];
     cam.forward(f);
@@ -396,7 +399,22 @@ void PhotoMode::set_scene(bool on) {
     scene_ = on;
 }
 
-bool PhotoMode::can_enter_locked() const { return paused_ && scene_; }
+bool PhotoMode::can_enter_locked() const { return (paused_ || live_ok_) && scene_; }
+
+void PhotoMode::set_live_ok(bool on) {
+    std::lock_guard<std::mutex> l(mu_);
+    if (live_ok_ == on) return;
+    live_ok_ = on;
+    if (!on && active_ && !paused_) leave_locked("the replay ended");
+}
+
+bool PhotoMode::toggle_live(const char* how) {
+    std::lock_guard<std::mutex> l(mu_);
+    if (active_) { leave_locked(how); return true; }
+    if (!can_enter_locked()) return false;
+    enter_locked(how);
+    return true;
+}
 
 void PhotoMode::enter_locked(const char* how) {
     active_ = true;
@@ -539,7 +557,8 @@ bool PhotoMode::key(std::uint16_t sc, bool down, bool repeat, unsigned mods) {
     if (!down) return false;   // ups go on to the pad too (a key it saw go down before photo mode is released)
     if (viewer) return false;
     if (!repeat) {
-        if (sc == SDL_SCANCODE_ESCAPE || has(PortAction::PhotoMode) || has(PortAction::PhotoExit))
+        if (sc == SDL_SCANCODE_ESCAPE || has(PortAction::PhotoMode) || has(PortAction::PhotoExit) ||
+            (live_ok_ && has(PortAction::ReplayFreeCamera)))   // replaycams: FREE CAMERA's key leaves the free camera too
             leave_locked(sc == SDL_SCANCODE_ESCAPE ? "Escape" : b3native::input::key_label(sc).c_str());
         else if (has(PortAction::PhotoHelp)) cycle_ui_locked();
         else if (dof_key(dof_, sc, bind_)) {
@@ -620,7 +639,7 @@ void PhotoMode::pad(const PhotoPad& p, double now_s) {
     // photo2: the depth of field: Back on / off, Start the blur strength (cycling), L3 alone (released before the chord came)
     // the focus target
     if (p.back && !pad_prev_.back) dof_.toggle();
-    if (p.start && !pad_prev_.start) dof_.blur(0);
+    if (p.start && !pad_prev_.start && !live_ok_) dof_.blur(0);   // (replaycams: in a replay Start is FREE CAMERA's: it leaves)
     if (p.blur_less && !pad_prev_.blur_less) dof_.blur(-1);
     if (p.blur_more && !pad_prev_.blur_more) dof_.blur(+1);
     if (p.target && !pad_prev_.target) l3_solo_ = !p.toggle;
@@ -679,7 +698,7 @@ void PhotoMode::advance(float dt, const Camera& game) {
         return;
     }
     dt = std::clamp(dt, 0.0f, 0.25f);
-    step(cam_, dof_, dt, held_, pad_, mouse_dx_, mouse_dy_, wheel_, bind_);
+    step(cam_, dof_, dt, held_, pad_, mouse_dx_, mouse_dy_, wheel_, bind_, mirror_);
     mouse_dx_ = mouse_dy_ = wheel_ = 0;
 }
 
@@ -767,7 +786,7 @@ void PhotoMode::advance_to(std::uint32_t poll, const std::function<bool(std::uin
         }
         if (r.poll >= poll) break;
         if (r.active && r.started) {   // a poll of game time with the keys held in it
-            step(r.cam, r.dof, 1.0f / 60.0f, r.held, no_pad, 0.0f, 0.0f, 0.0f, bind_);
+            step(r.cam, r.dof, 1.0f / 60.0f, r.held, no_pad, 0.0f, 0.0f, 0.0f, bind_, mirror_);
             ++r.poll;
         } else {   // nothing moves: on to the next event
             r.poll = events_.empty() ? poll : std::min(poll, std::max(events_.front().poll, r.poll + 1));

@@ -6200,6 +6200,7 @@ def generate(decomp, sel, a, keep_going=False):
     elif os.path.exists(wpath):
         os.remove(wpath)
     _phase('tables')
+    split_arrays_pass(a.out)
     scrub_notes_refs(a.out)
     with open(os.path.join(a.out, "manifest.tsv"), "w") as o:
         o.write("address\ttrack\tname\tsource\tcode_bytes\tfnv1a64\ttransform notes\n")
@@ -6214,6 +6215,27 @@ def generate(decomp, sel, a, keep_going=False):
                       {int(l.split("\t", 1)[0], 16) for l in manifest if re.match(r"[0-9A-Fa-f]{8}\t", l)})
     _phase('manifest + prune')
     return len(entries), len(units)
+
+
+def split_arrays_pass(out):
+    """MORE RIVALS (2026-11): the game's per-car arrays as b3host::split_array (tools/decomp2host/split_arrays.py), when
+    DECOMP2HOST_SPLIT_ARRAYS names the targets (the Makefile's native rules: config/split_arrays.tsv). Unset (gen/decomp,
+    the unit tests' table): nothing changes. Over the whole output at once: a site's class comes from other units."""
+    targets = os.environ.get("DECOMP2HOST_SPLIT_ARRAYS")
+    if not targets:
+        return
+    import split_arrays
+    stats, left = split_arrays.apply(out, targets)
+    print("decomp2host: split arrays (%s): %s; %d sites left as they are (split_arrays.py --left)" % (
+        targets, ", ".join("%s %d" % kv for kv in sorted(stats.items())), len(left)))
+    # the report (the sites left, the loops bounded) must be the committed one: a change is read before it is accepted
+    # (DECOMP2HOST_SPLIT_ARRAYS_LEFT, default config/split_arrays_left.txt beside the targets)
+    report = os.environ.get("DECOMP2HOST_SPLIT_ARRAYS_LEFT") or os.path.join(os.path.dirname(targets), "split_arrays_left.txt")
+    why = split_arrays.check_report(left, report, out)
+    if why:
+        print(why)
+        sys.exit("decomp2host: the split-array report changed (see above)")
+    _phase('split arrays')
 
 
 def prune_units(out, names, object_dirs=None):
@@ -6239,4 +6261,8 @@ def prune_units(out, names, object_dirs=None):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except eeasm.VuFlagRead as e:   # vu0flags: never a dropped unit (eeasm.VuFlagRead)
+        sys.stderr.write("decomp2host: %s\n" % e)
+        sys.exit(1)

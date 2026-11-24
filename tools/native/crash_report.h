@@ -2,7 +2,10 @@
 // guest functions it was in), the last foreign guest pointer formed there, and the host backtrace, then exit 4
 // (hostfix: first a "guest memory overrun" line when the fault is in the guards around guest RAM / the scratchpad).
 // The same report as native_boot's on_crash (boot2), as a header so native_play can install it on its game thread.
-//   install_crash_report()        once per process: the handlers (POSIX signals / Windows' unhandled-exception filter)
+// musicexit: an uncaught C++ exception (std::terminate) gets the same report, its type and what() first
+// (include/b3report/uncaught.h; Windows' abort() passes no exception filter, so it had no report before).
+//   install_crash_report()        once per process: the handlers (POSIX signals / Windows' unhandled-exception filter,
+//                                 and this module's std::terminate handler)
 //   install_crash_stack()         on each thread that should survive a stack overflow long enough to report (POSIX:
 //                                 an alternate signal stack is per thread; Windows: SetThreadStackGuarantee)
 #ifndef B3NATIVE_CRASH_REPORT_H
@@ -11,6 +14,7 @@
 #include "b3host/call.h"
 #include "b3host/native_backend.h"
 #include "b3report/thread_name.h"
+#include "b3report/uncaught.h"
 
 #include <csignal>
 #include <cstdint>
@@ -36,23 +40,7 @@ namespace b3native {
 #ifdef _WIN32
 // split2p (a report whose frames were all offsets from native_play.exe, the fault in a DLL): the module an address is in
 // (its file name) and the offset from that module's base; "?" and the address itself when it is in none
-inline std::uintptr_t crash_module_of(const void* addr, char* name, std::size_t cap) {
-    HMODULE m = nullptr;
-    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            static_cast<LPCWSTR>(addr), &m) || !m) {
-        std::snprintf(name, cap, "?");
-        return reinterpret_cast<std::uintptr_t>(addr);
-    }
-    wchar_t w[MAX_PATH];
-    const DWORD len = GetModuleFileNameW(m, w, MAX_PATH);
-    DWORD from = 0;
-    for (DWORD i = 0; i < len; ++i) if (w[i] == L'\\' || w[i] == L'/') from = i + 1;
-    std::size_t o = 0;
-    for (DWORD i = from; i < len && o + 1 < cap; ++i) name[o++] = w[i] < 0x80 ? char(w[i]) : '?';
-    name[o] = 0;
-    if (o == 0) std::snprintf(name, cap, "?");
-    return reinterpret_cast<std::uintptr_t>(addr) - reinterpret_cast<std::uintptr_t>(m);
-}
+inline std::uintptr_t crash_module_of(const void* addr, char* name, std::size_t cap) { return b3port::module_of(addr, name, cap); }
 #endif
 
 // Called last, right before the process ends (native_play: run_log.h's crash_flush, so the report reaches the run log)
@@ -129,6 +117,16 @@ inline void crash_report(const char* what) {
 #endif
 }
 
+// musicexit: std::terminate's handler -- the uncaught exception named, then the report (which ends the process, exit 4)
+[[noreturn]] inline void crash_terminate() {
+    static thread_local bool inside = false;   // a second terminate from the report itself: end now
+    if (inside) std::_Exit(4);
+    inside = true;
+    const std::string what = "uncaught C++ exception " + b3port::uncaught_exception_text();
+    crash_report(what.c_str());
+    std::_Exit(4);
+}
+
 #ifdef _WIN32
 inline LONG WINAPI crash_seh(EXCEPTION_POINTERS* e) {
     char what[MAX_PATH + 128], mod[MAX_PATH];
@@ -151,6 +149,7 @@ inline void install_crash_stack() {
 }
 inline void install_crash_report() {
     SetUnhandledExceptionFilter(crash_seh);
+    std::set_terminate(crash_terminate);
     install_crash_stack();
 }
 #else
@@ -174,6 +173,7 @@ inline void install_crash_report() {
     sigaction(SIGSEGV, &sa, nullptr);
     sigaction(SIGBUS, &sa, nullptr);
     sigaction(SIGABRT, &sa, nullptr);
+    std::set_terminate(crash_terminate);
     install_crash_stack();
 }
 #endif

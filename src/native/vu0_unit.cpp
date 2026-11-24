@@ -109,7 +109,9 @@ std::string first_difference(const A& a, const std::uint32_t* am, const B& b, co
     if (a.P != b.P) return "P";
     if (a.R != b.R) return "R";
     if (a.mac != b.mac) return "MAC " + hex(a.mac) + " vs " + hex(b.mac);
-    if ((a.status & 0xFFF) != (b.status & 0xFFF)) return "STATUS " + hex(a.status) + " vs " + hex(b.status);
+    // vu0flags: STATUS's I / D bits and their sticky copies (DIV / SQRT / RSQRT); its Z S U O bits and theirs are not kept up
+    // by the generated programs' unobservable flag pushes (no image reads STATUS, no EE code reads vi16: vu0_aot.py)
+    if ((a.status & 0xC30u) != (b.status & 0xC30u)) return "STATUS " + hex(a.status) + " vs " + hex(b.status);
     if (a.clip != b.clip) return "CLIP " + hex(a.clip) + " vs " + hex(b.clip);
     for (unsigned k = 0; k < 256 * 4; ++k)
         if (am[k] != bm[k]) return "data qword " + std::to_string(k / 4) + " lane " + std::to_string(k % 4);
@@ -226,7 +228,9 @@ void Vu0Unit::call(b3asm::State& s, std::uint32_t entry, std::uint32_t caller_pc
                          static_cast<unsigned long long>(calls_), e, hex(caller_pc).c_str());
     }
     regs_in(st_, s);
-    EntryStats& es = by_entry_[(std::uint64_t(caller_pc) << 16) | (entry & 0xFFFFu)];
+    // (B3_VU0_STATS: native callers pass no pc; then the image's address stands in it, so the report names the image)
+    const std::uint32_t who = caller_pc ? caller_pc : found ? static_cast<std::uint32_t>(std::strtoul(found->name, nullptr, 16)) : 0u;
+    EntryStats& es = by_entry_[(std::uint64_t(who) << 16) | (entry & 0xFFFFu)];
     ++es.calls;
     if (img && aot_ == Aot::kOn) {
         ++generated_;

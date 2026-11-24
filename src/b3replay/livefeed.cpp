@@ -2,6 +2,9 @@
 // §13) or the in-process feed (inproc1, §23). No SDL here (tests/test_inproc.cpp links it alone).
 #include "live.h"
 #include "garagecam.h"   // garagecam1
+#include "orbitcam.h"    // orbitcam1
+#include "finishcam.h"   // finishcam1
+#include "replaycams.h"  // replaycams
 
 #include <cmath>
 #include <cstdio>
@@ -12,7 +15,7 @@ namespace b3replay {
 
 namespace {
 
-constexpr std::size_t kKeepTicks = 1200;       // 20 s of decoded ticks (display delay and camera keys need a few)
+// (the decoded ticks kept: LiveFeed::keep_ticks, 1200 = 20 s by default; display delay and camera keys need a few)
 constexpr std::size_t kGapTicks = 60;          // the offline reader's segment gap (capture.cpp)
 
 }  // namespace
@@ -195,12 +198,24 @@ int LiveFeed::drain_inproc(int max_records) {
     return n;
 }
 
+std::optional<LiveFeed::Seg> LiveFeed::segment_at(std::size_t idx) const {
+    if (seg_.id && idx >= seg_.first) return seg_;
+    for (auto it = past_.rbegin(); it != past_.rend(); ++it)
+        if (idx >= it->first && idx <= it->last_race + kGapTicks) return *it;
+    return std::nullopt;
+}
+
 void LiveFeed::push(Tick&& t, std::uint64_t ns, std::uint64_t sched) {
     const std::size_t idx = base_ + ticks_.size();
     ++ticks_total;
     if (race_tick(t)) {
-        if (!seg_.active || t.route_size != seg_.route_size || t.route_units != seg_.route_units || idx - seg_.last_race > kGapTicks)
+        if (!seg_.active || t.route_size != seg_.route_size || t.route_units != seg_.route_units || idx - seg_.last_race > kGapTicks) {
+            if (seg_.id) {   // (kept for a late offscreen shot of one of its ticks: segment_at)
+                past_.push_back(seg_);
+                if (past_.size() > kPastSegments) past_.pop_front();
+            }
             seg_ = Seg{true, seg_.id + 1, idx, idx, t.route_size, t.route_units, 0};
+        }
         seg_.last_race = idx;
         ++seg_.race_ticks;
     } else if (seg_.active && idx - seg_.last_race <= kGapTicks && !ticks_.empty()) {
@@ -218,11 +233,19 @@ void LiveFeed::push(Tick&& t, std::uint64_t ns, std::uint64_t sched) {
         const auto poll = t.poll, vb = t.vblank;
         const auto skip = t.skip_hint;
         const HostRaceTime race_time = t.race_time;
+        const HostPaintSel paint_sel = t.paint_sel;   // paintsel
+        const std::uint8_t replay = t.replay;         // replayview
+        const HostElimTimer elim_timer = t.elim_timer;   // elim1
+        const HostGear gear = t.gear;   // gearbox
         t = ticks_.back();
         t.poll = poll;
         t.vblank = vb;
         t.skip_hint = skip;
         t.race_time = race_time;   // todrace
+        t.paint_sel = paint_sel;   // paintsel
+        t.replay = replay;         // replayview
+        t.elim_timer = elim_timer;   // elim1
+        t.gear = gear;   // gearbox
         t.host_hold = true;
     }
     if (!warned_unbound_ && t.hud && t.hud->stats.unbound_texture) {   // font1: text would draw as solid blocks
@@ -231,12 +254,54 @@ void LiveFeed::push(Tick&& t, std::uint64_t ns, std::uint64_t sched) {
                      " captured: a SetTexture path the capture does not hook?)\n", name_.c_str(), t.poll, t.hud->stats.unbound_texture);
     }
     GarageCam::instance().on_tick(t);   // garagecam1: the car pages' view (no input: 0 0)
+    OrbitCam::instance().on_tick(t);    // orbitcam1: the race chase view's look (no input: 0 0)
+    FinishCam::instance().on_tick(t);   // finishcam1: the set pieces after the finish (FINISH CAMERA; off: none)
+    ReplayCams::instance().on_tick(t);  // replaycams: the replay viewer's angles (only while the game's replay plays)
     motion_.apply(t);   // photoblur: the vehicles' velocities (Vehicle::motion)
     ticks_.push_back(std::move(t));
     ns_.push_back(ns);
     sched_.push_back(sched);
+    bytes_of_.push_back(tick_bytes(ticks_.back()));   // trafmem
+    bytes_ += bytes_of_.back();
     if (on_push) on_push(ticks_.back());   // speedrun1
-    while (ticks_.size() > kKeepTicks) { ticks_.pop_front(); ns_.pop_front(); sched_.pop_front(); ++base_; }
+    trim();
+}
+
+// trafmem: a decoded tick's own bytes (its vectors; the shared records -- HUD, settings, fonts, trails -- are shared
+// with the ticks around it and not counted)
+std::size_t LiveFeed::tick_bytes(const Tick& t) {
+    return sizeof(Tick) + t.vehicles.capacity() * sizeof(Vehicle) + t.hidden.capacity() * sizeof(std::uint16_t) +
+           t.props.capacity() * sizeof(Prop) + t.anim.capacity() * sizeof(AnimMaterial) +
+           t.trails.capacity() * sizeof(std::shared_ptr<const TrailEmitter>);
+}
+
+std::atomic<bool>& feed_hold_full() { static std::atomic<bool> f{false}; return f; }
+std::atomic<std::uint32_t>& feed_hold_poll() { static std::atomic<std::uint32_t> p{0xFFFFFFFFu}; return p; }
+std::atomic<std::size_t>& feed_tick_bytes() { static std::atomic<std::size_t> b{0}; return b; }
+
+void LiveFeed::trim() {
+    // (a longer keep_ticks holds race ticks only: a front-end tick carries the movie's captured picture, so 3600 of them
+    // would hold gigabytes; before the race segment the window stays 1200)
+    // (sparkdet: a race tick a pending shot still needs is kept past keep_ticks, up to kHoldCap)
+    // (trafmem: past the window's 1200, keep_ticks' longer window within hold_wait_bytes)
+    bool held = false;   // trafmem: the hold is what keeps the oldest tick
+    while (ticks_.size() > std::max<std::size_t>(keep_ticks, 64) || (ticks_.size() > kWindowTicks && !(seg_.active && base_ >= seg_.first)) ||
+           (ticks_.size() > kWindowTicks && bytes_ > hold_wait_bytes())) {
+        const bool race_trim = !(ticks_.size() > kWindowTicks && !(seg_.active && base_ >= seg_.first));
+        const bool hold = race_trim && ticks_.front().poll >= hold_poll.load(std::memory_order_relaxed);
+        if (race_trim && hold_keeps(ticks_.front().poll, hold_poll.load(std::memory_order_relaxed), ticks_.size(), bytes_)) { held = true; break; }
+        if (hold && !warned_hold_) {
+            warned_hold_ = true;
+            std::fprintf(stderr, "[b3live] %s: the shot hold reached %zu ticks (%zu MB): a later shot's bloom warm-up may be short\n", name_.c_str(),
+                         ticks_.size(), bytes_ >> 20);
+        }
+        ticks_.pop_front(); ns_.pop_front(); sched_.pop_front(); ++base_;
+        bytes_ -= bytes_of_.front();
+        bytes_of_.pop_front();
+    }
+    feed_hold_full().store(hold_full(held, bytes_), std::memory_order_release);
+    feed_hold_poll().store(hold_poll.load(std::memory_order_relaxed), std::memory_order_release);
+    feed_tick_bytes().store(ticks_.empty() ? 0 : bytes_ / ticks_.size(), std::memory_order_release);
 }
 
 }  // namespace b3replay

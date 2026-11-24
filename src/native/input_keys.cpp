@@ -200,6 +200,19 @@ bool RestartMacro::apply(std::array<std::uint8_t, 32>& r) {
     return true;
 }
 
+std::array<std::uint8_t, 32> panel_report(int player, const std::uint8_t* player1, const std::uint8_t* keys, const std::uint8_t* pad2) {   // paintsel
+    std::array<std::uint8_t, 32> r{};
+    if (player != 1) {
+        std::copy(player1, player1 + 32, r.begin());
+        return r;
+    }
+    if (!pad2) {
+        std::copy(keys, keys + 32, r.begin());
+        return r;
+    }
+    return merge_samples(keys, pad2);
+}
+
 std::array<std::uint8_t, 32> merge_samples(const std::uint8_t* k, const std::uint8_t* pad) {
     std::array<std::uint8_t, 32> out{};
     out[0] = static_cast<std::uint8_t>(k[0] & pad[0]);   // active low: pressed on either

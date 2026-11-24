@@ -205,6 +205,7 @@ void end_to_end(std::function<int16_t(int16_t)> dsp, int16_t (*expect)(int16_t))
     Rig<b3audio::Spu2MixerImpl> r;
     r.ee.dsp = std::move(dsp);
     auto& m = r.mix;
+    m.set_hard_clip(true);   // audioq: the hardware's output, sample for sample (the host's limiter is 1 ms behind)
     // A looping ADPCM block at 0x10000 (filter 0, shift 2; flags 3 = end + repeat, LSAX = SSA at key-on).
     std::vector<uint8_t> blk(16);
     blk[0] = 0x02;

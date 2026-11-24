@@ -141,19 +141,22 @@ PcPage& PcPage::instance() {
 
 bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const std::string& ini, const MenuMouse::PagePointer* mouse,
                    float aspect) {
-    {   // the custom soundtrack's values for the game's thread (b3r_music)
-        std::lock_guard<std::mutex> lock(music_m_);
-        if (music_folder_pub_ != settings_.music_folder) music_folder_pub_ = settings_.music_folder;
-        playlist_mode_pub_ = settings_.playlist_mode;
-        music_volume_pub_ = settings_.custom_music_volume;
-    }
+    publish_music();
     if (open_requested_.exchange(false) && !active_.load()) {
         menu_.open(menu_.tab());
         active_.store(true);
+        visit_ = settings_;          // nextstart: what the question box compares with at the close
+        visit_capture_ = true;
+        ask_open_ = false;
         std::printf("[b3settings] PC SETTINGS opened\n");
         std::fflush(stdout);
     }
-    if (!active_.load()) return false;
+    const bool paint_changed = paint_step(ini);   // paintsel
+    if (!active_.load()) return paint_changed;
+    if (paint_open_.load()) {
+        paint_aspect_ = aspect;   // paint2: the picker's pointer
+        return paint_frame(pad, seconds, ini, mouse) || paint_changed;
+    }
     UiTiming& timing = ui_timing();
     const std::uint64_t t_frame = timing.on ? SDL_GetTicksNS() : 0;
     b3settings::Input in;
@@ -185,6 +188,9 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
         in.back = in.back || mouse->back;
     }
     b3settings::Env env;
+#if defined(_WIN32)
+    env.graphics_api = true;   // d3d12: the GRAPHICS API row
+#endif
     env.hd_pack = (std::getenv("B3_HD_PACK") != nullptr && *std::getenv("B3_HD_PACK")) || b3asset::hd_textures() != nullptr;
     env.hd_pack_loaded = b3asset::hd_textures() != nullptr;
     env.xbox_textures = !b3asset::hd_xbox_folder().empty();   // xboximport: the XBOX TEXTURES row
@@ -282,6 +288,11 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
     controls_env(env);
     portable_scan();
     env.portable = portable_;   // portable mode (1.3.0)
+    if (visit_capture_) {   // nextstart: SAVE FILE AT START at the opening (a file: the rows read it)
+        visit_capture_ = false;
+        visit_next_profile_ = env.next_profile;
+    }
+    if (ask_open_) return ask_frame(in, env, ini);   // nextstart: the question box takes the input until answered
     b3settings::Content content = b3settings::build_content(settings_, env);
     if (flow_.active()) content.popup = flow_.message(pad_style());   // the menu takes no input while it shows
     // settingsui: the prompt bar follows the last input: the mouse (its words), the keyboard or a controller (glyphs)
@@ -289,6 +300,11 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
                             : prompt_device_ == PromptDevice::kKeyboard ? b3settings::Content::PromptDevice::kKeyboard
                                                                          : b3settings::Content::PromptDevice::kPad;
     b3settings::translate(content, b3settings::ui_language(settings_, env));   // 1.1: our own text in the player's language
+    {   // nextstart: the next-start rows changed since this run's start, marked (SAVE FILE AT START: the one in use then)
+        b3settings::Env env_started = env;
+        env_started.next_profile = 0;
+        b3settings::mark_pending(content, started_, env_started, b3settings::ui_language(settings_, env));
+    }
     const b3settings::Frame f = menu_.update(content, in);
     if (timing.on) {
         const double ms = ms_since(t_frame);
@@ -382,7 +398,37 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
     if (hd_changed) { changed = true; ++edits_; }
     if (music_changed) { changed = true; ++edits_; }
     if (changed) ++serial_;
-    if (f.close) {
+    if (f.close && !flow_.active()) {   // nextstart: a next-start row changed in this visit: the question box first
+        b3settings::Env env_visit = env;
+        env_visit.next_profile = visit_next_profile_;
+        std::vector<b3settings::PendingChange> ch = b3settings::next_start_changes(visit_, env_visit, settings_, env);
+        if (!ch.empty()) {
+            const std::string lang = b3settings::ui_language(settings_, env);
+            std::string list;
+            for (b3settings::PendingChange& c : ch) {
+                list += (list.empty() ? "" : ", ") + c.label + " " + c.before + " > " + c.after;
+                c.label = b3settings::translate_text(c.label, lang);
+                c.before = b3settings::translate_text(c.before, lang);
+                c.after = b3settings::translate_text(c.after, lang);
+            }
+            ask_changes_ = std::move(ch);
+            ask_open_ = true;
+            ask_menu_.open(0);
+            ask_menu_.set_panel_pointer(true);
+            ask_menu_.hold_until_released();   // (the press that closed the page does not answer the box)
+            std::printf("[b3settings] PC SETTINGS: settings for the next start changed (%s): asked%s\n", list.c_str(),
+                        replay_playback_ ? " (a replay plays: no restart)" : in_race_ ? " (in a race)" : "");
+            std::fflush(stdout);
+            return changed;
+        }
+    }
+    if (f.close && close_page(ini)) changed = true;
+    return changed;
+}
+
+bool PcPage::close_page(const std::string& ini) {
+    bool changed = false;
+    {
         if (flow_.active()) {   // remap1: a rebind left open
             flow_.cancel();
             NativePad::instance().end_capture();
@@ -409,6 +455,240 @@ bool PcPage::frame(const std::array<std::uint8_t, 32>& pad, float seconds, const
     return changed;
 }
 
+// nextstart: the question box (page.h restart_ask_content): KEEP (also Back), APPLY AND RESTART, REVERT
+bool PcPage::ask_frame(const b3settings::Input& in, const b3settings::Env& env, const std::string& ini) {
+    const std::string lang = b3settings::ui_language(settings_, env);
+    b3settings::Content c = b3settings::restart_ask_content(ask_changes_, in_race_, !replay_playback_);
+    c.prompt_device = MenuMouse::instance().used_last()            ? b3settings::Content::PromptDevice::kMouse
+                      : prompt_device_ == PromptDevice::kKeyboard ? b3settings::Content::PromptDevice::kKeyboard
+                                                                   : b3settings::Content::PromptDevice::kPad;
+    b3settings::translate(c, lang);
+    const b3settings::Frame f = ask_menu_.update(c, in);
+    int answer = f.close ? 0 : -1;   // 0 keep, 1 restart, 2 revert
+    for (const b3settings::Edit& e : f.edits) {
+        if (!e.action) continue;
+        if (e.id == b3settings::kActionAskKeep) answer = 0;
+        else if (e.id == b3settings::kActionAskRestart && !replay_playback_) answer = 1;
+        else if (e.id == b3settings::kActionAskRevert) answer = 2;
+    }
+    if (answer < 0) return false;
+    bool changed = false;
+    if (answer == 2) {   // the visit's values back (SAVE FILE AT START: active-slot.txt rewritten as it was)
+        b3settings::revert_next_start(settings_, visit_);
+        if (env.next_profile != visit_next_profile_ && !env.saves_folder.empty()) {
+            const int slot = visit_next_profile_ > 0 ? visit_next_profile_ : env.profile;
+            if (slot > 0) b3io::replace_file(b3io::u8path(env.saves_folder) / "active-slot.txt", std::to_string(slot) + "\n");
+        }
+        changed = true;
+        ++edits_;
+        ++serial_;
+    }
+    std::printf("[b3settings] PC SETTINGS: the next-start settings: %s\n",
+                answer == 0 ? "kept (applied at the next start)" : answer == 1 ? "applied: the game starts again" : "reverted");
+    std::fflush(stdout);
+    ask_open_ = false;
+    if (close_page(ini)) changed = true;
+    if (answer == 1) restart_requested_.store(true);   // (after the ini is saved)
+    return changed;
+}
+
+// ---- paintsel: the car paint panel on SELECT CAR (pcpage.h panel_open; tools/native/paint_select.h) ----
+
+bool PcPage::save_now(const std::string& ini, std::string& why) {
+    if (ini.empty()) { why = "no ini"; return false; }
+    if (!b3settings::save_merged(ini, saved_, settings_, &why)) return false;
+    saved_ = settings_;
+    return true;
+}
+
+bool PcPage::paint_step(const std::string& ini) {
+    NativePad& np = NativePad::instance();
+    bool changed = false;
+    if (const int m = paint_game_pending_.exchange(0)) {   // the game's colour changed on SELECT CAR: Game paint again
+        for (int p = 0; p < 2; ++p) {
+            int& paint = p == 0 ? settings_.car_paint : settings_.p2_car_paint;
+            if (!(m >> p & 1)) continue;
+            if (paint != 1) {
+                std::printf("[b3settings] SELECT CAR: the game's colour changed (player %d): CAR PAINT stays Game\n", p + 1);
+            } else {
+                paint = 0;
+                changed = true;
+                ++serial_;
+                std::string why;
+                const bool saved = !active_.load() && save_now(ini, why);   // (an open panel saves when it closes)
+                std::printf("[b3settings] SELECT CAR: the game's colour changed (player %d): %s back to Game (%s)\n", p + 1,
+                            p == 0 ? "CAR PAINT" : "P2 CAR PAINT", saved ? ("saved to " + ini).c_str() : active_.load() ? "saved at the close" : why.c_str());
+            }
+            std::fflush(stdout);
+        }
+    }
+    if (paint_open_.load() && !paint_laid_) {   // opened by the game thread (paint_toggle): the menu, here
+        paint_laid_ = true;
+        paint_edits_ = 0;
+        paint_last_ = b3native::input::neutral_sample();
+        paint_layer_ = b3settings::kLayerBody;   // paint2
+        paint_picker_ = b3settings::ColourPicker{};
+        paint_menu_.open(0);
+        std::printf("[b3settings] car paint panel opened (player %d)\n", paint_player_.load() + 1);
+        std::fflush(stdout);
+    }
+    if (paint_open_.load() && np.paint_page() < 0) paint_close(ini, "SELECT CAR gone");
+    return changed;
+}
+
+int PcPage::paint_toggle(int player) {
+    if (paint_open_.load()) {
+        paint_close_asked_.store(true);
+        return 0;
+    }
+    if (active_.load()) return -1;   // PC SETTINGS
+    paint_player_.store(player == 1 ? 1 : 0);
+    paint_close_asked_.store(false);
+    NativePad::instance().panel_feed(true, player == 1 ? 1 : 0);
+    paint_open_.store(true);
+    active_.store(true);
+    return 1;
+}
+
+void PcPage::paint_close(const std::string& ini, const char* why_closed) {
+    if (!paint_open_.load()) return;
+    NativePad::instance().panel_feed(false);
+    paint_laid_ = false;
+    paint_close_asked_.store(false);
+    paint_open_.store(false);
+    active_.store(false);
+    std::string why;
+    const bool saved = save_now(ini, why);
+    std::printf("[b3settings] car paint panel closed (%s; player %d, %llu edits): CAR PAINT %s, P2 CAR PAINT %s, FINISH %d, %s\n", why_closed,
+                paint_player_.load() + 1, static_cast<unsigned long long>(paint_edits_), settings_.car_paint == 1 ? "Custom" : "Game",
+                settings_.p2_car_paint == 1 ? "Custom" : "Game", settings_.paint_finish, saved ? ("saved to " + ini).c_str() : why.c_str());
+    std::fflush(stdout);
+}
+
+bool PcPage::paint_frame(const std::array<std::uint8_t, 32>&, float seconds, const std::string& ini, const MenuMouse::PagePointer* mouse) {
+    if (paint_close_asked_.load()) {   // the panel's button again (native_play, at its VBlank)
+        paint_close(ini, "the CAR PAINT PANEL button");
+        return false;
+    }
+    // the reports since the last frame, in VBlank order (player 2's panel: player 2's pad and the keyboard, not player
+    // 1's pads: input_keys.h panel_report); none new: the last one held
+    std::vector<std::array<std::uint8_t, 32>> reports = NativePad::instance().take_panel_reports();
+    if (reports.empty()) reports.push_back(paint_last_);
+    else paint_last_ = reports.back();
+    bool changed = false;
+    const float dt = std::clamp(seconds, 0.0f, 0.1f) / float(reports.size());
+    for (const std::array<std::uint8_t, 32>& pad : reports) {
+        if (paint_step_report(pad, dt, mouse)) changed = true;
+        if (!paint_open_.load()) break;
+    }
+    if (paint_open_.load() && paint_back_) paint_close(ini, "Back");
+    paint_back_ = false;
+    return changed;
+}
+
+bool PcPage::paint_step_report(const std::array<std::uint8_t, 32>& pad, float seconds, const MenuMouse::PagePointer* mouse) {
+    if (paint_back_) return false;
+    const int lx = int(pad[4]) - 0x80, ly = int(pad[5]) - 0x80;
+    const int player = paint_player_.load();
+    if (paint_picker_.on()) {   // paint2: the colour picker takes the pad (and the pointer) until CONFIRM or BACK
+        b3settings::PickerInput pi;
+        pi.left = pressed(pad, kLeft) || lx < -0x40;
+        pi.right = pressed(pad, kRight) || lx > 0x40;
+        pi.up = pressed(pad, kUp) || ly < -0x40;
+        pi.down = pressed(pad, kDown) || ly > 0x40;
+        pi.hue_down = pressed(pad, kL1);
+        pi.hue_up = pressed(pad, kR1);
+        pi.fine = pressed(pad, kSquare);
+        pi.accept = pressed(pad, kCross);
+        pi.cancel = pressed(pad, kTriangle) || pressed(pad, kStart) || (mouse && mouse->have && mouse->back);
+        pi.seconds = seconds;
+        if (mouse && mouse->have && paint_aspect_ > 0.0f) {
+            const float fw = std::min(1.0f, (4.0f / 3.0f) / paint_aspect_), fh = std::min(1.0f, paint_aspect_ / (4.0f / 3.0f));
+            pi.pointer = std::array<float, 2>{(mouse->x - 0.5f * (1.0f - fw)) / fw * 640.0f, (mouse->y - 0.5f * (1.0f - fh)) / fh * 448.0f};
+            pi.pointer_held = mouse->held || mouse->click;
+        }
+        const b3settings::Content shown = b3settings::paint_panel_content(settings_, player, paint_layer_);
+        const std::size_t rows = shown.tabs.empty() ? 0 : shown.tabs[0].rows.size();
+        const b3settings::Menu::PickerBoxes pb = b3settings::Menu::picker_boxes(b3settings::Menu::panel_detail_y(rows));
+        std::copy(std::begin(pb.sq), std::end(pb.sq), pi.sq);
+        std::copy(std::begin(pb.bar), std::end(pb.bar), pi.bar);
+        const b3settings::ColourPicker::Result r = paint_picker_.step(pi);
+        const b3settings::PaintLayerRef L = b3settings::paint_layer(settings_, player, paint_layer_);
+        bool changed = false;
+        if (r == b3settings::ColourPicker::Result::kChanged) {
+            for (int k = 0; k < 3; ++k) *L.rgb[k] = paint_picker_.rgb()[k];
+            *L.custom = 1;
+            changed = true;
+        } else if (r == b3settings::ColourPicker::Result::kCancelled) {   // the colour (and the switch) as before the picker
+            for (int k = 0; k < 3; ++k) *L.rgb[k] = paint_picker_.saved()[k];
+            *L.custom = paint_saved_custom_;
+            changed = true;
+        }
+        {   // the rows as they now are, the picker drawn over the description (the rows take no input meanwhile)
+            b3settings::Content content = b3settings::paint_panel_content(settings_, player, paint_layer_, paint_picker_.view());
+            content.prompt_device = prompt_device_ == PromptDevice::kKeyboard ? b3settings::Content::PromptDevice::kKeyboard
+                                                                              : b3settings::Content::PromptDevice::kPad;
+            b3settings::translate(content, ui_language());
+            b3settings::Input idle;
+            idle.seconds = seconds;
+            paint_menu_.update(content, idle);
+        }
+        if (r == b3settings::ColourPicker::Result::kAccepted || r == b3settings::ColourPicker::Result::kCancelled) {
+            paint_menu_.hold_until_released();   // the press that closed it does not act on the rows
+            std::printf("[b3settings] car paint panel: colour picker %s (player %d, layer %d: %02X%02X%02X)\n",
+                        r == b3settings::ColourPicker::Result::kAccepted ? "kept" : "cancelled", player + 1, paint_layer_, *L.rgb[0], *L.rgb[1], *L.rgb[2]);
+            std::fflush(stdout);
+        }
+        if (changed) {
+            ++edits_;
+            ++paint_edits_;
+            ++serial_;
+        }
+        return changed;
+    }
+    b3settings::Input in;
+    in.up = pressed(pad, kUp) || ly < -0x40;
+    in.down = pressed(pad, kDown) || ly > 0x40;
+    in.left = pressed(pad, kLeft) || lx < -0x40;
+    in.right = pressed(pad, kRight) || lx > 0x40;
+    in.confirm = pressed(pad, kCross);
+    in.back = pressed(pad, kTriangle) || pressed(pad, kStart) || (mouse && mouse->have && mouse->back);
+    in.seconds = seconds;
+    b3settings::Content content = b3settings::paint_panel_content(settings_, player, paint_layer_);
+    content.prompt_device = prompt_device_ == PromptDevice::kKeyboard ? b3settings::Content::PromptDevice::kKeyboard
+                                                                      : b3settings::Content::PromptDevice::kPad;
+    b3settings::translate(content, ui_language());
+    const b3settings::Frame f = paint_menu_.update(content, in);
+    bool changed = false;
+    for (const b3settings::Edit& e : f.edits) {
+        if (e.id == b3settings::kRowPaintLayer && !e.action) {   // paint2: the layer the rows edit (the panel's own)
+            paint_layer_ = std::clamp(int(e.value), 0, b3settings::kPaintLayers - 1);
+            continue;
+        }
+        if (e.id == b3settings::kActionPaintPicker && e.action) {   // paint2: the picker, from the layer's colour
+            const b3settings::PaintLayerRef L = b3settings::paint_layer(settings_, player, paint_layer_);
+            const int rgb[3] = {*L.rgb[0], *L.rgb[1], *L.rgb[2]};
+            paint_saved_custom_ = *L.custom;
+            paint_picker_.open(rgb);
+            std::printf("[b3settings] car paint panel: colour picker opened (player %d, layer %d)\n", player + 1, paint_layer_);
+            std::fflush(stdout);
+            continue;
+        }
+        if (b3settings::apply_edit(settings_, e)) {
+            changed = true;
+            ++edits_;
+            ++paint_edits_;
+            if (e.id == b3settings::kActionPaintFactory + std::uint32_t(player)) {
+                std::printf("[b3settings] car paint panel: factory colours (player %d)\n", player + 1);
+                std::fflush(stdout);
+            }
+        }
+    }
+    if (changed) ++serial_;
+    if (f.close) paint_back_ = true;
+    return changed;
+}
+
 // ---- remap1: the CONTROLS section (src/native/input_bindings.h) ----
 
 void PcPage::controls_start(const std::string& path) {
@@ -432,6 +712,18 @@ std::uint32_t PcPage::port_row_id(b3native::input::PortAction a) {
     case PA::PhotoShutterFaster: return b3settings::kActionCtlPhotoFirst + 1;
     case PA::PhotoShutterSlower: return b3settings::kActionCtlPhotoFirst + 2;
     case PA::RaceTime: return b3settings::kActionCtlRaceTime;   // todrace
+    case PA::PaintPanel: return b3settings::kActionCtlPaint;    // paintsel
+    case PA::ShiftUp: return b3settings::kActionCtlShiftUp;     // gearbox
+    case PA::ShiftDown: return b3settings::kActionCtlShiftDown;
+    case PA::PartyMoonJump: return b3settings::kActionCtlPartyFirst;       // party1
+    case PA::PartyCrash: return b3settings::kActionCtlPartyFirst + 1;
+    case PA::PartyAiDriver: return b3settings::kActionCtlPartyFirst + 2;
+    case PA::Replay: return b3settings::kActionCtlReplay;           // replayview
+    case PA::ReplayCameraPrev: return b3settings::kActionCtlReplayFirst;   // replaycams
+    case PA::ReplayCameraNext: return b3settings::kActionCtlReplayFirst + 1;
+    case PA::ReplayCarPrev: return b3settings::kActionCtlReplayFirst + 2;
+    case PA::ReplayCarNext: return b3settings::kActionCtlReplayFirst + 3;
+    case PA::ReplayFreeCamera: return b3settings::kActionCtlReplayFirst + 4;
     default: return 0;
     }
 }
@@ -439,7 +731,8 @@ std::uint32_t PcPage::port_row_id(b3native::input::PortAction a) {
 std::vector<b3native::input::PortAction> PcPage::port_list(b3native::input::Device d) {
     std::vector<b3native::input::PortAction> o;
     for (int a = 0; a < b3native::input::kPortActions; ++a)
-        if (d == b3native::input::Device::Keyboard || b3native::input::port_has_pad(b3native::input::PortAction(a))) o.push_back(b3native::input::PortAction(a));
+        if (b3native::input::port_listed(b3native::input::PortAction(a)) &&   // 1.3.0: TIME OF DAY PER RACE held back
+            (d == b3native::input::Device::Keyboard || b3native::input::port_has_pad(b3native::input::PortAction(a)))) o.push_back(b3native::input::PortAction(a));
     return o;
 }
 
@@ -952,9 +1245,30 @@ void PcPage::music_folder_done(const char* path, const char* error) {
     std::fflush(stdout);
 }
 
+// the custom soundtrack's values for the game's thread (b3r_music): at each frame, and as the settings are loaded
+// (extrastart: the game asks from its first VBlank)
+void PcPage::publish_music() {
+    std::lock_guard<std::mutex> lock(music_m_);
+    if (music_folder_pub_ != settings_.music_folder) music_folder_pub_ = settings_.music_folder;
+    playlist_mode_pub_ = settings_.playlist_mode;
+    music_volume_pub_ = settings_.custom_music_volume;
+    music_loudness_pub_ = settings_.custom_music_loudness;   // musicloud
+    sound_output_pub_ = settings_.sound_output;   // audioq
+}
+
 int PcPage::music_volume() {
     std::lock_guard<std::mutex> lock(music_m_);
     return music_volume_pub_;
+}
+
+int PcPage::music_loudness() {   // musicloud
+    std::lock_guard<std::mutex> lock(music_m_);
+    return music_loudness_pub_;
+}
+
+int PcPage::sound_output() {
+    std::lock_guard<std::mutex> lock(music_m_);
+    return sound_output_pub_;
 }
 
 int PcPage::music(char* folder, int n) {
@@ -1208,7 +1522,9 @@ std::shared_ptr<const HostUi> PcPage::ui(const std::shared_ptr<const HostFonts>&
         }
         glyph_run(*f, *t, s, x, by, size, stretch, bx, bx + bw, slant, bottom, c);
     };
-    for (const Item& it : menu_.items("", "", measure)) {
+    for (const Item& it : ask_open_           ? ask_menu_.panel_items("", "", measure)     // nextstart: the question box
+                          : paint_open_.load() ? paint_menu_.panel_items("", "", measure)   // paintsel
+                                               : menu_.items("", "", measure)) {
         switch (it.kind) {
         case ItemKind::kRect: {
             if (it.w <= 0 || it.h <= 0) break;

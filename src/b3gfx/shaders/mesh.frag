@@ -2,9 +2,11 @@
 // b3gfx mesh fragment shader. SDL_GPU bindings: fragment samplers in set 2, uniform buffers in set 3.
 // SUN_SHADOW (build_shaders.sh compiles mesh_shadow.frag from this file with it defined): the variant for the track
 // draws that receive the cars' sun shadow (SUN SHADOWS, remaster-features §20); without it the shader is unchanged.
-#ifdef SUN_SHADOW
-#extension GL_GOOGLE_include_directive : require
-#endif
+// SCENE_DEPTH (mesh_depth.frag, mesh_shadow_depth.frag; scenedepth): the variants for a scene pass that keeps its depth in a
+// second colour target (the night lights, the AO, the depth of field read it): this fragment's depth there when the draw
+// is one the depth is made of (light_dir.w = -1: what the depth pre-pass drew; never an env-map face, whose w is 1), else
+// 0 (that draw's pipeline has the target masked off). Without it the shader is unchanged.
+#extension GL_GOOGLE_include_directive : require   // sun_shadow.glsl (SUN_SHADOW), hash.glsl (d3dhash)
 layout(location = 0) in vec2 v_uv;
 layout(location = 1) in vec4 v_color;
 layout(location = 2) in vec3 v_normal;
@@ -13,6 +15,9 @@ layout(location = 4) noperspective in vec2 v_line;   // line meshes: distance fr
 layout(location = 5) in vec3 v_wpos;                  // world position (surface)
 
 layout(location = 0) out vec4 out_color;
+#ifdef SCENE_DEPTH
+layout(location = 1) out float out_depth;
+#endif
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 #ifdef SUN_SHADOW
@@ -35,7 +40,8 @@ layout(set = 3, binding = 0) uniform FragmentUniforms {
     vec4 surf_sun;
     vec4 surf_eye;
     // night mode (§17): x the moonlit faces' strength (0: off): faces turned to the light (surf_sun, the moon at night)
-    // brighter, faces turned away darker, at any distance (the relief fades out, this does not)
+    // brighter, faces turned away darker, at any distance (the relief fades out, this does not); y (nightfix) the baked
+    // daylight's contrast flattened (0: off): the vertex light's luminance l -> 0.5 (l / 0.5)^(1 - y), hue kept
     vec4 surf_night;
 #ifdef SUN_SHADOW
     // SUN SHADOWS: world -> the map's clip space; sun_p: x the map's side, y the height the light drops over the box's
@@ -71,6 +77,15 @@ float fog_amount(float w) {
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
+// weather (§38): smooth value noise on the ground plane (the puddles' mask), 0..1
+#include "hash.glsl"   // d3dhash
+float wet_hash(vec2 p) { return hash3i(vec3(p, 0.0)).x; }   // d3dhash: an integer cell (wet_noise's floor)
+float wet_noise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(wet_hash(i), wet_hash(i + vec2(1.0, 0.0)), f.x), mix(wet_hash(i + vec2(0.0, 1.0)), wet_hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
 // surface: the prelit colour stays the base; a normal per pixel from the colour texture's luminance (bright = raised),
 // on a frame built from the screen-space derivatives of the position and UV (the track has no tangents, and normals only
 // on the type-1/2 materials), lit by the ENVIRO sun as a factor around 1.0: the change of N.L against the flat face, so
@@ -86,15 +101,47 @@ float surface(vec4 t, vec3 dp1, vec3 dp2, vec2 du1, vec2 du2, out float sheen) {
     N0 /= ln;
     vec3 V = normalize(surf_eye.xyz - v_wpos);
     vec3 Nf = dot(N0, V) < 0.0 ? -N0 : N0;   // the visible side
+    // weather (§38): a wet road (surf_night.z): the upward grey ground (asphalt, pavement, kerbs; not grass or paint)
+    // darker, and mirroring the sky by a Fresnel term into the frame alpha, which the full-screen specular turns into
+    // the overcast's colour; at any distance (the relief's fade does not apply)
+    float wetm = 1.0, wets = 0.0;
+    if (surf_night.z > 0.0) {
+        float wl = luma(t.rgb);
+        float wsat = max(max(t.r, t.g), t.b) - min(min(t.r, t.g), t.b);
+        float ground = smoothstep(0.7, 0.92, Nf.y) * (1.0 - smoothstep(0.08, 0.25, wsat)) * (1.0 - smoothstep(0.55, 0.85, wl));
+        float w = surf_night.z * ground;
+        wetm = mix(1.0, 0.55, w);
+        float wnv = clamp(dot(Nf, V), 0.0, 1.0);
+        // (wet asphalt dark near the camera, the sky's mirror growing towards grazing angles and the distance)
+        wets = w * (0.03 + 0.97 * pow(1.0 - wnv, 4.0));
+        // puddles: patches of standing water on the flat ground (world-anchored, ~15 % of it, two scales of noise), darker
+        // still and a near-total mirror of the sky. They lie over the lane markings too (the bright paint: a puddle covers
+        // it), not on grass; none under a roof (surf_night.z carries the draw's dry share)
+        // (no shimmer at a distance: as a pixel's footprint on the ground grows -- dp1 / dp2, the caller's derivatives --
+        // the fine octave gives way to its mean, the puddle's edge widens, and past ~1.5 m a pixel takes the puddles'
+        // average cover instead of one or the other)
+        float foot = max(length(dp1.xz), length(dp2.xz));
+        float fine = 1.0 - smoothstep(0.12, 0.35, foot);
+        float pn = 0.7 * wet_noise(v_wpos.xz * 0.33) + 0.3 * mix(0.5, wet_noise(v_wpos.xz * 1.25 + 17.0), fine);
+        float edge = 0.03 + 0.25 * smoothstep(0.2, 1.5, foot);
+        float cover = mix(smoothstep(0.67 - edge, 0.67 + edge, pn), 0.15, smoothstep(0.6, 1.8, foot));
+        float paint = smoothstep(0.45, 0.7, wl);
+        float wp = surf_night.z * cover * smoothstep(0.96, 0.995, Nf.y) *
+                   max(ground / max(smoothstep(0.7, 0.92, Nf.y), 1e-3), paint);
+        wetm = mix(wetm, 0.3, wp);
+        wets = mix(wets, 0.3 + 0.7 * pow(1.0 - wnv, 3.0), wp);
+    }
+    sheen = wets;
     // night mode: the faces turned to the moon catch its light (a factor around 1 on the prelit colour)
     float face = surf_night.x > 0.0 ? 1.0 + surf_night.x * (clamp(dot(Nf, surf_sun.xyz), 0.0, 1.0) - 0.45) : 1.0;
+    if (surf.x <= 0.0 && surf.y <= 0.0) return face * wetm;   // (the wet road alone: no relief, no sun sheen)
     float fade = 1.0 - smoothstep(0.4 * surf.z, surf.z, v_w);
-    if (fade <= 0.0) return face;
+    if (fade <= 0.0) return face * wetm;
     // the cotangent frame [Schueler 2013]: T, B along increasing u, v
     vec3 p2 = cross(dp2, N0), p1 = cross(N0, dp1);
     vec3 T = p2 * du1.x + p1 * du2.x, B = p2 * du1.y + p1 * du2.y;
     float tb = max(dot(T, T), dot(B, B));
-    if (!(tb > 0.0)) return 1.0;
+    if (!(tb > 0.0)) return wetm;
     float im = inversesqrt(tb);
     T *= im;
     B *= im;
@@ -111,7 +158,7 @@ float surface(vec4 t, vec3 dp1, vec3 dp2, vec2 du1, vec2 du2, out float sheen) {
     float nl0 = dot(Nf, L);
     float lit = smoothstep(-0.05, 0.3, nl0);          // faces turned from the sun get the sky's share only
     float d = (dot(N, L) - nl0) * lit + surf.w * (N.y - Nf.y);
-    float m = clamp(1.0 + d, 0.6, 1.4) * face;
+    float m = clamp(1.0 + d, 0.6, 1.4) * face * wetm;
     if (surf.y > 0.0) {
         float lum = luma(t.rgb);
         float sat = max(max(t.r, t.g), t.b) - min(min(t.r, t.g), t.b);
@@ -123,12 +170,15 @@ float surface(vec4 t, vec3 dp1, vec3 dp2, vec2 du1, vec2 du2, out float sheen) {
         float nv = clamp(dot(N, V), 0.0, 1.0);
         float lobe = pow(max(dot(N, H), 0.0), mix(12.0, 48.0, gloss));
         float fres = 1.0 + surf_sun.w * pow(1.0 - nv, 4.0);
-        sheen = surf.y * gloss * lobe * fres * lit * fade;
+        sheen = wets + surf.y * gloss * lobe * fres * lit * fade;
     }
     return m;
 }
 
 void main() {
+#ifdef SCENE_DEPTH
+    out_depth = light_dir.w < -0.5 ? gl_FragCoord.z : 0.0;   // (first: the returns below; a discard drops both)
+#endif
     if (params.w > 3.5) {
         // Line meshes (type 3, docs/native-renderer.md §11.8): PRIM 0xE9 with ALPHA_1 0x42 = Cd - Cs x As, where AA1
         // replaces As by the pixel's coverage; untextured, so Cs = Cf, fogged by the program's F towards FOGCOL (0 [G]).
@@ -145,7 +195,7 @@ void main() {
         // The GS with TEX0 TFX = MODULATE, TCC = 1 [C track rasters]: Cv = Ct * Cf >> 7 (clamped), Av = At * Af >> 7;
         // untextured: Cv = Cf. Colours here are GS bytes / 128 from the vertex stage, texels 0..1 (alpha 0x80 = 1).
         vec4 t = texture(tex, v_uv);
-        const bool surf_on = surf.x > 0.0 || surf.y > 0.0;   // a uniform: the derivatives below are in uniform control flow
+        const bool surf_on = surf.x > 0.0 || surf.y > 0.0 || surf_night.z > 0.0;   // a uniform: the derivatives below are in uniform control flow
         vec3 sdp1 = vec3(0.0), sdp2 = vec3(0.0);
         vec2 sdu1 = vec2(0.0), sdu2 = vec2(0.0);
         if (surf_on) { sdp1 = dFdx(v_wpos); sdp2 = dFdy(v_wpos); sdu1 = dFdx(v_uv); sdu2 = dFdy(v_uv); }
@@ -159,7 +209,13 @@ void main() {
         // gs.w: the threshold, 0 = off (mac5: thin fonts lower, so their strokes keep their weight)
         if (gs.w > 0.0) t.a = clamp((t.a - gs.w) / max(aw, 1.0 / 64.0) + 0.5, 0.0, 1.0);
         bool textured = gs.y > 0.5;
-        vec3 c = textured ? min(t.rgb * v_color.rgb, vec3(1.0)) : min(v_color.rgb * (128.0 / 255.0), vec3(1.0));
+        vec3 vc = v_color.rgb;
+        if (surf_night.y > 0.0) {   // night: no sun, so the baked sun-and-shadow contrast is flattened (above)
+            float vl = luma(vc);
+            if (vl > 1e-4) vc *= 0.5 * pow(vl / 0.5, 1.0 - surf_night.y) / vl;
+        }
+        vec3 c = textured ? min(t.rgb * vc, vec3(1.0)) : min(vc * (128.0 / 255.0), vec3(1.0));
+        if (surf_night.w > 0.0) c = mix(c, vec3(luma(c)) * vec3(0.96, 0.98, 1.02), surf_night.w);   // weather: the overcast sky
         float a = textured ? floor(t.a * 128.0 * v_color.a) : floor(v_color.a * 128.0);  // GS alpha byte
         // TEST_1: ATE bit 0, ATST bits 1-3, AREF bits 4-11, AFAIL bits 12-13 (0 = keep: the pixel is dropped).
         uint test = uint(gs.x);
@@ -195,7 +251,7 @@ void main() {
             float up = smoothstep(0.55, 0.8, nv.y);
             float sh = up > 0.0 ? up * sun_shadow_amount(sun_shadow_map, (sun_vp * vec4(v_wpos, 1.0)).xyz, sun_p) : 0.0;
             if (sun_p.w < -1.5) {   // B3_SUN_SHADOW_DEBUG=2: the vertex colour's luminance (grey), blended layers in blue
-                float l = luma(v_color.rgb) * 0.5;
+                float l = luma(vc) * 0.5;
                 c = gs.z > 0.5 ? vec3(0.0, 0.0, 0.5) : vec3(l);
             } else if (sun_p.w < 0.0) {   // B3_SUN_SHADOW_DEBUG=1 (diagnostics): red the shadow, green the box, blue the ground test
                 vec3 q = (sun_vp * vec4(v_wpos, 1.0)).xyz;
@@ -203,7 +259,8 @@ void main() {
                 c = vec3(sh, 0.3 * inbox * (0.5 + 0.5 * fract(q.z * 20.0)), 0.3 * up);
             } else {
                 // (a receiver brighter than the open road, bright concrete, takes the open road's factor, not more)
-                float m = mix(1.0, clamp((1.0 - sun_p.w) * sun_q.x / max(luma(v_color.rgb), 1e-3), 1.0 - sun_p.w, 1.0), sh);
+                // (vc: the vertex light as drawn, so flattened at night too, nightfix)
+                float m = mix(1.0, clamp((1.0 - sun_p.w) * sun_q.x / max(luma(vc), 1e-3), 1.0 - sun_p.w, 1.0), sh);
                 c *= m;
                 if (gs.z < 0.5) oa *= m;
                 sheen *= m;

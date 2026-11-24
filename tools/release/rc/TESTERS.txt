@@ -1,0 +1,69 @@
+Burnout 3 native 1.4.0 -- release candidate @VERSION@ (for testers)
+
+Thank you for testing. This is the build we plan to release as 1.4.0, unless you find something that should be
+fixed first. It needs your own copy of the US PS2 game (SLUS-21050), as every release does. It uses your existing game
+data, saves and settings; nothing is uploaded anywhere.
+
+Start it with Burnout3Launcher.exe as usual. When 1.4.0 itself comes out, the launcher offers the update by itself.
+
+
+WHAT IS NEW IN 1.4.0 (the short version; RELEASE-NOTES.txt has all of it)
+
+- SETTINGS > EXTRAS: everything 1.4.0 adds to the game itself, each with its own On / Off, all off on a new install
+  except ELIMINATOR (a fifth mode on SELECT MODE). Race options on SELECT OPTIONS (traffic, laps, manual gears, a
+  standing start ...), up to eight cars, more series on SELECT CAR (Heavyweights, every traffic vehicle, your car mods,
+  the cut BETA cars from the prototype disc), traffic checking (Revenge / Extreme), party modes, race replays.
+  A race with a gameplay extra keeps its results apart from your records.
+- Night and rain to try out (EXTRAS > EXPERIMENTAL), also in World Tour.
+- Your own colours on SELECT CAR, a camera you can turn in a race, reflections of the world around the car,
+  Direct3D 12 on Windows, cleaner sound, smoother motion, and fixes for crashes in heavy traffic.
+
+
+WHAT TO TRY
+
+1. FIRST: run-all-tests (about 12 minutes, no input needed)
+   - Quit the game if it is running. Open the folder run-all-tests and double-click run-all-tests.bat.
+   - It plays twelve short scripted sessions in a window, one after another: races by day, at night and in the rain,
+     with Vulkan and Direct3D 12, VSYNC, the reflection settings, a race replay with its cameras, an 8-car race and a
+     Crash event. Do not press anything; each session ends by itself. Watch the motion: is it smooth?
+   - It uses its own copies of your settings and of your save (your own files are not changed), and the game data
+     your launcher uses (if it cannot find it, it asks once for the folder or disc image).
+   - At the end it shows a table and makes one file: test-results-<date>-<time>.zip, in the run-all-tests folder.
+     Please send us that file (see SENDING US THINGS), with a few words on what you saw.
+   - (Windows only. On Linux or a Mac, skip this step.)
+2. Then play as you like, and try what is new, for example:
+   - SETTINGS > EXTRAS: turn on a few extras and play with them: race options, MORE RIVALS (8 cars), TRAFFIC CHECK
+     (Revenge or Extreme: you should never crash on a hit the mode allows), MIRROR MODE, PARTY MODES, RACE REPLAY.
+   - EXTRAS > EXPERIMENTAL: NIGHT and RAIN, then SELECT OPTIONS' TIME OF DAY and WEATHER rows, and NIGHT / RAIN IN
+     WORLD TOUR. Experimental: tell us how it looks and how fast it runs on your PC.
+   - If you have them: car mods or a car pack (launcher > Game Data > Custom cars: Import car pack...) and the June
+     2004 prototype or demo disc (launcher > Game Data > Beta / Prototype cars), then the CUSTOM and BETA series on
+     SELECT CAR.
+   - SETTINGS > DISPLAY > FRAME RATE LIMIT is now Auto (60 on a processor with 4 threads or fewer, no limit on
+     others). If a race runs slow or stutters on your PC, tell us your processor.
+   - An Xbox One / Series controller on Windows: SETTINGS > CONTROLS > FEEDBACK: RUMBLE On and TRIGGER RUMBLE On,
+     then restart the game (it asks). Do the triggers rumble? Do they still accelerate and brake properly from the first
+     second of a race? With two Xbox controllers too, and on the Xbox Wireless Adapter if you use one. If anything is
+     wrong with it on, turn TRIGGER RUMBLE off again and tell us.
+
+
+SENDING US THINGS
+
+- The run-all-tests zip (step 1).
+- A bug report for anything that goes wrong: in the game press F10 ("BUG REPORT SAVED" shows where it went), or in the
+  launcher: Play page > Bug report... > Make report. If the game crashed, make the report afterwards: the crashed run
+  is in it. You get one file, bug-report-<date-time>.zip, on your Desktop (or in Documents).
+- Send the files with a short note on what happened and roughly when (mode, track or menu) to @WHERE@.
+
+
+WHAT THESE FILES CONTAIN (and what they do not)
+
+- A bug report: the logs and controller recordings of your last 5 runs, your settings files, the port's version, and a
+  short description of your system (Windows version, processor, memory, graphics card and driver, display). Your save
+  only if you choose "With my save" in the launcher. No game data.
+- The run-all-tests zip: for each of its twelve sessions the game's log, its frame timings, the settings it ran with,
+  its controller recording and a few screenshots; plus the results table. It does not contain your save (the session
+  copies stay on your PC) or any game data.
+- In both, your user name is taken out of folder paths (they read ~\... or C:\Users\<user>\...). The logs do name your
+  processor and graphics card, and the folders the game and its data are in below your home folder.
+- Nothing is sent anywhere by itself: you send the files yourself.

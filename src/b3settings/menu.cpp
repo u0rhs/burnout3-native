@@ -323,6 +323,17 @@ void Menu::handle_pointer(const Input& in, Frame& out) {
     const float px = (*in.pointer)[0], py = (*in.pointer)[1];
     const std::vector<Row>* rows = tab_rows();
     const std::size_t n = rows ? rows->size() : 0;
+    if (panel_pointer_) {   // nextstart: the rows of panel_items (focus under the pointer, a click on an action row acts)
+        const float list_y = kPanelY0 + 32;
+        if (!rows || (!click && !in.pointer_moved) || py < list_y || px < kPanelX0 || px >= kPanelX1) return;
+        const std::size_t slot = std::size_t((py - list_y) / kPanelRowH), index = scroll_ + slot;
+        if (slot >= kVisible || index >= n) return;
+        const Row& r = (*rows)[index];
+        if (r.kind == RowKind::kSection || r.disabled) return;
+        if (index != focus_) focus_row(index, false);
+        if (click && r.kind == RowKind::kAction) activate(out);
+        return;
+    }
     const auto slider_level = [&](const Row& r) {
         const float t = std::clamp((px - kBarX0) / (kBarX1 - kBarX0), 0.0f, 1.0f);
         return std::size_t(std::lround(t * float(r.levels > 0 ? r.levels - 1 : 0)));
@@ -880,6 +891,223 @@ std::vector<Item> Menu::items(const std::string& fonts, const std::string& art, 
         b.rect(x, y, w, 3, kAccent);
         for (std::size_t k = 0; k < lines.size(); ++k)
             b.text(lines[k], x + 20, y + 18 + 17.0f * float(k), w - 40, lh, kText, kTextSmall | kAlignCentre);
+    }
+    return out;
+}
+
+Menu::PickerBoxes Menu::picker_boxes(float y) {   // paint2: the square 150 x 56, the bar beside it, the colour after
+    PickerBoxes b{{kPanelX0 + 10, y + 6, 150, 56}, {kPanelX0 + 168, y + 6, 14, 56}};
+    return b;
+}
+
+// paintsel: the car paint panel over SELECT CAR (page.h panel_items): the page's look in a box at the picture's left,
+// where the car select's carousel is (the car itself stays in view at the right)
+std::vector<Item> Menu::panel_items(const std::string& fonts, const std::string& art, const Measure& measure_in) const {
+    std::vector<Item> out;
+    out.reserve(160);
+    {
+        Item f;
+        f.kind = ItemKind::kFontDirectory;
+        f.text = fonts;
+        out.push_back(std::move(f));
+    }
+    const Measure measure = measure_in ? measure_in : Measure(fallback_measure);
+    const float open = smooth(open_time_ / 0.22f);
+    Builder b{out, measure, art, open};
+    constexpr float X0 = kPanelX0, X1 = kPanelX1, Y0 = kPanelY0;
+    constexpr float kRh = kPanelRowH, kLabelX = X0 + 14, kCx0 = X0 + 132, kCx1 = X1 - 8, kSw = 16.0f;
+    const std::vector<Row>* rows = tab_rows();
+    const std::size_t n = rows ? rows->size() : 0;
+    const std::size_t end = std::min(n, scroll_ + kVisible);
+    const float list_y = Y0 + 32;
+    const float list_h = kRh * float(end - std::min(scroll_, end));
+
+    // the title: a slanted blue bar with the title in the heading face, the warm stripes after it
+    b.rect(X0, Y0, X1 - X0 - 26, 24, kTitleBar, kRectSlant | kRectShade);
+    b.rect(X1 - X0 - 24 + X0, Y0, 9, 24, kAccent, kRectSlant);
+    b.rect(X1 - X0 - 12 + X0, Y0, 6, 24, rgba(255, 176, 32, 150), kRectSlant);
+    // (the game's heading face has no digits: a title with one, PLAYER 2 CAR PAINT, in the menu face)
+    const bool digits = content_.title_menu_face || content_.title.find_first_of("0123456789") != std::string::npos;
+    b.text(content_.title, X0 + 12, Y0 + (digits ? 5.0f : 3.0f), X1 - X0 - 48, digits ? 15.0f : 19.0f, kText, digits ? kItalic : kHeadingFont);
+
+    // the rows' panel
+    b.rect(X0, list_y - 4, X1 - X0, list_h + 8, kPanel);
+    b.rect(X0, list_y - 4, X1 - X0, 1, kPanelEdge);
+    b.rect(X0, list_y + list_h + 3, X1 - X0, 1, kPanelEdge);
+    const float pulse = 0.5f + 0.5f * std::sin(clock_ * 4.0f);
+    for (std::size_t i = std::min(scroll_, end); i < end; ++i) {
+        const Row& r = (*rows)[i];
+        const float y = list_y + kRh * float(i - scroll_);
+        const bool focused = focus_known_ && i == focus_;
+        if (r.kind == RowKind::kSection) {
+            b.text(r.label, X0 + 8, y + 7, X1 - X0 - 16, 11, kAccent, kTextSmall);
+            continue;
+        }
+        if (focused) {
+            b.rect(X0 + 2, y + 1, X1 - X0 - 4, kRh - 2, faded(kFocusBar, 0.86f + 0.14f * pulse), kRectSlant | kRectShade);
+            b.rect(X0 + 2, y + 1, 7, kRh - 2, kAccent, kRectSlant);
+        }
+        const std::uint32_t label = r.disabled ? kTextDim : focused ? kText : kTextSoft;
+        b.text(r.label, kLabelX, y + 4, kCx0 - kLabelX - 8 - (r.swatch >= 0 ? kSw + 4 : 0.0f), 13, label, kItalic);
+        if (r.swatch >= 0) {   // the colour the row makes (as the page's rows)
+            const float sx = kCx0 - kSw - 4;
+            const std::uint32_t c = rgba(int(r.swatch >> 16 & 0xFF), int(r.swatch >> 8 & 0xFF), int(r.swatch & 0xFF), r.disabled ? 110 : 255);
+            b.rect(sx - 1, y, kSw + 2, kRh, rgba(255, 255, 255, r.disabled ? 40 : 90));
+            b.rect(sx, y + 1, kSw, kRh - 2, c);
+        }
+        const float bx0 = kCx0 + 16, bx1 = kCx1 - 16;
+        const std::uint32_t value_c = r.disabled ? kTextDim : kText;
+        const std::uint32_t arrow_c = r.disabled ? kTextDim : focused ? kText : kTextSoft;
+        switch (r.kind) {
+        case RowKind::kToggle: {
+            const bool on = r.value != 0;
+            const float tw = 34, th = kRh - 10, tx = kCx1 - tw, ty = y + 5;
+            const std::string shown = on ? (r.values.size() > 1 ? r.values[1] : "On") : (!r.values.empty() ? r.values[0] : "Off");
+            b.text(shown, kCx0, y + 4, tx - kCx0 - 6, 12, value_c, kItalic | kAlignRight);
+            b.rect(tx, ty, tw, th, on && !r.disabled ? rgba(255, 176, 32, 235) : kTrack);
+            b.rect(tx, ty, tw, 1, rgba(255, 255, 255, 60));
+            const float knob = th - 4;
+            b.rect(on ? tx + tw - knob - 2 : tx + 2, ty + 2, knob, knob, r.disabled ? kTextDim : on ? kText : kFillIdle);
+            break;
+        }
+        case RowKind::kChoice:
+        case RowKind::kSlider: {
+            const std::size_t count = value_count(r);
+            const bool lo = !r.disabled && r.value > 0, hi = !r.disabled && r.value + 1 < count;
+            b.image(kImageArrowLeft, kCx0 + 3, y + 5, 7, 11, lo ? arrow_c : faded(arrow_c, 0.3f));
+            b.image(kImageArrowRight, kCx1 - 10, y + 5, 7, 11, hi ? arrow_c : faded(arrow_c, 0.3f));
+            const std::string shown = r.kind == RowKind::kSlider ? r.level_text : r.value < r.values.size() ? r.values[r.value] : std::string();
+            const bool chips = !r.chips.empty() && r.chips.size() == count;
+            b.text(shown, bx0, y + (chips ? 1.0f : 2.0f), bx1 - bx0, chips ? 11.0f : 12.0f, value_c, kItalic | kAlignCentre);
+            const float by = y + kRh - 5;
+            if (chips) {   // the ready colours in a row, the chosen one larger and outlined
+                const float gap = 2.0f, seg = (bx1 - bx0 + gap) / float(count);
+                for (std::size_t k = 0; k < count; ++k) {
+                    const std::int32_t v = r.chips[k];
+                    const std::uint32_t c = rgba(int(v >> 16 & 0xFF), int(v >> 8 & 0xFF), int(v & 0xFF), r.disabled ? 110 : 255);
+                    const float x = bx0 + seg * float(k), w = seg - gap;
+                    if (v < 0) {   // paint2: Game (no colour of its own): an empty box
+                        const std::uint32_t e = k == r.value ? (focused ? kAccent : kText) : kTextSoft;
+                        const float hh = k == r.value ? 9.0f : 5.0f, yy = k == r.value ? by - 4 : by - 1;
+                        b.rect(x, yy, w, 1, e);
+                        b.rect(x, yy + hh - 1, w, 1, e);
+                        b.rect(x, yy, 1, hh, e);
+                        b.rect(x + w - 1, yy, 1, hh, e);
+                        continue;
+                    }
+                    if (k == r.value) {
+                        b.rect(x - 1, by - 4, w + 2, 9, focused ? kAccent : kText);
+                        b.rect(x, by - 3, w, 7, c);
+                    } else {
+                        b.rect(x, by - 1, w, 4, c);
+                    }
+                }
+            } else if (r.kind == RowKind::kSlider) {
+                b.rect(bx0, by, bx1 - bx0, 3, kTrack);
+                const float t = count > 1 ? float(r.value) / float(count - 1) : 0.0f;
+                b.rect(bx0, by, (bx1 - bx0) * t, 3, r.disabled ? kTextDim : focused ? kFill : kFillIdle);
+                b.rect(bx0 + (bx1 - bx0) * t - 2, by - 2, 4, 7, r.disabled ? kTextDim : kText);
+            } else if (count > 0) {
+                const float gap = 2.0f, seg = (bx1 - bx0 + gap) / float(count);
+                for (std::size_t k = 0; k < count; ++k)
+                    b.rect(bx0 + seg * float(k), by, seg - gap, 3, k == r.value ? (r.disabled ? kTextDim : focused ? kFill : kFillIdle) : kTrack);
+            }
+            break;
+        }
+        case RowKind::kAction: {   // paint2: a button (COLOUR PICKER, FACTORY COLOURS)
+            const std::string v = r.values.empty() ? std::string() : r.values[0];
+            const float tw = 84, tx = kCx1 - tw, ty = y + 3;
+            b.rect(tx, ty, tw, kRh - 6, r.disabled ? kTrack : focused ? kAccent : rgba(26, 60, 136, 240), kRectSlant | kRectShade);
+            b.text(v, tx + 4, ty + 2, tw - 10, kRh - 10, focused && !r.disabled ? rgba(16, 20, 40, 255) : value_c, kItalic | kAlignCentre | kNoOutline);
+            break;
+        }
+        case RowKind::kSection:
+            break;
+        }
+    }
+
+    const float desc_y = list_y + list_h + 8;
+    const Content::Picker& pk = content_.picker;
+    float desc_h = 56;
+    if (pk.on) {   // paint2: the colour picker in the description's place: the square, the hue bar, the colour
+        const PickerBoxes pb = picker_boxes(desc_y);
+        desc_h = pb.sq[1] + pb.sq[3] + 6 - desc_y;
+        b.rect(X0, desc_y, X1 - X0, desc_h, rgba(10, 24, 60, 230));
+        b.rect(X0, desc_y, 3, desc_h, kAccent);
+        int rgb[3];
+        constexpr int kCx = 24, kCy = 12;   // the square's cells (saturation across, brightness down)
+        for (int j = 0; j < kCy; ++j)
+            for (int i = 0; i < kCx; ++i) {
+                hsv_to_rgb(pk.h, (float(i) + 0.5f) / kCx, 1.0f - (float(j) + 0.5f) / kCy, rgb);
+                b.rect(pb.sq[0] + pb.sq[2] * float(i) / kCx, pb.sq[1] + pb.sq[3] * float(j) / kCy, pb.sq[2] / kCx + 0.5f, pb.sq[3] / kCy + 0.5f,
+                       rgba(rgb[0], rgb[1], rgb[2]));
+            }
+        constexpr int kBar = 36;
+        for (int j = 0; j < kBar; ++j) {
+            hsv_to_rgb(360.0f * (float(j) + 0.5f) / kBar, 1.0f, 1.0f, rgb);
+            b.rect(pb.bar[0], pb.bar[1] + pb.bar[3] * float(j) / kBar, pb.bar[2], pb.bar[3] / kBar + 0.5f, rgba(rgb[0], rgb[1], rgb[2]));
+        }
+        // the markers: a ring at the saturation / brightness, a line across the bar at the hue
+        const float mx = pb.sq[0] + pb.sq[2] * pk.s, my = pb.sq[1] + pb.sq[3] * (1.0f - pk.v);
+        const std::uint32_t ring = pk.v > 0.6f ? rgba(16, 20, 40) : kText;
+        b.rect(mx - 4, my - 4, 8, 2, ring);
+        b.rect(mx - 4, my + 2, 8, 2, ring);
+        b.rect(mx - 4, my - 4, 2, 8, ring);
+        b.rect(mx + 2, my - 4, 2, 8, ring);
+        const float hy = pb.bar[1] + pb.bar[3] * pk.h / 360.0f;
+        b.rect(pb.bar[0] - 3, hy - 1, pb.bar[2] + 6, 3, kText);
+        hsv_to_rgb(pk.h, pk.s, pk.v, rgb);
+        const float px = pb.bar[0] + pb.bar[2] + 10, pw = X1 - 10 - px;
+        b.rect(px - 1, pb.sq[1] - 1, pw + 2, pb.sq[3] + 2, rgba(255, 255, 255, 90));
+        b.rect(px, pb.sq[1], pw, pb.sq[3], rgba(rgb[0], rgb[1], rgb[2]));
+        if (pk.fine) b.text(content_.words.fine, px, pb.sq[1] + pb.sq[3] - 12, pw, 10, kAccent, kTextSmall | kAlignCentre);
+    } else {   // the focused row's description (four small lines)
+    b.rect(X0, desc_y, X1 - X0, desc_h, rgba(10, 24, 60, 220));
+    b.rect(X0, desc_y, 3, desc_h, kAccent);
+    }
+    if (!pk.on && rows && focus_known_ && focus_ < n) {
+        const float lh = 10, w = X1 - X0 - 18;
+        const std::vector<std::string> lines = b.wrap((*rows)[focus_].description, w, lh, kTextSmall, 4);
+        for (std::size_t k = 0; k < lines.size(); ++k) b.text(lines[k], X0 + 10, desc_y + 4 + 12.5f * float(k), w, lh, kTextSoft, kTextSmall);
+    }
+
+    // the prompt bar: MOVE, CHANGE or CHOOSE, and Back (CLOSE AND SAVE) at the right
+    {
+        const float y = desc_y + desc_h + 4, h = 18;
+        b.rect(X0, y, X1 - X0, h, rgba(8, 18, 46, 220));
+        const Content::Words& w = content_.words;
+        const Row* row = rows && focus_known_ && focus_ < n ? &(*rows)[focus_] : nullptr;
+        struct Prompt { const char* glyph; std::string word; };
+        std::vector<Prompt> left{{"dpad-ud", w.move}};
+        if (row && !row->disabled && (row->kind == RowKind::kChoice || row->kind == RowKind::kSlider)) left.push_back({"dpad-lr", w.change});
+        if (row && !row->disabled && (row->kind == RowKind::kToggle || row->kind == RowKind::kAction)) left.push_back({"cross", w.choose});
+        Prompt right{"triangle", w.close};
+        if (pk.on) {   // paint2: the picker's controls
+            left = {{"l1", w.hue}, {"dpad-lr", w.shade}, {"square", w.fine}, {"cross", w.accept}};
+            right = {"triangle", w.cancel};
+        }
+        const float gh0 = 12, th0 = 10, x0 = X0 + 8, x1 = X1 - 8;
+        const auto pw = [&](const Prompt& p, float k) { return b.width(p.glyph, gh0 * k, kGlyph) + 4 * k + b.width(p.word, th0 * k, kTextSmall); };
+        const auto total = [&](float k) {
+            float t = pw(right, k) + 12 * k;
+            for (const Prompt& p : left) t += pw(p, k) + 10 * k;
+            return t;
+        };
+        float k = 1.0f;
+        while (k > 0.7f && total(k) > x1 - x0) k -= 0.05f;
+        while (left.size() > 1 && total(k) > x1 - x0) left.erase(left.begin());   // MOVE goes first
+        const auto draw = [&](const Prompt& p, float x, std::uint32_t c) {
+            const float gh = gh0 * k, th = th0 * k, gw = b.width(p.glyph, gh, kGlyph);
+            b.image((std::string(kGlyphPrefix) + p.glyph).c_str(), x, y + (h - gh) * 0.5f, gw, gh, kText);
+            x += gw + 4 * k;
+            b.text(p.word, x, y + (h - th) * 0.5f, b.width(p.word, th, kTextSmall) + 1, th, c, kTextSmall);
+        };
+        float x = x0;
+        for (const Prompt& p : left) {
+            draw(p, x, kTextSoft);
+            x += pw(p, k) + 10 * k;
+        }
+        draw(right, x1 - pw(right, k), kAccent);
     }
     return out;
 }

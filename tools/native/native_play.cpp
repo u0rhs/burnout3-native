@@ -117,8 +117,10 @@
 // and port 2's from the window's second gamepad, plugged in while one is seated, unless --keys2 / --replay-pad), then
 // the window's close request (b3r_quit_requested) ends the run. Closing the window, --quit-after and the VBlank limit
 // all end it the same way: main's call unwinds, the game view is closed (the renderer drains its feed), exit 0.
+#include "sampler.h"   // slowcpu (B3_SAMPLE)
 #include "b3host/call.h"
 #include "b3host/native_backend.h"
+#include "b3port/game_program.h"   // ghvariant: the programs accepted
 #include "b3asset/discfs.h"
 #include "b3asset/language.h"   // 1.0.1: language packs
 #include "audio_sink.h"
@@ -129,17 +131,62 @@
 #include "save_screens.h"
 #include "car_select.h"   // carsel1: the car series on L1 / R1
 #include "race_time.h"    // todrace: DAY / NIGHT per race on the track pages
-// 1.3.0: night mode is held back (still being finished), and with it the DAY / NIGHT choice on the track pages
-constexpr bool kRaceTimeThisRelease = false;
+#include "paint_select.h" // paintsel: the car paint panel on SELECT CAR, the game's colour choice there
+#include "carousel_models.h"   // paint3: the carousel cars whose picture is not their own (a resolver names them)
+#include "input_bindings.h"   // 1.3.0: kRaceTimeThisRelease (night mode held back, the DAY / NIGHT choice with it)
+using b3native::input::kRaceTimeThisRelease;
+#include "b3settings/settings.h"   // extras: the EXTRAS word's bits
+// raceopts: the TIME OF DAY row on SELECT OPTIONS (race_options.h) is held back with it; B3_RACE_TIME_ROW=1 shows it (tests)
+namespace { bool extra_on(std::uint32_t bit, const char* env); }   // extras (below, in the file's unnamed namespace)
+// extras / condrows: EXTRAS > EXPERIMENTAL > NIGHT gives the TIME OF DAY row (Day / Night); B3_RACE_TIME_ROW=1 too (tests)
+inline bool race_time_row_wanted() {
+    const char* e = std::getenv("B3_RACE_TIME_ROW");
+    return kRaceTimeThisRelease || (e && e[0] == '1' && !e[1]) || extra_on(b3settings::kExtraNight, nullptr);
+}
+// condrows: EXTRAS > EXPERIMENTAL > RAIN gives the WEATHER row (Clear / Rain; race_time.h kWeatherThisRelease);
+// B3_WEATHER_ROW=1 too (tests). With both rows, Night + Rain is night rain
+inline bool race_weather_row_wanted() {
+    const char* e = std::getenv("B3_WEATHER_ROW");
+    return b3native::kWeatherThisRelease || (e && e[0] == '1' && !e[1]) || extra_on(b3settings::kExtraRain, nullptr);
+}
 #include "diff_check.h"
 #include "poison_check.h"
 #include "pc_menu.h"
+#include "game_options.h"   // gameopts: MIRROR MODE, CRASHBREAKER IN EVERY MODE (PC SETTINGS > GAME > GAMEPLAY)
+#include "party_modes.h"    // party1: GAME > PARTY MODES
+#include "single_eliminator.h"   // elim1: ELIMINATOR in SINGLE EVENT's SELECT MODE
+#include "../../src/b3replay/records.h"   // elim1: the record word's folder (the log)
+#include "race_options.h"   // raceopts: TRAFFIC / LAPS / RIVALS rows on SELECT OPTIONS
+#include "traffic_check.h"   // trafficcheck: TRAFFIC CHECKING (PC SETTINGS > GAME > GAMEPLAY)
+#include "gearbox.h"      // gearbox: TRANSMISSION Manual, the game's own manual gearbox
+#include "game_mods.h"      // options3: settings that change what the game does (DEFORMATION)
+#include "heavy_race.h"   // heavyseries: HEAVYWEIGHTS on SELECT CAR for Single Event races
+#include "title_fast.h"   // titlefast: the title's PRESS START prompt and Start without the game's two-second wait
+#include "settings_back.h"   // settingsback: Back on the game's SETTINGS pages keeps the changes
+#include "boost_start.h"   // booststart: the game's BOOST START on a standing start
+#include "traffic_cars.h"   // trafficseries: TRAFFIC / TRAFFIC SPECIAL on SELECT CAR, traffic vehicles driven as race cars
+#include "extra_cars.h"     // customseries: the CUSTOM series on SELECT CAR, players' car mods as extra cars
 #include "card_silence.h"
+#include "more_rivals.h"
 #include "date_format.h"
+#include "replay_view.h"   // replayview: RACE REPLAY, the game's own replay in every offline mode
+#include "relaunch.h"   // nextstart: APPLY AND RESTART
+#include "wreck_slots.h"  // wreckguard: the 64 crashed-traffic slots bounded
 #include "speed_units.h"
+#include "save_stats.h"   // gamemods1: START AT reads which profiles the save holds
+#include "boot_boost.h"
+#include "game_limits.h"
+#include "car_viewer.h"   // gamemods1: the CAR VIEWER from YOUR GARAGE
+#include "b3gameview/gameview.h"   // gamemods1: b3gv::set_car_viewer_background   // gamemods1: IDLE PAUSE, END VERY LONG EVENTS   // gamemods1: START AT (the title or the main menu with a profile, without the intro films)
+#include "takedown_pitch.h"   // hudmods: TAKEDOWN STREAK PITCH (the takedown sound's pitch by the streak since the last crash)
 #include "training_voice.h"   // 1.3.0 VOICES
 #include "online_message.h"
 #include "custom_soundtrack.h"
+#include "lane_pair_fix.h"
+#include "crash_ram_fix.h"
+#include "car_stats.h"         // carstats1: GRIP / ACCELERATION on SELECT CAR
+#include "turn_signals.h"      // blinkers1: the racers' indicators before bends
+#include "road_rage_parts.h"   // rrparts1: every loose part can come off in Road Rage
 #include "now_playing_popup.h"
 #include "tuning_console.h"   // tune4
 #include "debug_health.h"
@@ -151,6 +198,7 @@ constexpr bool kRaceTimeThisRelease = false;
 #include <timeapi.h>
 #endif
 #include "movie_skip.h"
+#include "pad_context.h"   // padskip
 #include "native_fallback.h"
 #if !defined(B3_HW_DEV)
 #define B3_HW_DEV 0
@@ -254,21 +302,33 @@ struct Render {
     void (*pad_key)(int, int) = nullptr;
     int (*focused)() = nullptr;   // mac5: optional (b3r_focused)
     int (*quit_requested)() = nullptr;
+    int (*restart_requested)() = nullptr;   // nextstart, optional: b3r_restart_requested (PC SETTINGS' APPLY AND RESTART)
     int (*close)(std::uint32_t) = nullptr;
     int (*perf_on)() = nullptr;   // perf3, optional: b3r_perf_on / b3r_perf_add (B3_PERF_LOG's game-thread stages)
     void (*perf_add)(int, std::uint64_t) = nullptr;
     void (*audio_push)(const std::int16_t*, std::size_t) = nullptr;   // optional (an older b3render: silent)
+    unsigned long long (*audio_late)() = nullptr;   // stutter, optional: the output queue's dry runs so far (b3r_audio_late)
+    void (*audio_quiet)(int) = nullptr;             // loadaudio, optional: the sound silent on purpose (b3r_audio_quiet)
+    int (*feed_full)() = nullptr;                   // trafmem, optional: the shot runner's hold is full (b3r_feed_full)
+    unsigned (*feed_hold)() = nullptr;              // trafmem, optional: the hold's poll (b3r_feed_hold)
     void (*pad_context)(int) = nullptr;   // mac4, optional (an older b3render: the menu bindings only)
     int (*settings_open)() = nullptr;     // mac5, optional: open the PC SETTINGS page (1: opened)
     int (*date_format)() = nullptr;       // mac5, optional: b3r_date_format (an older b3render: the game's month/day/year)
     int (*speed_units)() = nullptr;       // units1, optional: b3r_speed_units (an older b3render: the game's miles)
+    int (*boot_to)() = nullptr;           // gamemods1, optional: b3r_boot_to (an older b3render: the game's start)
+    int (*idle_pause)() = nullptr;        // gamemods1, optional: b3r_idle_pause (an older b3render: the game's)
+    int (*long_event_end)() = nullptr;    // gamemods1, optional: b3r_long_event_end (an older b3render: the game's)
+    int (*takedown_pitch)() = nullptr;    // hudmods, optional: b3r_takedown_pitch (an older b3render: the game's pitch)
     int (*music)(char*, int) = nullptr;   // optional: b3r_music, the playlist mode and music folder (custom_soundtrack.h)
     int (*music_volume)() = nullptr;      // optional: b3r_music_volume, CUSTOM MUSIC VOLUME in percent (musicvol1)
+    int (*music_loudness)() = nullptr;    // musicloud, optional: b3r_music_loudness (an older b3render: Even out)
     int (*other_music_apps)() = nullptr;  // nowplaying1, optional: b3r_other_music_apps (now_playing_popup.h; an older b3render: off)
+    int (*sound_output)() = nullptr;      // audioq, optional: b3r_sound_output (SOUND OUTPUT: 0 Clean, 1 Original; an older b3render: Clean)
     void (*now_playing)(const char*) = nullptr;   // nowplaying1, optional: b3r_now_playing, what is detected (the row's text)
     int (*settings_active)() = nullptr;   // mac5, optional: 1 while the page is open (the game then sees a neutral pad)
     int (*record_replays)() = nullptr;    // replay1, optional: PC SETTINGS > GAME > MODES > RECORD REPLAYS
     int (*photo_row)() = nullptr;         // photorow1, optional: b3r_photo_row (an older b3render: no row)
+    int (*game_mods)() = nullptr;         // options3, optional: b3r_game_mods (game_mods.h; an older b3render: none)
     int (*photo_enter)() = nullptr;       // photorow1, optional: b3r_photo_enter, the pause menu's PHOTO MODE row (1: entered)
     void (*set_paused)(int) = nullptr;    // photo mode, optional: the race's pause menu is up (src/b3replay/photomode.h)
     // mac5, optional: the mouse in the game's menus and typed text (tools/native/menu_mouse.h)
@@ -284,11 +344,34 @@ struct Render {
     int (*hide_save_screens)() = nullptr; // autosave1, optional: b3r_hide_save_screens (an older b3render: shown)
     int (*fast_loading)() = nullptr;      // fastload1, optional: b3r_fast_loading (an older b3render: off)
     int (*series_shoulders)() = nullptr;  // carsel1, optional: b3r_series_shoulders (an older b3render: off)
+    int (*extras)() = nullptr;            // extras, optional: b3r_extras (PC SETTINGS > EXTRAS as one word; an older b3render: 0)
+    int (*traffic_check)() = nullptr;     // trafficcheck, optional: b3r_traffic_check (an older b3render: off)
+    int (*game_options)() = nullptr;      // gameopts, optional: b3r_game_options (an older b3render: none)
+    // carstats1 / blinkers1 / rrparts1, optional (an older b3render: the game's): CAR STATS, TURN SIGNALS, ROAD RAGE PARTS (car_stats.h, turn_signals.h,
+    // road_rage_parts.h)
+    int (*car_stats)() = nullptr;
+    int (*turn_signals)() = nullptr;
+    int (*road_rage_parts)() = nullptr;
+    int (*party_keys)() = nullptr;        // party1, optional: b3r_party_keys (an older b3render: no buttons)
     // todrace, optional (an older b3render: no presses, the label never drawn): a track page (race_time.h) is up, and the
     // TIME OF DAY presses the window took there since the last call (race_time.h)
     void (*race_time_page)(int) = nullptr;
     int (*race_time_presses)() = nullptr;
+    int (*night_setting)() = nullptr;   // raceopts, optional: PC SETTINGS > TIME OF DAY (1 Night)
+    int (*weather_setting)() = nullptr; // weather, optional: PC SETTINGS > WEATHER (1 Rain)
+    void (*effects_volume)(int) = nullptr;   // weather, optional: the game's EFFECTS volume (0..100) for the rain's sound
+    // paintsel, optional (an older b3render: no panel, the rule not applied): SELECT CAR takes input for a player (-1
+    // none), and the game's colour changed there (paint_select.h)
+    void (*paint_page)(int) = nullptr;
+    void (*paint_game)(int) = nullptr;
+    int (*paint_presses)() = nullptr;
+    int (*replay_presses)() = nullptr;   // replayview, optional: b3r_replay_presses (REPLAY presses since the last call)
+    void (*set_replay_showing)(int) = nullptr;   // replaycams, optional: b3r_set_replay_showing (the replay being watched, per VBlank)
+    int (*replays)() = nullptr;          // replayview, optional: b3r_replays (RACE REPLAY on)
+    int (*shift_presses)(int) = nullptr;   // gearbox: SHIFT UP (1) / SHIFT DOWN (0) presses the window took since the last call     // the CAR PAINT PANEL presses the window took on the page since the last call
+    int (*paint_toggle)(int) = nullptr;   // open the panel for a player (1) or ask it to close (0); -1: neither
     void (*fast_forward)(int) = nullptr;  // fastload1, optional: the display shows the newest frame while 1
+    void (*game_behind)(int) = nullptr;   // slowcpu, optional: 1 while the game is behind real time (the renderer holds to 60)
     int (*scene_wait)(int) = nullptr;     // loadlag1, optional: a fast load's end waits for the race's scene (fast_load.h)
     // sdk2b, optional (an older b3render: no MODS tab, no textures): the code mods' settings rows for PC SETTINGS >
     // MODS (b3mod::rows_to_text), the page's changes ("<mod>.<key>=<value>", one per call, 0: none), a value changed
@@ -418,13 +501,22 @@ void env_unset(const char* name) {
     unsetenv(name);
 #endif
 }
-// A hash of guest RAM below MB 31 (that one holds the stack, which differs harmlessly between hosts), FNV-1a per word
-std::uint64_t replay_ram_hash() {
+// A hash of guest RAM below MB 31 (that one holds the stack, which differs harmlessly between hosts), FNV-1a per word.
+// ghvariant: `masked` (a recording's "ram_hash" 2, every new one): the 8-byte words that touch the places the known
+// program variants change (b3port/game_program.h kVariantRanges) are left out, so a replay recorded with the retail
+// program plays back with the patched one and the other way round; a recording without the entry keeps the full hash.
+std::uint64_t replay_ram_hash(bool masked) {
     static std::vector<std::uint8_t> buf(0x100000u);
     std::uint64_t h = 0xCBF29CE484222325ull;
     for (b3host::gaddr mb = 0; mb < 0x01F00000u; mb += 0x100000u) {
         b3host::copy_from_guest(buf.data(), mb, 0x100000u);
         for (std::size_t k = 0; k < buf.size(); k += 8) {
+            if (masked) {
+                const std::uint32_t a = mb + std::uint32_t(k);
+                bool skip = false;
+                for (const b3port::ProgramRange& r : b3port::kVariantRanges) skip |= a < r.end && a + 8 > r.begin;
+                if (skip) continue;
+            }
             std::uint64_t w;
             std::memcpy(&w, buf.data() + k, 8);
             h = (h ^ w) * 0x100000001B3ull;
@@ -450,20 +542,152 @@ struct LiveSettings {
     bool on = false;
     int date = 0, music_mode = 0;
     bool photo_row = false;   // photorow1: the pause menu's PHOTO MODE row (a recording without the entry: none, as before)
+    std::uint32_t game_mods = 0;   // options3 (game_mods.h): the mask (a recording without the entry: none)
     int units = 0;   // units1: SPEED UNITS (tools/native/speed_units.h)
+    int boot_to = 0;   // gamemods1: START AT (tools/native/boot_boost.h; a recording without it: the game's start)
+    int boot_profile = -1;   // gamemods1: START AT's profile in the save at the boot (1 / 0; -1: not asked, the save read)
+    int idle_pause = 1, long_event_end = 1;   // gamemods1: tools/native/game_limits.h (a recording without them: the game's)
+    int takedown_pitch = 0;   // hudmods: TAKEDOWN STREAK PITCH (tools/native/takedown_pitch.h; a recording without it: off)
     int music_volume = 100;   // musicvol1: CUSTOM MUSIC VOLUME (custom_soundtrack.h; host audio only, the game never reads it)
+    int music_loudness = 1;   // musicloud: CUSTOM MUSIC LOUDNESS (a recording without it: Even out; sound only)
     std::string music_dir;
     std::string now_playing;   // nowplaying1: a replay's latched track (b3nowplaying::encode; empty: none recorded)
     int race_time = 0;         // todrace: the track page's DAY / NIGHT choice (race_time.h; a recording without it: Default)
+    unsigned game_options = 0; // gameopts: GAMEPLAY's options asked for (game_option_rules.h bits; a recording without it: none)
+    bool car_viewer_request = false;   // gamemods1: a replay's car viewer request on this VBlank ("car_viewer")
+    int shift_up = 0, shift_down = 0;   // gearbox: a replay's SHIFT UP / SHIFT DOWN presses for this VBlank ("shift")
+    bool party_moon = false;   // party1: MOON JUMP held (the replay's "party_moon" setting; a recording without it: never)
+    int party_crash = 0, party_ai = 0;   // party1: a replay's CRASH / AI DRIVER presses for this VBlank ("party_press" events)
+    int replay_presses = 0;   // replayview: a recording's REPLAY presses for this VBlank ("replay")
+    bool race_time_row = false;   // raceopts: SELECT OPTIONS' TIME OF DAY row shown (a recording without the entry: none)
+    bool race_weather_row = false;   // condrows: SELECT OPTIONS' WEATHER row shown (a recording without the entry: none)
+    unsigned traffic_check = 0;   // trafficcheck: TRAFFIC CHECKING asked for (TcMode; a recording without the entry: off)
+    bool heavy_series = false; // heavyseries: SELECT CAR's HEAVYWEIGHTS series offered (a recording without the entry: none)
+    // extras: PC SETTINGS > EXTRAS' word (b3settings::extras_bits) latched; a recording without the entry: every extra on,
+    // as every build before EXTRAS played (its own entries -- heavy_series, race_opts, ... -- say what it had)
+    std::uint32_t extras = b3settings::kExtrasAll;
+    std::vector<std::pair<b3host::gaddr, std::uint64_t>> demotes;   // extras: this VBlank's "extra_demote" events (slot, donor)
+    bool traffic_series = false;   // trafficseries: SELECT CAR's TRAFFIC series offered (a recording without the entry: none)
+    bool title_fast = false;   // titlefast: the title's prompt and Start at once (a recording without the entry: the game's wait)
+    bool settings_back = false;   // settingsback: Back keeps a SETTINGS page's changes (a recording without the entry: the
+                                  // game's cancel)
+    bool crash_ram_fix = false;   // crashramfix: the rammers' flags as retail's (a recording without the entry: the draft's, as
+                                  // every build before the fix played them)
+    // carstats1 / blinkers1 / rrparts1: CAR STATS, TURN SIGNALS, ROAD RAGE PARTS (a recording without an entry: off, as before they existed)
+    bool car_stats = false, turn_signals = false, road_rage_parts = false;
 };
 LiveSettings g_live;
+// carstats1 / blinkers1 / rrparts1: the rows the game-side hooks read (the latched values while a replay is recorded or played)
+int (*g_car_stats)() = nullptr;
+int (*g_turn_signals)() = nullptr;
+int (*g_road_rage_parts)() = nullptr;
+// gamemods1: START AT main menu: the active save holds profile `slot` (profile-N.sav, else the older profile-N folder)
+bool start_at_profile_in_save(int slot) {
+    const auto root = b3io::getenv("B3NATIVE_SAVES_ROOT");
+    if (!root) return false;
+    const std::filesystem::path base = b3io::u8path(*root);
+    const int n = b3native::save::read_active_slot(base);
+    std::filesystem::path f = base / ("profile-" + std::to_string(n) + ".sav");
+    std::error_code ec;
+    if (!std::filesystem::exists(f, ec)) f = base / ("profile-" + std::to_string(n));
+    const auto profiles = b3native::save::read_profile_stats(f);
+    if (!profiles) return false;
+    for (const auto& p : *profiles) if (p.index == slot) return true;
+    return false;
+}
+bool car_stats_on() { return g_live.on ? g_live.car_stats : g_car_stats && g_car_stats() != 0; }
+bool turn_signals_on() { return g_live.on ? g_live.turn_signals : g_turn_signals && g_turn_signals() != 0; }
+bool road_rage_parts_on() { return g_live.on ? g_live.road_rage_parts : g_road_rage_parts && g_road_rage_parts() != 0; }
 int (*g_photo_row)() = nullptr;   // photorow1: b3r_photo_row
+int (*g_game_mods)() = nullptr;   // options3: b3r_game_mods
+std::uint32_t game_mods_wanted() { return g_game_mods ? std::uint32_t(g_game_mods()) : 0u; }
 // B3_PHOTO_ROW=0|1 overrides PC SETTINGS > GAME > INTERFACE > PHOTO MODE IN PAUSE MENU (the golden runs set 0: the game's own menu);
 // no renderer: no row
 bool photo_row_wanted() {
     if (const char* e = std::getenv("B3_PHOTO_ROW"); e && (e[0] == '0' || e[0] == '1') && !e[1]) return e[0] == '1';
     return g_photo_row && g_photo_row() != 0;
 }
+// trafficcheck (traffic_check.h): TRAFFIC CHECK (2 PLAYERS) asked for now (TcMode): $B3NATIVE_TRAFFIC_CHECK (0 / 1 / 2), else
+// the setting (no renderer: off)
+int (*g_traffic_check)() = nullptr;   // b3r_traffic_check
+unsigned traffic_check_wanted() {
+    const int e = b3native::TrafficCheck::env_override();
+    if (e >= 0) return unsigned(e);
+    return g_traffic_check ? b3native::traffic_check_normal(unsigned(g_traffic_check())) : 0u;
+}
+// gameopts (game_options.h): GAMEPLAY's options asked for now: $B3NATIVE_GAME_OPTIONS (the word, 0..8191), else the setting
+// (no renderer: none)
+int (*g_game_options)() = nullptr;   // b3r_game_options
+unsigned game_options_wanted() {
+    const unsigned e = b3native::GameOptions::env_override();
+    if (e != ~0u) return e;
+    return g_game_options ? b3native::game_options_normal(unsigned(g_game_options())) : 0u;
+}
+// extras (PC SETTINGS > EXTRAS; b3settings::extras_bits): the word asked for now. $B3NATIVE_EXTRAS ("all", or the word as a
+// number: the tests' and the golden runs' switch), else the setting (no renderer: 0, the game as it shipped)
+int (*g_extras)() = nullptr;   // b3r_extras
+std::uint32_t extras_wanted() {
+    // B3NATIVE_EXTRAS_AT=<vblank>:<word> (tests: an extra switched off or on mid-session, with something remembered)
+    if (const char* e = std::getenv("B3NATIVE_EXTRAS_AT"); e && *e) {
+        unsigned long long at = 0;
+        char w[16] = {};
+        if (std::sscanf(e, "%llu:%15s", &at, w) == 2 && b3native::platform::vblank_count() >= at)
+            return std::strcmp(w, "all") == 0 ? b3settings::kExtrasAll : std::uint32_t(std::strtoul(w, nullptr, 0)) & b3settings::kExtrasMask;
+    }
+    if (const char* e = std::getenv("B3NATIVE_EXTRAS"); e && *e)
+        return std::strcmp(e, "all") == 0 ? b3settings::kExtrasAll : std::uint32_t(std::strtoul(e, nullptr, 0)) & b3settings::kExtrasMask;
+    return g_extras ? std::uint32_t(g_extras()) & b3settings::kExtrasMask : 0u;
+}
+// The word in effect: a replay's latched one, else the one asked for
+std::uint32_t extras_now() { return g_live.on ? g_live.extras : extras_wanted(); }
+// An extra on now: its own switch first (`env` 0: off, 1: on -- comparisons and tests), else its bit. While a replay is
+// recorded or played (g_live.on) the switch is ignored: only B3NATIVE_EXTRAS and the settings make the recorded word
+bool extra_on(std::uint32_t bit, const char* env) {
+    if (!g_live.on && env)
+        if (const char* e = std::getenv(env); e && (e[0] == '0' || e[0] == '1') && !e[1]) return e[0] == '1';
+    return (extras_now() & bit) != 0;
+}
+// extras: NIGHT / RAIN IN WORLD TOUR -- World Tour's own event requests (CB3MenuChoices::RequestNewGameMode 0x30D1B0,
+// every mode's request, leaving the one-player stage World Tour's, +0x1B8 0x0051B928, from the World Tour menu), so a
+// load is one of its events only after one: noted here, cleared by any other mode's request and on the main menu and
+// the title (a later attract demo, two-player race or online load never matches a stale stage record)
+struct WorldTourRequest {
+    using Entry = void (*)(const b3host::CallArgs&, b3host::CallResult&);
+    static inline Entry next = nullptr;
+    static inline bool asked = false;
+    static void request(const b3host::CallArgs& a, b3host::CallResult& r) {
+        next(a, r);
+        asked = b3host::load<std::int32_t>(0x01E900B0u + 4u) == 0 && b3host::load<std::uint32_t>(0x0051AD00u + 0x1B8u) == 0x0051B928u;
+    }
+    static bool install(b3native::HookTable& hooks) {
+        std::string error;
+        std::vector<b3native::Hook> specs = {{0x0030D1B0u, b3native::HookLayer::kPort, &request, &next}};
+        if (!hooks.install("port:world_tour_request", specs, &error)) {
+            std::fprintf(stderr, "native_play: world tour request: %s\n", error.c_str());
+            return false;
+        }
+        return true;
+    }
+};
+// heavyseries (heavy_race.h): the HEAVYWEIGHTS series on SELECT CAR for Single Event races (EXTRAS; B3NATIVE_HEAVY_SERIES)
+bool heavy_series_wanted() { return extra_on(b3settings::kExtraHeavyweights, "B3NATIVE_HEAVY_SERIES"); }
+// trafficseries (traffic_cars.h): the TRAFFIC series on SELECT CAR (EXTRAS; B3NATIVE_TRAFFIC_SERIES)
+bool traffic_series_wanted() { return extra_on(b3settings::kExtraTrafficSeries, "B3NATIVE_TRAFFIC_SERIES"); }
+// customseries (extra_cars.h): the CUSTOM / BETA series on SELECT CAR when their folder has a car (EXTRAS, read at the
+// start; B3NATIVE_CUSTOM_SERIES for both)
+bool custom_series_wanted() { return extra_on(b3settings::kExtraCustomCars, "B3NATIVE_CUSTOM_SERIES"); }
+bool beta_series_wanted() { return extra_on(b3settings::kExtraBetaCars, "B3NATIVE_CUSTOM_SERIES"); }
+// titlefast (title_fast.h): the title's prompt and Start without the game's wait; B3NATIVE_TITLE_FAST=0: the game's
+bool title_fast_wanted() { return b3native::TitleFast::requested(); }
+// settingsback (settings_back.h): SETTINGS BACK BUTTON: $B3NATIVE_SETTINGS_BACK (0 / 1), else the setting (no renderer: Keep
+// changes, the default)
+int (*g_settings_back)() = nullptr;   // b3r_settings_back
+bool settings_back_wanted() {
+    if (const int e = b3native::settings_back_env(); e >= 0) return e == 1;
+    return g_settings_back ? g_settings_back() != 0 : true;
+}
+std::atomic<bool> g_restart{false};   // nextstart: APPLY AND RESTART asked (the run ends, then relaunch.h)
+int g_restart_boot_to = 0;             // START AT when it was asked
 std::atomic<bool> g_replay_paused{false};   // the viewer paused a replay (the stall watchdog then waits)
 
 // media1 (replay_card.h): the throwaway replay card removed on Ctrl+C / a terminate request. POSIX: the handler removes
@@ -790,14 +1014,16 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "native_play: no run log: %s\n", why.c_str());
             }
         }
+        // musicexit (Windows): without a run log, stdout and stderr still reach their file or pipe in whole lines
+        if (!b3native::runlog::logging() && b3native::runlog::start_lines()) b3native::g_crash_flush = &b3native::runlog::crash_flush;
     }
     {   // the top of every log: the build, the time, the command line
         std::printf("%s\n", b3port::version_line().c_str());
         std::printf("native_play: started %s (local time);", b3port::runlog::stamp(std::time(nullptr)).c_str());
         for (int k = 0; k < argc; ++k) std::printf(" %s", argv[k]);
         std::printf("\n");
-        if (b3native::runlog::state().active) std::printf("native_play: run log %s\n", b3native::runlog::state().path.c_str());
-        if (b3native::runlog::state().active && !sandbox_line.empty()) std::printf("%s\n", sandbox_line.c_str());   // robust2 review 2
+        if (b3native::runlog::logging()) std::printf("native_play: run log %s\n", b3native::runlog::state().path.c_str());
+        if (b3native::runlog::logging() && !sandbox_line.empty()) std::printf("%s\n", sandbox_line.c_str());   // robust2 review 2
         if (!offscreen) {   // portable mode (1.3.0): which data folder this run uses (include/b3port/user_dir.h)
             const b3io::UserDirChoice in_use = b3io::user_dir_choice();
             std::printf("native_play: data folder %s (%s)\n", b3io::u8string(in_use.dir).c_str(),
@@ -841,6 +1067,9 @@ int main(int argc, char** argv) {
         const b3native::replay::Compat c = b3native::replay::compatible(*replay_in, {kElfSize, kElfFnv, b3port::version()});
         if (c.verdict == b3native::replay::Compat::kRefuse) return refuse("The replay " + name + " cannot be played here. " + c.text);
         if (c.verdict == b3native::replay::Compat::kWarn) std::printf("native_play: replay: %s\n", c.text.c_str());
+        if (const std::string* form = replay_in->option("ram_hash"); b3port::ram_hash_form(form) < 0)   // ghvariant
+            return refuse("The replay " + name + " checks the game's memory in a form this version does not know (ram_hash " + *form +
+                          "): it was made by a newer version of the port.");
         for (const char* n : b3native::replay::kGameEnv) {
             if (const std::string* v = replay_in->option(std::string("env.") + n)) env_set(n, *v);
             else env_unset(n);
@@ -993,7 +1222,7 @@ int main(int argc, char** argv) {
             std::string last_log;
             if (d.safe && !d.forced && !pref.empty()) {   // the previous run's log (this run's is the newest)
                 const std::filesystem::path dir = b3port::runlog::logs_dir(pref);
-                const std::string mine = b3native::runlog::state().active ? b3port::runlog::detail::run_of(b3io::u8path(b3native::runlog::state().path)) : "";
+                const std::string mine = b3native::runlog::logging() ? b3port::runlog::detail::run_of(b3io::u8path(b3native::runlog::state().path)) : "";
                 for (const std::string& r : b3port::runlog::runs(dir))
                     if (r != mine) { last_log = b3mod::path_utf8(dir / (r + ".log")); break; }
                 overrun = !last_log.empty() && b3settings::log_shows_guard_overrun(last_log);
@@ -1240,7 +1469,7 @@ int main(int argc, char** argv) {
             std::fflush(stderr);
             if (!offscreen)
                 tell_user("cannot start", b3native::render_load::render_load_message(e, lib ? lib : "b3render.dll",
-                                              b3native::runlog::state().active ? b3native::runlog::state().path : std::string()),
+                                              b3native::runlog::logging() ? b3native::runlog::state().path : std::string()),
                           exe_dir);
             return 2;
         }
@@ -1267,22 +1496,36 @@ int main(int argc, char** argv) {
         r.focused = reinterpret_cast<int (*)()>(sym("b3r_focused"));
         r.pad_context = reinterpret_cast<void (*)(int)>(sym("b3r_pad_context"));
         r.quit_requested = reinterpret_cast<int (*)()>(sym("b3r_quit_requested"));
+        r.restart_requested = reinterpret_cast<int (*)()>(sym("b3r_restart_requested"));   // nextstart
         r.close = reinterpret_cast<int (*)(std::uint32_t)>(sym("b3r_close"));
         r.perf_on = reinterpret_cast<int (*)()>(sym("b3r_perf_on"));   // perf3
         r.perf_add = reinterpret_cast<void (*)(int, std::uint64_t)>(sym("b3r_perf_add"));
         r.audio_push = reinterpret_cast<void (*)(const std::int16_t*, std::size_t)>(sym("b3r_audio_push"));
+        r.audio_late = reinterpret_cast<unsigned long long (*)()>(sym("b3r_audio_late"));   // stutter
+        r.audio_quiet = reinterpret_cast<void (*)(int)>(sym("b3r_audio_quiet"));            // loadaudio
+        r.feed_full = reinterpret_cast<int (*)()>(sym("b3r_feed_full"));                    // trafmem
+        r.feed_hold = reinterpret_cast<unsigned (*)()>(sym("b3r_feed_hold"));               // trafmem
         r.settings_open = reinterpret_cast<int (*)()>(sym("b3r_settings_open"));
         r.settings_active = reinterpret_cast<int (*)()>(sym("b3r_settings_active"));
         r.set_paused = reinterpret_cast<void (*)(int)>(sym("b3r_set_paused"));   // photo mode
         r.photo_row = reinterpret_cast<int (*)()>(sym("b3r_photo_row"));   // photorow1
         r.photo_enter = reinterpret_cast<int (*)()>(sym("b3r_photo_enter"));
         g_photo_row = r.photo_row;
+        g_settings_back = reinterpret_cast<int (*)()>(sym("b3r_settings_back"));   // settingsback (an older b3render: none)
+        r.game_mods = reinterpret_cast<int (*)()>(sym("b3r_game_mods"));   // options3
+        g_game_mods = r.game_mods;
         r.date_format = reinterpret_cast<int (*)()>(sym("b3r_date_format"));   // mac5
         r.speed_units = reinterpret_cast<int (*)()>(sym("b3r_speed_units"));   // units1
+        r.boot_to = reinterpret_cast<int (*)()>(sym("b3r_boot_to"));   // gamemods1
+        r.idle_pause = reinterpret_cast<int (*)()>(sym("b3r_idle_pause"));
+        r.long_event_end = reinterpret_cast<int (*)()>(sym("b3r_long_event_end"));
+        r.takedown_pitch = reinterpret_cast<int (*)()>(sym("b3r_takedown_pitch"));   // hudmods
         r.record_replays = reinterpret_cast<int (*)()>(sym("b3r_record_replays"));   // replay1
         r.music = reinterpret_cast<int (*)(char*, int)>(sym("b3r_music"));   // custom soundtrack (remaster-features §6)
         r.music_volume = reinterpret_cast<int (*)()>(sym("b3r_music_volume"));   // musicvol1
+        r.music_loudness = reinterpret_cast<int (*)()>(sym("b3r_music_loudness"));   // musicloud
         r.other_music_apps = reinterpret_cast<int (*)()>(sym("b3r_other_music_apps"));   // nowplaying1
+        r.sound_output = reinterpret_cast<int (*)()>(sym("b3r_sound_output"));   // audioq
         r.now_playing = reinterpret_cast<void (*)(const char*)>(sym("b3r_now_playing"));
         // save1: the page's SAVES tab drives the card's profile file (export / import on the game's thread)
         if (auto set_hooks = reinterpret_cast<void (*)(int (*)(char*, int), void (*)(int, const char*), int (*)(char*, int))>(
@@ -1298,9 +1541,34 @@ int main(int argc, char** argv) {
         r.fast_loading = reinterpret_cast<int (*)()>(sym("b3r_fast_loading"));     // fastload1
         r.hide_save_screens = reinterpret_cast<int (*)()>(sym("b3r_hide_save_screens"));   // autosave1
         r.series_shoulders = reinterpret_cast<int (*)()>(sym("b3r_series_shoulders"));   // carsel1
+        r.extras = reinterpret_cast<int (*)()>(sym("b3r_extras"));   // extras
+        r.traffic_check = reinterpret_cast<int (*)()>(sym("b3r_traffic_check"));   // trafficcheck
+        g_traffic_check = r.traffic_check;
+        g_extras = r.extras;   // extras (logged once the renderer is open: b3r_extras reads its settings file)
+        r.game_options = reinterpret_cast<int (*)()>(sym("b3r_game_options"));   // gameopts
+        // (gameoptsfix, pre4.2: copied only after the lookup -- before it, g_game_options stayed null from gameopts on, so
+        // MIRROR MODE, CRASHBREAKER IN EVERY MODE and the PARTY MODES were never taken from the settings, only from
+        // $B3NATIVE_GAME_OPTIONS, which every check of them set)
+        g_game_options = r.game_options;
+        r.car_stats = reinterpret_cast<int (*)()>(sym("b3r_car_stats"));               // carstats1
+        r.turn_signals = reinterpret_cast<int (*)()>(sym("b3r_turn_signals"));         // blinkers1
+        r.road_rage_parts = reinterpret_cast<int (*)()>(sym("b3r_road_rage_parts"));   // rrparts1
+        r.party_keys = reinterpret_cast<int (*)()>(sym("b3r_party_keys"));       // party1
         r.race_time_page = reinterpret_cast<void (*)(int)>(sym("b3r_race_time_page"));   // todrace
         r.race_time_presses = reinterpret_cast<int (*)()>(sym("b3r_race_time_presses"));
+        r.night_setting = reinterpret_cast<int (*)()>(sym("b3r_night_setting"));   // raceopts
+        r.weather_setting = reinterpret_cast<int (*)()>(sym("b3r_weather_setting"));   // weather
+        r.effects_volume = reinterpret_cast<void (*)(int)>(sym("b3r_effects_volume"));   // weather
+        r.paint_page = reinterpret_cast<void (*)(int)>(sym("b3r_paint_page"));   // paintsel
+        r.paint_game = reinterpret_cast<void (*)(int)>(sym("b3r_paint_game"));
+        r.paint_presses = reinterpret_cast<int (*)()>(sym("b3r_paint_presses"));
+        r.shift_presses = reinterpret_cast<int (*)(int)>(sym("b3r_shift_presses"));   // gearbox
+        r.replay_presses = reinterpret_cast<int (*)()>(sym("b3r_replay_presses"));   // replayview
+        r.set_replay_showing = reinterpret_cast<void (*)(int)>(sym("b3r_set_replay_showing"));   // replaycams
+        r.replays = reinterpret_cast<int (*)()>(sym("b3r_replays"));
+        r.paint_toggle = reinterpret_cast<int (*)(int)>(sym("b3r_paint_toggle"));
         r.fast_forward = reinterpret_cast<void (*)(int)>(sym("b3r_fast_forward"));
+        r.game_behind = reinterpret_cast<void (*)(int)>(sym("b3r_game_behind"));
         r.scene_wait = reinterpret_cast<int (*)(int)>(sym("b3r_scene_wait"));   // loadlag1
         r.mod_rows = reinterpret_cast<void (*)(const char*)>(sym("b3r_mod_rows"));   // sdk2b
         r.mod_take = reinterpret_cast<int (*)(char*, int)>(sym("b3r_mod_take"));
@@ -1315,6 +1583,16 @@ int main(int argc, char** argv) {
         }
         const char* args = std::getenv("B3PORT_RENDER_ARGS");
         if (r.open(args ? args : "") != 0) { std::fprintf(stderr, "native_play: b3r_open_main failed\n"); return 2; }
+        if (!replay_in) {   // extras: the word the start takes (the extra cars below read it once)
+            const std::uint32_t x = extras_wanted();
+            std::printf("native_play: extras %08X (%s)%s\n", x, x == 0 ? "none: the game as it shipped" : x == b3settings::kExtrasAll ? "all" : "some",
+                        std::getenv("B3NATIVE_EXTRAS") && *std::getenv("B3NATIVE_EXTRAS") ? " from B3NATIVE_EXTRAS" : "");
+            // gameoptsfix: GAMEPLAY's / PARTY MODES' word the races will latch (settings_start_check asserts it)
+            const unsigned g = game_options_wanted();
+            std::printf("native_play: game options %u (%s)%s; traffic check (2 players) %u%s\n", g, b3native::game_options_name(g).c_str(),
+                        b3native::GameOptions::env_override() != ~0u ? " from B3NATIVE_GAME_OPTIONS" : "", traffic_check_wanted(),
+                        b3native::TrafficCheck::env_override() >= 0 ? " from B3NATIVE_TRAFFIC_CHECK" : "");
+        }
     }
     // replay1: where the replay goes -- --record-replay, or with RECORD REPLAYS On a window session's own file
     std::filesystem::path replay_out;
@@ -1370,6 +1648,8 @@ int main(int argc, char** argv) {
         struct CloseFeed { Render& r; ~CloseFeed() { r.close(5000); } } close_feed{r};
         b3native::install_crash_stack();   // this (the game's) thread reports a stack overflow too
         b3port::name_this_thread("game");   // split2p: the crash report names the faulting thread
+        b3native::sampler::start();   // slowcpu: B3_SAMPLE=<file> (off: nothing)
+        struct SamplerEnd { ~SamplerEnd() { b3native::sampler::stop_and_write(); } } sampler_end;
         // the backend, as native_boot sets it up
         std::size_t n = 0;
         const b3native::TableEntry* table = b3native::install(n);
@@ -1380,7 +1660,8 @@ int main(int argc, char** argv) {
             std::vector<std::uint8_t> d;
             b3asset::disc::read_file(elf, d);
             std::string err;
-            if (d.size() != kElfSize || b3host::fnv1a64(d.data(), d.size()) != kElfFnv) {
+            const b3port::KnownProgram* known = b3port::known_program(d.size(), b3host::fnv1a64(d.data(), d.size()));   // ghvariant
+            if (!known) {
                 std::fprintf(stderr, "native_play: %s is not the retail SLUS_210.50 (size %zu)\n", elf.c_str(), d.size());
                 const std::string chd = b3asset::disc::image_error(game);   // chd1: a CHD that cannot be read: why
                 if (!chd.empty()) std::fprintf(stderr, "native_play: %s\n", chd.c_str());
@@ -1393,6 +1674,9 @@ int main(int argc, char** argv) {
                                                                    "needs that disc's files.", exe_dir);
                 return 2;
             }
+            if (!known->retail)
+                std::printf("native_play: %s: %s (accepted: the port runs the retail code; the patch changes only names and code it "
+                            "never runs, b3port/game_program.h)\n", elf.c_str(), known->name);
             if (!nb->load_elf_bytes(d, elf, err)) { std::fprintf(stderr, "native_play: ELF: %s\n", err.c_str()); return 2; }
         }
         b3native::platform::install_hw_model(*nb);
@@ -1464,17 +1748,288 @@ int main(int argc, char** argv) {
             }
             std::fflush(stdout);
         }
+        std::unique_ptr<b3native::LanePairFix> lane_pair_fix;   // the draft's lane pair line in 0x14CA20 (tools/native/lane_pair_fix.h)
+        if (b3native::LanePairFix::requested()) {
+            lane_pair_fix = std::make_unique<b3native::LanePairFix>();
+            if (!lane_pair_fix->install(hooks)) lane_pair_fix.reset();
+        }
+        std::unique_ptr<b3native::CrashRamFix> crash_ram_fix;   // the draft's ram flags in 0x1B1240 (tools/native/crash_ram_fix.h)
+        // (a replay playing: installed whatever $B3NATIVE_CRASH_RAM_FIX says, the recording's entry decides, as the other
+        // gameplay switches follow the recording)
+        if (b3native::CrashRamFix::requested() || replay_in) {
+            crash_ram_fix = std::make_unique<b3native::CrashRamFix>();
+            crash_ram_fix->set_on_query([] { return g_live.on ? g_live.crash_ram_fix : true; });   // (a replay: its entry)
+            if (!crash_ram_fix->install(hooks)) crash_ram_fix.reset();
+        }
+        // carstats1 / blinkers1 / rrparts1 (car_stats.h, turn_signals.h, road_rage_parts.h): their rows from the renderer (latched in replays)
+        g_car_stats = r.car_stats;
+        g_turn_signals = r.turn_signals;
+        g_road_rage_parts = r.road_rage_parts;
+        std::unique_ptr<b3native::CarStats> car_stats;
+        if (b3native::CarStats::requested()) {
+            car_stats = std::make_unique<b3native::CarStats>();
+            if (!car_stats->install(hooks, &car_stats_on)) car_stats.reset();
+        }
+        std::unique_ptr<b3native::TurnSignals> turn_signals;
+        if (b3native::TurnSignals::requested()) {
+            turn_signals = std::make_unique<b3native::TurnSignals>();
+            if (!turn_signals->install(hooks, &turn_signals_on)) turn_signals.reset();
+        }
+        std::unique_ptr<b3native::RoadRageParts> road_rage_parts;
+        if (b3native::RoadRageParts::requested()) {
+            road_rage_parts = std::make_unique<b3native::RoadRageParts>();
+            if (!road_rage_parts->install(hooks, &road_rage_parts_on)) road_rage_parts.reset();
+        }
         std::unique_ptr<b3native::PcMenu> pc_menu;   // mac5: the main menu's PC SETTINGS / QUIT GAME rows (tools/native/pc_menu.h)
         if (b3native::PcMenu::requested()) {
             pc_menu = std::make_unique<b3native::PcMenu>();
             if (!pc_menu->install(hooks)) pc_menu.reset();
-            else pc_menu->set_photo_row_query([] { return g_live.on ? g_live.photo_row : photo_row_wanted(); });   // photorow1
+            else {
+                pc_menu->set_photo_row_query([] { return g_live.on ? g_live.photo_row : photo_row_wanted(); });   // photorow1
+                // 1.3.1: the help texts shown in the game's language (the renderer's; the game lays out 1.3.0's)
+                pc_menu->set_help_text(b3native::platform::disc::language_text(),
+                                       [](b3host::gaddr at, const std::u16string& t) { b3gv_native::set_ticker_text(at, t); });
+            }
         }
+        std::unique_ptr<b3native::GameOptions> game_options = std::make_unique<b3native::GameOptions>();   // gameopts
+        game_options->set_query([] { return g_live.on ? g_live.game_options : game_options_wanted(); });
+        if (!game_options->install(hooks)) game_options.reset();
+        std::unique_ptr<b3native::PartyModes> party = std::make_unique<b3native::PartyModes>();   // party1 (party_modes.h)
+        if (!game_options || !party->install(hooks)) party.reset();
+        std::unique_ptr<b3native::SingleEliminator> single_eliminator;   // elim1 (tools/native/single_eliminator.h)
+        // A replay recorded before the row existed (no "single_eliminator" option) plays with retail's four modes: its
+        // Downs on SELECT MODE meant those rows
+        const std::string* elim_opt = replay_in ? replay_in->option("single_eliminator") : nullptr;
+        if (replay_in && !(elim_opt && *elim_opt == "1"))
+            std::printf("single_eliminator: the replay was recorded without the ELIMINATOR row: SELECT MODE as retail\n");
+        else if (replay_in || b3native::SingleEliminator::requested()) {
+            // integfix: a replay recorded with the row needs it: B3NATIVE_ELIMINATOR=0 (a comparison switch) is not taken
+            // then (its SELECT MODE Downs meant these rows; without them the playback would run apart)
+            if (replay_in && !b3native::SingleEliminator::requested())
+                std::printf("single_eliminator: B3NATIVE_ELIMINATOR=0 ignored: the replay was recorded with the ELIMINATOR row\n");
+            single_eliminator = std::make_unique<b3native::SingleEliminator>();
+            // extras: SELECT MODE's ELIMINATOR row with its EXTRAS row on ($B3NATIVE_ELIMINATOR=1: on; a replay: its word)
+            single_eliminator->set_row_query([] { return extra_on(b3settings::kExtraEliminator, "B3NATIVE_ELIMINATOR"); });
+            if (!single_eliminator->install(hooks)) single_eliminator.reset();
+        }
+        std::unique_ptr<b3native::RaceOptions> race_opts;   // raceopts: SELECT OPTIONS' own rows (tools/native/race_options.h)
+        // replay compatibility: a recording made with the rows says so in its header ("race_opts" 1); one without it (made
+        // before them, or with them off) plays on the game's own page, as recorded
+        const bool race_opts_on = replay_in ? [&] { const std::string* o = replay_in->option("race_opts"); return o && *o == "1"; }()
+                                            : b3native::RaceOptions::requested();
+        if (replay_in) std::printf("native_play: replay: SELECT OPTIONS %s\n", race_opts_on ? "with the race option rows (as recorded)"
+                                                                                             : "as the game's own (recorded without the race option rows)");
+        if (race_opts_on) {
+            race_opts = std::make_unique<b3native::RaceOptions>();
+            race_opts->set_time_row([] { return g_live.on ? g_live.race_time_row : race_time_row_wanted(); });
+            race_opts->set_eliminator_query([&single_eliminator] { return single_eliminator && single_eliminator->selected(); });   // elim1: no LAPS
+            race_opts->set_language([] { return b3native::platform::disc::language_text(); });   // the rows' words
+            // extras: the SELECT OPTIONS rows the player has on ($B3NATIVE_RACE_OPTS=1: every row; a replay: its word)
+            race_opts->set_rows_query([] {
+                if (!g_live.on)
+                    if (const char* e = std::getenv("B3NATIVE_RACE_OPTS"); e && e[0] == '1' && !e[1]) return b3settings::kExtraRaceRows;
+                return extras_now() & b3settings::kExtraRaceRows;
+            });
+            race_opts->set_clock([] { return b3native::platform::vblank_count(); });   // options3: TRAFFIC PATTERN Varied
+            if (const char* e = std::getenv("B3_RACEOPTS_TEST_FINISH"); e && *e) race_opts->set_test_finish(std::atoi(e));   // checks only
+            race_opts->set_setting_night([&r] {
+                if (const char* e = std::getenv("B3_NIGHT"); e && *e) return e[0] != '0';   // (as the renderer: it wins)
+                return kRaceTimeThisRelease && r.night_setting && r.night_setting() == 1;
+            });
+            race_opts->set_weather_row([] { return g_live.on ? g_live.race_weather_row : race_weather_row_wanted(); });
+            race_opts->set_setting_rain([&r] {
+                if (const char* e = std::getenv("B3_WEATHER"); e && *e) return e[0] != '0' && e[0] != 'c';   // (as the renderer)
+                return b3native::kWeatherThisRelease && r.weather_setting && r.weather_setting() == 1;
+            });
+            // the LAPS row's "(Default)": the stage's own count in the track's GAMEDATA.BGD (race_choice.h race_bgd_laps), its
+            // path and stage id asked of the game as RequestOnePlayerGameMode 0x30C2C0 makes them [C]: the track list's
+            // CreateTrackPathFromIndex 0x251A30 (GetTrackIndexFromID 0x2518E0) + kacGameDataFileName, GtIDCompress
+            // 0x21AEF0 of "OffSgRcF" (D_0049BA40, RACE's). Once per track (kept for the run).
+            race_opts->set_track_laps([](std::uint64_t id) -> int {
+                static std::map<std::uint64_t, int> known;
+                static std::uint64_t stage = 0;
+                if (id == 0) return 0;
+                if (const auto it = known.find(id); it != known.end()) return it->second;
+                constexpr b3host::gaddr kTrackList = 0x005196A0u, kBuf = b3native::race_options_detail::kScratch;
+                if (stage == 0) stage = b3host::call_guest<std::uint64_t>(0x0021AEF0u, 0x0049BA40u);
+                const int idx = b3host::call_guest<int>(0x002518E0u, kTrackList, id);
+                int laps = 0;
+                std::string path;
+                if (idx >= 0) {
+                    b3host::store<std::uint32_t>(kBuf, 0);
+                    b3host::call_guest<void>(0x00251A30u, kTrackList, idx, kBuf, 256);
+                    for (b3host::gaddr a = kBuf; a < kBuf + 255u; ++a) {
+                        const char c = char(b3host::load<std::uint8_t>(a));
+                        if (!c) break;
+                        path += c;
+                    }
+                    const b3host::gaddr name = b3host::load<std::uint32_t>(0x004E1D14u) & 0x01FFFFFFu;   // kacGameDataFileName
+                    for (b3host::gaddr a = name; name && a < name + 64u; ++a) {
+                        const char c = char(b3host::load<std::uint8_t>(a));
+                        if (!c) break;
+                        path += c;
+                    }
+                    std::vector<std::uint8_t> bgd;
+                    const std::string host = b3native::platform::disc::resolve(path);
+                    if (!host.empty() && b3asset::disc::read_file(b3io::u8path(host), bgd)) laps = b3native::race_bgd_laps(bgd.data(), bgd.size(), stage);
+                    for (b3host::gaddr a = kBuf; a < kBuf + 256u; a += 4) b3host::store<std::uint32_t>(a, 0);
+                }
+                known[id] = laps;
+                std::printf("race_options: track %016llx (%s): %d laps\n", static_cast<unsigned long long>(id), path.c_str(), laps);
+                std::fflush(stdout);
+                return laps;
+            });
+            if (!race_opts->install(hooks)) race_opts.reset();
+        }
+        std::unique_ptr<b3native::BoostStart> boost_start;   // booststart (boost_start.h): BOOST START on START Standing
+        if (race_opts) {
+            boost_start = std::make_unique<b3native::BoostStart>();
+            boost_start->set_standing_query([&race_opts] { return race_opts && race_opts->choice().start != 0 && race_opts->race_active(); });
+            if (!boost_start->install(hooks)) boost_start.reset();
+        }
+        std::unique_ptr<b3native::TrafficCheck> traffic_check = std::make_unique<b3native::TrafficCheck>();   // trafficcheck
+        // the race's TRAFFIC CHECK when it starts: $B3NATIVE_TRAFFIC_CHECK (tests), else a two-player race's the setting's
+        // (TRAFFIC CHECK (2 PLAYERS); a replay: its entry), else SINGLE EVENT's SELECT OPTIONS row (raceopts' choice, which
+        // a replay holds in its race_options code)
+        traffic_check->set_query([&race_opts] {
+            if (const int e = b3native::TrafficCheck::env_override(); e >= 0) return unsigned(e);
+            if ((b3host::load<std::uint32_t>(b3native::kTcCurrentMode) & 0x01FFFFFFu) == b3native::kTcTwoPlayerStage)
+                return g_live.on ? g_live.traffic_check : traffic_check_wanted();
+            return race_opts && race_opts->race_active() ? unsigned(race_opts->choice().check) : 0u;
+        });
+        traffic_check->set_language([] { return b3native::platform::disc::language_text(); });   // the caption's words
+        if (!traffic_check->install(hooks)) traffic_check.reset();
+        std::unique_ptr<b3native::Gearbox> gearbox;   // gearbox (gearbox.h): TRANSMISSION Manual (raceopts' row)
+        if (race_opts && b3native::Gearbox::requested()) {
+            gearbox = std::make_unique<b3native::Gearbox>();
+            gearbox->set_manual_query([&race_opts] { return race_opts && race_opts->manual_gears(); });
+            if (!gearbox->install(hooks)) gearbox.reset();
+        }
+        std::unique_ptr<b3native::HeavyRace> heavy_race = std::make_unique<b3native::HeavyRace>();   // heavyseries (heavy_race.h)
+        heavy_race->set_on_query([] { return g_live.on ? g_live.heavy_series : heavy_series_wanted(); });
+        if (!heavy_race->install(hooks)) heavy_race.reset();
+        std::unique_ptr<b3native::GameMods> game_mods;   // options3 (tools/native/game_mods.h)
+        game_mods = std::make_unique<b3native::GameMods>();
+        game_mods->set_mask([] { return g_live.on ? g_live.game_mods : game_mods_wanted(); });
+        if (!game_mods->install(hooks)) game_mods.reset();
+        if (single_eliminator)   // elim1: TIMED ELIMINATION is raceopts' row (its choice for the race on now)
+            single_eliminator->set_timed_query([&race_opts] { return race_opts && race_opts->timed_elimination(); });
+        std::unique_ptr<b3native::TitleFast> title_fast = std::make_unique<b3native::TitleFast>();   // titlefast (title_fast.h)
+        title_fast->set_on_query([] { return g_live.on ? g_live.title_fast : title_fast_wanted(); });
+        if (!title_fast->install(hooks)) title_fast.reset();
+        std::unique_ptr<b3native::SettingsBack> settings_back = std::make_unique<b3native::SettingsBack>();   // settingsback
+        settings_back->set_keep_query([] { return g_live.on ? g_live.settings_back : settings_back_wanted(); });
+        if (!settings_back->install(hooks)) settings_back.reset();
+        std::unique_ptr<b3native::ReplayView> replay_view;   // replayview (replay_view.h)
+        // RACE REPLAY: on at the start (a replay file: as it was recorded, its "replays" option); off, none of it is hooked
+        const bool replays_on = replay_in ? (replay_in->option("replays") && *replay_in->option("replays") == "1")
+                                          : (r.replays && r.replays() != 0);
+        if (replays_on) {
+            replay_view = std::make_unique<b3native::ReplayView>();
+            if (!replay_view->install(hooks)) replay_view.reset();
+            else if (!replay_in) std::printf("native_play: RACE REPLAY on: the results pages offer Replay\n");   // (extrastart's check)
+        }
+        std::unique_ptr<b3native::WreckSlots> wreck_slots;   // wreckguard (wreck_slots.h): CrashTrafficBody bounded at 64
+        if (b3native::WreckSlots::requested()) {
+            wreck_slots = std::make_unique<b3native::WreckSlots>();
+            if (!wreck_slots->install(hooks)) wreck_slots.reset();
+        }
+        // trafficseries (traffic_cars.h): the series on SELECT CAR, and the race's traffic vehicles (B3_TRAFFIC_CARS="player=
+        // COMP/CAR18,rivals=COMP/CAR18": tests; gameopts' TUK-TUKS row: set_race_cars)
+        std::unique_ptr<b3native::TrafficCars> traffic_cars = std::make_unique<b3native::TrafficCars>();
+        traffic_cars->set_series_query([] { return g_live.on ? g_live.traffic_series : traffic_series_wanted(); });
+        if (const char* e = std::getenv("B3_TRAFFIC_CARS"); e && *e && !traffic_cars->configure(e))
+            std::fprintf(stderr, "native_play: B3_TRAFFIC_CARS=%s: not understood\n", e);
+        if (!traffic_cars->install(hooks)) traffic_cars.reset();
+        if (traffic_cars)   // paint3 (carousel_models.h): a traffic row's thumbnail drawn from its own model (its donor's picture
+                            // on the carousel), in the player's paint as the car on show and the race draw it (paint3b: a
+                            // traffic vehicle driven in a race is a race car slot's: the player's paint applies); classes 7 / 8
+                            // only while the series are offered
+                            // (TrafficCars::offered's test: otherwise they are the game's own, with pictures of their own)
+            b3native::chain_carousel_resolver([](int c, int i, bool& paintable) -> std::string {
+                if (c != b3native::kTrafficClass && c != b3native::kTrafficSpecialClass) return std::string();
+                if (!b3native::traffic_series_event(g_live.on ? g_live.traffic_series : traffic_series_wanted(),
+                                                    b3host::load<std::int32_t>(b3native::traffic_cars_detail::kChoices + 4u)))
+                    return std::string();
+                const std::vector<int> cars = b3native::traffic_series_cars(c);
+                if (i < 0 || std::size_t(i) >= cars.size()) return std::string();
+                paintable = true;
+                return b3native::traffic_table()[std::size_t(cars[std::size_t(i)])].name();
+            });
+        // customseries (extra_cars.h): the cars of the player's folder, after the traffic series. A replay plays with the
+        // cars it was made with ("extra_cars" in its header: each slot's donor and file hash) or none (no entry)
+        std::unique_ptr<b3native::ExtraCars> extra_cars;
+        {
+            const std::string* recorded = replay_in ? replay_in->option("extra_cars") : nullptr;
+            if (replay_in ? recorded != nullptr : custom_series_wanted() || beta_series_wanted()) {
+                auto x = std::make_unique<b3native::ExtraCars>();
+                // extras: a kind the player has off is not read (a replay: both, as recorded)
+                x->scan(replay_in || custom_series_wanted() ? b3native::ExtraCars::custom_dir() : std::filesystem::path(),
+                        replay_in || beta_series_wanted() ? b3native::ExtraCars::beta_dir() : std::filesystem::path());
+                if (recorded && x->entry() != *recorded) {
+                    std::fprintf(stderr, "native_play: replay: made with other custom cars (%s); the cars folder has %s: it cannot play as "
+                                 "recorded\n", recorded->c_str(), x->entry().empty() ? "none" : x->entry().c_str());
+                    return 2;
+                }
+                x->set_series_query([] { return true; });
+                if (const char* e = std::getenv("B3_EXTRA_CARS"); e && *e && !x->configure(e))
+                    std::fprintf(stderr, "native_play: B3_EXTRA_CARS=%s: not understood\n", e);
+                if (x->install(hooks)) extra_cars = std::move(x);
+            }
+        }
+        // extras: CUSTOM / BETA off this start (a live run): a remembered car of an off kind -- SELECT CAR's chosen one, the
+        // choices' slots, as a save restored from a session that had it -- races as its donor (a car no longer in its
+        // folder: COMPCAR1), so nothing looks up an id the game's list lacks. The folders are read for the donors only. Each
+        // change is an event of the recording ("extra_demote": the slot and the donor), which playback applies.
+        // B3NATIVE_EXTRAS_DEMOTE_TEST=1 (tests): both kinds treated as off here, so a chosen extra car shows it
+        struct ExtraOff {
+            bool custom = false, beta = false;
+            std::vector<b3native::ExtraCar> cars;
+            std::uint64_t demoted = 0;
+        };
+        static ExtraOff extra_off;
+        const bool demote_test = [] { const char* e = std::getenv("B3NATIVE_EXTRAS_DEMOTE_TEST"); return e && e[0] == '1'; }();
+        if (!replay_in && (demote_test || !custom_series_wanted() || !beta_series_wanted())) {
+            extra_off.custom = demote_test || !custom_series_wanted();
+            extra_off.beta = demote_test || !beta_series_wanted();
+            extra_off.cars = b3native::extra_scan_all(b3native::ExtraCars::custom_dir(), b3native::ExtraCars::beta_dir()).cars;
+        }
+        if (extra_cars)   // paint3 (carousel_models.h): a CUSTOM / BETA row's thumbnail drawn from its own model (its donor's
+                          // picture on the carousel), in the player's paint as the car on show; only while offered
+            b3native::chain_carousel_resolver([x = extra_cars.get()](int c, int i, bool& paintable) -> std::string {
+                std::string m = x->thumb_model(c, i);
+                if (!m.empty()) paintable = true;
+                return m;
+            });
         std::unique_ptr<b3native::CardSilence> card_silence;   // save1: no card messages (tools/native/card_silence.h)
         if (b3native::CardSilence::requested() && std::getenv("B3NATIVE_SAVES_ROOT")) {
             card_silence = std::make_unique<b3native::CardSilence>();
             if (!card_silence->install(hooks)) card_silence.reset();
         }
+        std::unique_ptr<b3native::MoreRivals> more_rivals;   // MORE RIVALS: up to 8 cars in a RACE (tools/native/more_rivals.h)
+        // replay compatibility: a recording made with it says so ("more_rivals" 1); one without it plays with RIVALS up to
+        // the game's 5 (its Right on 5 wrapped to 0)
+        const bool more_rivals_on = replay_in ? [&] { const std::string* o = replay_in->option("more_rivals"); return o && *o == "1"; }()
+                                              : b3native::MoreRivals::requested();
+        // (a playback takes B3NATIVE_MORE_RIVALS from the recording -- replay_file.h kGameEnv, set above -- so a =0 given
+        // to it is ignored; this refuses only a recording whose own environment says 0 against its header)
+        if (more_rivals_on && !b3native::MoreRivals::requested()) {   // (guest RAM was sized without its reservation)
+            std::fprintf(stderr, "native_play: the replay was recorded with MORE RIVALS; it cannot play with B3NATIVE_MORE_RIVALS=0\n");
+            return 2;
+        }
+        if (replay_in && !more_rivals_on) std::printf("more_rivals: the replay was recorded without MORE RIVALS: RIVALS up to the game's 5\n");
+        if (more_rivals_on) {
+            more_rivals = std::make_unique<b3native::MoreRivals>();
+            if (!more_rivals->install(hooks)) more_rivals.reset();
+            else {
+                more_rivals->set_eliminator_query([&single_eliminator] { return single_eliminator && single_eliminator->selected(); });
+                // extras: more than 5 rivals only with MORE RIVALS on (a test's B3NATIVE_MORE_RIVALS=6 / 7 forces a field: on)
+                more_rivals->set_on_query([] { return b3native::MoreRivals::forced() || extra_on(b3settings::kExtraMoreRivals, "B3NATIVE_MORE_RIVALS"); });
+            }
+        }
+        // extras: MORE RIVALS (RIVALS up to 7) only with its EXTRAS row on ($B3NATIVE_MORE_RIVALS=1: on; a replay: its word)
+        if (race_opts && more_rivals)
+            race_opts->set_rivals_max([] { return extra_on(b3settings::kExtraMoreRivals, "B3NATIVE_MORE_RIVALS") ? b3native::MoreRivals::kMaxRivals : 0; });
         // replay1 (src/native/replay_file.h): the session recorded (--record-replay, RECORD REPLAYS) or a replay played;
         // either way the live settings below are latched per VBlank (g_live)
         const b3native::replay::Report neutral_report = [] {
@@ -1487,8 +2042,35 @@ int main(int argc, char** argv) {
         std::unique_ptr<b3native::replay::Player> rplay;
         std::unique_ptr<b3native::TuningConsole> tuning;   // tune4 (installed below, before the table is sealed)
         bool units_recorded = false;   // units1: a "speed_units" entry is in the recording
+        bool limits_recorded = false;  // gamemods1: "idle_pause" / "long_event_end" entries are in the recording
+        bool game_mods_recorded = false;   // options3: a "game_mods" entry is in the recording
+        bool takedown_pitch_recorded = false;   // hudmods: a "takedown_pitch" entry is in the recording
         bool music_volume_recorded = false;   // musicvol1: a "music_volume" entry is in the recording
+        bool music_loudness_recorded = false;   // musicloud: a "music_loudness" entry is in the recording
         bool race_time_recorded = false;   // todrace: a "race_time" entry is in the recording
+        bool game_options_recorded = false;   // gameopts: a "game_options" entry is in the recording
+        bool party_moon_recorded = false;     // party1: the last "party_moon" entry recorded
+        unsigned game_options_shown = 0;      // gameopts: the race's latched options last logged / published
+        std::uint64_t game_options_fired = 0;  // gameopts: the Crashbreakers fired outside Crash mode, last logged
+        std::uint64_t race_opts_word = 0;  // raceopts: the race's record word last given to the renderer
+        bool traffic_check_recorded = false;   // trafficcheck: a "traffic_check" entry is in the recording
+        unsigned traffic_check_shown = 0;      // trafficcheck: the race's latched mode last logged / published
+        bool race_opts_active = false;     // raceopts: a Single Event stage of the page's mode is the game's mode
+        bool heavy_recorded = false;       // heavyseries: a "heavy_series" entry is in the recording
+        bool traffic_recorded = false;     // trafficseries: a "traffic_series" entry is in the recording
+        bool traffic_racing = false;       // trafficseries: a race with a traffic vehicle as the player's car
+        std::uint32_t traffic_shown = 0xFFFFFFFFu;   // trafficseries: SELECT CAR's series << 16 | car last seen
+        std::uint32_t extra_shown = 0xFFFFFFFFu;     // customseries: the same for CUSTOM
+        bool tuk_set = false;                        // party1: TUK-TUKS given to trafficseries (set_race_cars)
+        bool extra_racing = false;                   // customseries: a race with an extra car as the player's car
+        bool title_fast_recorded = false;  // titlefast: a "title_fast" entry is in the recording
+        bool settings_back_recorded = false;   // settingsback: a "settings_back" entry is in the recording
+        bool crash_ram_fix_recorded = false;   // crashramfix: a "crash_ram_fix" entry is in the recording
+        int title_seen = 0;                // titlefast: the title page's input (1) and its prompt (2) seen this visit (the log)
+        std::uint64_t title_input_vblank = 0;
+        bool extra_rows_recorded[3] = {};      // carstats1 / blinkers1 / rrparts1: "car_stats" / "turn_signals" / "road_rage_parts" entries are in it
+        bool heavy_racing = false;         // heavyseries: a heavyweight race is the game's (records kept apart)
+        std::uint32_t heavy_shown = 0xFFFFFFFFu;   // heavyseries: SELECT CAR's series << 16 | car last seen
         auto sample_live = [&](std::uint64_t v) {   // recording: the renderer's values for this VBlank
             char buf[1024] = {};
             g_live.date = r.date_format ? r.date_format() : 0;
@@ -1497,11 +2079,105 @@ int main(int argc, char** argv) {
             rrec->setting(v, "date_format", std::to_string(g_live.date));
             g_live.photo_row = photo_row_wanted();   // photorow1: the row changes the menu's navigation
             rrec->setting(v, "photo_row", g_live.photo_row ? "1" : "0");
+            g_live.game_mods = game_mods_wanted();   // options3: kept from the first VBlank it is not 0 (as speed units)
+            if (g_live.game_mods != 0 || game_mods_recorded) {
+                rrec->setting(v, "game_mods", std::to_string(g_live.game_mods));
+                game_mods_recorded = true;
+            }
+            // gameopts: GAMEPLAY's options (they change the race; kept from the first VBlank one is on)
+            g_live.game_options = game_options ? game_options_wanted() : 0u;
+            if (g_live.game_options != 0 || game_options_recorded) {
+                rrec->setting(v, "game_options", std::to_string(g_live.game_options));
+                game_options_recorded = true;
+            }
+            // extras: the word (the SELECT OPTIONS rows, SELECT MODE's ELIMINATOR, RIVALS' range change navigation): every VBlank, first (the rows below
+            // follow it)
+            g_live.extras = extras_wanted();
+            rrec->setting(v, "extras", std::to_string(g_live.extras));
+            g_live.race_time_row = race_time_row_wanted();   // raceopts: the row changes SELECT OPTIONS' navigation
+            if (g_live.race_time_row) rrec->setting(v, "race_time_row", "1");
+            g_live.race_weather_row = race_weather_row_wanted();   // condrows: the WEATHER row (also SELECT OPTIONS' navigation)
+            if (g_live.race_weather_row) rrec->setting(v, "race_weather_row", "1");
+            // raceopts: the page's choice from the first VBlank on (kept when it changes; the header says the rows are there)
+            if (race_opts) rrec->setting(v, "race_options", race_opts->choice().code());
+            // trafficcheck: TRAFFIC CHECKING (it changes the race; kept from the first VBlank it is on)
+            g_live.traffic_check = traffic_check ? traffic_check_wanted() : 0u;
+            if (g_live.traffic_check || traffic_check_recorded) {
+                rrec->setting(v, "traffic_check", std::to_string(g_live.traffic_check));
+                traffic_check_recorded = true;
+            }
+            // heavyseries: the series changes SELECT CAR's navigation (kept from the first VBlank it is on)
+            g_live.heavy_series = heavy_race && heavy_series_wanted();
+            if (g_live.heavy_series || heavy_recorded) {
+                rrec->setting(v, "heavy_series", g_live.heavy_series ? "1" : "0");
+                heavy_recorded = true;
+            }
+            // trafficseries: the series changes SELECT CAR's navigation (kept from the first VBlank it is on)
+            g_live.traffic_series = traffic_cars && traffic_series_wanted();
+            if (g_live.traffic_series || traffic_recorded) {
+                rrec->setting(v, "traffic_series", g_live.traffic_series ? "1" : "0");
+                traffic_recorded = true;
+            }
+            // titlefast: the title's wait changes when Start is taken (kept from the first VBlank it is on)
+            g_live.title_fast = title_fast && title_fast_wanted();
+            if (g_live.title_fast || title_fast_recorded) {
+                rrec->setting(v, "title_fast", g_live.title_fast ? "1" : "0");
+                title_fast_recorded = true;
+            }
+            // settingsback: Back on a SETTINGS page keeps its changes (kept from the first VBlank it is on)
+            g_live.settings_back = settings_back && settings_back_wanted();
+            if (g_live.settings_back || settings_back_recorded) {
+                rrec->setting(v, "settings_back", g_live.settings_back ? "1" : "0");
+                settings_back_recorded = true;
+            }
+            // crashramfix: the rammers' flags change the race once a rammer without a trailer rams (kept from the first VBlank
+            // it is on; a recording without it, as every older one: the draft's flags on playback)
+            g_live.crash_ram_fix = crash_ram_fix != nullptr;
+            if (g_live.crash_ram_fix || crash_ram_fix_recorded) {
+                rrec->setting(v, "crash_ram_fix", g_live.crash_ram_fix ? "1" : "0");
+                crash_ram_fix_recorded = true;
+            }
+            // carstats1 / blinkers1 / rrparts1: each row kept from the first VBlank it is on (a recording without the entry: off)
+            {
+                const bool now[3] = {r.car_stats && r.car_stats() != 0, r.turn_signals && r.turn_signals() != 0,
+                                     r.road_rage_parts && r.road_rage_parts() != 0};
+                const char* keys[3] = {"car_stats", "turn_signals", "road_rage_parts"};
+                g_live.car_stats = now[0];
+                g_live.turn_signals = now[1];
+                g_live.road_rage_parts = now[2];
+                for (int k = 0; k < 3; ++k)
+                    if (now[k] || extra_rows_recorded[k]) {
+                        rrec->setting(v, keys[k], now[k] ? "1" : "0");
+                        extra_rows_recorded[k] = true;
+                    }
+            }
             // units1: kept from the first VBlank it is KM/H (a recording at MPH, the game's, has no entry: as before)
             g_live.units = r.speed_units ? (r.speed_units() == 1 ? 1 : 0) : 0;
             if (g_live.units != 0 || units_recorded) {
                 rrec->setting(v, "speed_units", std::to_string(g_live.units));
                 units_recorded = true;
+            }
+            // gamemods1: START AT, from the first VBlank (read once, at the boot; a recording at the game's start has none)
+            if (v == 0) {
+                g_live.boot_to = r.boot_to ? r.boot_to() : 0;
+                if (const int f = b3native::BootBoost::forced(); f >= 0) g_live.boot_to = f;
+                if (g_live.boot_to != 0) rrec->setting(v, "boot_to", std::to_string(g_live.boot_to));
+                // and whether the save holds its profile, read now and kept (a replay does not depend on the local save)
+                g_live.boot_profile = g_live.boot_to >= 2 ? (start_at_profile_in_save(g_live.boot_to - 2) ? 1 : 0) : -1;
+                if (g_live.boot_profile >= 0) rrec->setting(v, "boot_profile", std::to_string(g_live.boot_profile));
+            }
+            // gamemods1: IDLE PAUSE / END VERY LONG EVENTS, kept from the first VBlank they are off (none: the game's)
+            g_live.idle_pause = r.idle_pause ? (r.idle_pause() == 0 ? 0 : 1) : 1;
+            g_live.long_event_end = r.long_event_end ? (r.long_event_end() == 0 ? 0 : 1) : 1;
+            if (g_live.idle_pause == 0 || limits_recorded) rrec->setting(v, "idle_pause", std::to_string(g_live.idle_pause));
+            if (g_live.long_event_end == 0 || limits_recorded) rrec->setting(v, "long_event_end", std::to_string(g_live.long_event_end));
+            limits_recorded = limits_recorded || g_live.idle_pause == 0 || g_live.long_event_end == 0;
+            // hudmods: TAKEDOWN STREAK PITCH, kept from the first VBlank it is on (a recording with it off has no entry: as
+            // before). It changes which of the game's takedown sounds play, so a replay plays them as recorded
+            g_live.takedown_pitch = r.takedown_pitch ? (r.takedown_pitch() == 1 ? 1 : 0) : 0;
+            if (g_live.takedown_pitch != 0 || takedown_pitch_recorded) {
+                rrec->setting(v, "takedown_pitch", std::to_string(g_live.takedown_pitch));
+                takedown_pitch_recorded = true;
             }
             rrec->setting(v, "music", std::to_string(g_live.music_mode) + "|" + g_live.music_dir);
             // musicvol1: CUSTOM MUSIC VOLUME, kept from the first VBlank it is not 100 % (a recording at 100 % has no
@@ -1510,6 +2186,11 @@ int main(int argc, char** argv) {
             if (g_live.music_volume != 100 || music_volume_recorded) {
                 rrec->setting(v, "music_volume", std::to_string(g_live.music_volume));
                 music_volume_recorded = true;
+            }
+            g_live.music_loudness = r.music_loudness ? r.music_loudness() : 1;   // musicloud: as music_volume (Even out: none)
+            if (g_live.music_loudness != 1 || music_loudness_recorded) {
+                rrec->setting(v, "music_loudness", std::to_string(g_live.music_loudness));
+                music_loudness_recorded = true;
             }
             // the music folder the game would play from (custom_soundtrack.h mode(): the environment wins)
             int mode = g_live.music_mode;
@@ -1523,6 +2204,8 @@ int main(int argc, char** argv) {
             }
         };
         bool replay_rumble = false;   // rumble1: playback's acknowledging mode (the recording's "rumble" setting)
+        std::string replay_extra_race;   // carpacks: the recording's last race's extra cars ("extra_race" events)
+        unsigned extra_race_serial = 0;
         auto apply_live = [&](std::uint64_t v) {   // playback: the recorded values from this VBlank on
             for (const b3native::replay::SettingOp* op : rplay->settings(v)) {
                 if (op->key == "rumble") replay_rumble = op->value == "1";
@@ -1531,11 +2214,49 @@ int main(int argc, char** argv) {
                     if (tuning && b3tune::parse_event_value(op->value, ev)) { ev.vblank = v; tuning->replayed(ev); }
                 }
                 else if (op->key == "photo_row") g_live.photo_row = op->value == "1";   // photorow1
+                else if (op->key == "traffic_check") g_live.traffic_check = b3native::traffic_check_entry(op->value.c_str());   // trafficcheck
+                else if (op->key == "game_mods") g_live.game_mods = std::uint32_t(std::strtoul(op->value.c_str(), nullptr, 10));   // options3
+                else if (op->key == "game_options") g_live.game_options = b3native::game_options_entry(op->value.c_str());   // gameopts
+                else if (op->key == "party_moon") g_live.party_moon = op->value == "1";   // party1
+                else if (op->key == "extra_race") replay_extra_race = op->value;   // carpacks: a race's extra cars as recorded
+                else if (op->key == "party_press") {   // party1: this VBlank's CRASH / AI DRIVER presses ("c<n> a<n>")
+                    int c = 0, a = 0;
+                    if (std::sscanf(op->value.c_str(), "c%d a%d", &c, &a) == 2) { g_live.party_crash += c; g_live.party_ai += a; }
+                }
+                else if (op->key == "race_time_row") g_live.race_time_row = op->value == "1";   // raceopts
+                else if (op->key == "race_weather_row") g_live.race_weather_row = op->value == "1";   // condrows
+                else if (op->key == "race_night_row") {}   // (the one-row CONDITIONS of extras' test builds: no meaning now)
+                else if (op->key == "title_fast") g_live.title_fast = b3native::title_fast_entry(op->value.c_str());   // titlefast
+                else if (op->key == "settings_back") g_live.settings_back = b3native::settings_back_entry(op->value.c_str());   // settingsback
+                else if (op->key == "crash_ram_fix") g_live.crash_ram_fix = op->value == "1";   // crashramfix
+                else if (op->key == "traffic_series") g_live.traffic_series = b3native::traffic_series_entry(op->value.c_str());   // trafficseries
+                else if (op->key == "heavy_series") g_live.heavy_series = b3native::heavy_series_entry(op->value.c_str());   // heavyseries
+                else if (op->key == "extras") g_live.extras = std::uint32_t(std::strtoul(op->value.c_str(), nullptr, 10)) & b3settings::kExtrasMask;   // extras
                 else if (op->key == "date_format") g_live.date = std::atoi(op->value.c_str());
                 else if (op->key == "speed_units") g_live.units = std::atoi(op->value.c_str()) == 1 ? 1 : 0;   // units1
+                else if (op->key == "boot_to") g_live.boot_to = std::atoi(op->value.c_str());   // gamemods1
+                else if (op->key == "boot_profile") g_live.boot_profile = op->value == "1" ? 1 : 0;
+                else if (op->key == "idle_pause") g_live.idle_pause = op->value == "0" ? 0 : 1;
+                else if (op->key == "long_event_end") g_live.long_event_end = op->value == "0" ? 0 : 1;
+                else if (op->key == "car_stats") g_live.car_stats = op->value == "1";               // carstats1
+                else if (op->key == "turn_signals") g_live.turn_signals = op->value == "1";         // blinkers1
+                else if (op->key == "road_rage_parts") g_live.road_rage_parts = op->value == "1";   // rrparts1
+                else if (op->key == "takedown_pitch") g_live.takedown_pitch = op->value == "1" ? 1 : 0;   // hudmods
                 else if (op->key == "now_playing") g_live.now_playing = op->value;   // nowplaying1
                 else if (op->key == "music_volume") g_live.music_volume = std::atoi(op->value.c_str());   // musicvol1
+                else if (op->key == "music_loudness") g_live.music_loudness = op->value == "0" ? 0 : 1;   // musicloud
                 else if (op->key == "race_time") g_live.race_time = std::atoi(op->value.c_str());   // todrace
+                else if (op->key == "car_viewer") g_live.car_viewer_request = true;   // gamemods1
+                else if (op->key == "extra_demote") {   // extras: a remembered extra car's slot given its donor
+                    unsigned at = 0;
+                    unsigned long long donor = 0;
+                    if (std::sscanf(op->value.c_str(), "%8X:%16llX", &at, &donor) == 2) g_live.demotes.emplace_back(b3host::gaddr(at), std::uint64_t(donor));
+                }
+                else if (op->key == "replay") g_live.replay_presses += 1;   // replayview: a REPLAY press that was acted on
+                else if (op->key == "shift") {   // gearbox: this VBlank's SHIFT UP / SHIFT DOWN presses ("u<n> d<n>")
+                    unsigned u = 0, d = 0;
+                    if (std::sscanf(op->value.c_str(), "u%u d%u", &u, &d) == 2) { g_live.shift_up += int(u); g_live.shift_down += int(d); }
+                }
                 else if (op->key == "music") {
                     const std::size_t bar = op->value.find('|');
                     g_live.music_mode = std::atoi(op->value.substr(0, bar).c_str());
@@ -1574,7 +2295,13 @@ int main(int argc, char** argv) {
 #endif
             h.info = {{"recorded", b3port::runlog::stamp(static_cast<std::time_t>(h.started))}, {"host", host}, {"build", b3port::version_line()}};
             h.options = {{"idle_skip", idle_skip ? "1" : "0"}, {"movie_skip", movie_skip_on ? "1" : "0"},
-                         {"explore_movies", explore_movies ? "1" : "0"}, {"strict", strict ? "1" : "0"}};
+                         {"explore_movies", explore_movies ? "1" : "0"}, {"strict", strict ? "1" : "0"},
+                         {"race_opts", race_opts ? "1" : "0"},   // raceopts: SELECT OPTIONS' rows (playback follows it)
+                         {"single_eliminator", single_eliminator ? "1" : "0"},   // elim1: SELECT MODE's fifth row
+                         {"more_rivals", more_rivals ? "1" : "0"},   // MORE RIVALS: RIVALS up to 7 (playback follows it)
+                         {"ram_hash", "2"}};   // ghvariant: the checkpoints leave the program variants' places out
+            if (extra_cars) h.options.emplace_back("extra_cars", extra_cars->entry());   // customseries: the cars (playback checks them)
+            h.options.emplace_back("replays", replay_view ? "1" : "0");   // replayview: RACE REPLAY (its hooks installed at the start)
             for (const char* name : b3native::replay::kGameEnv)
                 if (const char* e = std::getenv(name)) h.options.emplace_back(std::string("env.") + name, e);
             if (const std::string g = b3native::tuning_gameplay_ids(mod_overlay); !g.empty()) h.info.emplace_back("gameplay", g);   // tune4
@@ -1616,6 +2343,28 @@ int main(int argc, char** argv) {
         b3native::SpeedUnits speed_units;
         speed_units.install(hooks, [] { return g_live.on ? g_live.units : g_speed_units ? g_speed_units() : 0; },
                             [] { return static_cast<std::uint64_t>(b3native::platform::vblank_count()); });
+        static int (*g_boot_to)() = nullptr;   // gamemods1: PC SETTINGS > GAME > STARTING AND LOADING > START AT
+        g_boot_to = r.boot_to;
+        static b3native::BootBoost boot_boost;
+        boot_boost.install(hooks, [] { return g_live.on ? g_live.boot_to : g_boot_to ? g_boot_to() : 0; }, [](int slot) {
+            // a recording's (or this session's boot-time) answer; else the save now (an older recording: the local save)
+            if (g_live.on && g_live.boot_profile >= 0) return g_live.boot_profile == 1;
+            return start_at_profile_in_save(slot);
+        });
+        static int (*g_idle_pause)() = nullptr, (*g_long_event_end)() = nullptr;   // gamemods1: GAME > MODES
+        g_idle_pause = r.idle_pause;
+        g_long_event_end = r.long_event_end;
+        static b3native::GameLimits game_limits;
+        game_limits.install(hooks, [] { return g_live.on ? g_live.idle_pause : g_idle_pause ? g_idle_pause() : 1; },
+                            [] { return g_live.on ? g_live.long_event_end : g_long_event_end ? g_long_event_end() : 1; });
+        WorldTourRequest::install(hooks);   // extras: NIGHT / RAIN IN WORLD TOUR's events (the request noted)
+        static b3native::CarViewer car_viewer;   // gamemods1: the retail car viewer, from YOUR GARAGE (car_viewer.h)
+        car_viewer.install(hooks, [] { return static_cast<std::uint64_t>(b3native::platform::vblank_count()); });
+        static int (*g_takedown_pitch)() = nullptr;   // hudmods: PC SETTINGS > AUDIO > SOUND > TAKEDOWN STREAK PITCH
+        g_takedown_pitch = r.takedown_pitch;
+        b3native::TakedownPitch takedown_pitch;
+        takedown_pitch.install(hooks, [] { return g_live.on ? g_live.takedown_pitch : g_takedown_pitch ? g_takedown_pitch() : 0; },
+                               [] { return static_cast<std::uint64_t>(b3native::platform::vblank_count()); });
         b3native::TrainingVoice training_voice;   // 1.3.0 VOICES: the race training's narration (English: nothing wrapped)
         if (!g_voice_code.empty()) training_voice.install(hooks, g_voice_code);
         // the ONLINE dialog's words: the port's own instead of the PS2's "no network adaptor" (tools/native/online_message.h;
@@ -1627,6 +2376,8 @@ int main(int argc, char** argv) {
         g_music = r.music;
         static int (*g_music_volume)() = nullptr;   // musicvol1: CUSTOM MUSIC VOLUME
         g_music_volume = r.music_volume;
+        static int (*g_music_loudness)() = nullptr;   // musicloud: CUSTOM MUSIC LOUDNESS
+        g_music_loudness = r.music_loudness;
         b3native::CustomSoundtrack custom_soundtrack;
         custom_soundtrack.set_volume_source([] {   // B3NATIVE_MUSIC_VOLUME=<0..200> overrides it (tests), as _MODE does
             static const int forced = [] {
@@ -1636,6 +2387,15 @@ int main(int argc, char** argv) {
             if (forced >= 0) return forced;
             if (g_live.on) return g_live.music_volume;   // replay1: the latched value
             return g_music_volume ? g_music_volume() : 100;
+        });
+        custom_soundtrack.set_loudness_source([] {   // B3NATIVE_MUSIC_LOUDNESS=0|1 overrides it (tests)
+            static const int forced = [] {
+                const char* e = std::getenv("B3NATIVE_MUSIC_LOUDNESS");
+                return e && (*e == '0' || *e == '1') ? *e - '0' : -1;
+            }();
+            if (forced >= 0) return forced;
+            if (g_live.on) return g_live.music_loudness;   // replay1: the latched value
+            return g_music_loudness ? g_music_loudness() : 1;
         });
         if (!std::getenv("B3NATIVE_MUSIC_OFF"))   // B3NATIVE_MUSIC_OFF=1: not installed (comparisons)
             custom_soundtrack.install(hooks, [](char* folder, int max) {
@@ -1882,6 +2642,33 @@ int main(int argc, char** argv) {
             return std::int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count());
         };
         b3native::Pacer pacer;   // play1's pacing rule (fast_load.h)
+        b3native::BehindWatch behind;   // slowcpu: the game behind real time -> the renderer holds to 60 (fast_load.h)
+        std::uint64_t behind_times = 0;
+        double behind_s = 0.0;
+        clock::time_point behind_since{};
+        std::uint64_t stall_count = 0;           // stutter: runs of late VBlanks that fell more than 2 VBlanks behind
+        double stall_max_ms = 0, stall_run_ms = 0;
+        bool stall_run = false;
+        std::uint64_t stall_from = 0, stall_len = 0;
+        const std::vector<std::pair<std::uint64_t, int>> stall_inject = [] {   // B3NATIVE_STALL (checks only)
+            std::vector<std::pair<std::uint64_t, int>> out;
+            const char* e = std::getenv("B3NATIVE_STALL");
+            for (const char* p = e; p && *p;) {
+                char* q = nullptr;
+                const unsigned long long at = std::strtoull(p, &q, 10);
+                if (!q || *q != ':') break;
+                const long ms = std::strtol(q + 1, &q, 10);
+                if (ms > 0 && ms <= 5000) out.emplace_back(at, int(ms));
+                p = q && *q == ',' ? q + 1 : nullptr;
+            }
+            std::sort(out.begin(), out.end());
+            return out;
+        }();
+        std::size_t next_stall = 0;
+        unsigned long long audio_late_seen = 0;  // stutter: the sound's dry runs logged so far
+        b3native::FeedWait feed_wait;            // trafmem
+        std::uint64_t feed_waits = 0;            // trafmem: the waits for the shot runner's full hold, and their time
+        double feed_wait_ms = 0;
         std::int64_t perf_prev_out = 0, perf_pace_from = 0;   // perf3: the previous hook's end, the pacing wait's start
         pacer.period = std::int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(period).count());
         pacer.base = ns_of(start);
@@ -1962,6 +2749,7 @@ int main(int argc, char** argv) {
                             replay.mods().empty() ? "none" : replay.mods().c_str(), now.empty() ? "none" : now.c_str());
         }
         bool pad_driving = false;
+        b3native::PadContext pad_ctx = b3native::PadContext::kMenus;   // padskip (pad_context.h)
         std::uint64_t accel_seen = 0, accel_vblank = 0;
         bool game_paused = false;   // photo mode: the race's pause menu is up
         std::uint64_t pause_seen = 0, pause_vblank = 0;
@@ -1979,8 +2767,20 @@ int main(int argc, char** argv) {
                     if (!c) break;
                     n.push_back(c);
                 }
-                std::printf("native_play: VBlank %llu: movie %s (decoder 0x%08X, flags %u)\n",
-                            static_cast<unsigned long long>(b3native::platform::vblank_count()), n.c_str(), a[0], a[5]);
+                // movielog (issue #17): one line per start, not per Prepare call. The game calls Prepare again until the
+                // movie is ready (func_003AB0A0 busy-waits on it, CB3BackgroundComponent::Update once a frame), and while
+                // the previous movie's file is still open (its close ends at the next VBlank) that is ~3000 calls in one
+                // VBlank: a line and a flush each made it seconds of wall time (late VBlanks, resyncs, the sound dry).
+                // The same movie called again within 2 VBlanks is the same start: counted, and summed up once.
+                static b3native::MovieLog log;   // (movie_skip.h)
+                const std::uint64_t v = b3native::platform::vblank_count();
+                std::uint64_t retried = 0;
+                if (!log.call(n, v, &retried)) return;
+                if (retried)
+                    std::printf("native_play: movie %s: %llu Prepare calls before it played (the game waits for its file)\n",
+                                log.prev.c_str(), static_cast<unsigned long long>(retried));
+                std::printf("native_play: VBlank %llu: movie %s (decoder 0x%08X, flags %u)\n", static_cast<unsigned long long>(v),
+                            n.c_str(), a[0], a[5]);
                 std::fflush(stdout);
             }))
             std::printf("native_play: no game view watch: movies are not skippable\n");
@@ -1996,6 +2796,12 @@ int main(int argc, char** argv) {
         b3native::input::ShoulderSeries series1, series2;
         bool series_on = false, series_page = false;
         b3native::RaceTime race_time;   // todrace (race_time.h): DAY / NIGHT per race on the track pages
+        b3native::PaintSelect paint_sel;   // paintsel (paint_select.h): the car paint panel, the game's colour choice
+        int paint_page_given = -1;          // what the renderer was last told (b3r_paint_page)
+        std::vector<std::uint8_t> carousel_last;   // paint3: the slots last published (serial 0), empty: none
+        std::uint32_t carousel_serial = 0;
+        bool elim_on = false;             // elim1: an Eliminator stage is on (single_eliminator.h racing())
+        std::uint64_t records_word = 0;   // raceopts / elim1: the record word last given to the renderer (records.h)
         bool race_page = false, race_published = false;
         std::uint32_t series_shown = 0xFFFFFFFFu;   // the carousel's series / car last logged (while on)
         auto series_apply = [&](b3native::input::ShoulderSeries& t, std::array<unsigned char, 32>& rep, int port, std::uint64_t vb) {
@@ -2011,6 +2817,7 @@ int main(int argc, char** argv) {
         };
         // fastload1: FAST LOADING (fast_load.h). The loading screen's spans are logged in every run (VBlanks, wall time).
         b3native::FastLoad fast_load;
+        bool prepace_ff = false;   // ownertests: the display / sound as a fast load's (see below; --pace-from only)
         bool load_up = false, fast_setting = false, fast_setting_known = false;
         bool autosave_up = false, span_is_load = false;   // autosave1
         const bool page_log = std::getenv("B3NATIVE_PAGE_LOG") != nullptr;
@@ -2180,7 +2987,9 @@ int main(int argc, char** argv) {
             // live settings for this VBlank
             if (rplay && v > replay_in->vblanks) { end_reason = "the replay ended"; throw PlayEnd(end_reason); }
             if ((rrec || rplay) && v % check_every == 0) {
-                const std::uint64_t hash = replay_ram_hash();
+                // ghvariant: a recording's "ram_hash" 2 (every new one) leaves the program variants' places out; older ones not
+                static const bool masked = !rplay || b3port::ram_hash_form(replay_in ? replay_in->option("ram_hash") : nullptr) == 1;
+                const std::uint64_t hash = replay_ram_hash(masked);
                 if (rrec) rrec->check(v, hash);
                 else if (const auto want = rplay->check(v)) {
                     ++checks_seen;
@@ -2195,6 +3004,48 @@ int main(int argc, char** argv) {
             }
             if (rrec) sample_live(v);
             else if (rplay) apply_live(v);
+            // audioq: SOUND OUTPUT (the sound only: the player's choice, a replay's too; the mixer takes it at its next VBlank)
+            if (r.sound_output) b3native::platform::set_sound_output_original(r.sound_output() != 0);
+            if (party) {   // party1: PARTY MODES' buttons for this VBlank (live: the window's; a replay: the recording's)
+                bool moon = false;
+                int crash = 0, ai = 0;
+                if (rplay) {
+                    moon = g_live.party_moon;
+                    crash = g_live.party_crash;
+                    ai = g_live.party_ai;
+                    g_live.party_crash = g_live.party_ai = 0;
+                } else if (r.party_keys) {
+                    const int k = r.party_keys();
+                    moon = (k & 1) != 0;
+                    crash = k >> 8 & 0xFF;
+                    ai = k >> 16 & 0xFF;
+                }
+                if (game_options) game_options->refresh();
+                const unsigned w = game_options ? game_options->latched() : 0u;
+                if (rrec) {   // MOON JUMP held: a setting (each change); each press: an event of its VBlank
+                    if (moon != party_moon_recorded) {
+                        rrec->setting(v, "party_moon", moon ? "1" : "0");
+                        party_moon_recorded = moon;
+                    }
+                    if (crash || ai) rrec->event(v, "party_press", "c" + std::to_string(crash) + " a" + std::to_string(ai));
+                }
+                if (replay_view && replay_view->showing()) moon = false, crash = ai = 0;   // replayview: none while a replay plays
+                party->set_input(w, moon, crash, ai);
+                if (replay_view && (moon || crash || ai)) replay_view->spoil("PARTY MODES' buttons were used (not in the game's recording)");   // replayview
+            }
+            if (traffic_cars) {   // party1: TUK-TUKS (PARTY MODES' word bit 6): every race car of a SINGLE EVENT race the
+                                  // tuk-tuk, trafficseries' traffic vehicle as a race car (set for RequestOnePlayerGameMode,
+                                  // which reads it; the race keeps its records apart as a traffic vehicle's)
+                const bool tuk = ((g_live.on ? g_live.game_options : game_options_wanted()) & b3native::kPartyTuk) != 0;
+                if (tuk != tuk_set) {
+                    tuk_set = tuk;
+                    const int k = tuk ? b3native::traffic_index(b3native::gtid_compress("COMPCAR18")) : -1;
+                    traffic_cars->set_race_cars(k, k);
+                    std::printf("native_play: VBlank %llu: party_modes: TUK-TUKS %s\n", static_cast<unsigned long long>(v),
+                                tuk ? "on (SINGLE EVENT races: every race car the tuk-tuk, COMPCAR18)" : "off");
+                    std::fflush(stdout);
+                }
+            }
             if (rplay) {   // nowplaying1: the track the recording latched on this VBlank (never the system's)
                 b3nowplaying::Track t;
                 if (!g_live.now_playing.empty()) b3nowplaying::decode(g_live.now_playing, t);
@@ -2249,6 +3100,7 @@ int main(int argc, char** argv) {
             }
             std::array<unsigned char, 32> port1{};   // replay1: what port 2 was given this VBlank (recorded)
             bool port1_set = false;
+            b3native::sampler::vblank(v);   // slowcpu (B3_SAMPLE_FROM)
             if (v % 600 == 0) {
                 const auto now = clock::now();
                 const double s = std::chrono::duration<double>(now - rate_mark).count();
@@ -2268,6 +3120,7 @@ int main(int argc, char** argv) {
                 std::fflush(stdout);
                 while (!r.focused() && !r.quit_requested()) std::this_thread::sleep_for(std::chrono::milliseconds(20));
                 pacer.hold_ended(ns_of(clock::now()));
+                if (pacer.on) b3gv_native::set_vblank_stamp(std::uint64_t(pacer.stamp_ns()));   // stutter: no poll with the old stamp
                 rate_mark = clock::now();
                 std::printf("native_play: the focus is back; the game goes on\n");
                 std::fflush(stdout);
@@ -2288,6 +3141,10 @@ int main(int argc, char** argv) {
                     ++loads;
                     load_vblanks += v - load_from;
                     load_wall += w;
+                    if (behind.reset()) {   // slowcpu: a new race starts from the first hold again
+                        if (r.game_behind) r.game_behind(0);
+                        behind_s += std::chrono::duration<double>(now - behind_since).count();
+                    }
                     std::printf("native_play: VBlank %llu: loading screen gone after %llu VBlanks (%.2f s at %.2f Hz) in %.2f s wall%s; "
                                 "its sound: %llu frames audible\n",
                                 static_cast<unsigned long long>(v), static_cast<unsigned long long>(v - load_from),
@@ -2336,6 +3193,33 @@ int main(int argc, char** argv) {
             const b3native::FastLoad::Step fl =
                 fast_load.step(pace && !(pace_from && v < pace_from) && (loading ? fast_wanted : autosave), loading || autosave, quiet);
             if (fl.began) span_is_load = loading;
+            // trafmem: an offscreen shot runner whose hold is full (a shot still pending far behind this unpaced game: the
+            // feed keeps every race tick from the shot's warm-up on, ~0.3 MB each with TRAFFIC Extreme) holds the game
+            // here until the shot is taken (b3r_feed_full; wall time only, as the scene wait below: the same VBlanks with
+            // the same state). As long as the hold moves (the renderer taking its shots); 120 s without it (a renderer
+            // that stopped drawing): then on, and the feed's byte bound drops the oldest.
+            // (Fable: a wait that ran out is not started again for that hold: FeedWait)
+            if (r.feed_full && feed_wait.should_wait(r.feed_full() != 0, r.feed_hold ? r.feed_hold() : 0)) {
+                const auto t0 = clock::now();
+                auto moved = t0;
+                unsigned hold = r.feed_hold ? r.feed_hold() : 0;
+                const auto limit = std::chrono::nanoseconds(b3native::FeedWait::kLimitNs);
+                while (r.feed_full() && !r.quit_requested() && clock::now() - moved < limit) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                    if (const unsigned h = r.feed_hold ? r.feed_hold() : hold; h != hold) { hold = h; moved = clock::now(); }
+                }
+                if (r.feed_full() && clock::now() - moved >= limit) {
+                    feed_wait.ran_out(hold);
+                    std::fprintf(stderr, "native_play: VBlank %llu: the renderer's shot hold has not moved for %lld s: the game goes on (the feed drops its oldest ticks)\n",
+                                 static_cast<unsigned long long>(v), static_cast<long long>(b3native::FeedWait::kLimitNs / 1000000000));
+                }
+                const double ms = std::chrono::duration<double, std::milli>(clock::now() - t0).count();
+                ++feed_waits;
+                feed_wait_ms += ms;
+                if (feed_waits <= 5)
+                    std::printf("native_play: VBlank %llu: %.0f ms waiting for the renderer's shot (its feed held the ticks it needs)%s\n",
+                                static_cast<unsigned long long>(v), ms, feed_waits == 5 ? " (the next ones only counted)" : "");
+            }
             // loadlag1 (fast_load.h scene_hold_ms): the load is over but the renderer may still be building the race's
             // scene (its route came ~0.2-0.4 s before this VBlank, the build takes longer): the game waits here, before
             // its first race VBlank, so that the race is not heard under the loading screen. Wall time only (as the
@@ -2344,14 +3228,33 @@ int main(int argc, char** argv) {
                 const double spent = std::chrono::duration<double>(clock::now() - load_wall_from).count();
                 const int cap = b3native::scene_hold_ms(double(v - load_from) / hz, spent);
                 const int waited = r.scene_wait(cap);
-                std::printf("native_play: VBlank %llu: fast loading: %d ms waiting for the renderer's race scene (at most %d ms)\n",
-                            static_cast<unsigned long long>(v), waited, cap);
+                // scenewait: past the cap only while the renderer was still building the route or loading the race's
+                // vehicles (src/b3replay/fastforward.h scene_wait_more: up to 10 s)
+                std::printf("native_play: VBlank %llu: fast loading: %d ms waiting for the renderer's race scene (at most %d ms%s)\n",
+                            static_cast<unsigned long long>(v), waited, cap,
+                            waited > cap + 50 ? "; waited on: its route or the vehicles were still being prepared" : "");
                 std::fflush(stdout);
             }
-            if (fl.began || fl.ended) {
+            // ownertests (tools/release/owner_tests): with --pace-from, the unpaced stretch before it (a scripted front end,
+            // several times real time) is shown and heard as a fast load is: the newest frame, the sound muted (and not
+            // counted as dry), the ticks unstamped; the paced race after it starts as after any fast load. Without
+            // --pace-from the block below is the one that runs, as before
+            if (pace_from) {
+                const bool want = fl.fast || (pace && v < pace_from);
+                if (want != prepace_ff) {
+                    prepace_ff = want;
+                    b3gv_native::set_unstamped(want);
+                    if (r.fast_forward) r.fast_forward(want ? 1 : 0);
+                    sink.gate.set_muted(want);
+                    if (r.audio_quiet) r.audio_quiet(want ? 1 : 0);
+                }
+            } else if (fl.began || fl.ended) {
                 b3gv_native::set_unstamped(fl.fast);   // the load's ticks carry no latch stamp
                 if (r.fast_forward) r.fast_forward(fl.fast ? 1 : 0);   // the display: the newest frame
                 sink.gate.set_muted(fl.fast);          // its sound muted (a 1-VBlank fade each way)
+                // loadaudio: the output's dry run from here to the span's end (the scene wait above included) is this
+                // silence, not the game late (the device's count; the sound is the same)
+                if (r.audio_quiet) r.audio_quiet(fl.fast ? 1 : 0);
             }
             // play1's pacing (fast_load.h Pacer): this VBlank waits for its wall-clock time; fastload1: not while loading,
             // and the first VBlank after a load re-anchors (no catch-up). --pace-from: unpaced before N.
@@ -2359,6 +3262,8 @@ int main(int argc, char** argv) {
                 if (perf) perf_pace_from = ns_of(clock::now());
                 const std::int64_t due_ns = pacer.vblank(ns_of(clock::now()), pace_from && v < pace_from, pace_from && pacer.paced == 0, fl);
                 if (due_ns != b3native::Pacer::kNow) {
+                    b3native::sampler::idle(true);   // slowcpu: the wait is not the game's work
+                    struct IdleEnd { ~IdleEnd() { b3native::sampler::idle(false); } } idle_end;
                     const auto due = clock::time_point(std::chrono::duration_cast<clock::duration>(std::chrono::nanoseconds(due_ns)));
 #ifdef _WIN32
                     // mac5 (Windows 2026-11-09: the car shook back and forth in a race): Windows' sleeps end on its
@@ -2370,6 +3275,68 @@ int main(int argc, char** argv) {
 #else
                     std::this_thread::sleep_until(due);
 #endif
+                }
+                // slowcpu: behind real time (a slow CPU's race) -> the renderer draws no faster than the game meanwhile
+                if (!fl.fast && !(pace_from && v < pace_from) && behind.step(v, pacer.behind, pacer.resyncs)) {
+                    if (r.game_behind) r.game_behind(behind.behind ? 1 : 0);
+                    if (behind.behind) {
+                        behind_since = clock::now();
+                        if (++behind_times <= 5)
+                            std::printf("native_play: VBlank %llu: the game is behind real time (%.0f ms late): the renderer holds to 60 "
+                                        "frames a second until it keeps up for %s%s\n",
+                                        static_cast<unsigned long long>(v), double(pacer.behind) * 1e-6,
+                                        behind.hold() == b3native::BehindWatch::kForever ? "the rest of the race"
+                                        : behind.hold() == 180 ? "3 s" : behind.hold() == 600 ? "10 s" : "30 s",
+                                        behind_times == 5 ? " (not logged again)" : "");
+                    } else {
+                        behind_s += std::chrono::duration<double>(clock::now() - behind_since).count();
+                        if (behind_times <= 5)
+                            std::printf("native_play: VBlank %llu: the game keeps up again: the renderer's frame limit as set\n",
+                                        static_cast<unsigned long long>(v));
+                    }
+                    std::fflush(stdout);
+                }
+            }
+            // stutter (checks only): $B3NATIVE_STALL=<VBlank>:<ms>[,...]: the game thread stops that long at that VBlank,
+            // after its pacing wait (a hitch: the display clock's margin must not keep it)
+            while (next_stall < stall_inject.size() && stall_inject[next_stall].first <= v) {
+                if (stall_inject[next_stall].first == v) {
+                    std::printf("native_play: VBlank %llu: B3NATIVE_STALL: the game thread stops %d ms\n", static_cast<unsigned long long>(v),
+                                stall_inject[next_stall].second);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(stall_inject[next_stall].second));
+                }
+                ++next_stall;
+            }
+            // stutter: the polls' latch stamps: this VBlank's place on the schedule (0 unpaced: the poll's own time),
+            // marked when it started late
+            b3gv_native::set_vblank_stamp(pace && pacer.on ? std::uint64_t(pacer.stamp_ns()) : 0, pace && pacer.on && pacer.late());
+            // stutter: a stall (the game thread more than 2 VBlanks behind the schedule: the game, its sound and the
+            // display all wait): one line for each run of late VBlanks, when it has caught up (at most 20; the rest
+            // counted), and each time the sound ran dry, with the VBlank (the run log lines up the two)
+            if (pace && pacer.on) {
+                const double behind_ms = double(pacer.behind) * 1e-6;
+                if (!stall_run && behind_ms > 2.0 * double(pacer.period) * 1e-6) { stall_run = true; stall_from = v; stall_len = 0; stall_run_ms = 0; }
+                if (stall_run && pacer.late()) {
+                    ++stall_len;
+                    stall_run_ms = std::max(stall_run_ms, behind_ms);
+                } else if (stall_run) {
+                    stall_run = false;
+                    ++stall_count;
+                    stall_max_ms = std::max(stall_max_ms, stall_run_ms);
+                    if (stall_count <= 20)
+                        std::printf("native_play: VBlank %llu: a stall: the game thread fell %.1f ms behind its schedule, %s after %llu VBlanks%s\n",
+                                    static_cast<unsigned long long>(stall_from), stall_run_ms, stall_run_ms > 250.0 ? "re-anchored" : "caught up",
+                                    static_cast<unsigned long long>(stall_len), stall_count == 20 ? " (the next ones only counted)" : "");
+                }
+            }
+            if (r.audio_late) {
+                const unsigned long long u = r.audio_late();
+                if (u > audio_late_seen) {
+                    if (audio_late_seen < 20)
+                        // (loadaudio: the game late only; a fast load's silence is not counted, b3r_audio_quiet)
+                        std::printf("native_play: VBlank %llu: the sound ran dry (#%llu: the game's sound late; the device played silence until the queue refilled)\n",
+                                    static_cast<unsigned long long>(v), u);
+                    audio_late_seen = u;
                 }
             }
             if (perf) {
@@ -2402,13 +3369,19 @@ int main(int argc, char** argv) {
             {
                 const std::uint64_t calls = g_accel_calls.load(std::memory_order_relaxed);
                 if (calls != accel_seen) { accel_seen = calls; accel_vblank = v; }
-                const bool driving = accel_seen != 0 && v - accel_vblank < 4;
+                // padskip (pad_context.h): not in the game's replays (they re-run the player's car through the same calls) nor
+                // while a film plays: the menus' bindings there (the orbit camera still taken in a replay)
+                const b3native::PadContext ctx = b3native::pad_context(accel_seen != 0 && v - accel_vblank < b3native::kAccelRecentVBlanks,
+                                                                       b3host::load<std::uint8_t>(b3native::kReplayPlayback) != 0,
+                                                                       skip.film_playing());
+                const bool driving = ctx == b3native::PadContext::kDriving;
                 if (pad_driving) ++drive_vblanks;
                 if (driving && !pad_driving) ++drive_starts;   // replay1: the file's notes
-                if (driving != pad_driving) {
+                if (ctx != pad_ctx) {
+                    pad_ctx = ctx;
                     pad_driving = driving;
-                    if (r.pad_context) r.pad_context(driving ? 1 : 0);
-                    std::printf("native_play: VBlank %llu: keys: %s\n", static_cast<unsigned long long>(v), driving ? "driving" : "menus");
+                    if (r.pad_context) r.pad_context(int(ctx));
+                    std::printf("native_play: VBlank %llu: keys: %s\n", static_cast<unsigned long long>(v), b3native::pad_context_name(ctx));
                     std::fflush(stdout);
                 }
             }
@@ -2439,34 +3412,155 @@ int main(int argc, char** argv) {
                     series_shown = 0xFFFFFFFFu;
                 }
             }
+            if (r.effects_volume) {   // weather (§38): the game's EFFECTS volume [C func_0028B380: D_004F5074 x 0.01 to the
+                // effects' mix; func_003F2970 / 003F2FE0: the AUDIO page's row 0, 0..100 in steps of 5], read only, to the
+                // rain's sound (b3render NativeAudio: the rain in the same mix as the game's sound effects)
+                static int effects_sent = -1;
+                const int ev = int(b3host::load<std::uint8_t>(0x004F5074u));
+                if (ev != effects_sent) {
+                    effects_sent = ev;
+                    r.effects_volume(std::min(ev, 100));
+                }
+            }
             {   // todrace (race_time.h): DAY / NIGHT per race on the track pages. Live: the window's presses there; a
                 // replay: the recorded choice ("race_time", from the first VBlank it was not Default). The renderer gets
                 // the race's value and the label (nothing published before the page or a choice first shows)
                 const std::uint32_t page = b3host::load<std::uint32_t>(b3native::kMenuCurrentPage);
                 const std::uint32_t state = b3host::load<std::uint32_t>(b3native::kPageState);
-                const bool on_page = kRaceTimeThisRelease && b3native::race_time_page(page);   // (1.3.0: held back with night)
+                // raceopts: SELECT OPTIONS' TIME OF DAY / WEATHER rows (race_options.h) replace the label and its presses;
+                // the main menu puts the page's choices back to the defaults (no choice reaches World Tour or MULTIPLAYER)
+                const bool time_row = race_opts && (g_live.on ? g_live.race_time_row || g_live.race_weather_row
+                                                              : race_time_row_wanted() || race_weather_row_wanted());
+                if (race_opts && (page & 0x01FFFFFFu) == b3native::kRaceTimeMainMenu) race_opts->reset();
+                const bool label_way = kRaceTimeThisRelease && !time_row;
+                const bool on_page = label_way && b3native::race_time_page(page);   // (1.3.0: held back with night)
                 if (on_page != race_page) {
                     race_page = on_page;
                     if (r.race_time_page) r.race_time_page(on_page ? 1 : 0);
                 }
-                int presses = kRaceTimeThisRelease && r.race_time_presses ? r.race_time_presses() : 0;
+                int presses = label_way && r.race_time_presses ? r.race_time_presses() : 0;
                 const int choice_before = race_time.choice();
                 if (rplay) {
                     presses = 0;
                     race_time.set_choice(g_live.race_time);
+                } else if (time_row) {
+                    race_time.set_choice(race_opts->choice().time);
+                }
+                {   // extras: EXPERIMENTAL NIGHT / RAIN IN WORLD TOUR -- a World Tour event's conditions as its loading screen
+                    // comes up (the race takes the choice there): Always, or Random. Drawn only. A replay plays the recorded
+                    // choice ("race_time", set above), so nothing here runs then.
+                    // - A World Tour event: CB3MenuChoices +4 (the top menu, set when it is chosen: 0 World Tour, 1 Single
+                    //   Event, 2 Multiplayer) is World Tour's AND the one-player stage record (RequestOnePlayerGameMode
+                    //   0x30C2C0 fills it before the load) is World Tour's (+0x1B8 0x0051B928): a stale record alone (a later
+                    //   two-player or online load) is not one. The game's current mode is still the front end's then.
+                    // - Random: one roll per event, from the load's VBlank; a restart (a load with no front end page since
+                    //   the last one) keeps it, a new event (the globe between) rolls again.
+                    // - Any other load: a choice left from a World Tour event goes back to Default (the setting's), so it
+                    //   never reaches a Crash event, a two-player race or online; SINGLE EVENT keeps its page's choice.
+                    static bool wt_loading = false, fe_since_load = true, have_roll = false, roll_night = false, roll_rain = false;
+                    const bool loading_now = b3native::loading_page_up(page);
+                    if (!loading_now && (b3host::load<std::uint32_t>(0x0051BA88u) & 0x01FFFFFFu) == 0x0051A6A8u)   // CB3FrontEnd
+                        fe_since_load = true;
+                    if ((page & 0x01FFFFFFu) == b3native::kRaceTimeMainMenu || (page & 0x01FFFFFFu) == 0x01E97E1Cu)   // main menu, title
+                        WorldTourRequest::asked = false;
+                    if (!rplay && loading_now && !wt_loading) {
+                        const std::int32_t top = b3host::load<std::int32_t>(0x01E900B0u + 4u);
+                        // the load's kind (fast_load.h kLoadingKind): 2 into a race; 1 after one (to the menus, or a RESTART
+                        // into the same event); 3 between a Crash event's parts. A World Tour event's value is set on each of
+                        // its loads (a restart's too; the front end draws by day whatever it is); any other load, of any
+                        // kind, that is not SINGLE EVENT's with its row resets a left choice
+                        const std::uint32_t kind = b3host::load<std::uint32_t>(b3native::kLoadingKind);
+                        const bool world_tour = WorldTourRequest::asked && kind >= 1 && kind <= 3 && top == 0 &&
+                                                b3host::load<std::uint32_t>(0x0051AD00u + 0x1B8u) == 0x0051B928u;
+                        const std::uint32_t w = extras_now();
+                        const int nw = w & b3settings::kExtraNight ? b3settings::extras_world_tour_night(w) : 0;
+                        const int rw = w & b3settings::kExtraRain ? b3settings::extras_world_tour_rain(w) : 0;
+                        if (world_tour && (nw || rw)) {
+                            const bool again = !fe_since_load && have_roll;
+                            if (!again) {
+                                const std::uint32_t h = std::uint32_t(v) * 2654435761u;
+                                roll_night = h >> 31;
+                                roll_rain = h >> 30 & 1u;
+                                have_roll = true;
+                            }
+                            const bool night = nw == 1 || (nw == 2 && roll_night);
+                            const bool rain = rw == 1 || (rw == 2 && roll_rain);
+                            race_time.set_choice(night && rain ? b3native::kRaceTimeNightRain : night ? b3native::kRaceTimeNight
+                                                 : rain ? b3native::kRaceTimeRain : b3native::kRaceTimeDay);
+                            std::printf("native_play: VBlank %llu: time of day: a World Tour event %s (NIGHT %s, RAIN %s%s)\n",
+                                        static_cast<unsigned long long>(v), b3native::race_time_name(race_time.choice()),
+                                        nw == 1 ? "Always" : nw == 2 ? "Random" : "Off", rw == 1 ? "Always" : rw == 2 ? "Random" : "Off",
+                                        again && (nw == 2 || rw == 2) ? "; a restart: the same roll" : "");
+                        } else if (!(time_row && top == 1) && race_time.choice() != b3native::kRaceTimeDefault) {   // (any kind: online,
+                            // two-player, the attract demo never inherit it)
+                            race_time.set_choice(b3native::kRaceTimeDefault);
+                            std::printf("native_play: VBlank %llu: time of day: a load that is not a World Tour event: Default\n",
+                                        static_cast<unsigned long long>(v));
+                        }
+                        fe_since_load = false;
+                    }
+                    wt_loading = loading_now;
                 }
                 const b3native::RaceTime::Step st = race_time.step(page, state, b3native::loading_page_up(page), presses);
                 if (st.choice_changed || race_time.choice() != choice_before) {   // (a replay's: set before the step)
                     std::printf("native_play: VBlank %llu: time of day: %s (%s)\n", static_cast<unsigned long long>(v),
                                 b3native::race_time_name(race_time.choice()),
                                 (page & 0x01FFFFFFu) == b3native::kRaceTimeMainMenu ? "the main menu: back to the setting" :
-                                rplay ? "the replay's" : "a press on the track page");
+                                rplay ? "the replay's" :
+                                time_row ? ((page & 0x01FFFFFFu) == b3native::kSelectOptionsPage ? "SELECT OPTIONS' row" : "reset with SELECT OPTIONS")
+                                         : "a press on the track page");
                     std::fflush(stdout);
                     if (rrec && (race_time_recorded || race_time.choice() != b3native::kRaceTimeDefault)) {
                         rrec->setting(v, "race_time", std::to_string(race_time.choice()));
                         race_time_recorded = true;
                     }
                     if (!rplay) g_live.race_time = race_time.choice();
+                }
+                if (race_opts && race_opts->take_changed()) {   // raceopts: the page's choice (the log; the replay's entry)
+                    const b3native::RaceChoice& c = race_opts->choice();
+                    std::printf("native_play: VBlank %llu: race options: %s (traffic %s, laps %d, road rage rivals %d)\n",
+                                static_cast<unsigned long long>(v), c.code().c_str(), b3native::race_traffic_name(c.traffic),
+                                int(c.laps), c.rivals ? int(c.rivals) : b3native::kRoadRageRivals);
+                    std::fflush(stdout);
+                }
+                if (race_opts) {   // raceopts: the race on now and its options (the renderer keeps its records apart)
+                    const bool active = race_opts->race_active();
+                    if (active != race_opts_active) {   // the Single Event stage's AI cars [C RequestOnePlayerGameMode +0xA4]
+                        race_opts_active = active;
+                        if (active)
+                            std::printf("native_play: VBlank %llu: race options: a SINGLE EVENT stage (mode %d, %d AI cars, options %s)\n",
+                                        static_cast<unsigned long long>(v), race_opts->mode(), b3host::load<std::int32_t>(0x0051ADA4u),
+                                        race_opts->choice().code().c_str());
+                    }
+                    const std::uint64_t w = race_opts->race_record_word();
+                    if (w != race_opts_word) {
+                        race_opts_word = w;
+                        std::printf("native_play: VBlank %llu: race options: %s\n", static_cast<unsigned long long>(v),
+                                    w ? ("the race takes " + race_opts->choice().code() + ": records kept apart").c_str()
+                                      : "the game's own race");
+                        std::fflush(stdout);   // (the word goes to the renderer below, with the Eliminator's bit)
+                    }
+                }
+                if (traffic_check) {   // trafficcheck: the race's option (latched at its start) and the log (its records bits: below)
+                    traffic_check->refresh();
+                    const auto& tc = traffic_check->counts();   // (each event stamped with its VBlank: the shots' times)
+                    const std::uint64_t ev[6] = {tc.checks, tc.trick_shots + tc.skill_shots + tc.extreme_shots, tc.takedowns, tc.own_touches, tc.chains, tc.signs};
+                    static std::uint64_t ev_seen[6] = {};
+                    static const char* const kEv[6] = {"check", "shot", "takedown credited", "own wreck touched", "chain over", "sign"};
+                    for (int i = 0; i < 6; ++i)
+                        if (ev[i] != ev_seen[i]) {
+                            ev_seen[i] = ev[i];
+                            std::printf("native_play: VBlank %llu: traffic_check: %s (%llu in this run)\n", static_cast<unsigned long long>(v),
+                                        kEv[i], static_cast<unsigned long long>(ev[i]));
+                            std::fflush(stdout);
+                        }
+                    if (traffic_check->mode() != traffic_check_shown) {
+                        traffic_check_shown = traffic_check->mode();
+                        std::printf("native_play: VBlank %llu: traffic_check: %s%s\n", static_cast<unsigned long long>(v),
+                                    traffic_check_shown ? "TRAFFIC CHECKING in this race: " : "off",
+                                    traffic_check_shown ? (std::string(b3native::traffic_check_name(traffic_check_shown)) + " (records kept apart)").c_str() : "");
+                        std::fflush(stdout);
+                    }
                 }
                 if (st.race_changed) {
                     std::printf("native_play: VBlank %llu: time of day: the race takes %s\n", static_cast<unsigned long long>(v),
@@ -2475,12 +3569,332 @@ int main(int argc, char** argv) {
                 }
                 // B3_RACE_TIME_LABEL=0 (the golden record's pin, tools/golden/baseline.sh): no label (the choice still works)
                 static const bool label_on = [] { const char* e = std::getenv("B3_RACE_TIME_LABEL"); return !(e && e[0] == '0' && !e[1]); }();
-                const std::uint8_t opacity = label_on ? race_time.opacity() : 0;
-                if (race_published || race_time.race() != b3native::kRaceTimeDefault || opacity != 0 ||
-                    race_time.choice() != b3native::kRaceTimeDefault) {
+                const std::uint8_t opacity = label_on && label_way ? race_time.opacity() : 0;   // (raceopts: none without the label's way)
+                // (1.3.0: held back with night: nothing published at all, so no label on the track pages; raceopts: the
+                // TIME OF DAY row's tests (B3_RACE_TIME_ROW=1) publish the race's value, never a label)
+                if ((kRaceTimeThisRelease || time_row) && (race_published || race_time.race() != b3native::kRaceTimeDefault || opacity != 0 ||
+                                                           race_time.choice() != b3native::kRaceTimeDefault)) {
                     race_published = true;
                     b3gv_native::set_race_time(std::uint8_t(race_time.race()), std::uint8_t(race_time.choice()), opacity);
                 }
+            }
+            if (road_rage_parts) road_rage_parts->refresh();   // rrparts1: its records latch ends with the stage
+            if (game_options) {   // gameopts: the race's options (latched at its start), the log and the renderer's word
+                game_options->refresh();
+                if (game_options->counts().fired != game_options_fired) {
+                    game_options_fired = game_options->counts().fired;
+                    std::printf("native_play: VBlank %llu: game_options: a Crashbreaker went off (%llu in this run)\n",
+                                static_cast<unsigned long long>(v), static_cast<unsigned long long>(game_options_fired));
+                    std::fflush(stdout);
+                }
+                const unsigned now = game_options->latched() | game_options->record_bits() << 16;
+                if (now != game_options_shown) {
+                    game_options_shown = now;
+                    std::printf("native_play: VBlank %llu: game_options: %s%s\n", static_cast<unsigned long long>(v),
+                                b3native::game_options_name(game_options->latched()).c_str(),
+                                game_options->record_bits() ? " (records kept apart)" : "");
+                    std::fflush(stdout);
+                    b3gv_native::set_game_options(game_options->latched());   // (the mirror; records: the word below)
+                }
+            }
+            {   // titlefast: when the title takes input and when its PRESS START prompt shows (the log; read only, either way)
+                const bool on_title = (b3host::load<std::uint32_t>(b3native::kMenuCurrentPage) & 0x01FFFFFFu) == b3native::kTitlePage;
+                if (!on_title) title_seen = 0;
+                else {
+                    const bool input = b3host::load<std::uint32_t>(0x01E90424u) == 5u;
+                    const std::uint32_t prompt = b3host::load<std::uint32_t>(b3native::kTitleComponent + 0x1Cu) & 0x01FFFFFFu;
+                    const float alpha = prompt ? b3host::load<float>(prompt + 0x10u + 0xCu) : 0.0f;
+                    if (input && title_seen == 0) {
+                        title_seen = 1;
+                        title_input_vblank = v;
+                        std::printf("native_play: VBlank %llu: the title takes input\n", static_cast<unsigned long long>(v));
+                    }
+                    if (input && title_seen == 1 && alpha > 0.0f) {
+                        title_seen = 2;
+                        std::printf("native_play: VBlank %llu: the title's PRESS START prompt shows (%llu VBlanks after it takes input)\n",
+                                    static_cast<unsigned long long>(v), static_cast<unsigned long long>(v - title_input_vblank));
+                    }
+                    std::fflush(stdout);
+                }
+            }
+            if (extra_cars) {   // customseries: the vehicle list's entries once the game has it; SELECT CAR on CUSTOM (the log)
+                extra_cars->tick();
+                // carpacks (Fable's review): a race's extra cars by their bytes -- recorded with the replay; on playback the
+                // same files or the replay is reported as parted from its recording
+                if (extra_cars->race_serial() != extra_race_serial) {
+                    extra_race_serial = extra_cars->race_serial();
+                    const std::string& now_cars = extra_cars->race_entry();
+                    if (rrec && !now_cars.empty()) rrec->event(v, "extra_race", now_cars);
+                    // (a recording with no extra_race event -- one from before carpacks -- is not compared; the event is read by
+                    // apply_live in this same hook, before this test, so a race's own event is in hand here)
+                    if (rplay && !now_cars.empty() && !replay_extra_race.empty() && now_cars != replay_extra_race) {
+                        std::printf("native_play: replay: VBlank %llu: the race's extra car files are not the ones it was recorded with "
+                                    "(%s; recorded: %s)\n", static_cast<unsigned long long>(v), now_cars.c_str(),
+                                    replay_extra_race.empty() ? "none" : replay_extra_race.c_str());
+                        if (!replay_parted) replay_parted = v;
+                    }
+                }
+                const bool up = (b3host::load<std::uint32_t>(b3native::kMenuCurrentPage) & 0x01FFFFFFu) == b3native::kCarSelectPage;
+                const std::uint32_t now = up ? b3host::load<std::uint32_t>(b3native::kCarouselSeries) << 16 |
+                                                   (b3host::load<std::uint32_t>(b3native::kCarouselCar) & 0xFFFFu)
+                                             : 0xFFFFFFFFu;
+                if (now != extra_shown) {
+                    if (up && b3native::extra_series(int(now >> 16))) {
+                        const std::vector<int> cars = b3native::extra_series_cars(extra_cars->cars(), int(now >> 16));
+                        const std::uint32_t row = now & 0xFFFFu;
+                        const int code = int(now >> 16);   // carpacks: CUSTOM, CUSTOM 2, ..., BETA
+                        const std::string page = std::string(b3native::extra_series_kind(code) == b3native::kCustomSeries ? "CUSTOM" : "BETA") +
+                                                 (b3native::extra_series_page(code) ? " " + std::to_string(b3native::extra_series_page(code) + 1) : "");
+                        std::printf("native_play: VBlank %llu: extra_cars: SELECT CAR shows %s, car %u (%s)\n", static_cast<unsigned long long>(v),
+                                    page.c_str(), row,
+                                    row < cars.size() ? extra_cars->cars()[std::size_t(cars[row])].source.c_str() : "?");
+                        std::fflush(stdout);
+                    }
+                    extra_shown = now;
+                }
+            }
+            if (traffic_cars) {   // trafficseries: SELECT CAR on a traffic series (the log's proof), read only
+                const bool up = (b3host::load<std::uint32_t>(b3native::kMenuCurrentPage) & 0x01FFFFFFu) == b3native::kCarSelectPage;
+                const std::uint32_t now = up ? b3host::load<std::uint32_t>(b3native::kCarouselSeries) << 16 |
+                                                   (b3host::load<std::uint32_t>(b3native::kCarouselCar) & 0xFFFFu)
+                                             : 0xFFFFFFFFu;
+                if (now != traffic_shown) {
+                    if (up && b3native::traffic_class(int(now >> 16))) {
+                        const std::vector<int> cars = b3native::traffic_series_cars(int(now >> 16));
+                        const std::uint32_t row = now & 0xFFFFu;
+                        std::printf("native_play: VBlank %llu: traffic_cars: SELECT CAR shows %s, car %u (%s)\n", static_cast<unsigned long long>(v),
+                                    (now >> 16) == std::uint32_t(b3native::kTrafficClass) ? "TRAFFIC" : "TRAFFIC SPECIAL", row,
+                                    row < cars.size() ? b3native::traffic_table()[std::size_t(cars[row])].name().c_str() : "?");
+                        std::fflush(stdout);
+                    }
+                    traffic_shown = now;
+                }
+            }
+            if (heavy_race) {   // heavyseries: SELECT CAR on the HEAVYWEIGHTS series (the log's proof), read only
+                const bool up = (b3host::load<std::uint32_t>(b3native::kMenuCurrentPage) & 0x01FFFFFFu) == b3native::kCarSelectPage;
+                const std::uint32_t now = up ? b3host::load<std::uint32_t>(b3native::kCarouselSeries) << 16 |
+                                                   (b3host::load<std::uint32_t>(b3native::kCarouselCar) & 0xFFFFu)
+                                             : 0xFFFFFFFFu;
+                if (now != heavy_shown) {
+                    if (up && now >> 16 == std::uint32_t(b3native::kHeavyClass))
+                        std::printf("native_play: VBlank %llu: heavy_series: SELECT CAR shows HEAVYWEIGHTS, car %u\n", static_cast<unsigned long long>(v), now & 0xFFFFu);
+                    heavy_shown = now;
+                }
+            }
+            {   // paintsel (paint_select.h): SELECT CAR's player for the panel's button, the game's colour choice, the prompt
+                const std::uint32_t page = b3host::load<std::uint32_t>(b3native::kMenuCurrentPage);
+                const std::uint32_t state = b3host::load<std::uint32_t>(b3native::kPageState);
+                const bool sel = (page & 0x01FFFFFFu) == b3native::kCarSelectPage;
+                const int player = sel ? int(static_cast<std::int8_t>(b3host::load<std::uint8_t>(b3native::kCarSelectPlayer))) : 0;
+                const std::uint32_t series = sel ? b3host::load<std::uint32_t>(b3native::kCarouselSeries) : 0;
+                const std::uint32_t row = sel ? b3host::load<std::uint32_t>(b3native::kCarouselCar) : 0;
+                const int colour = sel ? int(static_cast<std::int8_t>(b3host::load<std::uint8_t>(b3native::carousel_colour_addr(row)))) : 0;
+                const b3native::PaintSelect::Step st = paint_sel.step(page, state, player, series, row, colour);
+                const bool live = replay_pad.empty() && !rplay;   // a replay: no panel, the settings untouched
+                const int give = live ? st.page : -1;
+                if (give != paint_page_given) {
+                    paint_page_given = give;
+                    if (r.paint_page) r.paint_page(give);
+                    std::printf("native_play: VBlank %llu: SELECT CAR %s\n", static_cast<unsigned long long>(v),
+                                give >= 0 ? (give == 1 ? "takes input (player 2's): the car paint panel's button on" : "takes input (player 1's): the car paint panel's button on")
+                                          : "gone (the car paint panel's button off)");
+                    std::fflush(stdout);
+                }
+                if (st.colour_player >= 0) {
+                    std::printf("native_play: VBlank %llu: SELECT CAR: the game's colour %d -> %d (player %d, series %u car %u)%s\n",
+                                static_cast<unsigned long long>(v), st.colour_from, st.colour_to, st.colour_player + 1, series, row,
+                                live && r.paint_game ? ": that player's paint back to Game" : " (replay: settings untouched)");
+                    std::fflush(stdout);
+                    if (live && r.paint_game) r.paint_game(st.colour_player);
+                }
+                if (st.prompt_changed && r.paint_page) b3gv_native::set_paint_prompt(paint_sel.opacity(), paint_sel.player());
+                if (b3native::carousel_resolver()) {   // paint3 (carousel_models.h): the slots a resolver names, when they change
+                    const std::vector<b3native::CarouselSlot> slots =
+                        b3native::series_page_up(page)
+                            ? b3native::carousel_slots([](std::uint32_t a) { return b3host::load<std::uint32_t>(a); },
+                                                       [](std::uint32_t a) { return b3host::load<std::uint8_t>(a); }, b3native::carousel_resolver())
+                            : std::vector<b3native::CarouselSlot>{};
+                    const std::vector<std::uint8_t> rec = b3native::carousel_record(slots, 0);
+                    if (rec != carousel_last && !(carousel_last.empty() && slots.empty())) {
+                        carousel_last = rec;
+                        b3gv_native::set_carousel_models(b3native::carousel_record(slots, ++carousel_serial));
+                    }
+                }
+                // the panel's button: opened or closed at this VBlank (the pad withheld from here, as for PC SETTINGS: until
+                // the panel has closed and the pad is released), so the game's side is on the VBlank grid
+                const int presses = live && r.paint_presses ? r.paint_presses() : 0;
+                for (int k = 0; k < presses && give >= 0 && r.paint_toggle; ++k) {
+                    const int t = r.paint_toggle(give);
+                    if (t == 1) page_hold.opened();
+                    std::printf("native_play: VBlank %llu: car paint panel %s\n", static_cast<unsigned long long>(v),
+                                t == 1 ? "opened (the pad withheld from the game)" : t == 0 ? "asked to close" : "not opened (another page is open)");
+                    std::fflush(stdout);
+                }
+            }
+            {   // raceopts / elim1 / heavyseries / gameopts: the renderer's record word, one for the race (records.h): raceopts'
+                // options, with bit 14 for a Single Event Eliminator (the game sees a race; its ghosts and best times kept
+                // apart), bit 13 for a heavyweight race, bits 11 / 12 for MIRROR MODE / the Crashbreaker
+                if (replay_view) {   // replayview checks only: $B3_REPLAY_TEST_AT a replay asked for at that VBlank (any time),
+                    // $B3_REPLAY_TEST_LEAVE_AT left; $B3_REPLAY_TEST_HASH_AT=<v>,<v>... the profile's and the records' hashes
+                    // logged there ($B3_REPLAY_TEST_DUMP=<path>: the profile's 0x2000 bytes to <path>.<v>)
+                    static const auto at = [](const char* n) { const char* e = std::getenv(n); return e ? std::atol(e) : -1L; };
+                    static const long rq_at = at("B3_REPLAY_TEST_AT"), lv_at = at("B3_REPLAY_TEST_LEAVE_AT");
+                    static const std::vector<long> hs_at = [] {
+                        std::vector<long> r;
+                        if (const char* e = std::getenv("B3_REPLAY_TEST_HASH_AT"))
+                            for (const char* q = e; *q;) { r.push_back(std::atol(q)); while (*q && *q != ',') ++q; if (*q) ++q; }
+                        return r;
+                    }();
+                    if (long(v) == rq_at) replay_view->request(true);
+                    // $B3_REPLAY_TEST_AUTO=1: REPLAY (as pressed) 300 VBlanks after it is first offered, once
+                    static const bool auto_on = [] { const char* e = std::getenv("B3_REPLAY_TEST_AUTO"); return e && *e && *e != '0'; }();
+                    static long auto_at = -1;
+                    if (auto_on && auto_at == -1 && replay_view->available()) auto_at = long(v) + 300;
+                    if (auto_on && long(v) == auto_at) {
+                        auto_at = -2;
+                        std::printf("replay_view: check: VBlank %llu: REPLAY asked for by the test (%s)\n", static_cast<unsigned long long>(v),
+                                    replay_view->request() ? "taken" : "not taken");
+                        std::fflush(stdout);
+                    }
+                    if (long(v) == lv_at) replay_view->leave();
+                    if (std::find(hs_at.begin(), hs_at.end(), long(v)) != hs_at.end()) {
+                        const auto fnv = [](b3host::gaddr a, std::uint32_t n) {
+                            std::uint64_t h = 1469598103934665603ull;
+                            for (std::uint32_t i = 0; i < n; ++i) h = (h ^ b3host::load<std::uint8_t>(a + i)) * 1099511628211ull;
+                            return h;
+                        };
+                        const b3host::gaddr prof = b3host::load<std::uint32_t>(0x0051BF9Cu) & 0x01FFFFFFu;   // CB3Profile (0x49C bytes)
+                        if (const char* d = std::getenv("B3_REPLAY_TEST_DUMP"))
+                            if (std::FILE* f = std::fopen((std::string(d) + "." + std::to_string(v)).c_str(), "wb")) {
+                                for (std::uint32_t i = 0; i < 0x2000u; ++i) std::fputc(b3host::load<std::uint8_t>(prof + i), f);
+                                std::fclose(f);
+                            }
+                        if (const char* d = std::getenv("B3_REPLAY_TEST_DUMP"))   // (and the records, 0xF000 bytes)
+                            if (std::FILE* f = std::fopen((std::string(d) + ".rec." + std::to_string(v)).c_str(), "wb")) {
+                                for (std::uint32_t i = 0; i < 0xF000u; ++i) std::fputc(b3host::load<std::uint8_t>(0x01EA7810u + i), f);
+                                std::fclose(f);
+                            }
+                        std::printf("replay_view: check: VBlank %llu: the profile %016llX, the records %016llX, the takedown tally %016llX\n",
+                                    static_cast<unsigned long long>(v), static_cast<unsigned long long>(fnv(prof, 0x49Cu)),
+                                    static_cast<unsigned long long>(fnv(0x01EA7810u, 0xF000u)), static_cast<unsigned long long>(fnv(0x0051C610u, 0x50u)));
+                        std::fflush(stdout);
+                    }
+                }
+                std::uint64_t w = race_opts ? race_opts->race_record_word() : 0;
+                const bool el = single_eliminator && b3native::SingleEliminator::racing();
+                if (el != elim_on) {
+                    elim_on = el;
+                    if (el) single_eliminator->take_profile();
+                    else std::printf("native_play: VBlank %llu: single_eliminator: the profile after the Eliminator: %d bytes changed\n",
+                                     static_cast<unsigned long long>(v), single_eliminator->profile_changes());
+                    std::printf("native_play: VBlank %llu: single_eliminator: %s\n", static_cast<unsigned long long>(v),
+                                el ? "an ELIMINATOR stage: its records kept apart" : "not an Eliminator stage");
+                    std::fflush(stdout);
+                }
+                if (el) w = b3native::EliminatorRows::record_word(w);
+                if (const int extra = more_rivals ? more_rivals->extra() : 0)   // MORE RIVALS: the rivals in bits 6-8
+                    w = b3native::more_rivals_record_word(w, 5 + extra);
+                // heavyseries: a heavyweight race, bit 13 (heavy_series.h heavy_record_word; one folder with the others)
+                const bool hv = heavy_race && b3native::HeavyRace::racing();
+                if (hv != heavy_racing) {
+                    heavy_racing = hv;
+                    std::printf("native_play: VBlank %llu: heavy_series: %s (car %016llx, mode %d, %d AI cars)\n", static_cast<unsigned long long>(v),
+                                hv ? "a heavyweight race: records kept apart" : "no heavyweight race",
+                                static_cast<unsigned long long>(b3host::load<std::uint64_t>(0x01E900B0u + 0x80u)),
+                                b3host::load<std::int32_t>(0x01E900B8u), b3host::load<std::int32_t>(0x0051ADA4u));
+                    std::fflush(stdout);
+                }
+                if (hv) w = b3native::heavy_record_word(w);
+                // trafficseries: a traffic vehicle as the player's car, bit 28 (traffic_series.h traffic_record_word)
+                const bool tv = traffic_cars && b3native::TrafficCars::racing();
+                if (tv != traffic_racing) {
+                    traffic_racing = tv;
+                    std::printf("native_play: VBlank %llu: traffic_cars: %s (car %016llx)\n", static_cast<unsigned long long>(v),
+                                tv ? "a traffic vehicle's race: records kept apart" : "no traffic vehicle's race",
+                                static_cast<unsigned long long>(b3host::load<std::uint64_t>(0x01E900B0u + 0x80u)));
+                    std::fflush(stdout);
+                }
+                if (tv) w = b3native::traffic_record_word(w);
+                // customseries: an extra car as the player's car, bit 29 (extra_series.h extra_record_word)
+                const bool xv = extra_cars && b3native::ExtraCars::racing();
+                if (xv != extra_racing) {
+                    extra_racing = xv;
+                    std::printf("native_play: VBlank %llu: extra_cars: %s (car %016llx)\n", static_cast<unsigned long long>(v),
+                                xv ? "an extra car's race: records kept apart" : "no extra car's race",
+                                static_cast<unsigned long long>(b3host::load<std::uint64_t>(0x01E900B0u + 0x80u)));
+                    std::fflush(stdout);
+                }
+                if (xv) w = b3native::extra_record_word(w);
+                // gameopts: MIRROR MODE (bit 11) / the Crashbreaker outside Crash mode (bit 12) (game_option_rules.h)
+                if (game_options) w = b3native::game_options_record_word(w, game_options->record_bits());
+                if (game_mods) w = b3native::GameMods::record_word(w, game_mods->race_deformation());   // options3: DEFORMATION (bits 32-34)
+                // rrparts1: a Road Rage whose loose parts all came off: bit 25 (records.h, "-loose-parts"; one folder with the others)
+                if (b3native::RoadRageParts::racing()) w = b3native::RoadRageParts::record_word(w);
+                if (traffic_check) w = b3native::traffic_check_record_word(w, traffic_check->mode());   // trafficcheck: bits 26-27
+                if (w != records_word) {
+                    records_word = w;
+                    std::printf("native_play: VBlank %llu: records word %04llX (%s)\n", static_cast<unsigned long long>(v), static_cast<unsigned long long>(w),
+                                w ? b3replay::records::options_folder(w).c_str() : "the game's own race");
+                    std::fflush(stdout);
+                    b3gv_native::set_race_options(w);
+                }
+                if (single_eliminator && single_eliminator->timer_seconds() >= 0) {   // elim1: the countdown, in the HUD's colours
+                    std::uint32_t col[8];
+                    b3native::SingleEliminator::hud_colours(col);
+                    b3gv_native::set_elim_timer(single_eliminator->timer_seconds(), col);
+                } else {
+                    b3gv_native::set_elim_timer(-1);
+                }
+            }
+            if (replay_view) {   // replayview (replay_view.h): REPLAY on a results page / in the replay; the state for the renderer
+                int presses = 0;
+                if (rplay) {
+                    presses = g_live.replay_presses;
+                    g_live.replay_presses = 0;
+                } else if (r.replay_presses) {
+                    presses = r.replay_presses();
+                }
+                if (presses > 0) {
+                    const char* did = replay_view->showing() ? (replay_view->leave(), "leave")
+                                      : replay_view->request()  ? "replay"
+                                                                : nullptr;
+                    if (did) {
+                        if (rrec) rrec->event(v, "replay", did);
+                        std::printf("native_play: VBlank %llu: REPLAY: %s\n", static_cast<unsigned long long>(v), did);
+                        std::fflush(stdout);
+                    }
+                }
+                b3gv_native::set_replay_state(replay_view->showing() ? 2 : replay_view->available() ? 1 : 0);
+                if (r.set_replay_showing) r.set_replay_showing(replay_view->showing() ? 1 : 0);   // replaycams: the viewer's bindings withheld
+            }
+            if (gearbox) {   // gearbox (gearbox.h): SHIFT UP / SHIFT DOWN on the VBlank grid, the gear for the HUD
+                int up = 0, down = 0;
+                if (rplay) {
+                    up = g_live.shift_up, down = g_live.shift_down;
+                    g_live.shift_up = g_live.shift_down = 0;
+                } else if (r.shift_presses) {
+                    up = r.shift_presses(1), down = r.shift_presses(0);
+                }
+                if ((up || down) && gearbox->manual()) {
+                    if (rrec) rrec->event(v, "shift", "u" + std::to_string(up) + " d" + std::to_string(down));   // (each press: an event)
+                    std::printf("native_play: VBlank %llu: gearbox: %d shift up, %d shift down (gear %d)\n",
+                                static_cast<unsigned long long>(v), up, down, gearbox->gear());
+                    std::fflush(stdout);
+                    gearbox->press(up, down);
+                }
+                gearbox->end_vblank();
+                const int g = gearbox->gear();
+                static int gear_logged = -3, flag_logged = -2;
+                if (g != gear_logged || gearbox->flag_now() != flag_logged) {
+                    gear_logged = g;
+                    flag_logged = gearbox->flag_now();
+                    if (g >= -1 || flag_logged >= 0)
+                        std::printf("native_play: VBlank %llu: gearbox: gear %d, manual flag %d\n", static_cast<unsigned long long>(v), g,
+                                    flag_logged);
+                }
+                std::uint32_t col[8] = {};
+                if (g >= -1) b3native::SingleEliminator::hud_colours(col);
+                b3gv_native::set_gear(g, col);
             }
             if (!keys2.empty() && !rplay) {   // fe1: port 2's report for this VBlank (the same context as port 1's keys)
                 pad2.set_driving(pad_driving);
@@ -2545,6 +3959,8 @@ int main(int argc, char** argv) {
                             held = down;
                         }
                         pacer.hold_ended(ns_of(clock::now()));   // the paused time does not count (as a focus hold)
+                        // stutter: this VBlank's stamp was set before the pause: its poll comes after it
+                        if (pace && pacer.on) b3gv_native::set_vblank_stamp(std::uint64_t(pacer.stamp_ns()));
                         rate_mark = clock::now();
                         g_replay_paused.store(false);
                         std::printf("native_play: replay goes on\n");
@@ -2610,6 +4026,44 @@ int main(int argc, char** argv) {
             }
             // carsel1: L1 / R1 on the car pages as Left / Right (the row on; a replay already holds them)
             if (have && replay_pad.empty() && !rplay && !page_open) series_apply(series1, s, 0, v);
+            // gamemods1: START AT main menu presses Start on the title for the player (boot_boost.h; a replay holds it)
+            if (have && replay_pad.empty() && !rplay && boot_boost.press_start()) s[0] = std::uint8_t(s[0] & ~0x08u);
+            if (rplay) {   // extras: the recording's donor stores, on their VBlanks
+                for (const auto& [at, donor] : g_live.demotes) b3host::store<std::uint64_t>(at, donor);
+                g_live.demotes.clear();
+            }
+            if (!rplay && (extra_off.custom || extra_off.beta)) {   // extras: a remembered extra car of an off kind: its donor
+                constexpr std::uint64_t kP8 = 6553600000000ull;   // 40^8: a GtID's class is its first four base-40 digits
+                static const std::uint64_t kXcus = b3native::gtid_compress("XCUS") / kP8, kXbet = b3native::gtid_compress("XBET") / kP8;
+                auto slot = [&](b3host::gaddr at) {
+                    const std::uint64_t id = b3host::load<std::uint64_t>(at), cls = id / kP8;
+                    if (!((cls == kXcus && extra_off.custom) || (cls == kXbet && extra_off.beta))) return;
+                    std::uint64_t donor = b3native::gtid_compress("COMPCAR1");   // (a GtID: no slash)
+                    for (const b3native::ExtraCar& c : extra_off.cars) if (c.id() == id) donor = c.donor_id();
+                    b3host::store<std::uint64_t>(at, donor);
+                    if (rrec) {   // the recording's event: playback stores the same on the same VBlank
+                        char ev[48];
+                        std::snprintf(ev, sizeof ev, "%08X:%016llX", unsigned(at), static_cast<unsigned long long>(donor));
+                        rrec->event(v, "extra_demote", ev);
+                    }
+                    if (extra_off.demoted++ == 0)
+                        std::printf("native_play: VBlank %llu: extras: a remembered %s car (%016llX, the class's digits %llu) with its "
+                                    "series off races as its donor %016llX\n", static_cast<unsigned long long>(v), cls == kXcus ? "CUSTOM" : "BETA",
+                                    static_cast<unsigned long long>(id), static_cast<unsigned long long>(cls), static_cast<unsigned long long>(donor));
+                };
+                slot(0x01E94EF8u);   // SELECT CAR's chosen car (extra_cars.h kSelectCarChosen)
+                for (unsigned i = 0; i < 8; ++i) slot(0x01E900B0u + 0x80u + 8u * i);   // CB3MenuChoices' cars
+            }
+            // gamemods1: Select / L2 + R2 + Square on YOUR GARAGE opens the car viewer; a request is an event of the recording,
+            // and playback opens it on the recording's requests only (car_viewer.h)
+            if (rplay) {
+                car_viewer.step(g_live.car_viewer_request);
+                g_live.car_viewer_request = false;
+            } else if (!extra_on(b3settings::kExtraCarViewer, "B3NATIVE_CAR_VIEWER")) {   // extras: CAR VIEWER off: never opened
+                car_viewer.step(false);
+            } else if (car_viewer.pad(have ? s.data() : nullptr) && rrec) {
+                rrec->event(v, "car_viewer", "1");
+            }
             // mac5: the mouse's presses in the menus (none while driving; a replay already holds them), the menus record
             if (menu_mouse) {
                 if (rplay) menu_mouse->feed_text(rplay->text(v));   // replay1
@@ -2622,6 +4076,11 @@ int main(int argc, char** argv) {
                 rrec->sample(v, 1, port1_set ? port1.data() : nullptr);
                 // media1: at each checkpoint the recording so far to the file (this VBlank's ops all taken: it plays to here)
                 if (rstream && v > 0 && v % check_every == 0) rstream->checkpoint(rrec->replay(), v);   // (encoded on the writer's thread)
+            }
+            // gamemods1: START AT (boot_boost.h): the intro's films end as they start, through the skip's own Abort
+            if (skip.skippable() && boot_boost.skip_films() && skip.abort_now()) {   // (the setting read at the first film)
+                std::printf("native_play: VBlank %llu: START AT: the intro film ended (CGtVideoDecoder::Abort)\n", static_cast<unsigned long long>(v));
+                std::fflush(stdout);
             }
             if (have) {
                 recorder.put(v, s);
@@ -2638,6 +4097,7 @@ int main(int argc, char** argv) {
                     std::printf("native_play: VBlank %llu: skip hint %s\n", static_cast<unsigned long long>(v), hint_shown ? "shown" : "hidden");
                     std::fflush(stdout);
                 }
+                if (replay_view) replay_view->note_pad(s.data());   // replayview: a choice on a results page (REPLAY waits)
                 b3native::platform::sif::set_pad_sample(0, s.data());
                 ++pad.set;
                 if (s != neutral) {
@@ -2646,7 +4106,15 @@ int main(int argc, char** argv) {
                 if (s != pad.last) ++pad.changes;
                 pad.last = s;
             }
-            if (const char* quit = r.quit_requested() ? "the window was closed" : pc_menu && pc_menu->quit_requested() ? "QUIT GAME" : nullptr) {
+            // nextstart: PC SETTINGS' APPLY AND RESTART (relaunch.h): this run ends as QUIT GAME's, then the game starts again
+            if (!g_restart.load() && r.restart_requested && r.restart_requested() != 0) {
+                g_restart.store(true);
+                g_restart_boot_to = r.boot_to ? r.boot_to() : 0;
+                std::printf("native_play: VBlank %llu: APPLY AND RESTART: the game ends and starts again\n", static_cast<unsigned long long>(v));
+                std::fflush(stdout);
+            }
+            if (const char* quit = r.quit_requested() ? "the window was closed" : pc_menu && pc_menu->quit_requested() ? "QUIT GAME"
+                                   : g_restart.load() ? "RESTART" : nullptr) {
                 // fsrobust: a save the game is writing (it spans many VBlanks) finishes and settles first, up to 5 s:
                 // the card is not cut in the middle of a save
                 b3native::save::ProfileCard* card = b3native::platform::sif::save_profile_card();
@@ -2685,7 +4153,7 @@ int main(int argc, char** argv) {
                         "\n\nThis is a bug in the port, not a problem with your game data or settings. Please make a bug report "
                         "(press \"Make a bug report\" in the launcher: it holds this run's log) and send it with a few words on "
                         "what you were doing.";
-            if (b3native::runlog::state().active) stop_text += "\n\nRun log: " + b3native::runlog::state().path;
+            if (b3native::runlog::logging()) stop_text += "\n\nRun log: " + b3native::runlog::state().path;
             if (!run_state_path.empty()) {   // the state the renderer wrote at the start (running), kept as a crash leaves it
                 stop_state = b3settings::load_run_state(b3mod::path_utf8(run_state_path));
                 stop_state.running = true;
@@ -2762,6 +4230,46 @@ int main(int argc, char** argv) {
                         static_cast<unsigned long long>(recorder.changes()), static_cast<unsigned long long>(vbl), record_pad.c_str());
             recorder.close(vbl);
         }
+        if (traffic_check && (traffic_check->counts().checks || traffic_check->counts().records_skipped || traffic_check->counts().chains ||
+                              traffic_check->counts().player_traffic_crashes || traffic_check->counts().player_wreck_crashes)) {
+            const auto& tc = traffic_check->counts();   // trafficcheck
+            std::printf("native_play: traffic_check: %llu checks (%llu of them wrecks, %llu shunts), %llu wrecks of checked cars' chains, %llu trick shots, %llu skill shots, %llu extreme shots, %llu takedowns "
+                        "credited, %llu own-wreck touches spared; %llu chains, %llu signs; %llu wrecks cleared, %llu hits not "
+                        "checked (wreck slots full); records calls emptied %llu, profile counts refused %llu; player crashes on "
+                        "traffic %llu, on wrecks %llu\n",
+                        static_cast<unsigned long long>(tc.checks), static_cast<unsigned long long>(tc.wreck_checks),
+                        static_cast<unsigned long long>(tc.shunt_checks), static_cast<unsigned long long>(tc.chain_owned),
+                        static_cast<unsigned long long>(tc.trick_shots),
+                        static_cast<unsigned long long>(tc.skill_shots), static_cast<unsigned long long>(tc.extreme_shots),
+                        static_cast<unsigned long long>(tc.takedowns), static_cast<unsigned long long>(tc.own_touches),
+                        static_cast<unsigned long long>(tc.chains), static_cast<unsigned long long>(tc.signs),
+                        static_cast<unsigned long long>(tc.wrecks_cleared), static_cast<unsigned long long>(tc.not_checked_pool),
+                        static_cast<unsigned long long>(tc.records_skipped), static_cast<unsigned long long>(tc.profile_skipped),
+                        static_cast<unsigned long long>(tc.player_traffic_crashes), static_cast<unsigned long long>(tc.player_wreck_crashes));
+        }
+        if (game_options && (game_options->counts().steering || game_options->counts().armed || game_options->counts().records_skipped ||
+                             game_options->counts().profile_skipped)) {   // gameopts
+            const auto& gc = game_options->counts();
+            std::printf("native_play: game_options: steering negated %llu times; Crashbreaker armed %llu, fired %llu; records calls "
+                        "emptied %llu, profile counts refused %llu\n", static_cast<unsigned long long>(gc.steering),
+                        static_cast<unsigned long long>(gc.armed), static_cast<unsigned long long>(gc.fired),
+                        static_cast<unsigned long long>(gc.records_skipped), static_cast<unsigned long long>(gc.profile_skipped));
+        }
+        if (wreck_slots && wreck_slots->released())   // wreckguard
+            std::printf("native_play: wreck_slots: %llu wrecks released with all 64 crashed-traffic slots in use\n",
+                        static_cast<unsigned long long>(wreck_slots->released()));
+        if (party) {   // party1
+            const auto& pc = party->counts();
+            if (pc.gravity_swaps || pc.wheels_kept || pc.moon_frames || pc.crashes || pc.ai_toggles || pc.kamikaze_calls || pc.traffic_induced)
+                std::printf("native_play: party_modes: AI gravity swaps %llu, AI wheel contacts kept %llu, flips spared %llu, flips blown %llu, "
+                            "moon jump frames %llu, crashes on demand %llu, AI driver toggles %llu, kamikaze traffic "
+                            "calls %llu; traffic crashes induced %llu (by KAMIKAZE TRAFFIC %llu)\n", static_cast<unsigned long long>(pc.gravity_swaps), static_cast<unsigned long long>(pc.wheels_kept),
+                            static_cast<unsigned long long>(pc.flips_spared), static_cast<unsigned long long>(pc.flips_blown),
+                            static_cast<unsigned long long>(pc.moon_frames),
+                            static_cast<unsigned long long>(pc.crashes), static_cast<unsigned long long>(pc.ai_toggles),
+                            static_cast<unsigned long long>(pc.kamikaze_calls), static_cast<unsigned long long>(pc.traffic_induced),
+                            static_cast<unsigned long long>(pc.kamikaze_induced));
+        }
         std::printf("native_play: movie skip %s: %llu movies skipped; %llu movies started, %llu of them menu backgrounds (TRACKS, not skippable)\n",
                     movie_skip_on ? "on" : "off (--no-movie-skip)", static_cast<unsigned long long>(skip.skips()),
                     static_cast<unsigned long long>(skip.prepares()), static_cast<unsigned long long>(skip.exempt_prepares()));
@@ -2769,6 +4277,17 @@ int main(int argc, char** argv) {
         std::printf("native_play: %llu VBlanks in %.2f s wall (%.2f per s; %s%llu resyncs when behind)\n",
                     static_cast<unsigned long long>(vbl), secs, secs > 0 ? vbl / secs : 0.0, pace ? "" : "unpaced, ",
                     static_cast<unsigned long long>(pacer.resyncs));
+        if (behind_times) {   // slowcpu
+            if (behind.behind) behind_s += std::chrono::duration<double>(clock::now() - behind_since).count();
+            std::printf("native_play: the game fell behind real time %llu times, %.1f s in all (the renderer held to 60 meanwhile)\n",
+                        static_cast<unsigned long long>(behind_times), behind_s);
+        }
+        if (pace)   // stutter
+            std::printf("native_play: stalls: %llu times the game thread fell more than 2 VBlanks behind its schedule (the most %.1f ms); the sound ran dry %llu times (the game late; fast loads' silence not counted)\n",
+                        static_cast<unsigned long long>(stall_count), stall_max_ms, audio_late_seen);
+        if (feed_waits)   // trafmem
+            std::printf("native_play: %llu waits for the renderer's shots (its feed full), %.1f s in all\n", static_cast<unsigned long long>(feed_waits),
+                        feed_wait_ms / 1000.0);
         std::printf("native_play: idle skip %s: %llu busy-wait passes jumped to the next event\n", idle_skip ? "on" : "off (--no-idle-skip)",
                     static_cast<unsigned long long>(idle_skips));
         std::printf("native_play: pad: %llu reports set, %llu not neutral, %llu changes",
@@ -2819,7 +4338,10 @@ int main(int argc, char** argv) {
         b3gv_native::finish();   // the capture closes the renderer if it opened it (at a poll): the feed drains;
         return clean ? 0 : 1;    // else close_feed does (no poll yet; a no-op when closed already)
     };
-    struct Ctx { decltype(play_game)* fn; int* rc; } ctx{&play_game, &game_rc};
+    // sweep: `ended` set when the game thread has finished (the watchdog below then stops: the renderer may still drain
+    // its feed for long after the game's last VBlank, and a stall dump then reached the torn-down backend)
+    std::atomic<bool> game_ended{false};
+    struct Ctx { decltype(play_game)* fn; int* rc; std::atomic<bool>* ended; } ctx{&play_game, &game_rc, &game_ended};
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, std::size_t{16} << 20);
@@ -2833,6 +4355,7 @@ int main(int argc, char** argv) {
     if (pthread_create(&worker, &attr, [](void* p) -> void* {
             auto* c = static_cast<Ctx*>(p);
             try { *c->rc = (*c->fn)(); } catch (const std::exception& e) { std::fprintf(stderr, "native_play: %s\n", e.what()); *c->rc = 1; }
+            c->ended->store(true);
             return nullptr;
         }, &ctx) != 0) { std::fprintf(stderr, "native_play: cannot start the game thread\n"); return 2; }
     pthread_attr_destroy(&attr);
@@ -2844,12 +4367,13 @@ int main(int argc, char** argv) {
         std::uint64_t last = 0;
         auto since = std::chrono::steady_clock::now();
         bool dumped = false;
-        while (!watch_stop.load() && stall_s > 0) {
+        while (!watch_stop.load() && !game_ended.load() && stall_s > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             const std::uint64_t v = b3native::platform::vblank_count();
             const bool held = (r.focused && !r.focused()) || g_replay_paused.load();
             const bool page = r.settings_active && r.settings_active() != 0;
             if (v != last || held || page || v == 0) { last = v; since = std::chrono::steady_clock::now(); continue; }
+            if (game_ended.load()) break;   // (the game's last VBlank: no stall, the renderer draining)
             if (!dumped && std::chrono::duration<double>(std::chrono::steady_clock::now() - since).count() >= stall_s) {
                 dumped = true;
                 char why[96];
@@ -2881,5 +4405,18 @@ int main(int argc, char** argv) {
         tell_user("replay", "This replay did not play as it was recorded from " + b3native::replay::format_length(replay_parted) +
                                 " on: this build or this PC gives the game something the recording's did not. What came after "
                                 "that point was not the recorded session.", exe_dir);
+    if (g_restart.load()) {   // nextstart (relaunch.h): everything above closed and written; the game started again
+        std::vector<std::string> args;
+        for (int k = 1; k < argc; ++k) args.push_back(argv[k]);
+        std::printf("native_play: restart: this run ends here (the run log closed, the streams back to their own)\n");
+        std::fflush(stdout);
+        // what the normal end's atexit does, first (execv never returns there): the run log's streams back to their
+        // originals -- left on its pipe, the new process's first output would meet a pipe with no reader (SIGPIPE)
+        b3native::runlog::finish();
+        if (!b3native::relaunch(argv[0], b3native::relaunch_args(args), g_restart_boot_to)) {
+            std::fprintf(stderr, "native_play: restart: the game could not be started again: start it from the launcher\n");
+            if (!offscreen) tell_user("restart", "The game could not be started again: start it from the launcher.", exe_dir);
+        }
+    }
     return game_rc;
 }

@@ -233,6 +233,28 @@ TEST(grab_block_reads_only_the_buffer_and_zero_pads) {
     CHECK(mid);
 }
 
+// trafmem: the shot hold's rule -- a race tick at or after the hold kept up to kHoldCap ticks and kHoldBytes (TRAFFIC
+// Extreme: ~0.3 MB a tick, the old tick-only cap let it reach ~10 GB); the game waits from kHoldWaitBytes on, below the
+// drop bound, so with native_play's wait nothing is dropped
+TEST(shot_hold_bounded_by_bytes) {
+    using F = b3replay::LiveFeed;
+    CHECK(F::hold_keeps(500, 400, 5000, std::size_t(1) << 30));                    // held: after the hold, within both bounds
+    CHECK(!F::hold_keeps(399, 400, 5000, std::size_t(1) << 30));                   // before the hold: trimmed as the window
+    CHECK(!F::hold_keeps(500, 400, F::kHoldCap + 1, std::size_t(1) << 30));        // the tick count bound (as before)
+    CHECK(!F::hold_keeps(500, 400, 5000, F::kHoldBytes + 1));                      // the byte bound
+    CHECK(!F::hold_keeps(500, 0xFFFFFFFFu, 5000, 0));                              // no hold
+    CHECK(F::kHoldWaitBytes < F::kHoldBytes && F::hold_wait_bytes() == F::kHoldWaitBytes && F::hold_bytes() == F::kHoldBytes);   // the wait before any drop
+    CHECK(!F::hold_full(true, F::kHoldWaitBytes - 1) && F::hold_full(true, F::kHoldWaitBytes) && !F::hold_full(false, F::kHoldBytes));
+    // the look ahead: the ticks up to the game's newest poll, decoded or not
+    CHECK(!F::hold_ahead_full(0xFFFFFFFFu, 100000, 1 << 20));                                   // no hold: no wait
+    CHECK(!F::hold_ahead_full(10000, 10500, 500000));                                          // 500 ticks of 0.5 MB: 250 MB
+    CHECK(F::hold_ahead_full(10000, 12200, 500000));                                           // 2200 of them: over 1 GiB
+    CHECK(!F::hold_ahead_full(12300, 12200, 500000));                                          // the hold ahead of the game
+    b3replay::Tick t;
+    t.vehicles.resize(70);   // TRAFFIC Extreme's ~70 vehicles: ~0.3 MB
+    CHECK(F::tick_bytes(t) >= 70 * sizeof(b3replay::Vehicle) && F::tick_bytes(t) < 400000);
+}
+
 TEST_MAIN("test_inproc")
 
 // photoblur: the vehicles' velocities as the ticks come (VehicleMotion, into Vehicle::motion): from the last ticks in

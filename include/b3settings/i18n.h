@@ -14,6 +14,150 @@ struct Entry { const char* en; const char* text; };
 struct Table { const char* code; const Entry* entries; std::size_t count; };
 
 inline constexpr Entry kFR[] = {   // French
+    {"HD TEXTURE MEMORY", "MÉMOIRE DES TEXTURES HD"},   // texpack: HD TEXTURE MEMORY
+    {"Full quality", "Qualité maximale"},   // texpack: HD TEXTURE MEMORY
+    {"Compressed", "Compressée"},   // texpack: HD TEXTURE MEMORY
+    {"How an HD texture pack's PNG and BC7 files are kept on the graphics card.", "Comment les fichiers PNG et BC7 d'un pack de textures HD sont gardés sur la carte graphique."},   // texpack: HD TEXTURE MEMORY
+    {"Full quality: as the files are, as PCSX2 keeps them; they take about four times the memory.", "Qualité maximale : tels quels, comme PCSX2 les garde ; ils prennent environ quatre fois plus de mémoire."},   // texpack: HD TEXTURE MEMORY
+    {"Compressed: packed when they load, a quarter of the memory, a little less sharp.", "Compressée : compactés au chargement, un quart de la mémoire, un peu moins nets."},   // texpack: HD TEXTURE MEMORY
+    {"Auto: full quality on a graphics card with 6 GB of its own memory or more, compressed otherwise.", "Auto : qualité maximale sur une carte graphique avec 6 Go de mémoire propre ou plus, compressée sinon."},   // texpack: HD TEXTURE MEMORY
+    {"SOUND OUTPUT", "SORTIE SONORE"},   // audioq
+    {"OUTPUT", "SORTIE"},   // audioq
+    {"Clean", "Propre"},   // audioq
+    {"Clean: the loudest moments (a crash over the engines and the music) are turned down for an instant instead of clipping.", "Propre : les moments les plus forts (un crash par-dessus les moteurs et la musique) sont baissés un instant au lieu de saturer."},   // audioq
+    {"Original: the PS2's own output, which crackles when it clips.", "Original : la sortie de la PS2 elle-même, qui grésille quand elle sature."},   // audioq
+    {"Revenge", "Revenge"},   // trafficcheck (the game's name)
+    {"TRAFFIC CHECK (2 PLAYERS)", "BOUSCULADE (2 JOUEURS)"},   // trafficcheck
+    {"Extreme", "Extrême"},   // trafficcheck
+    {"Two-player races: ram a car, van or lorry going your way and it is launched ahead instead of wrecking you, for boost and a scored chain, as in Burnout Revenge.", "Courses à deux joueurs : percutez une voiture, une camionnette ou un camion qui roule dans votre sens et il est projeté devant vous au lieu de vous faire crasher, pour du boost et une série notée, comme dans Burnout Revenge."},   // trafficcheck
+    {"A car you check that hits your rival takes them out for you.", "Une voiture bousculée qui touche votre rival l'élimine pour vous."},   // trafficcheck
+    {"Revenge: oncoming traffic, buses and big rigs still crash you.", "Revenge : la circulation en sens inverse, les bus et les semi-remorques vous font toujours crasher."},   // trafficcheck
+    {"Extreme: they are shoved aside too.", "Extrême : eux aussi sont écartés."},   // trafficcheck
+    {"Single races have their own TRAFFIC CHECK row on SELECT OPTIONS.", "Les courses simples ont leur propre ligne BOUSCULADE dans SELECT OPTIONS."},   // trafficcheck
+    {"ORBIT STYLE", "STYLE ORBITAL"},   // orbitcam2
+    {"Look", "Regard"},   // orbitcam2
+    {"Swing", "Balayage"},   // orbitcam2
+    {"Look: the view turns to where you point the stick (down looks behind), as in Burnout Revenge.", "Regard : la vue se tourne là où vous poussez le stick (vers le bas : derrière), comme dans Burnout Revenge."},   // orbitcam2
+    {"Swing: the stick turns the view round while you hold it, and up or down raises or lowers it.", "Balayage : le stick fait tourner la vue tant que vous le tenez, et haut ou bas la monte ou la baisse."},   // orbitcam2
+    {"FINISH CAMERA", "CAMÉRA D'ARRIVÉE"},   // finishcam1
+    {"Set pieces", "Plans d'arrivée"},   // finishcam1
+    {"After you cross the finish line, the camera cycles through 12 set pieces of angles around the finish, 5 seconds each, from the game's own data.", "Après la ligne d'arrivée, la caméra enchaîne 12 séquences d'angles autour de l'arrivée, 5 secondes chacune, tirées des données du jeu."},   // finishcam1
+    {"Game: the game's finish shot.", "Jeu : le plan d'arrivée du jeu."},   // finishcam1
+    {"CAMERA ROLL", "INCLINAISON CAMÉRA"},   // camroll1
+    {"Subtle", "Léger"},   // camroll1
+    {"Strong", "Fort"},   // camroll1
+    {"In a race, the chase camera leans into corners.", "En course, la caméra de poursuite s'incline dans les virages."},   // camroll1
+    {"Subtle: up to 4 degrees.", "Léger : jusqu'à 4 degrés."},   // camroll1
+    {"Strong: up to 8 degrees.", "Fort : jusqu'à 8 degrés."},   // camroll1
+    {"CAR STATS", "STATS DES VOITURES"},   // carstats1 / blinkers1 / rrparts1
+    {"More", "Plus"},   // carstats1 / blinkers1 / rrparts1
+    {"TURN SIGNALS", "CLIGNOTANTS"},   // carstats1 / blinkers1 / rrparts1
+    {"ROAD RAGE PARTS", "PIÈCES EN ROAD RAGE"},   // carstats1 / blinkers1 / rrparts1
+    {"All loose", "Toutes détachables"},   // carstats1 / blinkers1 / rrparts1
+    {"More: the car select page also shows GRIP and ACCELERATION, worked out from each car's handling.", "Plus : la sélection de voiture affiche aussi ADHÉRENCE et ACCÉLÉRATION, calculées à partir de la tenue de route de chaque voiture."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: TOP SPEED and WEIGHT only.", "Jeu : VITESSE MAX et POIDS seulement."},   // carstats1 / blinkers1 / rrparts1
+    {"On: the other racers' indicators blink before a bend, on every track.", "Activé : les clignotants des autres pilotes clignotent avant un virage, sur tous les circuits."},   // carstats1 / blinkers1 / rrparts1
+    {"Their lights only: the race is unchanged.", "Seulement leurs feux : la course est inchangée."},   // carstats1 / blinkers1 / rrparts1
+    {"All loose: in a single-event Road Rage, every loose part can come off a damaged car, not only the ones the game lets go.", "Toutes détachables : en Road Rage en épreuve simple, chaque pièce desserrée peut se détacher d'une voiture abîmée, pas seulement celles que le jeu libère."},   // carstats1 / blinkers1 / rrparts1
+    {"Loose parts are physical, so the race is not the original: its records are kept apart.", "Les pièces détachées sont physiques : la course n'est plus l'originale et ses records sont gardés à part."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: the original.", "Jeu : l'original."},   // carstats1 / blinkers1 / rrparts1
+    {"PARTY MODES", "MODES DÉLIRANTS"},   // party1
+    {"CRAZY AI PHYSICS", "PHYSIQUE IA FOLLE"},   // party1
+    {"Basic", "Basique"},   // party1
+    {"Local Wildlife", "Faune locale"},   // party1
+    {"Mayhem", "Chaos"},   // party1
+    {"The rivals' physics go haywire: their wheels never leave the road as far as the game knows, and gravity barely holds them.", "La physique des rivaux part en vrille : pour le jeu, leurs roues ne quittent jamais la route, et la gravité les retient à peine."},   // party1
+    {"Local Wildlife: they tumble without crashing.", "Faune locale : ils font des tonneaux sans se crasher."},   // party1
+    {"Mayhem: a rival that flips over blows up.", "Chaos : un rival qui se retourne explose."},   // party1
+    {"Your own car drives as usual.", "Votre voiture roule normalement."},   // party1
+    {"MOON JUMP", "SAUT LUNAIRE"},   // party1
+    {"Hold the MOON JUMP button to lift your car into the air (4 on the keyboard; a controller button can be set in CONTROLS).", "Maintenez le bouton SAUT LUNAIRE pour soulever votre voiture dans les airs (4 au clavier ; un bouton de manette se règle dans COMMANDES)."},   // party1
+    {"CRASH ON DEMAND", "CRASH À LA DEMANDE"},   // party1
+    {"The CRASH button crashes your car at once (5 on the keyboard; a controller button can be set in CONTROLS).", "Le bouton CRASH IMMÉDIAT crashe votre voiture aussitôt (5 au clavier ; un bouton de manette se règle dans COMMANDES)."},   // party1
+    {"AI DRIVER BUTTON", "BOUTON PILOTE IA"},   // party1
+    {"The AI DRIVER button hands your car to the game's own AI driver, and back on the next press (6 on the keyboard; a controller button can be set in CONTROLS).", "Le bouton PILOTE IA confie votre voiture au pilote IA du jeu, et vous la rend à la pression suivante (6 au clavier ; un bouton de manette se règle dans COMMANDES)."},   // party1
+    {"KAMIKAZE TRAFFIC", "CIRCULATION KAMIKAZE"},   // party1
+    {"Traffic close ahead of any race car throws itself at it.", "La circulation proche devant une voiture de course se jette sur elle."},   // party1
+    {"Expect many wrecks.", "Attendez-vous à beaucoup d'épaves."},   // party1
+    {"AI DRIVER", "PILOTE IA"},   // party1
+    {"REPLAY: PREVIOUS CAMERA", "REPLAY : CAMÉRA PRÉCÉDENTE"},   // replaycams
+    {"REPLAY: NEXT CAMERA", "REPLAY : CAMÉRA SUIVANTE"},   // replaycams
+    {"REPLAY: PREVIOUS CAR", "REPLAY : VOITURE PRÉCÉDENTE"},   // replaycams
+    {"REPLAY: NEXT CAR", "REPLAY : VOITURE SUIVANTE"},   // replaycams
+    {"REPLAY: FREE CAMERA", "REPLAY : CAMÉRA LIBRE"},   // replaycams
+    {"REPLAY CAMERA CUTS", "COUPES DE LA CAMÉRA DU REPLAY"},   // replaycams
+    {"Stay", "Rester"},   // replaycams
+    {"Game: in a race replay, a crash cuts to the game's crash camera, whatever camera you chose.", "Jeu : dans le replay d'une course, un crash passe à la caméra de crash du jeu, quelle que soit la caméra choisie."},   // replaycams
+    {"Stay: the camera you chose stays on.", "Rester : la caméra choisie reste."},   // replaycams
+    {"While a race replay plays: the previous camera angle.", "Pendant le replay d'une course : l'angle de caméra précédent."},   // replaycams
+    {"While a race replay plays: the next camera angle.", "Pendant le replay d'une course : l'angle de caméra suivant."},   // replaycams
+    {"While a race replay plays: watch the previous car.", "Pendant le replay d'une course : suivre la voiture précédente."},   // replaycams
+    {"While a race replay plays: watch the next car.", "Pendant le replay d'une course : suivre la voiture suivante."},   // replaycams
+    {"While a race replay plays: a free camera (photo mode's controls), and back.", "Pendant le replay d'une course : une caméra libre (les commandes du mode photo), et retour."},   // replaycams
+    {"CRASH", "CRASH IMMÉDIAT"},   // party1
+    {"Held in a race: lifts your car into the air (GAME > PARTY MODES > MOON JUMP on).", "Maintenu en course : soulève votre voiture dans les airs (JEU > MODES DÉLIRANTS > SAUT LUNAIRE activé)."},   // party1
+    {"In a race: crashes your car at once (GAME > PARTY MODES > CRASH ON DEMAND on).", "En course : crashe votre voiture aussitôt (JEU > MODES DÉLIRANTS > CRASH À LA DEMANDE activé)."},   // party1
+    {"In a race: the game's AI drives your car, and you again on the next press (GAME > PARTY MODES > AI DRIVER BUTTON on).", "En course : l'IA du jeu conduit votre voiture, et vous à nouveau à la pression suivante (JEU > MODES DÉLIRANTS > BOUTON PILOTE IA activé)."},   // party1
+    {"ORBIT CAMERA", "CAMÉRA ORBITALE"},   // orbitcam1
+    {"CRASH CAMERA", "CAMÉRA DE CRASH"},   // options3
+    {"On: when you crash, the game cuts to its crash camera, as the original.", "Activé : quand vous vous crashez, le jeu passe à sa caméra de crash, comme l'original."},   // options3
+    {"Off: the view stays behind your car.", "Désactivé : la vue reste derrière votre voiture."},   // options3
+    {"The takedown camera is the game's own option (DRIVER DETAILS > SETTINGS).", "La caméra des takedowns est une option du jeu (DÉTAILS DU PILOTE > PARAMÈTRES)."},   // options3
+    {"Camera only.", "Caméra seulement."},   // options3
+    {"RACE REPLAY", "REVOIR LA COURSE"},   // replayview
+    {"APPLIES AT THE NEXT START", "S'APPLIQUE AU PROCHAIN DÉMARRAGE"},   // nextstart
+    {"RESTART", "REDÉMARRAGE"},   // nextstart
+    {"KEEP", "GARDER"},   // nextstart
+    {"Next start", "Prochain démarrage"},   // nextstart
+    {"Saved: the game uses it from its next start.", "Enregistré : le jeu l'utilise dès son prochain démarrage."},   // nextstart
+    {"APPLY AND RESTART", "APPLIQUER ET REDÉMARRER"},   // nextstart
+    {"Restart", "Redémarrer"},   // nextstart
+    {"Saved, then the game closes and starts again at the title screen, the change in use.", "Enregistré, puis le jeu se ferme et redémarre à l'écran titre, avec la modification."},   // nextstart
+    {"The race in progress ends.", "La course en cours prend fin."},   // nextstart
+    {"REVERT", "ANNULER"},   // nextstart
+    {"Undo", "Annuler"},   // nextstart
+    {"These settings go back to what they were when the page opened.", "Ces réglages reviennent à ce qu'ils étaient à l'ouverture de la page."},   // nextstart
+    {"BACK  KEEP", "RETOUR  GARDER"},   // nextstart
+    {"Changed: applies at the next start.", "Modifié : s'applique au prochain démarrage."},   // nextstart
+    {"REPLAY", "REVOIR"},   // replayview
+    {"A race's results page, with RACE REPLAY on (GAME > MODES): watch the race again; while it plays: back to the results.", "Page des résultats d'une course, avec REVOIR LA COURSE activé (JEU > MODES) : revoir la course ; pendant le ralenti : retour aux résultats."},   // replayview
+    {"Replay", "Revoir"},   // replayview
+    {"On: a race's results page offers REPLAY (F6, or Square / X): the game's own replay of the race you have just driven.", "Activé : la page des résultats d'une course propose REPLAY (F6, ou Carré / X) : le ralenti du jeu de la course que vous venez de faire."},   // replayview
+    {"Every offline mode but Crash, which has its own.", "Tous les modes hors ligne sauf Crash, qui a le sien."},   // replayview
+    {"Your results, records and progress stay as they were.", "Vos résultats, records et progression restent tels quels."},   // replayview
+    {"DEFORMATION", "DÉFORMATION"},   // options3
+    {"How much the cars' bodies crumple when they hit something.", "À quel point la carrosserie des voitures se froisse quand elles heurtent quelque chose."},   // options3
+    {"How much the cars' bodies crumple when they hit something, in Single Event and two-player races.", "À quel point la carrosserie des voitures se froisse quand elles heurtent quelque chose, dans les courses Épreuve unique et à deux joueurs."},   // options3
+    {"100% is the original game's.", "100% est la valeur du jeu original."},   // options3
+    {"Another amount changes the race after the first hard hit, so these races keep their results apart from your records.", "Une autre valeur change la course après le premier choc violent : ces courses gardent leurs résultats à part de vos records."},   // options3
+    {"DRIVER LABELS", "ÉTIQUETTES PILOTES"},   // options3
+    {"Names", "Noms"},   // options3
+    {"Names + distance", "Noms + distance"},   // options3
+    {"Distance", "Distance"},   // options3
+    {"Over the rival cars in a race: each driver's name, the distance to them, or both.", "Au-dessus des voitures rivales en course : le nom de chaque pilote, la distance qui vous en sépare, ou les deux."},   // options3
+    {"On: in a race, the right stick turns the chase camera around your car to look left, right or behind; it stops short of walls.", "Activé : en course, le stick droit fait tourner la caméra de poursuite autour de votre voiture pour regarder à gauche, à droite ou derrière ; elle s'arrête avant les murs."},   // orbitcam2
+    {"A moment after you let go, the view eases back behind the car.", "Un instant après l'avoir relâché, la vue revient doucement derrière la voiture."},   // orbitcam1
+    {"The mouse does it too, with the right button held.", "La souris le fait aussi, bouton droit enfoncé."},   // orbitcam1
+    {"On the PlayStation controller layout the right stick is the throttle and brake, so it stays the game's there.", "Avec la disposition de manette PlayStation, le stick droit sert à accélérer et freiner : il reste donc au jeu."},   // orbitcam1
+    {"DISPLAY, GRAPHICS, CAR, CONTROLS AND MORE", "AFFICHAGE, GRAPHISMES, VOITURE, COMMANDES ET PLUS"},   // 1.3.1: the main menu's SETTINGS help (tools/native/pc_menu.h)
+    {"LEAVE THE GAME", "QUITTER LE JEU"},   // 1.3.1: the main menu's QUIT GAME help
+    {"Their PS2 mods inspired MIRROR MODE, CRASHBREAKER IN EVERY MODE, the PARTY MODES and the race options (rival names and distances, rivals' cars, standing start, Road Rage time limit and rival style, Burnout points, varied traffic, DEFORMATION, the Chrome finish, the crash camera switch), START AT, the idle pause and long-event switches, the Crashbreaker's full blast, the car viewer and the replay viewer: the ideas only, none of their code.", "Leurs mods PS2 ont inspiré MODE MIROIR, CRASHBREAKER DANS TOUS LES MODES, les MODES DÉLIRANTS et les options de course (noms et distances des rivaux, voitures des rivaux, départ arrêté, limite de temps et style des rivaux en Road Rage, points Burnout, circulation variable, DÉFORMATION, la finition Chromé, le choix de la caméra de crash), DÉMARRER SUR, les réglages de pause d'inactivité et des épreuves longues, l'explosion complète du Crashbreaker, la visionneuse de voitures et la visionneuse de replays : les idées seulement, rien de leur code."},   // credits140 (the launcher's Credits)
+    {"The PCSX2 mods that inspired the RPM meter, the boost bar shake, the takedown streak pitch, camera roll, the finish camera's set pieces, manual gears, TIMED ELIMINATION, the traffic presets, traffic checking in two-player races, loose parts in Road Rage, car stats, the rivals' turn signals, the paint picker, painted car pictures and the reflections that reach further (ideas only, none of their code).", "Les mods PCSX2 qui ont inspiré le compte-tours, la barre de boost qui tremble, la hauteur des takedowns en série, l'inclinaison de la caméra, les plans fixes de la caméra d'arrivée, la boîte manuelle, l'ÉLIMINATION CHRONO, les préréglages de circulation, la BOUSCULADE dans les courses à deux joueurs, les pièces détachées en Road Rage, les stats des voitures, les clignotants des rivaux, le sélecteur de couleur, les images de voitures peintes et les reflets qui portent plus loin (les idées seulement, rien de leur code)."},   // credits140 (the launcher's Credits)
+    {"The Heavyweights-in-the-garage mod behind the Heavyweights in Single Event.", "Le mod des Poids lourds au garage, à l'origine des Poids lourds en Épreuve unique."},   // credits140 (the launcher's Credits)
+    {"The traffic-checking edit behind TRAFFIC CHECK (2 PLAYERS) Extreme.", "La modification de bousculade du trafic à l'origine de BOUSCULADE (2 JOUEURS) Extrême."},   // credits140 (the launcher's Credits)
+    {"The Traffic Checking mod restoring Burnout Revenge's code, the reference for TRAFFIC CHECK (2 PLAYERS) Revenge.", "Le mod Traffic Checking qui restaure le code de Burnout Revenge, la référence de BOUSCULADE (2 JOUEURS) Revenge."},   // credits140 (the launcher's Credits)
+    {"The Revenge-style orbit camera mod behind the orbit camera's feel.", "Le mod de caméra orbitale façon Revenge à l'origine du ressenti de la caméra orbitale."},   // credits140 (the launcher's Credits)
+    {"CRASHBREAKER AFTER", "CRASHBREAKER APRÈS"},   // gameopts
+    {"How many vehicles your crash must hit before the CRASHBREAKER button works, as Crash mode counts them (races have less traffic, so fewer).", "Le nombre de véhicules que votre crash doit toucher avant que le bouton CRASHBREAKER fonctionne, comptés comme en mode Crash (les courses ont moins de circulation, donc moins)."},   // gameopts
+    {"0: ready as soon as you crash.", "0 : prêt dès que vous vous crashez."},   // gameopts
+    {"GAMEPLAY", "GAMEPLAY"},   // gameopts
+    {"MIRROR MODE", "MODE MIROIR"},   // gameopts
+    {"CRASHBREAKER IN EVERY MODE", "CRASHBREAKER DANS TOUS LES MODES"},   // gameopts
+    {"Single races and two-player races on mirrored tracks: the world is drawn reversed left to right and the steering follows it, so left still steers left on the screen.", "Courses simples et à deux joueurs sur des circuits en miroir : le monde est affiché inversé de gauche à droite et la direction suit, donc gauche tourne toujours à gauche à l'écran."},   // gameopts
+    {"The HUD is not mirrored; the writing on signs is.", "Le HUD n'est pas inversé ; l'écriture des panneaux l'est."},   // gameopts
+    {"These races keep their results apart from your records.", "Les résultats de ces courses sont gardés à part de vos records."},   // gameopts
+    {"Applies from the next race.", "S'applique à partir de la prochaine course."},   // gameopts
+    {"After a crash in a single or two-player race, Time Attack or Road Rage, the CRASHBREAKER button blows your wreck up as in Crash mode, wrecking the traffic around it.", "Après un crash en course simple ou à deux joueurs, en Contre-la-montre ou en Road Rage, le bouton CRASHBREAKER fait exploser votre épave comme en mode Crash, détruisant la circulation autour."},   // gameopts
     {"VOICES", "VOIX"},   // 1.3.0 VOICES
     {"The Crash FM DJ and the race training's narrator.", "Le DJ de Crash FM et le narrateur de l'entraînement."},   // 1.3.0 VOICES
     {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Langue : ils parlent la LANGUE choisie (le français, l'allemand, l'italien et l'espagnol ont les leurs ; l'anglais britannique, le néerlandais et le suédois ont les voix anglaises, comme sur leurs disques)."},   // 1.3.0 VOICES
@@ -57,6 +201,8 @@ inline constexpr Entry kFR[] = {   // French
     {"FRAME RATE LIMIT", "LIMITE DE FPS"},
     {"The most frames per second drawn.", "Le nombre maximal d'images affichées par seconde."},
     {"The game itself always runs at its own speed.", "Le jeu lui-même tourne toujours à sa propre vitesse."},
+    {"Auto: 60 on a processor with 4 threads or fewer, so the game itself keeps up; no limit on others.", "Auto : 60 sur un processeur de 4 threads ou moins, pour que le jeu lui-même suive ; aucune limite sur les autres."},
+    {"Unlimited: no limit at all, for fast processors.", "Illimitée : aucune limite, pour les processeurs rapides."},
     {"PAUSE WHEN UNFOCUSED", "PAUSE EN ARRIÈRE-PLAN"},
     {"The game holds while its window is in the background (the native game only).", "Le jeu se met en attente quand sa fenêtre est en arrière-plan (jeu natif uniquement)."},
     {"FAST LOADING", "CHARGEMENT RAPIDE"},
@@ -113,6 +259,12 @@ inline constexpr Entry kFR[] = {   // French
     {"150% and 200% want a graphics card with plenty of memory.", "150% et 200% demandent une carte graphique avec beaucoup de mémoire."},
     {"DITHER", "TRAMAGE"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Un motif fin qui masque les paliers des dégradés doux, comme le ciel."},
+    {"GRAPHICS API", "API GRAPHIQUE"},   // d3d12
+    {"Vulkan", "Vulkan"},
+    {"D3D12", "D3D12"},
+    {"The graphics interface the game draws with.", "L'interface graphique avec laquelle le jeu dessine."},
+    {"Auto uses Vulkan, and Direct3D 12 when no working Vulkan device can be created.", "Auto utilise Vulkan, et Direct3D 12 quand aucun périphérique Vulkan fonctionnel ne peut être créé."},
+    {"Try D3D12 if the picture shows faults with your graphics card.", "Essayez D3D12 si l'image présente des défauts avec votre carte graphique."},
     {"None", "Aucun"},
     {"A PCSX2 texture replacement folder for this game (its SLUS-21050 folder, or the folder above it).", "Un dossier de textures de remplacement PCSX2 pour ce jeu (son dossier SLUS-21050, ou le dossier parent)."},
     {"HD TEXTURE PACK", "PACK DE TEXTURES HD"},
@@ -134,6 +286,25 @@ inline constexpr Entry kFR[] = {   // French
     {"Highest", "Maximal"},
     {"Highest draws every car at full detail at any distance.", "Maximal affiche chaque voiture en détail maximal à toute distance."},
     {"CAR REFLECTIONS", "REFLETS DES VOITURES"},
+    {"REFLECTION DISTANCE", "DISTANCE DES REFLETS"},   // reflect2
+    {"200 m", "200 m"},   // reflect2
+    {"300 m", "300 m"},   // reflect2
+    {"How far the cars' reflections reach.", "Jusqu'où portent les reflets des voitures."},   // reflect2
+    {"Game: 100 m, as the original.", "Jeu : 100 m, comme l'original."},   // reflect2
+    {"Further shows more of the track in the paint and costs more.", "Plus loin montre davantage du circuit dans la peinture et coûte plus cher."},   // reflect2
+    {"REFLECTION DETAIL", "DÉTAIL DES REFLETS"},   // reflect2
+    {"Track", "Circuit"},   // reflect2
+    {"Track and props", "Circuit et objets"},   // reflect2
+    {"Track, props and cars", "Circuit, objets et voitures"},   // reflect2
+    {"Track, props and cars: the other cars nearby as well.", "Circuit, objets et voitures : les autres voitures proches aussi."},   // reflect2
+    {"Track and props: the barriers, signs, cones and lamp posts near the car show in its reflections too.", "Circuit et objets : les barrières, panneaux, cônes et lampadaires proches de la voiture apparaissent aussi dans ses reflets."},   // reflect2
+    {"REFLECTION UPDATE", "MISE À JOUR DES REFLETS"},   // reflect2
+    {"Every frame", "Chaque image"},   // reflect2
+    {"Every 2nd frame", "Une image sur deux"},   // reflect2
+    {"Every 2nd frame: the reflections are redrawn half as often, for slower graphics cards.", "Une image sur deux : les reflets sont redessinés deux fois moins souvent, pour les cartes graphiques plus lentes."},   // reflect2
+    {"REFLECTION RESOLUTION", "RÉSOLUTION DES REFLETS"},   // reflect2
+    {"High: sharper reflections, drawn at twice the size.", "Élevée : des reflets plus nets, dessinés deux fois plus grands."},   // reflect2
+    {"Standard: as the original.", "Standard : comme l'original."},   // reflect2
     {"Original", "D'origine"},
     {"Enhanced", "Amélioré"},
     {"Enhanced: glossy sky and sun reflections on the paint and glass.", "Amélioré : reflets brillants du ciel et du soleil sur la peinture et les vitres."},
@@ -236,6 +407,11 @@ inline constexpr Entry kFR[] = {   // French
     {"On: the race's pause menu has a PHOTO MODE row after SETTINGS, which opens photo mode (the key P, or L3 + R3 on a controller, does too).", "Activé : le menu pause de la course a une ligne MODE PHOTO après PARAMETRES, qui ouvre le mode photo (la touche P, ou L3 + R3 sur une manette, aussi)."},
     {"Off: the pause menu is the game's own.", "Désactivé : le menu pause est celui du jeu."},
     {"From the next pause.", "À partir de la prochaine pause."},
+    {"SETTINGS BACK BUTTON", "BOUTON RETOUR DES RÉGLAGES"},   // settingsback
+    {"Keep changes", "Garder les changements"},   // settingsback
+    {"Leaving a page of DRIVER DETAILS > SETTINGS (GAMEPLAY, AUDIO, VIDEO, CONTROLLERS) with Back.", "Quitter une page des réglages du jeu dans le profil du pilote (jeu, audio, vidéo, manettes) avec Retour."},   // settingsback
+    {"Keep changes: what you changed there stays.", "Garder les changements : ce que vous y avez changé reste."},   // settingsback
+    {"Cancel: Back puts the old values back, as on the PS2 (confirm keeps them).", "Annuler : Retour remet les anciennes valeurs, comme sur PS2 (valider les garde)."},   // settingsback
     {"English", "English"},
     {"LANGUAGE", "LANGUE"},
     {"Choose a European disc image (or its folder) of Burnout 3: Takedown: its languages are copied to this PC (two small files each); the disc is not needed afterwards.", "Choisir une image disque européenne (ou son dossier) de Burnout 3: Takedown : ses langues sont copiées sur ce PC (deux petits fichiers chacune) ; le disque n'est plus nécessaire ensuite."},
@@ -338,7 +514,13 @@ inline constexpr Entry kFR[] = {   // French
     {"From the next song.", "À partir du prochain morceau."},
     {"CUSTOM MUSIC VOLUME", "VOLUME MUSIQUE PERSO"},
     {"How loud your own songs play, on top of RADIO VOLUME.", "Le volume de vos propres morceaux, en plus du VOLUME RADIO."},
-    {"At 100% a song plays as loud as the game plays its own songs; raise it for quiet files.", "À 100%, un morceau est joué aussi fort que le jeu joue ses propres morceaux ; augmentez-le pour les fichiers trop faibles."},
+    {"CUSTOM MUSIC LOUDNESS", "NIVEAU MUSIQUE PERSO"},   // musicloud
+    {"Even out", "Égaliser"},   // musicloud
+    {"They follow RADIO VOLUME (DRIVER DETAILS > SETTINGS > AUDIO) and the radio's fades like the game's songs.", "Ils suivent le VOLUME RADIO (DÉTAILS PILOTE > PARAMÈTRES > AUDIO) et les fondus de la radio comme les morceaux du jeu."},   // musicloud
+    {"At 100% a song plays as loud as the game plays its own songs.", "À 100%, un morceau est joué aussi fort que le jeu joue ses propres morceaux."},   // musicloud
+    {"Even out: each of your songs is measured once (in the background; kept for the next start) and played as loud as the game's own songs, so a quiet file and a loud one sound alike.", "Égaliser : chacun de vos morceaux est mesuré une fois (en arrière-plan ; gardé pour le prochain lancement) et joué aussi fort que les morceaux du jeu, pour qu'un fichier faible et un fichier fort sonnent pareil."},   // musicloud
+    {"A quiet song with loud peaks is raised only a little.", "Un morceau faible aux crêtes fortes n'est remonté qu'un peu."},   // musicloud
+    {"Off: each file plays at its own level.", "Désactivé : chaque fichier est joué à son propre niveau."},   // musicloud
     {"A limiter keeps loud songs from clipping.", "Un limiteur empêche les morceaux forts de saturer."},
     {"The game's songs and the DJ do not change.", "Les morceaux du jeu et le DJ ne changent pas."},
     {"Live.", "Immédiat."},
@@ -549,6 +731,7 @@ inline constexpr Entry kFR[] = {   // French
     {"File {} (new)", "Fichier {} (nouveau)"},
     {"{} DEG", "{} DEG"},
     {"SETTINGS", "PARAMÈTRES"},
+    {"QUIT GAME", "QUITTER LE JEU"},   // i18n2: the main menu's row (tools/native/pc_menu.h)
     {"UP / DOWN  SELECT     LEFT / RIGHT  CHANGE     CONFIRM  CHOOSE", "HAUT / BAS  SÉLECTIONNER     GAUCHE / DROITE  MODIFIER     VALIDER  CHOISIR"},
     {"BACK  CLOSE AND SAVE", "RETOUR  FERMER ET SAUVEGARDER"},
     {"PS2 ORIGINAL", "PS2 D'ORIGINE"},
@@ -726,6 +909,7 @@ inline constexpr Entry kFR[] = {   // French
     {"Include my save: NO", "Inclure ma sauvegarde : NON"},
     {"Whether the report also holds your active save file (profile-N.sav): useful when the problem is in your progress.", "Si le rapport contient aussi votre fichier de sauvegarde actif (profile-N.sav) : utile quand le problème concerne votre progression."},
     {"Off by default.", "Désactivé par défaut."},
+    {"On by default.", "Activé par défaut."},
     {"Clear the crash count", "Effacer le compteur de plantages"},
     {"The last run did not end cleanly.", "La dernière session ne s'est pas terminée proprement."},
     {"This marks it as ended, so the next start uses your own settings (safe mode is not chosen by itself).", "Ceci la marque comme terminée, pour que le prochain démarrage utilise vos propres réglages (le mode sans échec n'est pas choisi automatiquement)."},
@@ -800,8 +984,8 @@ inline constexpr Entry kFR[] = {   // French
     {"A reference for RenderWare's PS2 rasters and geometry packets.", "Une référence pour les rasters PS2 et les paquets de géométrie de RenderWare."},
     {"Burn3 (UwUCammie)", "Burn3 (UwUCammie)"},
     {"Another PC project for the game.", "Un autre projet PC pour le jeu."},
-    {"PS2Recomp (ran-j) and burnout3-pc", "PS2Recomp (ran-j) et burnout3-pc"},
-    {"Other PC projects for the game.", "D'autres projets PC pour le jeu."},
+    {"PS2Recomp (ran-j)", "PS2Recomp (ran-j)"},
+    {"burnout3-pc (danielgomesvieira2000)", "burnout3-pc (danielgomesvieira2000)"},
     {"The Burnout 3: Takedown USA HD Remaster, the HD texture pack for PCSX2 that the HD Textures page links to and this port can use.", "Burnout 3: Takedown USA HD Remaster, le pack de textures HD pour PCSX2 vers lequel renvoie la page Textures HD et que ce portage peut utiliser."},
     {"PCSX2 and mymcplus", "PCSX2 et mymcplus"},
     {"Their texture-pack and memory-card formats, which this port reads, and PS2 save tooling.", "Leurs formats de packs de textures et de cartes mémoire, que ce portage lit, et des outils de sauvegarde PS2."},
@@ -1125,7 +1309,7 @@ inline constexpr Entry kFR[] = {   // French
     {"(no sensor data yet)", "(pas encore de données du capteur)"},
     {"The game's controller layout and the DJ's volume are in the game: DRIVER DETAILS > SETTINGS.", "La disposition de la manette du jeu et le volume du DJ sont dans le jeu : DETAILS PILOTE > PARAMETRES."},
     {"|ok", "|ok"},
-    {"|no", "|no"},
+    {"|no", "|non"},
     {"No game data yet", "Pas encore de données de jeu"},
     {"The showroom draws the cars from your own Burnout 3 disc: choose it on the Game Data page first.", "Le showroom affiche les voitures depuis votre propre disque Burnout 3 : le choisir d'abord sur la page Données du jeu."},
     {"No cars found", "Aucune voiture trouvée"},
@@ -1202,33 +1386,33 @@ inline constexpr Entry kFR[] = {   // French
     {"[files]", "[files]"},
     {"[mod]", "[mod]"},
     {"[script]", "[script]"},
-    {"SHOW", "SHOW"},
+    {"SHOW", "AFFICHER"},
     {"MODE", "MODE"},
-    {"One", "One"},
-    {"Two", "Two"},
-    {"Three", "Three"},
-    {"Settings >", "Settings >"},
-    {"Walk", "Walk"},
-    {"Controllers (keyboard)", "Controllers (keyboard)"},
-    {"Controllers (controller)", "Controllers (controller)"},
-    {"Back from", "Back from"},
-    {"Down pressed on and on stopped at", "Down pressed on and on stopped at"},
-    {"PASS (no widgets: stays in the side bar)", "PASS (no widgets: stays in the side bar)"},
-    {"FAIL (no widgets, but went into the page)", "FAIL (no widgets, but went into the page)"},
-    {"FAIL (Right did not go into the page)", "FAIL (Right did not go into the page)"},
+    {"One", "Un"},
+    {"Two", "Deux"},
+    {"Three", "Trois"},
+    {"Settings >", "Réglages >"},
+    {"Walk", "Parcours"},
+    {"Controllers (keyboard)", "Manettes (clavier)"},
+    {"Controllers (controller)", "Manettes (manette)"},
+    {"Back from", "Retour depuis"},
+    {"Down pressed on and on stopped at", "Bas maintenu, arrêté à"},
+    {"PASS (no widgets: stays in the side bar)", "PASS (aucun widget : reste dans la barre latérale)"},
+    {"FAIL (no widgets, but went into the page)", "FAIL (aucun widget, mais entré dans la page)"},
+    {"FAIL (Right did not go into the page)", "FAIL (Droite n'est pas entré dans la page)"},
     {"Reset all settings?", "Réinitialiser tous les réglages ?"},
     {"A message with one button.", "A message with one button."},
     {"Replace file?", "Remplacer le fichier ?"},
     {"Allow", "Autoriser"},
     {"Type a path (a text field)", "Type a path (a text field)"},
     {"Game data folder", "Dossier des données du jeu"},
-    {"FAIL (not opened)", "FAIL (not opened)"},
-    {"NO on-screen keyboard:", "NO on-screen keyboard:"},
-    {"CHANGED", "CHANGED"},
+    {"FAIL (not opened)", "FAIL (pas ouvert)"},
+    {"NO on-screen keyboard:", "PAS de clavier à l'écran :"},
+    {"CHANGED", "MODIFIÉ"},
     {"Everything back to the original layout", "Tout revient à la disposition d'origine"},
     {"Music for B3", "Music for B3"},
     {"Type or paste", "Saisir ou coller"},
-    {"FAILED", "FAILED"},
+    {"FAILED", "ÉCHEC"},
     {"Alpha", "Alpha"},
     {"Beta/Inner", "Beta/Inner"},
     {"Gamma", "Gamma"},
@@ -1238,29 +1422,29 @@ inline constexpr Entry kFR[] = {   // French
     {"Your disc's image file", "Le fichier image de votre disque"},
     {"\", \"name\": \"", "\", \"name\": \""},
     {"Takedown at 60", "Takedown at 60"},
-    {"MISSING", "MISSING"},
-    {"NOT saved", "NOT saved"},
+    {"MISSING", "ABSENT"},
+    {"NOT saved", "PAS enregistré"},
     {"First release", "First release"},
-    {"SHOWN", "SHOWN"},
+    {"SHOWN", "AFFICHÉ"},
     {"HTTP/1.1 404 Not Found", "HTTP/1.1 404 Not Found"},
-    {"Asks GitHub", "Asks GitHub"},
-    {"Once a day", "Once a day"},
-    {"NOT found", "NOT found"},
-    {"STARTED", "STARTED"},
+    {"Asks GitHub", "Interroge GitHub"},
+    {"Once a day", "Une fois par jour"},
+    {"NOT found", "PAS trouvé"},
+    {"STARTED", "DÉMARRÉ"},
     {"SUPR", "SUPR"},
     {"HEVY", "HEVY"},
     {"/home/me/Games/Burnout 3/game", "/home/me/Games/Burnout 3/game"},
-    {"(expected", "(expected"},
-    {"Shift / Back held at the start: the launcher shows (", "Shift / Back held at the start: the launcher shows ("},
-    {"Shift pressed on the Starting screen: the launcher opens", "Shift pressed on the Starting screen: the launcher opens"},
-    {"Back held on a controller on the Starting screen: the launcher opens", "Back held on a controller on the Starting screen: the launcher opens"},
-    {"(no virtual pad)", "(no virtual pad)"},
-    {"Start skipped", "Start skipped"},
-    {"A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does).", "A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does)."},
+    {"(expected", "(attendu"},
+    {"Shift / Back held at the start: the launcher shows (", "Maj / Retour maintenu au démarrage : le lanceur s'affiche ("},
+    {"Shift pressed on the Starting screen: the launcher opens", "Maj pressé sur l'écran de démarrage : le lanceur s'ouvre"},
+    {"Back held on a controller on the Starting screen: the launcher opens", "Retour maintenu sur une manette sur l'écran de démarrage : le lanceur s'ouvre"},
+    {"(no virtual pad)", "(pas de manette virtuelle)"},
+    {"Start skipped", "Démarrage ignoré"},
+    {"A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does).", "Un test de captures d'écran ne lance pas le jeu (B3LAUNCHER_SHOT_START=1 avec un substitut le fait)."},
     {"Burnout 3 Launcher", "Lanceur Burnout 3"},
     {"Burnout 3 Launcher -", "Lanceur Burnout 3 -"},
     {"Resources", "Ressources"},
-    {"# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)", "# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)"},
+    {"# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)", "# Lanceur Burnout 3 : ses propres choix (les réglages du jeu sont dans pc_settings.ini)"},
     {"NUL", "NUL"},
     {"SLUS_210.50", "SLUS_210.50"},
     {"SYSTEM.CNF", "SYSTEM.CNF"},
@@ -1532,6 +1716,7 @@ inline constexpr Entry kFR[] = {   // French
     {"Gloss", "Brillant"},
     {"Metallic", "Métallisé"},
     {"Pearl", "Nacré"},
+    {"Chrome", "Chromé"},   // options3
     {"PLAYER 2 CAR PAINT", "PEINTURE DE LA VOITURE DU JOUEUR 2"},
     {"P2 CAR PAINT", "PEINTURE J2"},
     {"P2 PAINT RED", "PEINTURE J2 ROUGE"},
@@ -1542,6 +1727,7 @@ inline constexpr Entry kFR[] = {   // French
     {"Gloss: the game's.", "Brillant : celle du jeu."},
     {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Métallisé : un reflet plus fort dans la couleur de la peinture, avec des paillettes qui scintillent à la lumière."},
     {"Pearl: the colour shifts as the car turns to the light.", "Nacré : la couleur change quand la voiture tourne face à la lumière."},
+    {"Chrome: a mirror finish that shows the world around the car, tinted by the paint's colour.", "Chromé : une finition miroir qui reflète le monde autour de la voiture, teintée par la couleur de la peinture."},   // options3
     {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "La voiture du joueur 2 en écran partagé : Personnalisée l'affiche dans la couleur des trois lignes ci-dessous au lieu de la peinture choisie dans la sélection de voiture."},
     {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Désactivé : la voiture du joueur 2 sans ses logos, numéros et bandes, en peinture unie."},
     {"LIGHTING", "ÉCLAIRAGE"},   // night
@@ -1551,6 +1737,45 @@ inline constexpr Entry kFR[] = {   // French
     {"TIME OF DAY PER RACE", "MOMENT DE LA JOURNÉE PAR COURSE"},   // todrace
     {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Pages du circuit (épreuve simple, multijoueur) : Par défaut, Jour ou Nuit pour la prochaine course."},   // todrace
     {"Time of day: {}", "Moment de la journée : {}"},   // todrace
+    {"LAYER", "CALQUE"},   // paint2
+    {"Body", "Carrosserie"},   // paint2
+    {"Decals", "Décalcomanies"},   // paint2
+    {"Wheels", "Roues"},   // paint2
+    {"Boost glow", "Lueur du boost"},   // paint2
+    {"COLOUR PICKER", "SÉLECTEUR DE COULEUR"},   // paint2
+    {"FACTORY COLOURS", "COULEURS D'ORIGINE"},   // paint2
+    {"DECAL COLOUR", "COULEUR DES DÉCALCOMANIES"},   // paint2
+    {"WHEEL COLOUR", "COULEUR DES ROUES"},   // paint2
+    {"BOOST GLOW COLOUR", "COULEUR DE LA LUEUR DU BOOST"},   // paint2
+    {"P2 DECAL COLOUR", "J2 COULEUR DES DÉCALCOMANIES"},   // paint2
+    {"P2 WHEEL COLOUR", "J2 COULEUR DES ROUES"},   // paint2
+    {"P2 BOOST GLOW COLOUR", "J2 COULEUR DE LA LUEUR DU BOOST"},   // paint2
+    {"HUE", "TEINTE"},   // paint2
+    {"SHADE", "NUANCE"},   // paint2
+    {"FINE", "PRÉCIS"},   // paint2
+    {"OK", "OK"},   // paint2
+    {"CANCEL", "ANNULER"},   // paint2
+    {"Which part of the car the rows below colour: the body, its decals (logos, numbers and stripes), the wheels' rims or the boost glow.", "La partie de la voiture que colorent les lignes ci-dessous : la carrosserie, ses décalcomanies (logos, numéros et bandes), les jantes ou la lueur du boost."},   // paint2
+    {"One colour of each for all your cars.", "Une couleur de chaque pour toutes vos voitures."},   // paint2
+    {"Game: the game's own colour.", "Jeu : la couleur du jeu."},   // paint2
+    {"A ready colour, or Custom: the colour of the rows below.", "Une couleur prête, ou Personnalisée : la couleur des lignes ci-dessous."},   // paint2
+    {"Any colour: the square sets how strong and how bright it is, the bar its hue (L1 / R1).", "N'importe quelle couleur : le carré règle son intensité et sa luminosité, la barre sa teinte (L1 / R1)."},   // paint2
+    {"CONFIRM keeps it, BACK puts the colour before back.", "CONFIRMER la garde, RETOUR remet la couleur d'avant."},   // paint2
+    {"Every layer back to the game's colours, and the decals on.", "Tous les calques reviennent aux couleurs du jeu, et les décalcomanies sont affichées."},   // paint2
+    {"The colour of the logos, numbers and stripes.", "La couleur des logos, numéros et bandes."},   // paint2
+    {"Game: their own colours.", "Jeu : leurs propres couleurs."},   // paint2
+    {"Any colour: the paint panel on SELECT CAR.", "N'importe quelle couleur : le panneau de peinture de la sélection de voiture."},   // paint2
+    {"The colour of the wheels' rims (the tyres stay dark).", "La couleur des jantes (les pneus restent sombres)."},   // paint2
+    {"Game: their own.", "Jeu : la leur."},   // paint2
+    {"The colour of the exhaust's glow while boosting.", "La couleur de la lueur de l'échappement pendant le boost."},   // paint2
+    {"Game: the game's.", "Jeu : celle du jeu."},   // paint2
+    {"CAR PAINT PANEL", "PANNEAU DE PEINTURE"},   // paintsel
+    {"SHIFT UP", "PASSER LE RAPPORT SUP."},   // gearbox
+    {"SHIFT DOWN", "RÉTROGRADER"},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear up.", "Une course avec TRANSMISSION Manuelle (SÉLECTION DES OPTIONS) : le rapport supérieur."},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear down.", "Une course avec TRANSMISSION Manuelle (SÉLECTION DES OPTIONS) : le rapport inférieur."},   // gearbox
+    {"SELECT CAR: open or close the car paint panel (a controller: the menus' Circle button, Y on the Xbox and Nintendo layouts).", "Sélection de voiture : ouvre ou ferme le panneau de peinture (manette : le bouton Rond des menus, Y avec les dispositions Xbox et Nintendo)."},   // paintsel
+    {"Changing the colour on SELECT CAR sets it back to Game.", "Changer la couleur dans la sélection de voiture la remet sur Jeu."},   // paintsel
     {"Default ({})", "Par défaut ({})"},   // todrace
     {"MOON", "LUNE"},   // night
     {"SURFACE DETAIL", "DÉTAIL DES SURFACES"},   // night
@@ -1561,6 +1786,20 @@ inline constexpr Entry kFR[] = {   // French
     {"Soft contact shadows under the cars and along walls and kerbs.", "Des ombres de contact douces sous les voitures et le long des murs et des bordures."},   // night
     {"Draws the scene twice: for fast graphics cards.", "Dessine la scène deux fois : pour les cartes graphiques rapides."},   // night
     {"SUN SHADOWS", "OMBRES DU SOLEIL"},   // sunshadow
+    {"PROP SHADOWS", "OMBRES DES OBJETS"},   // propshadow1
+    {"With SUN SHADOWS: the lamp posts, signs, barriers and other roadside props cast shadows too.", "Avec OMBRES DU SOLEIL : les lampadaires, panneaux, barrières et autres objets du bord de route projettent aussi des ombres."},   // propshadow1
+    {"TUNNEL LIGHTS", "ÉCLAIRAGE DES TUNNELS"},   // nightfix
+    {"Glow", "Lumineux"},   // nightfix
+    {"Glow: the light fittings in tunnels and underpasses glow, with small halos.", "Lumineux : les luminaires des tunnels et des passages souterrains brillent, avec de petits halos."},   // nightfix, xboxglow
+    {"Xbox: their lit parts glow through the bloom, as on the Xbox.", "Xbox : leurs parties éclairées brillent par le bloom, comme sur Xbox."},   // xboxglow
+    {"Game: the original look.", "Jeu : l'aspect d'origine."},   // nightfix
+    {"WEATHER", "MÉTÉO"},   // weather
+    {"Dry", "Sec"},   // weather
+    {"Rain", "Pluie"},   // weather
+    {"Rain: falling rain, wet roads that mirror the lights, spray from the wheels and a grey sky.", "Pluie : averse, routes mouillées qui reflètent les lumières, gerbes d'eau sous les roues et ciel gris."},   // weather
+    {"Dry: the game's own weather.", "Sec : la météo d'origine du jeu."},   // weather
+    {"RAIN VOLUME", "VOLUME DE LA PLUIE"},   // weather
+    {"The rain's sound, on top of the game's own EFFECTS volume.", "Le son de la pluie, en plus du volume des EFFETS du jeu."},   // weather
     {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "De vraies ombres des voitures sur la route, projetées par le soleil ou, la nuit, par la lune."},   // sunshadow
     {"None in tunnels and under bridges.", "Aucune dans les tunnels et sous les ponts."},   // sunshadow
     {"Sharper with ANTI-ALIASING at 4x or more.", "Plus nettes avec l'ANTICRÉNELAGE à 4x ou plus."},   // sunshadow
@@ -1748,6 +1987,14 @@ inline constexpr Entry kFR[] = {   // French
     {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Rien n'est téléchargé ni partagé, et votre propre pack HD et les packs des mods passent toujours en premier."},
     {"Not imported.", "Non importées."},
     {"{} textures imported.", "{} textures importées."},
+    {"HD texture cache", "Cache des textures HD"},   // hdcache
+    {"{} MB of textures converted from the pack, read back on later races.", "{} Mo de textures converties depuis le pack, relues lors des courses suivantes."},   // hdcache
+    {"Empty: the game fills it as it draws the pack's textures.", "Vide : le jeu le remplit en affichant les textures du pack."},   // hdcache
+    {"Clear cache", "Vider le cache"},   // hdcache
+    {"Deletes the converted textures.", "Supprime les textures converties."},   // hdcache
+    {"The game converts them again as it draws them, and the first race on each track loads a little longer.", "Le jeu les convertit à nouveau en les affichant, et la première course sur chaque circuit se charge un peu plus longtemps."},   // hdcache
+    {"Cleared.", "Vidé."},   // hdcache
+    {"{} entries could not be deleted (in use by a running game?)", "{} entrées n'ont pas pu être supprimées (utilisées par un jeu en cours ?)"},   // hdcache
     {"Size: {} MB.", "Taille : {} Mo."},
     {"From: {}.", "Depuis : {}."},
     {"Made by an older version: import again for the newest result.", "Créées par une ancienne version : importer à nouveau pour le meilleur résultat."},
@@ -1855,9 +2102,288 @@ inline constexpr Entry kFR[] = {   // French
     {"QUIT AND START AGAIN WHEN IT IS DONE", "QUITTEZ ET RELANCEZ QUAND C'EST FINI"},   // portable mode
     {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "IMPOSSIBLE D'ÉCRIRE DANS LE DOSSIER DE DONNÉES PORTABLE"},   // portable mode
     {"SAVES AND SETTINGS WON'T BE KEPT", "SAUVEGARDES ET RÉGLAGES NE SERONT PAS CONSERVÉS"},   // portable mode
+    {"START AT", "DÉMARRER SUR"},   // gamemods1
+    {"Intro films", "Films d'intro"},   // gamemods1
+    {"Title screen", "Écran titre"},   // gamemods1
+    {"Main menu, profile 1", "Menu principal, profil 1"},   // gamemods1
+    {"Main menu, profile 2", "Menu principal, profil 2"},   // gamemods1
+    {"Main menu, profile 3", "Menu principal, profil 3"},   // gamemods1
+    {"IDLE PAUSE", "PAUSE D'INACTIVITÉ"},   // gamemods1
+    {"END VERY LONG EVENTS", "FIN DES ÉPREUVES TRÈS LONGUES"},   // gamemods1
+    {"Where the game starts after it has loaded.", "Où le jeu démarre une fois chargé."},   // gamemods1
+    {"Title screen: the intro films are not played.", "Écran titre : les films d'intro ne sont pas joués."},   // gamemods1
+    {"Main menu: also Start on the title and that profile loaded, as LOAD PROFILE does; a profile the save does not hold leaves the game's profile choice.", "Menu principal : Start est aussi pressé sur l'écran titre et ce profil chargé, comme le fait CHARGER PROFIL ; un profil absent de la sauvegarde laisse le choix de profil du jeu."},   // gamemods1
+    {"On: as in the game, a race pauses itself after 5 minutes without input.", "Activé : comme dans le jeu, une course se met en pause après 5 minutes sans action."},   // gamemods1
+    {"Off: it never does.", "Désactivé : jamais."},   // gamemods1
+    {"On: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Activé : comme dans le jeu, une épreuve toujours en cours après 25 à 40 minutes est terminée pour toutes les voitures."},   // gamemods1
+    {"Off: it goes on until it ends the normal way; an event kept going past the game's limit keeps no records.", "Désactivé : elle continue jusqu'à sa fin normale ; une épreuve prolongée au-delà de la limite du jeu ne garde aucun record."},   // gamemods1
+    {"Traffic only", "Trafic seulement"},   // gamemods1
+    {"Full: the rivals and the other player in the blast are wrecked too, each counted as your Aftertouch Takedown.", "Complet : les rivaux et l'autre joueur pris dans l'explosion sont aussi détruits, chacun compté comme votre Aftertouch Takedown."},   // gamemods1
+    {"RACE HUD", "HUD EN COURSE"},   // hudmods
+    {"RPM METER", "COMPTE-TOURS"},   // hudmods
+    {"BOOST BAR SHAKE", "BARRE DE BOOST QUI TREMBLE"},   // hudmods
+    {"RACE SOUNDS", "SONS DE COURSE"},   // hudmods
+    {"TAKEDOWN STREAK PITCH", "HAUTEUR DES TAKEDOWNS EN SÉRIE"},   // hudmods
+    {"On: a thin bar of the engine revs under the speedometer, red near the rev limit.", "Activé : une fine barre du régime moteur sous le compteur de vitesse, rouge près du régime maximal."},   // hudmods
+    {"For the automatic and the manual gearbox alike.", "Pour la boîte automatique comme pour la boîte manuelle."},   // hudmods
+    {"On: the boost bar shakes while you boost, as in the game's 2004 preview build.", "Activé : la barre de boost tremble pendant le boost, comme dans la version de présentation du jeu de 2004."},   // hudmods
+    {"On: outside World Tour, each takedown after your 10th since your last crash sounds higher, as World Tour's takedown targets do.", "Activé : hors World Tour, chaque takedown après votre 10e depuis votre dernier crash sonne plus aigu, comme avec les objectifs de takedowns du World Tour."},   // hudmods
+    {"A crash starts the count again.", "Un crash relance le compte."},   // hudmods
+    {"Sound only.", "Son uniquement."},   // hudmods
+    {"On SELECT CAR: {}", "Dans SELECT CAR : {}"},   // customseries
+    {"Custom cars", "Voitures personnalisées"},   // customseries
+    {"Car mods as cars of their own: they race as the CUSTOM series in SINGLE EVENT, after the game's cars, never in place of one, each with the engine sound and handling of the car it was made to replace. Races with them keep their results apart from your records.", "Des mods de voitures comme voitures à part entière : elles courent dans la série PERSONNALISÉES de SINGLE EVENT, après les voitures du jeu, jamais à la place de l'une d'elles, chacune avec le son moteur et la conduite de la voiture qu'elle devait remplacer. Leurs courses gardent leurs résultats à part de vos records."},   // customseries
+    {"None.", "Aucune."},   // customseries
+    {"Import from folder...", "Importer depuis un dossier..."},   // customseries
+    {"Choose a car mod's folder: its car files (named after the car they replace, in a folder named after its class: COMP/CAR7.BGV) or its folders with a car.ini are checked and copied into the custom cars folder.", "Choisissez le dossier d'un mod de voiture : ses fichiers de voiture (au nom de la voiture qu'ils remplacent, dans un dossier au nom de sa catégorie : COMP/CAR7.BGV) ou ses dossiers avec un car.ini sont vérifiés et copiés dans le dossier des voitures personnalisées."},   // customseries
+    {"Opens the custom cars folder in the file manager (made when it is not there yet).", "Ouvre le dossier des voitures personnalisées dans le gestionnaire de fichiers (créé s'il n'existe pas)."},   // customseries
+    {"Reads the custom cars folder again (cars added or removed since).", "Relit le dossier des voitures personnalisées (voitures ajoutées ou retirées depuis)."},   // customseries
+    {"Deletes this car's files from the custom cars folder.", "Supprime les fichiers de cette voiture du dossier des voitures personnalisées."},   // customseries
+    {"Remove this custom car?", "Retirer cette voiture personnalisée ?"},   // customseries
+    {"Its files are deleted from the custom cars folder.", "Ses fichiers sont supprimés du dossier des voitures personnalisées."},   // customseries
+    {"Imported: {}", "Importées : {}"},   // customseries
+    {"Removed: {}", "Retirée : {}"},   // customseries
+    {"Not removed: {}", "Non retirée : {}"},   // customseries
+    {"{}'s handling", "Conduite de {}"},   // customseries
+    {"Traffic", "Trafic"},   // customseries
+    {"Traffic special", "Trafic spécial"},   // customseries
+    {"Not shown", "Non affichée"},   // customseries
+    {"Custom cars: choose the folder of a car mod", "Voitures personnalisées : choisissez le dossier d'un mod de voiture"},   // customseries
+    {"Open the car mod's folder, then Start: its cars are copied into the custom cars folder.", "Ouvrez le dossier du mod de voiture, puis Start : ses voitures sont copiées dans le dossier des voitures personnalisées."},   // customseries
+    {"Every player car on your disc, in the game's own car model, then the traffic vehicles and your custom and prototype cars as SELECT CAR offers them. Looking here changes nothing: it unlocks nothing and the save files are not read.", "Toutes les voitures jouables de votre disque, avec le modèle du jeu, puis les véhicules du trafic et vos voitures personnalisées et prototypes comme SELECT CAR les propose. Regarder ne change rien : rien n'est débloqué et les sauvegardes ne sont pas lues."},   // customseries
+    {"TUK-TUKS", "TUK-TUKS"},   // party1
+    {"In SINGLE EVENT, you and every rival drive the tuk-tuk from the city traffic, with the engine sound and handling of a compact.", "En SINGLE EVENT, vous et tous les rivaux conduisez le tuk-tuk de la circulation, avec le son moteur et la conduite d'une compacte."},   // party1
+    {"Crash events too.", "Les épreuves Crash aussi."},   // party1
+    {"Import car pack...", "Importer un pack de voitures..."},   // carpacks
+    {"A car pack made to replace the game's cars (a .zip, or its folder): the cars it changes become cars of their own, never in place of the game's. Cars your disc already has, BETA cars you have and cars imported before are left out.", "Un pack de voitures fait pour remplacer celles du jeu (un .zip, ou son dossier) : les voitures qu'il change deviennent des voitures à part entière, jamais à la place de celles du jeu. Les voitures que votre disque a déjà, vos voitures BETA et celles déjà importées sont laissées de côté."},   // carpacks
+    {"Choose the game's own data first (above): a pack's cars are compared with your disc's.", "Choisissez d'abord les données du jeu (ci-dessus) : les voitures d'un pack sont comparées à celles de votre disque."},   // carpacks
+    {"Custom cars: choose a car pack (a .zip file, or its folder)", "Voitures personnalisées : choisissez un pack de voitures (un fichier .zip, ou son dossier)"},   // carpacks
+    {"A on the pack's .zip chooses it; or open the pack's folder, then Start.", "A sur le .zip du pack le choisit ; ou ouvrez le dossier du pack, puis Start."},   // carpacks
+    {"Open the pack's folder, then Start.", "Ouvrez le dossier du pack, puis Start."},   // carpacks
+    {"Cut cars (BETA series)", "Voitures coupées (série BETA)"},   // carpacks
+    {"Cut cars", "Voitures coupées"},   // carpacks
+    {"New models", "Nouveaux modèles"},   // carpacks
+    {"Early versions", "Premières versions"},   // carpacks
+    {"New paint", "Nouvelle peinture"},   // carpacks
+    {"Other cars", "Autres voitures"},   // carpacks
+    {"Choose whether these cars are imported.", "Choisissez si ces voitures sont importées."},   // carpacks
+    {"Import {} cars", "Importer {} voitures"},   // carpacks
+    {"Writes the chosen cars into the custom cars folder (the cut cars of the BETA series into its folder).", "Écrit les voitures choisies dans le dossier des voitures personnalisées (les voitures coupées de la série BETA dans le sien)."},   // carpacks
+    {"Nothing is written.", "Rien n'est écrit."},   // carpacks
+    {"{} cars", "{} voitures"},   // carpacks
+    {"Deletes this pack's cars from the custom cars folder.", "Supprime les voitures de ce pack du dossier des voitures personnalisées."},   // carpacks
+    {"Remove this car pack?", "Retirer ce pack de voitures ?"},   // carpacks
+    {"Its cars are deleted from the custom cars folder.", "Ses voitures sont supprimées du dossier des voitures personnalisées."},   // carpacks
+    {"already in the game", "déjà dans le jeu"},   // carpacks
+    {"already a BETA car", "déjà une voiture BETA"},   // carpacks
+    {"already imported", "déjà importée"},   // carpacks
+    {"not chosen", "non choisie"},   // carpacks
+    {"an old-layout prototype file: import it with Beta / Prototype cars", "un fichier de prototype à l'ancien format : importez-le avec Beta / Prototype cars"},   // carpacks
+    {"the pack's vehicle list: not used (the game's own is kept)", "la liste des véhicules du pack : non utilisée (celle du jeu est gardée)"},   // carpacks
+    {"the pack's handling and camera values: not applied (the game's own are kept)", "la conduite et les caméras du pack : non appliquées (celles du jeu sont gardées)"},   // carpacks
+    {"A cut car's file, whatever its paint, is that BETA car (matched by its shape): it goes into the BETA series once, not as a car of its own.", "Le fichier d'une voiture coupée, quelle que soit sa peinture, est cette voiture BETA (reconnue à sa forme) : il va une seule fois dans la série BETA, pas comme une voiture à part."},   // carpacks
+    // extras (2026-11-23): the EXTRAS tab
+    {"NIGHT (EXPERIMENTAL)", "NUIT (EXPÉRIMENTAL)"},
+    {"RAIN (EXPERIMENTAL)", "PLUIE (EXPÉRIMENTAL)"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a TIME OF DAY row (Day / Night).", "Activé : SELECT OPTIONS de SINGLE EVENT a une ligne HEURE (Jour / Nuit)."},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a WEATHER row (Clear / Rain).", "Activé : SELECT OPTIONS de SINGLE EVENT a une ligne MÉTÉO (Dégagé / Pluie)."},
+    {"NIGHT IN WORLD TOUR", "NUIT EN WORLD TOUR"},
+    {"RAIN IN WORLD TOUR", "PLUIE EN WORLD TOUR"},
+    {"Always", "Toujours"},
+    {"Random", "Aléatoire"},
+    {"World Tour's events at night: Always, or Random (each event as it starts).", "Les épreuves du World Tour de nuit : Toujours, ou Aléatoire (chaque épreuve à son départ)."},
+    {"World Tour's events in the rain: Always, or Random (each event as it starts).", "Les épreuves du World Tour sous la pluie : Toujours, ou Aléatoire (chaque épreuve à son départ)."},
+    {"Drawn only: your progress and records count as usual.", "Affichage seulement : votre progression et vos records comptent comme d'habitude."},
+    {"EXPERIMENTAL", "EXPÉRIMENTAL"},
+    {"Experimental: work in progress.", "Expérimental : en cours de développement."},
+    {"Tell us what you think.", "Dites-nous ce que vous en pensez."},
+    {"ROAD RAGE RIVALS", "RIVAUX ROAD RAGE"},
+    {"EXTRAS", "EXTRAS"},
+    {"SINGLE EVENT", "ÉPREUVE SIMPLE"},
+    {"SELECT OPTIONS", "SELECT OPTIONS"},
+    {"SELECT CAR", "SELECT CAR"},
+    {"ELIMINATOR", "ÉLIMINATOR"},
+    {"MORE RIVALS", "PLUS DE RIVAUX"},
+    {"TRAFFIC", "TRAFIC"},
+    {"LAPS", "TOURS"},
+    {"TIMED ELIMINATION", "ÉLIMINATION CHRONO"},
+    {"TRANSMISSION", "TRANSMISSION"},
+    {"RIVAL STYLE", "STYLE RIVAUX"},
+    {"BURNOUT POINTS", "POINTS BURNOUT"},
+    {"TIME LIMIT", "LIMITE DE TEMPS"},
+    {"TRAFFIC PATTERN", "SCHÉMA TRAFIC"},
+    {"RIVALS' CARS", "VOITURES RIVALES"},
+    {"TRAFFIC CHECK", "BOUSCULADE"},
+    {"HEAVYWEIGHTS", "POIDS LOURDS"},
+    {"TRAFFIC SERIES", "SÉRIE TRAFIC"},
+    {"CUSTOM CARS", "VOITURES PERSO"},
+    {"BETA CARS", "VOITURES BÊTA"},
+    {"CAR VIEWER", "VISIONNEUSE DE VOITURES"},
+    {"NO IDLE PAUSE", "SANS PAUSE AUTO"},
+    {"NO EVENT TIME LIMIT", "SANS LIMITE DE DURÉE"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has this row.", "Activé : SELECT OPTIONS de SINGLE EVENT a cette ligne."},
+    {"Off: the game's own page.", "Désactivé : la page du jeu telle quelle."},
+    {"On: SINGLE EVENT's SELECT MODE has a fifth mode, ELIMINATOR: the last car is out at the end of each lap.", "Activé : SELECT MODE de SINGLE EVENT a un cinquième mode, ELIMINATOR : la dernière voiture sort à la fin de chaque tour."},
+    {"Off: the game's four modes.", "Désactivé : les quatre modes du jeu."},
+    {"On: a SINGLE EVENT race's RIVALS row goes up to 7, for 8 cars.", "Activé : la ligne RIVALS d'une course SINGLE EVENT va jusqu'à 7, pour 8 voitures."},
+    {"Off: up to 5, as in the game.", "Désactivé : jusqu'à 5, comme dans le jeu."},
+    {"On: the HEAVYWEIGHTS series in every SINGLE EVENT mode.", "Activé : la série HEAVYWEIGHTS dans chaque mode SINGLE EVENT."},
+    {"Off: in Crash only, as in the game.", "Désactivé : en Crash seulement, comme dans le jeu."},
+    {"On: SINGLE EVENT's SELECT CAR has the TRAFFIC and TRAFFIC SPECIAL series: drive a car, bus or tuk-tuk from the traffic.", "Activé : SELECT CAR de SINGLE EVENT a les séries TRAFFIC et TRAFFIC SPECIAL : conduisez une voiture, un bus ou un tuk-tuk de la circulation."},
+    {"On: the car mods in your custom cars folder, as the CUSTOM series.", "Activé : les voitures modifiées de votre dossier de voitures perso, comme série CUSTOM."},
+    {"On: the prototype cars the launcher imported, as the BETA series.", "Activé : les voitures prototypes importées par le lanceur, comme série BETA."},
+    {"On: YOUR GARAGE opens the game's leftover car viewer.", "Activé : YOUR GARAGE ouvre la visionneuse de voitures restée dans le jeu."},
+    {"On: a race never pauses itself.", "Activé : une course ne se met jamais en pause d'elle-même."},
+    {"Off: as in the game, it pauses after 5 minutes without input.", "Désactivé : comme dans le jeu, elle se met en pause après 5 minutes sans action."},
+    {"On: an event goes on until it ends the normal way; one kept going past the game's limit keeps no records.", "Activé : une épreuve continue jusqu'à sa fin normale ; une épreuve prolongée au-delà de la limite du jeu ne garde aucun record."},
+    {"Off: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Désactivé : comme dans le jeu, une épreuve encore en cours après 25 à 40 minutes est terminée pour toutes les voitures."},
 };
 
 inline constexpr Entry kGE[] = {   // German
+    {"HD TEXTURE MEMORY", "HD-TEXTURSPEICHER"},   // texpack: HD TEXTURE MEMORY
+    {"Full quality", "Volle Qualität"},   // texpack: HD TEXTURE MEMORY
+    {"Compressed", "Komprimiert"},   // texpack: HD TEXTURE MEMORY
+    {"How an HD texture pack's PNG and BC7 files are kept on the graphics card.", "Wie die PNG- und BC7-Dateien eines HD-Texturpakets auf der Grafikkarte gehalten werden."},   // texpack: HD TEXTURE MEMORY
+    {"Full quality: as the files are, as PCSX2 keeps them; they take about four times the memory.", "Volle Qualität: so wie die Dateien sind, wie PCSX2 sie hält; sie brauchen etwa viermal so viel Speicher."},   // texpack: HD TEXTURE MEMORY
+    {"Compressed: packed when they load, a quarter of the memory, a little less sharp.", "Komprimiert: beim Laden gepackt, ein Viertel des Speichers, etwas weniger scharf."},   // texpack: HD TEXTURE MEMORY
+    {"Auto: full quality on a graphics card with 6 GB of its own memory or more, compressed otherwise.", "Auto: volle Qualität auf einer Grafikkarte mit 6 GB eigenem Speicher oder mehr, sonst komprimiert."},   // texpack: HD TEXTURE MEMORY
+    {"SOUND OUTPUT", "TONAUSGABE"},   // audioq
+    {"OUTPUT", "AUSGABE"},   // audioq
+    {"Clean", "Sauber"},   // audioq
+    {"Clean: the loudest moments (a crash over the engines and the music) are turned down for an instant instead of clipping.", "Sauber: Die lautesten Momente (ein Crash über den Motoren und der Musik) werden kurz leiser gemacht, statt zu übersteuern."},   // audioq
+    {"Original: the PS2's own output, which crackles when it clips.", "Original: Die Ausgabe der PS2 selbst, die knistert, wenn sie übersteuert."},   // audioq
+    {"Revenge", "Revenge"},   // trafficcheck (the game's name)
+    {"TRAFFIC CHECK (2 PLAYERS)", "VERKEHR RAMMEN (2 SPIELER)"},   // trafficcheck
+    {"Extreme", "Extrem"},   // trafficcheck
+    {"Two-player races: ram a car, van or lorry going your way and it is launched ahead instead of wrecking you, for boost and a scored chain, as in Burnout Revenge.", "Rennen zu zweit: Rammt man ein Auto, einen Lieferwagen oder Lastwagen in Fahrtrichtung, wird er nach vorn geschleudert, statt einen crashen zu lassen, für Boost und eine gewertete Serie, wie in Burnout Revenge."},   // trafficcheck
+    {"A car you check that hits your rival takes them out for you.", "Ein gerammtes Auto, das den Rivalen trifft, schaltet ihn für einen aus."},   // trafficcheck
+    {"Revenge: oncoming traffic, buses and big rigs still crash you.", "Revenge: Gegenverkehr, Busse und Sattelzüge lassen einen weiterhin crashen."},   // trafficcheck
+    {"Extreme: they are shoved aside too.", "Extrem: Auch sie werden weggestoßen."},   // trafficcheck
+    {"Single races have their own TRAFFIC CHECK row on SELECT OPTIONS.", "Einzelrennen haben ihre eigene Zeile VERKEHR RAMMEN in SELECT OPTIONS."},   // trafficcheck
+    {"ORBIT STYLE", "ORBIT-STIL"},   // orbitcam2
+    {"Look", "Blick"},   // orbitcam2
+    {"Swing", "Schwenk"},   // orbitcam2
+    {"Look: the view turns to where you point the stick (down looks behind), as in Burnout Revenge.", "Blick: Die Ansicht dreht sich dorthin, wohin du den Stick drückst (nach unten: nach hinten), wie in Burnout Revenge."},   // orbitcam2
+    {"Swing: the stick turns the view round while you hold it, and up or down raises or lowers it.", "Schwenk: Der Stick dreht die Ansicht, solange du ihn hältst, und oben oder unten hebt oder senkt sie."},   // orbitcam2
+    {"FINISH CAMERA", "ZIELKAMERA"},   // finishcam1
+    {"Set pieces", "Szenen"},   // finishcam1
+    {"After you cross the finish line, the camera cycles through 12 set pieces of angles around the finish, 5 seconds each, from the game's own data.", "Nach der Ziellinie wechselt die Kamera durch 12 Szenen mit Blickwinkeln rund um das Ziel, je 5 Sekunden, aus den eigenen Daten des Spiels."},   // finishcam1
+    {"Game: the game's finish shot.", "Spiel: die Zielaufnahme des Spiels."},   // finishcam1
+    {"CAMERA ROLL", "KAMERANEIGUNG"},   // camroll1
+    {"Subtle", "Leicht"},   // camroll1
+    {"Strong", "Stark"},   // camroll1
+    {"In a race, the chase camera leans into corners.", "Im Rennen neigt sich die Verfolgerkamera in die Kurven."},   // camroll1
+    {"Subtle: up to 4 degrees.", "Leicht: bis zu 4 Grad."},   // camroll1
+    {"Strong: up to 8 degrees.", "Stark: bis zu 8 Grad."},   // camroll1
+    {"CAR STATS", "FAHRZEUGWERTE"},   // carstats1 / blinkers1 / rrparts1
+    {"More", "Mehr"},   // carstats1 / blinkers1 / rrparts1
+    {"TURN SIGNALS", "BLINKER"},   // carstats1 / blinkers1 / rrparts1
+    {"ROAD RAGE PARTS", "ROAD-RAGE-TEILE"},   // carstats1 / blinkers1 / rrparts1
+    {"All loose", "Alle lösbar"},   // carstats1 / blinkers1 / rrparts1
+    {"More: the car select page also shows GRIP and ACCELERATION, worked out from each car's handling.", "Mehr: Die Fahrzeugwahl zeigt auch GRIP und BESCHLEUNIGUNG, berechnet aus dem Fahrverhalten jedes Autos."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: TOP SPEED and WEIGHT only.", "Spiel: nur HÖCHSTGESCHWINDIGKEIT und GEWICHT."},   // carstats1 / blinkers1 / rrparts1
+    {"On: the other racers' indicators blink before a bend, on every track.", "Ein: Die Blinker der anderen Fahrer blinken vor einer Kurve, auf jeder Strecke."},   // carstats1 / blinkers1 / rrparts1
+    {"Their lights only: the race is unchanged.", "Nur ihre Lichter: Das Rennen bleibt unverändert."},   // carstats1 / blinkers1 / rrparts1
+    {"All loose: in a single-event Road Rage, every loose part can come off a damaged car, not only the ones the game lets go.", "Alle lösbar: In einem Road Rage als Einzelrennen kann jedes lose Teil von einem beschädigten Auto abfallen, nicht nur die, die das Spiel loslässt."},   // carstats1 / blinkers1 / rrparts1
+    {"Loose parts are physical, so the race is not the original: its records are kept apart.", "Lose Teile sind physikalisch, das Rennen ist also nicht das Original: Seine Rekorde werden getrennt gespeichert."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: the original.", "Spiel: das Original."},   // carstats1 / blinkers1 / rrparts1
+    {"PARTY MODES", "PARTY-MODI"},   // party1
+    {"CRAZY AI PHYSICS", "VERRÜCKTE KI-PHYSIK"},   // party1
+    {"Basic", "Einfach"},   // party1
+    {"Local Wildlife", "Wilde Tiere"},   // party1
+    {"Mayhem", "Chaos"},   // party1
+    {"The rivals' physics go haywire: their wheels never leave the road as far as the game knows, and gravity barely holds them.", "Die Physik der Rivalen spielt verrückt: Für das Spiel verlassen ihre Räder nie die Straße, und die Schwerkraft hält sie kaum."},   // party1
+    {"Local Wildlife: they tumble without crashing.", "Wilde Tiere: Sie überschlagen sich, ohne zu crashen."},   // party1
+    {"Mayhem: a rival that flips over blows up.", "Chaos: Ein Rivale, der sich überschlägt, explodiert."},   // party1
+    {"Your own car drives as usual.", "Das eigene Auto fährt wie gewohnt."},   // party1
+    {"MOON JUMP", "MONDSPRUNG"},   // party1
+    {"Hold the MOON JUMP button to lift your car into the air (4 on the keyboard; a controller button can be set in CONTROLS).", "Die MONDSPRUNG-Taste halten, um das Auto in die Luft zu heben (4 auf der Tastatur; eine Controller-Taste lässt sich unter STEUERUNG festlegen)."},   // party1
+    {"CRASH ON DEMAND", "CRASH AUF KNOPFDRUCK"},   // party1
+    {"The CRASH button crashes your car at once (5 on the keyboard; a controller button can be set in CONTROLS).", "Die CRASH-Taste lässt das Auto sofort crashen (5 auf der Tastatur; eine Controller-Taste lässt sich unter STEUERUNG festlegen)."},   // party1
+    {"AI DRIVER BUTTON", "KI-FAHRER-TASTE"},   // party1
+    {"The AI DRIVER button hands your car to the game's own AI driver, and back on the next press (6 on the keyboard; a controller button can be set in CONTROLS).", "Die KI-FAHRER-Taste übergibt das Auto dem KI-Fahrer des Spiels und beim nächsten Druck wieder zurück (6 auf der Tastatur; eine Controller-Taste lässt sich unter STEUERUNG festlegen)."},   // party1
+    {"KAMIKAZE TRAFFIC", "KAMIKAZE-VERKEHR"},   // party1
+    {"Traffic close ahead of any race car throws itself at it.", "Verkehr dicht vor einem Rennauto wirft sich auf es."},   // party1
+    {"Expect many wrecks.", "Viele Wracks sind zu erwarten."},   // party1
+    {"AI DRIVER", "KI-FAHRER"},   // party1
+    {"REPLAY: PREVIOUS CAMERA", "REPLAY: VORHERIGE KAMERA"},   // replaycams
+    {"REPLAY: NEXT CAMERA", "REPLAY: NÄCHSTE KAMERA"},   // replaycams
+    {"REPLAY: PREVIOUS CAR", "REPLAY: VORHERIGES AUTO"},   // replaycams
+    {"REPLAY: NEXT CAR", "REPLAY: NÄCHSTES AUTO"},   // replaycams
+    {"REPLAY: FREE CAMERA", "REPLAY: FREIE KAMERA"},   // replaycams
+    {"REPLAY CAMERA CUTS", "KAMERASCHNITTE IM REPLAY"},   // replaycams
+    {"Stay", "Bleiben"},   // replaycams
+    {"Game: in a race replay, a crash cuts to the game's crash camera, whatever camera you chose.", "Spiel: Im Replay eines Rennens schneidet ein Crash auf die Crash-Kamera des Spiels, egal welche Kamera gewählt ist."},   // replaycams
+    {"Stay: the camera you chose stays on.", "Bleiben: Die gewählte Kamera bleibt."},   // replaycams
+    {"While a race replay plays: the previous camera angle.", "Während ein Rennen-Replay läuft: der vorherige Kamerawinkel."},   // replaycams
+    {"While a race replay plays: the next camera angle.", "Während ein Rennen-Replay läuft: der nächste Kamerawinkel."},   // replaycams
+    {"While a race replay plays: watch the previous car.", "Während ein Rennen-Replay läuft: das vorherige Auto verfolgen."},   // replaycams
+    {"While a race replay plays: watch the next car.", "Während ein Rennen-Replay läuft: das nächste Auto verfolgen."},   // replaycams
+    {"While a race replay plays: a free camera (photo mode's controls), and back.", "Während ein Rennen-Replay läuft: eine freie Kamera (die Steuerung des Fotomodus) und zurück."},   // replaycams
+    {"CRASH", "CRASH"},   // party1
+    {"Held in a race: lifts your car into the air (GAME > PARTY MODES > MOON JUMP on).", "Im Rennen gehalten: hebt das Auto in die Luft (SPIEL > PARTY-MODI > MONDSPRUNG an)."},   // party1
+    {"In a race: crashes your car at once (GAME > PARTY MODES > CRASH ON DEMAND on).", "Im Rennen: lässt das Auto sofort crashen (SPIEL > PARTY-MODI > CRASH AUF KNOPFDRUCK an)."},   // party1
+    {"In a race: the game's AI drives your car, and you again on the next press (GAME > PARTY MODES > AI DRIVER BUTTON on).", "Im Rennen: Die KI des Spiels fährt das Auto, beim nächsten Druck wieder man selbst (SPIEL > PARTY-MODI > KI-FAHRER-TASTE an)."},   // party1
+    {"ORBIT CAMERA", "ORBIT-KAMERA"},   // orbitcam1
+    {"CRASH CAMERA", "CRASH-KAMERA"},   // options3
+    {"On: when you crash, the game cuts to its crash camera, as the original.", "An: wenn du crashst, schneidet das Spiel auf seine Crash-Kamera, wie im Original."},   // options3
+    {"Off: the view stays behind your car.", "Aus: die Sicht bleibt hinter deinem Auto."},   // options3
+    {"The takedown camera is the game's own option (DRIVER DETAILS > SETTINGS).", "Die Takedown-Kamera ist eine Option des Spiels (FAHRERDETAILS > EINSTELLUNGEN)."},   // options3
+    {"Camera only.", "Nur die Kamera."},   // options3
+    {"RACE REPLAY", "RENNEN ANSEHEN"},   // replayview
+    {"APPLIES AT THE NEXT START", "GILT AB DEM NÄCHSTEN START"},   // nextstart
+    {"RESTART", "NEUSTART"},   // nextstart
+    {"KEEP", "BEHALTEN"},   // nextstart
+    {"Next start", "Nächster Start"},   // nextstart
+    {"Saved: the game uses it from its next start.", "Gespeichert: Das Spiel nutzt es ab dem nächsten Start."},   // nextstart
+    {"APPLY AND RESTART", "ÜBERNEHMEN UND NEU STARTEN"},   // nextstart
+    {"Restart", "Neustart"},   // nextstart
+    {"Saved, then the game closes and starts again at the title screen, the change in use.", "Gespeichert, dann schließt sich das Spiel und startet am Titelbildschirm neu, mit der Änderung."},   // nextstart
+    {"The race in progress ends.", "Das laufende Rennen endet."},   // nextstart
+    {"REVERT", "ZURÜCKSETZEN"},   // nextstart
+    {"Undo", "Rückgängig"},   // nextstart
+    {"These settings go back to what they were when the page opened.", "Diese Einstellungen kehren zum Stand beim Öffnen der Seite zurück."},   // nextstart
+    {"BACK  KEEP", "ZURÜCK  BEHALTEN"},   // nextstart
+    {"Changed: applies at the next start.", "Geändert: gilt ab dem nächsten Start."},   // nextstart
+    {"REPLAY", "WIEDERHOLUNG"},   // replayview
+    {"A race's results page, with RACE REPLAY on (GAME > MODES): watch the race again; while it plays: back to the results.", "Ergebnisseite eines Rennens, mit RENNEN ANSEHEN an (SPIEL > MODI): das Rennen noch einmal ansehen; während es läuft: zurück zu den Ergebnissen."},   // replayview
+    {"Replay", "Wiederholung"},   // replayview
+    {"On: a race's results page offers REPLAY (F6, or Square / X): the game's own replay of the race you have just driven.", "An: Die Ergebnisseite eines Rennens bietet REPLAY (F6 oder Quadrat / X): die Wiederholung des Spiels vom Rennen, das du gerade gefahren bist."},   // replayview
+    {"Every offline mode but Crash, which has its own.", "Alle Offline-Modi außer Crash, der seine eigene hat."},   // replayview
+    {"Your results, records and progress stay as they were.", "Deine Ergebnisse, Rekorde und dein Fortschritt bleiben, wie sie waren."},   // replayview
+    {"DEFORMATION", "VERFORMUNG"},   // options3
+    {"How much the cars' bodies crumple when they hit something.", "Wie stark sich die Karosserien der Autos bei einem Aufprall verformen."},   // options3
+    {"How much the cars' bodies crumple when they hit something, in Single Event and two-player races.", "Wie stark sich die Karosserien der Autos bei einem Aufprall verformen, in Einzelrennen und Rennen zu zweit."},   // options3
+    {"100% is the original game's.", "100% ist der Wert des Originalspiels."},   // options3
+    {"Another amount changes the race after the first hard hit, so these races keep their results apart from your records.", "Ein anderer Wert verändert das Rennen nach dem ersten harten Aufprall, darum werden die Ergebnisse dieser Rennen getrennt von deinen Rekorden gehalten."},   // options3
+    {"DRIVER LABELS", "FAHRER-ANZEIGE"},   // options3
+    {"Names", "Namen"},   // options3
+    {"Names + distance", "Namen + Abstand"},   // options3
+    {"Distance", "Abstand"},   // options3
+    {"Over the rival cars in a race: each driver's name, the distance to them, or both.", "Über den Autos der Rivalen im Rennen: der Name jedes Fahrers, der Abstand zu ihm oder beides."},   // options3
+    {"On: in a race, the right stick turns the chase camera around your car to look left, right or behind; it stops short of walls.", "Ein: Im Rennen dreht der rechte Stick die Verfolgerkamera um dein Auto, für den Blick nach links, rechts oder hinten; sie hält vor Wänden an."},   // orbitcam2
+    {"A moment after you let go, the view eases back behind the car.", "Kurz nach dem Loslassen kehrt die Ansicht sanft hinter das Auto zurück."},   // orbitcam1
+    {"The mouse does it too, with the right button held.", "Die Maus kann das auch, mit gedrückter rechter Taste."},   // orbitcam1
+    {"On the PlayStation controller layout the right stick is the throttle and brake, so it stays the game's there.", "Bei der PlayStation-Controllerbelegung sind auf dem rechten Stick Gas und Bremse, daher bleibt er dort dem Spiel."},   // orbitcam1
+    {"DISPLAY, GRAPHICS, CAR, CONTROLS AND MORE", "ANZEIGE, GRAFIK, AUTO, STEUERUNG UND MEHR"},   // 1.3.1: the main menu's SETTINGS help (tools/native/pc_menu.h)
+    {"LEAVE THE GAME", "SPIEL BEENDEN"},   // 1.3.1: the main menu's QUIT GAME help
+    {"Their PS2 mods inspired MIRROR MODE, CRASHBREAKER IN EVERY MODE, the PARTY MODES and the race options (rival names and distances, rivals' cars, standing start, Road Rage time limit and rival style, Burnout points, varied traffic, DEFORMATION, the Chrome finish, the crash camera switch), START AT, the idle pause and long-event switches, the Crashbreaker's full blast, the car viewer and the replay viewer: the ideas only, none of their code.", "Ihre PS2-Mods haben SPIEGELMODUS, CRASHBREAKER IN JEDEM MODUS, die PARTY-MODI und die Rennoptionen (Namen und Abstände der Rivalen, Autos der Rivalen, stehender Start, Zeitlimit und Rivalenstil in Road Rage, Burnout-Punkte, wechselnder Verkehr, VERFORMUNG, die Chrom-Lackierung, die Wahl der Crash-Kamera), STARTEN BEI, die Schalter für die Inaktivitätspause und lange Events, die volle Explosion des Crashbreakers, den Autobetrachter und den Replay-Betrachter angeregt: nur die Ideen, nichts von ihrem Code."},   // credits140 (the launcher's Credits)
+    {"The PCSX2 mods that inspired the RPM meter, the boost bar shake, the takedown streak pitch, camera roll, the finish camera's set pieces, manual gears, TIMED ELIMINATION, the traffic presets, traffic checking in two-player races, loose parts in Road Rage, car stats, the rivals' turn signals, the paint picker, painted car pictures and the reflections that reach further (ideas only, none of their code).", "Die PCSX2-Mods, die den Drehzahlmesser, die wackelnde Boost-Leiste, die Tonhöhe der Takedown-Serie, die Kameraneigung, die festen Einstellungen der Zielkamera, die manuelle Schaltung, die ZEIT-ELIMINIERUNG, die Verkehrsvorgaben, VERKEHR RAMMEN in Rennen zu zweit, lose Teile in Road Rage, die Fahrzeugwerte, die Blinker der Rivalen, den Farbwähler, lackierte Autobilder und die weiter reichenden Reflexionen inspiriert haben (nur die Ideen, nichts von ihrem Code)."},   // credits140 (the launcher's Credits)
+    {"The Heavyweights-in-the-garage mod behind the Heavyweights in Single Event.", "Der Mod mit den Schwergewichten in der Garage, die Grundlage für die Schwergewichte in Einzelrennen."},   // credits140 (the launcher's Credits)
+    {"The traffic-checking edit behind TRAFFIC CHECK (2 PLAYERS) Extreme.", "Die Änderung zum Verkehrsrammen hinter VERKEHR RAMMEN (2 SPIELER) Extrem."},   // credits140 (the launcher's Credits)
+    {"The Traffic Checking mod restoring Burnout Revenge's code, the reference for TRAFFIC CHECK (2 PLAYERS) Revenge.", "Der Traffic-Checking-Mod, der den Code von Burnout Revenge wiederherstellt, die Vorlage für VERKEHR RAMMEN (2 SPIELER) Revenge."},   // credits140 (the launcher's Credits)
+    {"The Revenge-style orbit camera mod behind the orbit camera's feel.", "Der Orbit-Kamera-Mod im Revenge-Stil hinter dem Gefühl der Orbit-Kamera."},   // credits140 (the launcher's Credits)
+    {"CRASHBREAKER AFTER", "CRASHBREAKER NACH"},   // gameopts
+    {"How many vehicles your crash must hit before the CRASHBREAKER button works, as Crash mode counts them (races have less traffic, so fewer).", "Wie viele Fahrzeuge der eigene Crash treffen muss, bevor die CRASHBREAKER-Taste wirkt, gezählt wie im Crash-Modus (Rennen haben weniger Verkehr, also weniger)."},   // gameopts
+    {"0: ready as soon as you crash.", "0: bereit, sobald man crasht."},   // gameopts
+    {"GAMEPLAY", "SPIELABLAUF"},   // gameopts
+    {"MIRROR MODE", "SPIEGELMODUS"},   // gameopts
+    {"CRASHBREAKER IN EVERY MODE", "CRASHBREAKER IN JEDEM MODUS"},   // gameopts
+    {"Single races and two-player races on mirrored tracks: the world is drawn reversed left to right and the steering follows it, so left still steers left on the screen.", "Einzelrennen und Rennen zu zweit auf gespiegelten Strecken: Die Welt wird seitenverkehrt gezeigt und die Lenkung folgt ihr, links lenkt also auf dem Bildschirm weiter nach links."},   // gameopts
+    {"The HUD is not mirrored; the writing on signs is.", "Das HUD wird nicht gespiegelt, die Schrift auf Schildern schon."},   // gameopts
+    {"These races keep their results apart from your records.", "Die Ergebnisse dieser Rennen werden getrennt von den Rekorden gehalten."},   // gameopts
+    {"Applies from the next race.", "Gilt ab dem nächsten Rennen."},   // gameopts
+    {"After a crash in a single or two-player race, Time Attack or Road Rage, the CRASHBREAKER button blows your wreck up as in Crash mode, wrecking the traffic around it.", "Nach einem Crash in einem Einzelrennen oder Rennen zu zweit, im Zeitfahren oder in Road Rage sprengt die CRASHBREAKER-Taste das eigene Wrack wie im Crash-Modus und zerlegt den Verkehr ringsum."},   // gameopts
     {"VOICES", "STIMMEN"},   // 1.3.0 VOICES
     {"The Crash FM DJ and the race training's narrator.", "Der DJ von Crash FM und der Sprecher des Renntrainings."},   // 1.3.0 VOICES
     {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Sprache: Sie sprechen die gewählte SPRACHE (Französisch, Deutsch, Italienisch und Spanisch haben eigene; britisches Englisch, Niederländisch und Schwedisch haben die englischen Stimmen, wie auf ihren Discs)."},   // 1.3.0 VOICES
@@ -1901,6 +2427,8 @@ inline constexpr Entry kGE[] = {   // German
     {"FRAME RATE LIMIT", "BILDRATENLIMIT"},
     {"The most frames per second drawn.", "Die höchste Zahl gezeichneter Bilder pro Sekunde."},
     {"The game itself always runs at its own speed.", "Das Spiel selbst läuft immer in seinem eigenen Tempo."},
+    {"Auto: 60 on a processor with 4 threads or fewer, so the game itself keeps up; no limit on others.", "Auto: 60 auf einem Prozessor mit 4 Threads oder weniger, damit das Spiel selbst mithält; sonst keine Begrenzung."},
+    {"Unlimited: no limit at all, for fast processors.", "Unbegrenzt: gar keine Begrenzung, für schnelle Prozessoren."},
     {"PAUSE WHEN UNFOCUSED", "PAUSE IM HINTERGRUND"},
     {"The game holds while its window is in the background (the native game only).", "Das Spiel hält an, solange sein Fenster im Hintergrund ist (nur das native Spiel)."},
     {"FAST LOADING", "SCHNELLES LADEN"},
@@ -1957,6 +2485,12 @@ inline constexpr Entry kGE[] = {   // German
     {"150% and 200% want a graphics card with plenty of memory.", "150% und 200% brauchen eine Grafikkarte mit viel Speicher."},
     {"DITHER", "DITHERING"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Ein feines Muster, das die Stufen in weichen Verläufen wie dem Himmel verbirgt."},
+    {"GRAPHICS API", "GRAFIK-API"},   // d3d12
+    {"Vulkan", "Vulkan"},
+    {"D3D12", "D3D12"},
+    {"The graphics interface the game draws with.", "Die Grafikschnittstelle, mit der das Spiel zeichnet."},
+    {"Auto uses Vulkan, and Direct3D 12 when no working Vulkan device can be created.", "Auto nutzt Vulkan, und Direct3D 12, wenn kein funktionierendes Vulkan-Gerät erstellt werden kann."},
+    {"Try D3D12 if the picture shows faults with your graphics card.", "Probiere D3D12, wenn das Bild mit deiner Grafikkarte Fehler zeigt."},
     {"None", "Keines"},
     {"A PCSX2 texture replacement folder for this game (its SLUS-21050 folder, or the folder above it).", "Ein PCSX2-Texturersatzordner für dieses Spiel (sein SLUS-21050-Ordner oder der Ordner darüber)."},
     {"HD TEXTURE PACK", "HD-TEXTURPAKET"},
@@ -1978,6 +2512,25 @@ inline constexpr Entry kGE[] = {   // German
     {"Highest", "Maximal"},
     {"Highest draws every car at full detail at any distance.", "Maximal zeichnet jedes Auto in jeder Entfernung mit voller Detailstufe."},
     {"CAR REFLECTIONS", "FAHRZEUGREFLEXIONEN"},
+    {"REFLECTION DISTANCE", "REFLEXIONSWEITE"},   // reflect2
+    {"200 m", "200 m"},   // reflect2
+    {"300 m", "300 m"},   // reflect2
+    {"How far the cars' reflections reach.", "Wie weit die Spiegelungen der Autos reichen."},   // reflect2
+    {"Game: 100 m, as the original.", "Spiel: 100 m, wie im Original."},   // reflect2
+    {"Further shows more of the track in the paint and costs more.", "Weiter zeigt mehr von der Strecke im Lack und kostet mehr Leistung."},   // reflect2
+    {"REFLECTION DETAIL", "REFLEXIONSDETAIL"},   // reflect2
+    {"Track", "Strecke"},   // reflect2
+    {"Track and props", "Strecke und Objekte"},   // reflect2
+    {"Track, props and cars", "Strecke, Objekte und Autos"},   // reflect2
+    {"Track, props and cars: the other cars nearby as well.", "Strecke, Objekte und Autos: auch die anderen Autos in der Nähe."},   // reflect2
+    {"Track and props: the barriers, signs, cones and lamp posts near the car show in its reflections too.", "Strecke und Objekte: Absperrungen, Schilder, Pylonen und Laternen nahe dem Auto erscheinen auch in seinen Spiegelungen."},   // reflect2
+    {"REFLECTION UPDATE", "REFLEXIONSAKTUALISIERUNG"},   // reflect2
+    {"Every frame", "Jedes Bild"},   // reflect2
+    {"Every 2nd frame", "Jedes 2. Bild"},   // reflect2
+    {"Every 2nd frame: the reflections are redrawn half as often, for slower graphics cards.", "Jedes 2. Bild: Die Spiegelungen werden halb so oft neu gezeichnet, für langsamere Grafikkarten."},   // reflect2
+    {"REFLECTION RESOLUTION", "REFLEXIONSAUFLÖSUNG"},   // reflect2
+    {"High: sharper reflections, drawn at twice the size.", "Hoch: schärfere Spiegelungen, in doppelter Größe gezeichnet."},   // reflect2
+    {"Standard: as the original.", "Standard: wie im Original."},   // reflect2
     {"Original", "Original"},
     {"Enhanced", "Verbessert"},
     {"Enhanced: glossy sky and sun reflections on the paint and glass.", "Verbessert: glänzende Himmels- und Sonnenspiegelungen auf Lack und Glas."},
@@ -2080,6 +2633,11 @@ inline constexpr Entry kGE[] = {   // German
     {"On: the race's pause menu has a PHOTO MODE row after SETTINGS, which opens photo mode (the key P, or L3 + R3 on a controller, does too).", "An: Das Pausenmenü im Rennen hat nach OPTIONEN eine Zeile FOTOMODUS, die den Fotomodus öffnet (das tun auch die Taste P oder L3 + R3 am Controller)."},
     {"Off: the pause menu is the game's own.", "Aus: Das Pausenmenü bleibt wie im Original."},
     {"From the next pause.", "Ab der nächsten Pause."},
+    {"SETTINGS BACK BUTTON", "ZURÜCK-TASTE IN DEN EINSTELLUNGEN"},   // settingsback
+    {"Keep changes", "Änderungen behalten"},   // settingsback
+    {"Leaving a page of DRIVER DETAILS > SETTINGS (GAMEPLAY, AUDIO, VIDEO, CONTROLLERS) with Back.", "Das Verlassen einer Seite der Spieleinstellungen im Fahrerprofil (Gameplay, Audio, Video, Controller) mit Zurück."},   // settingsback
+    {"Keep changes: what you changed there stays.", "Änderungen behalten: Was dort geändert wurde, bleibt."},   // settingsback
+    {"Cancel: Back puts the old values back, as on the PS2 (confirm keeps them).", "Abbrechen: Zurück stellt die alten Werte wieder her, wie auf der PS2 (Bestätigen behält sie)."},   // settingsback
     {"English", "English"},
     {"LANGUAGE", "SPRACHE"},
     {"Choose a European disc image (or its folder) of Burnout 3: Takedown: its languages are copied to this PC (two small files each); the disc is not needed afterwards.", "Ein europäisches Disc-Image (oder dessen Ordner) von Burnout 3: Takedown auswählen: Seine Sprachen werden auf diesen PC kopiert (je zwei kleine Dateien); die Disc wird danach nicht mehr benötigt."},
@@ -2182,7 +2740,13 @@ inline constexpr Entry kGE[] = {   // German
     {"From the next song.", "Ab dem nächsten Song."},
     {"CUSTOM MUSIC VOLUME", "LAUTSTÄRKE EIGENE MUSIK"},
     {"How loud your own songs play, on top of RADIO VOLUME.", "Wie laut deine eigenen Songs spielen, zusätzlich zur RADIOLAUTSTÄRKE."},
-    {"At 100% a song plays as loud as the game plays its own songs; raise it for quiet files.", "Bei 100% spielt ein Song so laut, wie das Spiel seine eigenen Songs spielt; für leise Dateien höher stellen."},
+    {"CUSTOM MUSIC LOUDNESS", "PEGEL EIGENE MUSIK"},   // musicloud
+    {"Even out", "Angleichen"},   // musicloud
+    {"They follow RADIO VOLUME (DRIVER DETAILS > SETTINGS > AUDIO) and the radio's fades like the game's songs.", "Sie folgen der RADIOLAUTSTÄRKE (FAHRERINFO > OPTIONEN > AUDIO) und den Blenden des Radios wie die Songs des Spiels."},   // musicloud
+    {"At 100% a song plays as loud as the game plays its own songs.", "Bei 100% spielt ein Song so laut, wie das Spiel seine eigenen Songs spielt."},   // musicloud
+    {"Even out: each of your songs is measured once (in the background; kept for the next start) and played as loud as the game's own songs, so a quiet file and a loud one sound alike.", "Angleichen: Jeder deiner Songs wird einmal gemessen (im Hintergrund; für den nächsten Start gespeichert) und so laut wie die Songs des Spiels gespielt, sodass eine leise und eine laute Datei gleich klingen."},   // musicloud
+    {"A quiet song with loud peaks is raised only a little.", "Ein leiser Song mit lauten Spitzen wird nur wenig angehoben."},   // musicloud
+    {"Off: each file plays at its own level.", "Aus: Jede Datei spielt mit ihrem eigenen Pegel."},   // musicloud
     {"A limiter keeps loud songs from clipping.", "Ein Limiter verhindert, dass laute Songs übersteuern."},
     {"The game's songs and the DJ do not change.", "Die Songs des Spiels und der DJ ändern sich nicht."},
     {"Live.", "Sofort."},
@@ -2393,6 +2957,7 @@ inline constexpr Entry kGE[] = {   // German
     {"File {} (new)", "Datei {} (neu)"},
     {"{} DEG", "{} GRAD"},
     {"SETTINGS", "OPTIONEN"},
+    {"QUIT GAME", "SPIEL BEENDEN"},   // i18n2: the main menu's row (tools/native/pc_menu.h)
     {"UP / DOWN  SELECT     LEFT / RIGHT  CHANGE     CONFIRM  CHOOSE", "AUF / AB  AUSWÄHLEN     LINKS / RECHTS  ÄNDERN     BESTÄTIGEN  WÄHLEN"},
     {"BACK  CLOSE AND SAVE", "ZURÜCK  SCHLIESSEN UND SPEICHERN"},
     {"PS2 ORIGINAL", "PS2-ORIGINAL"},
@@ -2570,6 +3135,7 @@ inline constexpr Entry kGE[] = {   // German
     {"Include my save: NO", "Spielstand beifügen: NEIN"},
     {"Whether the report also holds your active save file (profile-N.sav): useful when the problem is in your progress.", "Ob der Bericht auch die aktive Speicherdatei (profile-N.sav) enthält: hilfreich, wenn das Problem im Spielfortschritt liegt."},
     {"Off by default.", "Standardmäßig aus."},
+    {"On by default.", "Standardmäßig an."},
     {"Clear the crash count", "Crash-Zähler zurücksetzen"},
     {"The last run did not end cleanly.", "Der letzte Lauf wurde nicht sauber beendet."},
     {"This marks it as ended, so the next start uses your own settings (safe mode is not chosen by itself).", "Markiert ihn als beendet, damit der nächste Start die eigenen Einstellungen verwendet (der abgesicherte Modus wird nicht automatisch gewählt)."},
@@ -2644,8 +3210,8 @@ inline constexpr Entry kGE[] = {   // German
     {"A reference for RenderWare's PS2 rasters and geometry packets.", "Eine Referenz für die PS2-Raster und Geometriepakete von RenderWare."},
     {"Burn3 (UwUCammie)", "Burn3 (UwUCammie)"},
     {"Another PC project for the game.", "Ein weiteres PC-Projekt für das Spiel."},
-    {"PS2Recomp (ran-j) and burnout3-pc", "PS2Recomp (ran-j) und burnout3-pc"},
-    {"Other PC projects for the game.", "Weitere PC-Projekte für das Spiel."},
+    {"PS2Recomp (ran-j)", "PS2Recomp (ran-j)"},
+    {"burnout3-pc (danielgomesvieira2000)", "burnout3-pc (danielgomesvieira2000)"},
     {"The Burnout 3: Takedown USA HD Remaster, the HD texture pack for PCSX2 that the HD Textures page links to and this port can use.", "Das Burnout 3: Takedown USA HD Remaster, das HD-Texturpaket für PCSX2, auf das die Seite HD-Texturen verweist und das dieser Port verwenden kann."},
     {"PCSX2 and mymcplus", "PCSX2 und mymcplus"},
     {"Their texture-pack and memory-card formats, which this port reads, and PS2 save tooling.", "Ihre Texturpaket- und Memory-Card-Formate, die dieser Port liest, und PS2-Spielstand-Werkzeuge."},
@@ -3376,6 +3942,7 @@ inline constexpr Entry kGE[] = {   // German
     {"Gloss", "Glanz"},
     {"Metallic", "Metallic"},
     {"Pearl", "Perlmutt"},
+    {"Chrome", "Chrom"},   // options3
     {"PLAYER 2 CAR PAINT", "LACKIERUNG SPIELER 2"},
     {"P2 CAR PAINT", "LACKIERUNG S2"},
     {"P2 PAINT RED", "LACK S2 ROT"},
@@ -3386,6 +3953,7 @@ inline constexpr Entry kGE[] = {   // German
     {"Gloss: the game's.", "Glanz: der des Spiels."},
     {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metallic: eine stärkere Spiegelung in der Farbe des Lacks, mit funkelnden Flocken im Licht."},
     {"Pearl: the colour shifts as the car turns to the light.", "Perlmutt: die Farbe verändert sich, wenn sich das Auto zum Licht dreht."},
+    {"Chrome: a mirror finish that shows the world around the car, tinted by the paint's colour.", "Chrom: eine Spiegeloberfläche, die die Umgebung des Autos zeigt, getönt in der Farbe des Lacks."},   // options3
     {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "Das Auto von Spieler 2 im geteilten Bildschirm: Eigene zeigt es in der Farbe der drei Zeilen darunter statt in der Lackierung aus der Fahrzeugwahl."},
     {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Aus: das Auto von Spieler 2 ohne Logos, Nummern und Streifen, einfarbig lackiert."},
     {"LIGHTING", "BELEUCHTUNG"},   // night
@@ -3395,6 +3963,45 @@ inline constexpr Entry kGE[] = {   // German
     {"TIME OF DAY PER RACE", "TAGESZEIT PRO RENNEN"},   // todrace
     {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Streckenseiten (Einzelrennen, Mehrspieler): Standard, Tag oder Nacht für das nächste Rennen."},   // todrace
     {"Time of day: {}", "Tageszeit: {}"},   // todrace
+    {"LAYER", "EBENE"},   // paint2
+    {"Body", "Karosserie"},   // paint2
+    {"Decals", "Aufkleber"},   // paint2
+    {"Wheels", "Räder"},   // paint2
+    {"Boost glow", "Boost-Leuchten"},   // paint2
+    {"COLOUR PICKER", "FARBWÄHLER"},   // paint2
+    {"FACTORY COLOURS", "WERKSFARBEN"},   // paint2
+    {"DECAL COLOUR", "AUFKLEBERFARBE"},   // paint2
+    {"WHEEL COLOUR", "RADFARBE"},   // paint2
+    {"BOOST GLOW COLOUR", "BOOST-LEUCHTFARBE"},   // paint2
+    {"P2 DECAL COLOUR", "S2 AUFKLEBERFARBE"},   // paint2
+    {"P2 WHEEL COLOUR", "S2 RADFARBE"},   // paint2
+    {"P2 BOOST GLOW COLOUR", "S2 BOOST-LEUCHTFARBE"},   // paint2
+    {"HUE", "FARBTON"},   // paint2
+    {"SHADE", "TÖNUNG"},   // paint2
+    {"FINE", "FEIN"},   // paint2
+    {"OK", "OK"},   // paint2
+    {"CANCEL", "ABBRECHEN"},   // paint2
+    {"Which part of the car the rows below colour: the body, its decals (logos, numbers and stripes), the wheels' rims or the boost glow.", "Welchen Teil des Autos die Zeilen darunter färben: die Karosserie, ihre Aufkleber (Logos, Nummern und Streifen), die Felgen oder das Boost-Leuchten."},   // paint2
+    {"One colour of each for all your cars.", "Eine Farbe von jedem für alle deine Autos."},   // paint2
+    {"Game: the game's own colour.", "Spiel: die Farbe des Spiels."},   // paint2
+    {"A ready colour, or Custom: the colour of the rows below.", "Eine fertige Farbe, oder Eigene: die Farbe der Zeilen darunter."},   // paint2
+    {"Any colour: the square sets how strong and how bright it is, the bar its hue (L1 / R1).", "Jede Farbe: das Quadrat bestimmt, wie kräftig und wie hell sie ist, der Balken ihren Farbton (L1 / R1)."},   // paint2
+    {"CONFIRM keeps it, BACK puts the colour before back.", "BESTÄTIGEN behält sie, ZURÜCK stellt die Farbe von vorher wieder her."},   // paint2
+    {"Every layer back to the game's colours, and the decals on.", "Jede Ebene zurück auf die Farben des Spiels, und die Aufkleber an."},   // paint2
+    {"The colour of the logos, numbers and stripes.", "Die Farbe der Logos, Nummern und Streifen."},   // paint2
+    {"Game: their own colours.", "Spiel: ihre eigenen Farben."},   // paint2
+    {"Any colour: the paint panel on SELECT CAR.", "Jede Farbe: das Lackierungs-Menü in der Fahrzeugwahl."},   // paint2
+    {"The colour of the wheels' rims (the tyres stay dark).", "Die Farbe der Felgen (die Reifen bleiben dunkel)."},   // paint2
+    {"Game: their own.", "Spiel: ihre eigene."},   // paint2
+    {"The colour of the exhaust's glow while boosting.", "Die Farbe des Auspuffleuchtens beim Boosten."},   // paint2
+    {"Game: the game's.", "Spiel: die des Spiels."},   // paint2
+    {"CAR PAINT PANEL", "LACKIERUNGS-MENÜ"},   // paintsel
+    {"SHIFT UP", "HOCHSCHALTEN"},   // gearbox
+    {"SHIFT DOWN", "RUNTERSCHALTEN"},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear up.", "Ein Rennen mit GETRIEBE Manuell (OPTIONEN WÄHLEN): der nächsthöhere Gang."},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear down.", "Ein Rennen mit GETRIEBE Manuell (OPTIONEN WÄHLEN): der nächstniedrigere Gang."},   // gearbox
+    {"SELECT CAR: open or close the car paint panel (a controller: the menus' Circle button, Y on the Xbox and Nintendo layouts).", "Fahrzeugwahl: öffnet oder schließt das Lackierungs-Menü (Controller: die Kreis-Taste der Menüs, Y bei der Xbox- und Nintendo-Belegung)."},   // paintsel
+    {"Changing the colour on SELECT CAR sets it back to Game.", "Eine andere Farbe in der Fahrzeugwahl stellt sie wieder auf Spiel."},   // paintsel
     {"Default ({})", "Standard ({})"},   // todrace
     {"MOON", "MOND"},   // night
     {"SURFACE DETAIL", "OBERFLÄCHENDETAIL"},   // night
@@ -3405,6 +4012,20 @@ inline constexpr Entry kGE[] = {   // German
     {"Soft contact shadows under the cars and along walls and kerbs.", "Weiche Kontaktschatten unter den Autos und entlang von Mauern und Randsteinen."},   // night
     {"Draws the scene twice: for fast graphics cards.", "Zeichnet die Szene zweimal: für schnelle Grafikkarten."},   // night
     {"SUN SHADOWS", "SONNENSCHATTEN"},   // sunshadow
+    {"PROP SHADOWS", "OBJEKTSCHATTEN"},   // propshadow1
+    {"With SUN SHADOWS: the lamp posts, signs, barriers and other roadside props cast shadows too.", "Mit SONNENSCHATTEN: Laternen, Schilder, Absperrungen und andere Objekte am Straßenrand werfen auch Schatten."},   // propshadow1
+    {"TUNNEL LIGHTS", "TUNNELLICHTER"},   // nightfix
+    {"Glow", "Leuchten"},   // nightfix
+    {"Glow: the light fittings in tunnels and underpasses glow, with small halos.", "Leuchten: Die Lampen in Tunneln und Unterführungen leuchten, mit kleinem Schein."},   // nightfix, xboxglow
+    {"Xbox: their lit parts glow through the bloom, as on the Xbox.", "Xbox: Die leuchtenden Teile der Lampen strahlen über den Bloom, wie auf der Xbox."},   // xboxglow
+    {"Game: the original look.", "Spiel: das ursprüngliche Aussehen."},   // nightfix
+    {"WEATHER", "WETTER"},   // weather
+    {"Dry", "Trocken"},   // weather
+    {"Rain", "Regen"},   // weather
+    {"Rain: falling rain, wet roads that mirror the lights, spray from the wheels and a grey sky.", "Regen: fallender Regen, nasse Straßen, die die Lichter spiegeln, Gischt von den Rädern und ein grauer Himmel."},   // weather
+    {"Dry: the game's own weather.", "Trocken: das Wetter des Spiels."},   // weather
+    {"RAIN VOLUME", "REGENLAUTSTÄRKE"},   // weather
+    {"The rain's sound, on top of the game's own EFFECTS volume.", "Der Klang des Regens, zusätzlich zur EFFEKTE-Lautstärke des Spiels."},   // weather
     {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Echte Schatten der Autos auf der Straße, geworfen von der Sonne oder nachts vom Mond."},   // sunshadow
     {"None in tunnels and under bridges.", "Keine in Tunneln und unter Brücken."},   // sunshadow
     {"Sharper with ANTI-ALIASING at 4x or more.", "Schärfer mit KANTENGLÄTTUNG ab 4x."},   // sunshadow
@@ -3592,6 +4213,14 @@ inline constexpr Entry kGE[] = {   // German
     {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Nichts wird heruntergeladen oder geteilt, und dein eigenes HD-Paket und die Pakete der Mods haben weiter Vorrang."},
     {"Not imported.", "Nicht importiert."},
     {"{} textures imported.", "{} Texturen importiert."},
+    {"HD texture cache", "HD-Textur-Cache"},   // hdcache
+    {"{} MB of textures converted from the pack, read back on later races.", "{} MB aus dem Paket umgewandelte Texturen, in späteren Rennen wieder gelesen."},   // hdcache
+    {"Empty: the game fills it as it draws the pack's textures.", "Leer: Das Spiel füllt ihn, während es die Texturen des Pakets zeichnet."},   // hdcache
+    {"Clear cache", "Cache leeren"},   // hdcache
+    {"Deletes the converted textures.", "Löscht die umgewandelten Texturen."},   // hdcache
+    {"The game converts them again as it draws them, and the first race on each track loads a little longer.", "Das Spiel wandelt sie beim Zeichnen erneut um, und das erste Rennen auf jeder Strecke lädt etwas länger."},   // hdcache
+    {"Cleared.", "Geleert."},   // hdcache
+    {"{} entries could not be deleted (in use by a running game?)", "{} Einträge konnten nicht gelöscht werden (von einem laufenden Spiel benutzt?)"},   // hdcache
     {"Size: {} MB.", "Größe: {} MB."},
     {"From: {}.", "Aus: {}."},
     {"Made by an older version: import again for the newest result.", "Von einer älteren Version erstellt: erneut importieren für das beste Ergebnis."},
@@ -3699,9 +4328,288 @@ inline constexpr Entry kGE[] = {   // German
     {"QUIT AND START AGAIN WHEN IT IS DONE", "BEENDEN UND NEU STARTEN, WENN ER FERTIG IST"},   // portable mode
     {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "DER PORTABLE DATENORDNER IST NICHT BESCHREIBBAR"},   // portable mode
     {"SAVES AND SETTINGS WON'T BE KEPT", "SPIELSTÄNDE UND EINSTELLUNGEN WERDEN NICHT GESPEICHERT"},   // portable mode
+    {"START AT", "STARTEN BEI"},   // gamemods1
+    {"Intro films", "Intro-Filme"},   // gamemods1
+    {"Title screen", "Titelbildschirm"},   // gamemods1
+    {"Main menu, profile 1", "Hauptmenü, Profil 1"},   // gamemods1
+    {"Main menu, profile 2", "Hauptmenü, Profil 2"},   // gamemods1
+    {"Main menu, profile 3", "Hauptmenü, Profil 3"},   // gamemods1
+    {"IDLE PAUSE", "PAUSE BEI INAKTIVITÄT"},   // gamemods1
+    {"END VERY LONG EVENTS", "SEHR LANGE EVENTS BEENDEN"},   // gamemods1
+    {"Where the game starts after it has loaded.", "Wo das Spiel nach dem Laden beginnt."},   // gamemods1
+    {"Title screen: the intro films are not played.", "Titelbildschirm: Die Intro-Filme werden nicht abgespielt."},   // gamemods1
+    {"Main menu: also Start on the title and that profile loaded, as LOAD PROFILE does; a profile the save does not hold leaves the game's profile choice.", "Hauptmenü: Außerdem wird Start auf dem Titelbildschirm gedrückt und dieses Profil geladen, wie es PROFIL LADEN tut; ein Profil, das der Spielstand nicht enthält, lässt die Profilauswahl des Spiels."},   // gamemods1
+    {"On: as in the game, a race pauses itself after 5 minutes without input.", "Ein: Wie im Spiel pausiert ein Rennen nach 5 Minuten ohne Eingabe von selbst."},   // gamemods1
+    {"Off: it never does.", "Aus: Das passiert nie."},   // gamemods1
+    {"On: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Ein: Wie im Spiel wird ein Event, das nach 25 bis 40 Minuten noch läuft, für alle Autos beendet."},   // gamemods1
+    {"Off: it goes on until it ends the normal way; an event kept going past the game's limit keeps no records.", "Aus: Es läuft weiter, bis es normal endet; ein Event, das über die Grenze des Spiels hinaus weiterläuft, speichert keine Rekorde."},   // gamemods1
+    {"Traffic only", "Nur Verkehr"},   // gamemods1
+    {"Full: the rivals and the other player in the blast are wrecked too, each counted as your Aftertouch Takedown.", "Voll: Rivalen und der andere Spieler in der Explosion werden ebenfalls zerstört, jeder zählt als dein Aftertouch-Takedown."},   // gamemods1
+    {"RACE HUD", "HUD IM RENNEN"},   // hudmods
+    {"RPM METER", "DREHZAHLMESSER"},   // hudmods
+    {"BOOST BAR SHAKE", "WACKELNDE BOOST-LEISTE"},   // hudmods
+    {"RACE SOUNDS", "RENNGERÄUSCHE"},   // hudmods
+    {"TAKEDOWN STREAK PITCH", "TONHÖHE DER TAKEDOWN-SERIE"},   // hudmods
+    {"On: a thin bar of the engine revs under the speedometer, red near the rev limit.", "Ein: Ein schmaler Balken der Motordrehzahl unter dem Tacho, rot nahe der Höchstdrehzahl."},   // hudmods
+    {"For the automatic and the manual gearbox alike.", "Für Automatik- und Schaltgetriebe gleichermaßen."},   // hudmods
+    {"On: the boost bar shakes while you boost, as in the game's 2004 preview build.", "Ein: Die Boost-Leiste wackelt, während du boostest, wie in der Vorschauversion des Spiels von 2004."},   // hudmods
+    {"On: outside World Tour, each takedown after your 10th since your last crash sounds higher, as World Tour's takedown targets do.", "Ein: Außerhalb der World Tour klingt jeder Takedown nach deinem 10. seit deinem letzten Crash höher, wie bei den Takedown-Zielen der World Tour."},   // hudmods
+    {"A crash starts the count again.", "Ein Crash startet die Zählung neu."},   // hudmods
+    {"Sound only.", "Nur Ton."},   // hudmods
+    {"On SELECT CAR: {}", "In SELECT CAR: {}"},   // customseries
+    {"Custom cars", "Eigene Autos"},   // customseries
+    {"Car mods as cars of their own: they race as the CUSTOM series in SINGLE EVENT, after the game's cars, never in place of one, each with the engine sound and handling of the car it was made to replace. Races with them keep their results apart from your records.", "Auto-Mods als eigene Autos: Sie fahren in der Serie EIGENE in SINGLE EVENT, nach den Autos des Spiels, nie anstelle eines Autos, jedes mit dem Motorsound und Fahrverhalten des Autos, das es ersetzen sollte. Rennen mit ihnen halten ihre Ergebnisse von deinen Rekorden getrennt."},   // customseries
+    {"None.", "Keine."},   // customseries
+    {"Import from folder...", "Aus Ordner importieren..."},   // customseries
+    {"Choose a car mod's folder: its car files (named after the car they replace, in a folder named after its class: COMP/CAR7.BGV) or its folders with a car.ini are checked and copied into the custom cars folder.", "Wähle den Ordner eines Auto-Mods: seine Autodateien (benannt nach dem Auto, das sie ersetzen, in einem Ordner mit dem Namen seiner Klasse: COMP/CAR7.BGV) oder seine Ordner mit einer car.ini werden geprüft und in den Ordner für eigene Autos kopiert."},   // customseries
+    {"Opens the custom cars folder in the file manager (made when it is not there yet).", "Öffnet den Ordner für eigene Autos im Dateimanager (angelegt, wenn er fehlt)."},   // customseries
+    {"Reads the custom cars folder again (cars added or removed since).", "Liest den Ordner für eigene Autos neu (seitdem hinzugefügte oder entfernte Autos)."},   // customseries
+    {"Deletes this car's files from the custom cars folder.", "Löscht die Dateien dieses Autos aus dem Ordner für eigene Autos."},   // customseries
+    {"Remove this custom car?", "Dieses eigene Auto entfernen?"},   // customseries
+    {"Its files are deleted from the custom cars folder.", "Seine Dateien werden aus dem Ordner für eigene Autos gelöscht."},   // customseries
+    {"Imported: {}", "Importiert: {}"},   // customseries
+    {"Removed: {}", "Entfernt: {}"},   // customseries
+    {"Not removed: {}", "Nicht entfernt: {}"},   // customseries
+    {"{}'s handling", "Fahrverhalten von {}"},   // customseries
+    {"Traffic", "Verkehr"},   // customseries
+    {"Traffic special", "Verkehr spezial"},   // customseries
+    {"Not shown", "Nicht gezeigt"},   // customseries
+    {"Custom cars: choose the folder of a car mod", "Eigene Autos: Wähle den Ordner eines Auto-Mods"},   // customseries
+    {"Open the car mod's folder, then Start: its cars are copied into the custom cars folder.", "Öffne den Ordner des Auto-Mods, dann Start: Seine Autos werden in den Ordner für eigene Autos kopiert."},   // customseries
+    {"Every player car on your disc, in the game's own car model, then the traffic vehicles and your custom and prototype cars as SELECT CAR offers them. Looking here changes nothing: it unlocks nothing and the save files are not read.", "Alle spielbaren Autos deiner Disc im Modell des Spiels, dann die Verkehrsfahrzeuge und deine eigenen und Prototyp-Autos, wie SELECT CAR sie anbietet. Ansehen ändert nichts: Es schaltet nichts frei, und die Spielstände werden nicht gelesen."},   // customseries
+    {"TUK-TUKS", "TUK-TUKS"},   // party1
+    {"In SINGLE EVENT, you and every rival drive the tuk-tuk from the city traffic, with the engine sound and handling of a compact.", "In SINGLE EVENT fahren du und alle Rivalen das Tuk-Tuk aus dem Stadtverkehr, mit Motorsound und Fahrverhalten eines Kompaktwagens."},   // party1
+    {"Crash events too.", "Auch in Crash-Events."},   // party1
+    {"Import car pack...", "Autopaket importieren..."},   // carpacks
+    {"A car pack made to replace the game's cars (a .zip, or its folder): the cars it changes become cars of their own, never in place of the game's. Cars your disc already has, BETA cars you have and cars imported before are left out.", "Ein Autopaket, das die Autos des Spiels ersetzen soll (ein .zip oder sein Ordner): Die Autos, die es ändert, werden eigene Autos, nie anstelle der Autos des Spiels. Autos, die deine Disc schon hat, deine BETA-Autos und schon importierte Autos werden ausgelassen."},   // carpacks
+    {"Choose the game's own data first (above): a pack's cars are compared with your disc's.", "Wähle zuerst die Daten des Spiels (oben): Die Autos eines Pakets werden mit denen deiner Disc verglichen."},   // carpacks
+    {"Custom cars: choose a car pack (a .zip file, or its folder)", "Eigene Autos: Wähle ein Autopaket (eine .zip-Datei oder seinen Ordner)"},   // carpacks
+    {"A on the pack's .zip chooses it; or open the pack's folder, then Start.", "A auf der .zip des Pakets wählt sie; oder öffne den Ordner des Pakets, dann Start."},   // carpacks
+    {"Open the pack's folder, then Start.", "Öffne den Ordner des Pakets, dann Start."},   // carpacks
+    {"Cut cars (BETA series)", "Gestrichene Autos (BETA-Serie)"},   // carpacks
+    {"Cut cars", "Gestrichene Autos"},   // carpacks
+    {"New models", "Neue Modelle"},   // carpacks
+    {"Early versions", "Frühe Versionen"},   // carpacks
+    {"New paint", "Neue Lackierung"},   // carpacks
+    {"Other cars", "Andere Autos"},   // carpacks
+    {"Choose whether these cars are imported.", "Wähle, ob diese Autos importiert werden."},   // carpacks
+    {"Import {} cars", "{} Autos importieren"},   // carpacks
+    {"Writes the chosen cars into the custom cars folder (the cut cars of the BETA series into its folder).", "Schreibt die gewählten Autos in den Ordner für eigene Autos (die gestrichenen Autos der BETA-Serie in ihren)."},   // carpacks
+    {"Nothing is written.", "Es wird nichts geschrieben."},   // carpacks
+    {"{} cars", "{} Autos"},   // carpacks
+    {"Deletes this pack's cars from the custom cars folder.", "Löscht die Autos dieses Pakets aus dem Ordner für eigene Autos."},   // carpacks
+    {"Remove this car pack?", "Dieses Autopaket entfernen?"},   // carpacks
+    {"Its cars are deleted from the custom cars folder.", "Seine Autos werden aus dem Ordner für eigene Autos gelöscht."},   // carpacks
+    {"already in the game", "schon im Spiel"},   // carpacks
+    {"already a BETA car", "schon ein BETA-Auto"},   // carpacks
+    {"already imported", "schon importiert"},   // carpacks
+    {"not chosen", "nicht gewählt"},   // carpacks
+    {"an old-layout prototype file: import it with Beta / Prototype cars", "eine Prototyp-Datei im alten Format: importiere sie mit Beta / Prototype cars"},   // carpacks
+    {"the pack's vehicle list: not used (the game's own is kept)", "die Fahrzeugliste des Pakets: nicht verwendet (die des Spiels bleibt)"},   // carpacks
+    {"the pack's handling and camera values: not applied (the game's own are kept)", "Fahrverhalten und Kameras des Pakets: nicht übernommen (die des Spiels bleiben)"},   // carpacks
+    {"A cut car's file, whatever its paint, is that BETA car (matched by its shape): it goes into the BETA series once, not as a car of its own.", "Die Datei eines gestrichenen Autos ist, gleich in welcher Lackierung, dieses BETA-Auto (an seiner Form erkannt): Sie kommt einmal in die BETA-Serie, nicht als eigenes Auto."},   // carpacks
+    // extras (2026-11-23): the EXTRAS tab
+    {"NIGHT (EXPERIMENTAL)", "NACHT (EXPERIMENTELL)"},
+    {"RAIN (EXPERIMENTAL)", "REGEN (EXPERIMENTELL)"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a TIME OF DAY row (Day / Night).", "An: SELECT OPTIONS von SINGLE EVENT hat eine Zeile TAGESZEIT (Tag / Nacht)."},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a WEATHER row (Clear / Rain).", "An: SELECT OPTIONS von SINGLE EVENT hat eine Zeile WETTER (Klar / Regen)."},
+    {"NIGHT IN WORLD TOUR", "NACHT IN DER WORLD TOUR"},
+    {"RAIN IN WORLD TOUR", "REGEN IN DER WORLD TOUR"},
+    {"Always", "Immer"},
+    {"Random", "Zufällig"},
+    {"World Tour's events at night: Always, or Random (each event as it starts).", "Die Events der World Tour bei Nacht: Immer, oder Zufällig (jedes Event bei seinem Start)."},
+    {"World Tour's events in the rain: Always, or Random (each event as it starts).", "Die Events der World Tour im Regen: Immer, oder Zufällig (jedes Event bei seinem Start)."},
+    {"Drawn only: your progress and records count as usual.", "Nur Darstellung: Dein Fortschritt und deine Rekorde zählen wie gewohnt."},
+    {"EXPERIMENTAL", "EXPERIMENTELL"},
+    {"Experimental: work in progress.", "Experimentell: noch in Arbeit."},
+    {"Tell us what you think.", "Sag uns, was du davon hältst."},
+    {"ROAD RAGE RIVALS", "ROAD-RAGE-RIVALEN"},
+    {"EXTRAS", "EXTRAS"},
+    {"SINGLE EVENT", "EINZELRENNEN"},
+    {"SELECT OPTIONS", "SELECT OPTIONS"},
+    {"SELECT CAR", "SELECT CAR"},
+    {"ELIMINATOR", "ELIMINATOR"},
+    {"MORE RIVALS", "MEHR RIVALEN"},
+    {"TRAFFIC", "VERKEHR"},
+    {"LAPS", "RUNDEN"},
+    {"TIMED ELIMINATION", "ZEIT-ELIMINIERUNG"},
+    {"TRANSMISSION", "GETRIEBE"},
+    {"RIVAL STYLE", "RIVALEN-STIL"},
+    {"BURNOUT POINTS", "BURNOUT-PUNKTE"},
+    {"TIME LIMIT", "ZEITLIMIT"},
+    {"TRAFFIC PATTERN", "VERKEHRSMUSTER"},
+    {"RIVALS' CARS", "RIVALEN-AUTOS"},
+    {"TRAFFIC CHECK", "VERKEHR RAMMEN"},
+    {"HEAVYWEIGHTS", "SCHWERGEWICHTE"},
+    {"TRAFFIC SERIES", "VERKEHRS-SERIE"},
+    {"CUSTOM CARS", "EIGENE AUTOS"},
+    {"BETA CARS", "BETA-AUTOS"},
+    {"CAR VIEWER", "AUTO-BETRACHTER"},
+    {"NO IDLE PAUSE", "KEINE LEERLAUFPAUSE"},
+    {"NO EVENT TIME LIMIT", "KEIN ZEITLIMIT"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has this row.", "An: SELECT OPTIONS von SINGLE EVENT hat diese Zeile."},
+    {"Off: the game's own page.", "Aus: die Seite des Spiels, wie sie ist."},
+    {"On: SINGLE EVENT's SELECT MODE has a fifth mode, ELIMINATOR: the last car is out at the end of each lap.", "An: SELECT MODE von SINGLE EVENT hat einen fünften Modus, ELIMINATOR: Am Ende jeder Runde scheidet das letzte Auto aus."},
+    {"Off: the game's four modes.", "Aus: die vier Modi des Spiels."},
+    {"On: a SINGLE EVENT race's RIVALS row goes up to 7, for 8 cars.", "An: Die RIVALS-Zeile eines SINGLE-EVENT-Rennens geht bis 7, für 8 Autos."},
+    {"Off: up to 5, as in the game.", "Aus: bis 5, wie im Spiel."},
+    {"On: the HEAVYWEIGHTS series in every SINGLE EVENT mode.", "An: die Serie HEAVYWEIGHTS in jedem SINGLE-EVENT-Modus."},
+    {"Off: in Crash only, as in the game.", "Aus: nur in Crash, wie im Spiel."},
+    {"On: SINGLE EVENT's SELECT CAR has the TRAFFIC and TRAFFIC SPECIAL series: drive a car, bus or tuk-tuk from the traffic.", "An: SELECT CAR von SINGLE EVENT hat die Serien TRAFFIC und TRAFFIC SPECIAL: Fahre ein Auto, einen Bus oder ein Tuk-Tuk aus dem Verkehr."},
+    {"On: the car mods in your custom cars folder, as the CUSTOM series.", "An: die Auto-Mods in deinem Ordner für eigene Autos, als Serie CUSTOM."},
+    {"On: the prototype cars the launcher imported, as the BETA series.", "An: die Prototyp-Autos, die der Launcher importiert hat, als Serie BETA."},
+    {"On: YOUR GARAGE opens the game's leftover car viewer.", "An: YOUR GARAGE öffnet den im Spiel gebliebenen Auto-Betrachter."},
+    {"On: a race never pauses itself.", "An: Ein Rennen pausiert nie von selbst."},
+    {"Off: as in the game, it pauses after 5 minutes without input.", "Aus: wie im Spiel, es pausiert nach 5 Minuten ohne Eingabe."},
+    {"On: an event goes on until it ends the normal way; one kept going past the game's limit keeps no records.", "An: Ein Event läuft, bis es normal endet; eines, das über das Limit des Spiels hinaus läuft, behält keine Rekorde."},
+    {"Off: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Aus: wie im Spiel, ein Event, das nach 25 bis 40 Minuten noch läuft, wird für alle Autos beendet."},
 };
 
 inline constexpr Entry kIT[] = {   // Italian
+    {"HD TEXTURE MEMORY", "MEMORIA TEXTURE HD"},   // texpack: HD TEXTURE MEMORY
+    {"Full quality", "Qualità piena"},   // texpack: HD TEXTURE MEMORY
+    {"Compressed", "Compresse"},   // texpack: HD TEXTURE MEMORY
+    {"How an HD texture pack's PNG and BC7 files are kept on the graphics card.", "Come i file PNG e BC7 di un pacchetto di texture HD sono tenuti sulla scheda video."},   // texpack: HD TEXTURE MEMORY
+    {"Full quality: as the files are, as PCSX2 keeps them; they take about four times the memory.", "Qualità piena: come sono i file, come li tiene PCSX2; occupano circa quattro volte la memoria."},   // texpack: HD TEXTURE MEMORY
+    {"Compressed: packed when they load, a quarter of the memory, a little less sharp.", "Compresse: compattate al caricamento, un quarto della memoria, un po' meno nitide."},   // texpack: HD TEXTURE MEMORY
+    {"Auto: full quality on a graphics card with 6 GB of its own memory or more, compressed otherwise.", "Auto: qualità piena su una scheda video con 6 GB di memoria propria o più, altrimenti compresse."},   // texpack: HD TEXTURE MEMORY
+    {"SOUND OUTPUT", "USCITA AUDIO"},   // audioq
+    {"OUTPUT", "USCITA"},   // audioq
+    {"Clean", "Pulita"},   // audioq
+    {"Clean: the loudest moments (a crash over the engines and the music) are turned down for an instant instead of clipping.", "Pulita: i momenti più forti (uno schianto sopra i motori e la musica) vengono abbassati per un istante invece di saturare."},   // audioq
+    {"Original: the PS2's own output, which crackles when it clips.", "Originale: l'uscita della PS2 stessa, che gracchia quando satura."},   // audioq
+    {"Revenge", "Revenge"},   // trafficcheck (the game's name)
+    {"TRAFFIC CHECK (2 PLAYERS)", "SPINTA AL TRAFFICO (2 GIOCATORI)"},   // trafficcheck
+    {"Extreme", "Estremo"},   // trafficcheck
+    {"Two-player races: ram a car, van or lorry going your way and it is launched ahead instead of wrecking you, for boost and a scored chain, as in Burnout Revenge.", "Gare a due giocatori: urtando un'auto, un furgone o un camion che va nella tua direzione, viene lanciato avanti invece di farti schiantare, per turbo e una serie a punti, come in Burnout Revenge."},   // trafficcheck
+    {"A car you check that hits your rival takes them out for you.", "Un'auto spinta che colpisce il tuo rivale lo elimina per te."},   // trafficcheck
+    {"Revenge: oncoming traffic, buses and big rigs still crash you.", "Revenge: il traffico in senso contrario, gli autobus e gli autoarticolati ti fanno ancora schiantare."},   // trafficcheck
+    {"Extreme: they are shoved aside too.", "Estremo: anche loro vengono spinti via."},   // trafficcheck
+    {"Single races have their own TRAFFIC CHECK row on SELECT OPTIONS.", "Le gare singole hanno la propria riga SPINTA AL TRAFFICO in SELECT OPTIONS."},   // trafficcheck
+    {"ORBIT STYLE", "STILE ORBITALE"},   // orbitcam2
+    {"Look", "Sguardo"},   // orbitcam2
+    {"Swing", "Rotazione"},   // orbitcam2
+    {"Look: the view turns to where you point the stick (down looks behind), as in Burnout Revenge.", "Sguardo: la visuale si gira dove punti la levetta (in basso guarda dietro), come in Burnout Revenge."},   // orbitcam2
+    {"Swing: the stick turns the view round while you hold it, and up or down raises or lowers it.", "Rotazione: la levetta fa girare la visuale finché la tieni, e su o giù la alza o la abbassa."},   // orbitcam2
+    {"FINISH CAMERA", "TELECAMERA D'ARRIVO"},   // finishcam1
+    {"Set pieces", "Sequenze"},   // finishcam1
+    {"After you cross the finish line, the camera cycles through 12 set pieces of angles around the finish, 5 seconds each, from the game's own data.", "Dopo il traguardo, la telecamera passa per 12 sequenze di inquadrature attorno al traguardo, 5 secondi ciascuna, dai dati del gioco."},   // finishcam1
+    {"Game: the game's finish shot.", "Gioco: l'inquadratura d'arrivo del gioco."},   // finishcam1
+    {"CAMERA ROLL", "INCLINAZIONE TELECAMERA"},   // camroll1
+    {"Subtle", "Leggera"},   // camroll1
+    {"Strong", "Forte"},   // camroll1
+    {"In a race, the chase camera leans into corners.", "In gara, la telecamera di inseguimento si inclina nelle curve."},   // camroll1
+    {"Subtle: up to 4 degrees.", "Leggera: fino a 4 gradi."},   // camroll1
+    {"Strong: up to 8 degrees.", "Forte: fino a 8 gradi."},   // camroll1
+    {"CAR STATS", "DATI AUTO"},   // carstats1 / blinkers1 / rrparts1
+    {"More", "Di più"},   // carstats1 / blinkers1 / rrparts1
+    {"TURN SIGNALS", "FRECCE"},   // carstats1 / blinkers1 / rrparts1
+    {"ROAD RAGE PARTS", "PEZZI IN ROAD RAGE"},   // carstats1 / blinkers1 / rrparts1
+    {"All loose", "Tutti staccabili"},   // carstats1 / blinkers1 / rrparts1
+    {"More: the car select page also shows GRIP and ACCELERATION, worked out from each car's handling.", "Di più: la scelta dell'auto mostra anche ADERENZA e ACCELERAZIONE, calcolate dalla guidabilità di ogni auto."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: TOP SPEED and WEIGHT only.", "Gioco: solo VELOCITÀ MASSIMA e PESO."},   // carstats1 / blinkers1 / rrparts1
+    {"On: the other racers' indicators blink before a bend, on every track.", "Attive: le frecce degli altri piloti lampeggiano prima di una curva, su ogni tracciato."},   // carstats1 / blinkers1 / rrparts1
+    {"Their lights only: the race is unchanged.", "Solo le loro luci: la gara non cambia."},   // carstats1 / blinkers1 / rrparts1
+    {"All loose: in a single-event Road Rage, every loose part can come off a damaged car, not only the ones the game lets go.", "Tutti staccabili: in un Road Rage a evento singolo ogni pezzo allentato può staccarsi da un'auto danneggiata, non solo quelli che il gioco lascia andare."},   // carstats1 / blinkers1 / rrparts1
+    {"Loose parts are physical, so the race is not the original: its records are kept apart.", "I pezzi staccati sono fisici, quindi la gara non è l'originale: i suoi record sono tenuti a parte."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: the original.", "Gioco: l'originale."},   // carstats1 / blinkers1 / rrparts1
+    {"PARTY MODES", "MODALITÀ PARTY"},   // party1
+    {"CRAZY AI PHYSICS", "FISICA IA FOLLE"},   // party1
+    {"Basic", "Base"},   // party1
+    {"Local Wildlife", "Fauna locale"},   // party1
+    {"Mayhem", "Caos"},   // party1
+    {"The rivals' physics go haywire: their wheels never leave the road as far as the game knows, and gravity barely holds them.", "La fisica dei rivali impazzisce: per il gioco le loro ruote non lasciano mai la strada, e la gravità li trattiene appena."},   // party1
+    {"Local Wildlife: they tumble without crashing.", "Fauna locale: si ribaltano senza fare incidenti."},   // party1
+    {"Mayhem: a rival that flips over blows up.", "Caos: un rivale che si ribalta esplode."},   // party1
+    {"Your own car drives as usual.", "La tua auto guida come sempre."},   // party1
+    {"MOON JUMP", "SALTO LUNARE"},   // party1
+    {"Hold the MOON JUMP button to lift your car into the air (4 on the keyboard; a controller button can be set in CONTROLS).", "Tieni premuto il tasto SALTO LUNARE per sollevare l'auto in aria (4 sulla tastiera; un tasto del controller si imposta in COMANDI)."},   // party1
+    {"CRASH ON DEMAND", "INCIDENTE A COMANDO"},   // party1
+    {"The CRASH button crashes your car at once (5 on the keyboard; a controller button can be set in CONTROLS).", "Il tasto INCIDENTE fa schiantare subito l'auto (5 sulla tastiera; un tasto del controller si imposta in COMANDI)."},   // party1
+    {"AI DRIVER BUTTON", "TASTO PILOTA IA"},   // party1
+    {"The AI DRIVER button hands your car to the game's own AI driver, and back on the next press (6 on the keyboard; a controller button can be set in CONTROLS).", "Il tasto PILOTA IA affida l'auto al pilota IA del gioco, e te la restituisce alla pressione successiva (6 sulla tastiera; un tasto del controller si imposta in COMANDI)."},   // party1
+    {"KAMIKAZE TRAFFIC", "TRAFFICO KAMIKAZE"},   // party1
+    {"Traffic close ahead of any race car throws itself at it.", "Il traffico vicino davanti a un'auto da corsa le si getta contro."},   // party1
+    {"Expect many wrecks.", "Aspettati molti rottami."},   // party1
+    {"AI DRIVER", "PILOTA IA"},   // party1
+    {"REPLAY: PREVIOUS CAMERA", "REPLAY: TELECAMERA PRECEDENTE"},   // replaycams
+    {"REPLAY: NEXT CAMERA", "REPLAY: TELECAMERA SUCCESSIVA"},   // replaycams
+    {"REPLAY: PREVIOUS CAR", "REPLAY: AUTO PRECEDENTE"},   // replaycams
+    {"REPLAY: NEXT CAR", "REPLAY: AUTO SUCCESSIVA"},   // replaycams
+    {"REPLAY: FREE CAMERA", "REPLAY: TELECAMERA LIBERA"},   // replaycams
+    {"REPLAY CAMERA CUTS", "STACCHI DELLA TELECAMERA NEL REPLAY"},   // replaycams
+    {"Stay", "Resta"},   // replaycams
+    {"Game: in a race replay, a crash cuts to the game's crash camera, whatever camera you chose.", "Gioco: nel replay di una gara, un incidente passa alla telecamera dell'incidente del gioco, qualunque telecamera tu abbia scelto."},   // replaycams
+    {"Stay: the camera you chose stays on.", "Resta: la telecamera scelta resta."},   // replaycams
+    {"While a race replay plays: the previous camera angle.", "Durante il replay di una gara: l'inquadratura precedente."},   // replaycams
+    {"While a race replay plays: the next camera angle.", "Durante il replay di una gara: l'inquadratura successiva."},   // replaycams
+    {"While a race replay plays: watch the previous car.", "Durante il replay di una gara: segui l'auto precedente."},   // replaycams
+    {"While a race replay plays: watch the next car.", "Durante il replay di una gara: segui l'auto successiva."},   // replaycams
+    {"While a race replay plays: a free camera (photo mode's controls), and back.", "Durante il replay di una gara: una telecamera libera (i comandi della modalità foto), e ritorno."},   // replaycams
+    {"CRASH", "INCIDENTE"},   // party1
+    {"Held in a race: lifts your car into the air (GAME > PARTY MODES > MOON JUMP on).", "Tenuto premuto in gara: solleva l'auto in aria (GIOCO > MODALITÀ PARTY > SALTO LUNARE attivo)."},   // party1
+    {"In a race: crashes your car at once (GAME > PARTY MODES > CRASH ON DEMAND on).", "In gara: fa schiantare subito l'auto (GIOCO > MODALITÀ PARTY > INCIDENTE A COMANDO attivo)."},   // party1
+    {"In a race: the game's AI drives your car, and you again on the next press (GAME > PARTY MODES > AI DRIVER BUTTON on).", "In gara: l'IA del gioco guida l'auto, e di nuovo tu alla pressione successiva (GIOCO > MODALITÀ PARTY > TASTO PILOTA IA attivo)."},   // party1
+    {"ORBIT CAMERA", "TELECAMERA ORBITALE"},   // orbitcam1
+    {"CRASH CAMERA", "TELECAMERA INCIDENTE"},   // options3
+    {"On: when you crash, the game cuts to its crash camera, as the original.", "Sì: quando ti schianti, il gioco passa alla sua telecamera dell'incidente, come l'originale."},   // options3
+    {"Off: the view stays behind your car.", "No: la visuale resta dietro la tua auto."},   // options3
+    {"The takedown camera is the game's own option (DRIVER DETAILS > SETTINGS).", "La telecamera dei takedown è un'opzione del gioco (DETTAGLI PILOTA > IMPOSTAZIONI)."},   // options3
+    {"Camera only.", "Solo la telecamera."},   // options3
+    {"RACE REPLAY", "RIVEDI GARA"},   // replayview
+    {"APPLIES AT THE NEXT START", "VALE DAL PROSSIMO AVVIO"},   // nextstart
+    {"RESTART", "RIAVVIO"},   // nextstart
+    {"KEEP", "MANTIENI"},   // nextstart
+    {"Next start", "Prossimo avvio"},   // nextstart
+    {"Saved: the game uses it from its next start.", "Salvato: il gioco lo usa dal prossimo avvio."},   // nextstart
+    {"APPLY AND RESTART", "APPLICA E RIAVVIA"},   // nextstart
+    {"Restart", "Riavvia"},   // nextstart
+    {"Saved, then the game closes and starts again at the title screen, the change in use.", "Salvato, poi il gioco si chiude e riparte dalla schermata del titolo, con la modifica."},   // nextstart
+    {"The race in progress ends.", "La gara in corso termina."},   // nextstart
+    {"REVERT", "RIPRISTINA"},   // nextstart
+    {"Undo", "Annulla"},   // nextstart
+    {"These settings go back to what they were when the page opened.", "Queste impostazioni tornano come erano all'apertura della pagina."},   // nextstart
+    {"BACK  KEEP", "INDIETRO  MANTIENI"},   // nextstart
+    {"Changed: applies at the next start.", "Modificato: vale dal prossimo avvio."},   // nextstart
+    {"REPLAY", "REPLAY"},   // replayview
+    {"A race's results page, with RACE REPLAY on (GAME > MODES): watch the race again; while it plays: back to the results.", "Pagina dei risultati di una gara, con RIVEDI GARA attivo (GIOCO > MODALITÀ): rivedi la gara; durante il replay: torna ai risultati."},   // replayview
+    {"Replay", "Replay"},   // replayview
+    {"On: a race's results page offers REPLAY (F6, or Square / X): the game's own replay of the race you have just driven.", "Sì: la pagina dei risultati di una gara offre REPLAY (F6, o Quadrato / X): il replay del gioco della gara che hai appena corso."},   // replayview
+    {"Every offline mode but Crash, which has its own.", "Tutte le modalità offline tranne Crash, che ha il suo."},   // replayview
+    {"Your results, records and progress stay as they were.", "Risultati, record e progressi restano come erano."},   // replayview
+    {"DEFORMATION", "DEFORMAZIONE"},   // options3
+    {"How much the cars' bodies crumple when they hit something.", "Quanto si accartocciano le carrozzerie delle auto quando urtano qualcosa."},   // options3
+    {"How much the cars' bodies crumple when they hit something, in Single Event and two-player races.", "Quanto si accartocciano le carrozzerie delle auto quando urtano qualcosa, nelle gare Evento singolo e a due giocatori."},   // options3
+    {"100% is the original game's.", "100% è il valore del gioco originale."},   // options3
+    {"Another amount changes the race after the first hard hit, so these races keep their results apart from your records.", "Un altro valore cambia la gara dopo il primo urto violento, quindi queste gare tengono i risultati separati dai tuoi record."},   // options3
+    {"DRIVER LABELS", "ETICHETTE PILOTI"},   // options3
+    {"Names", "Nomi"},   // options3
+    {"Names + distance", "Nomi + distanza"},   // options3
+    {"Distance", "Distanza"},   // options3
+    {"Over the rival cars in a race: each driver's name, the distance to them, or both.", "Sopra le auto rivali in gara: il nome di ogni pilota, la distanza da lui o entrambi."},   // options3
+    {"On: in a race, the right stick turns the chase camera around your car to look left, right or behind; it stops short of walls.", "Attiva: in gara, la levetta destra fa girare la telecamera di inseguimento attorno all'auto per guardare a sinistra, a destra o dietro; si ferma prima dei muri."},   // orbitcam2
+    {"A moment after you let go, the view eases back behind the car.", "Un attimo dopo averla rilasciata, la visuale torna dolcemente dietro l'auto."},   // orbitcam1
+    {"The mouse does it too, with the right button held.", "Lo fa anche il mouse, tenendo premuto il tasto destro."},   // orbitcam1
+    {"On the PlayStation controller layout the right stick is the throttle and brake, so it stays the game's there.", "Con la configurazione PlayStation la levetta destra è acceleratore e freno, quindi lì resta al gioco."},   // orbitcam1
+    {"DISPLAY, GRAPHICS, CAR, CONTROLS AND MORE", "SCHERMO, GRAFICA, AUTO, COMANDI E ALTRO"},   // 1.3.1: the main menu's SETTINGS help (tools/native/pc_menu.h)
+    {"LEAVE THE GAME", "ESCI DAL GIOCO"},   // 1.3.1: the main menu's QUIT GAME help
+    {"Their PS2 mods inspired MIRROR MODE, CRASHBREAKER IN EVERY MODE, the PARTY MODES and the race options (rival names and distances, rivals' cars, standing start, Road Rage time limit and rival style, Burnout points, varied traffic, DEFORMATION, the Chrome finish, the crash camera switch), START AT, the idle pause and long-event switches, the Crashbreaker's full blast, the car viewer and the replay viewer: the ideas only, none of their code.", "Le loro mod per PS2 hanno ispirato MODALITÀ SPECCHIO, CRASHBREAKER IN OGNI MODALITÀ, le MODALITÀ PARTY e le opzioni di gara (nomi e distanze dei rivali, auto dei rivali, partenza da fermo, limite di tempo e stile dei rivali in Road Rage, punti Burnout, traffico variabile, DEFORMAZIONE, la finitura Cromato, la scelta della telecamera incidente), AVVIO SU, le opzioni della pausa per inattività e degli eventi lunghi, l'esplosione completa del Crashbreaker, il visualizzatore di auto e il visualizzatore di replay: solo le idee, nulla del loro codice."},   // credits140 (the launcher's Credits)
+    {"The PCSX2 mods that inspired the RPM meter, the boost bar shake, the takedown streak pitch, camera roll, the finish camera's set pieces, manual gears, TIMED ELIMINATION, the traffic presets, traffic checking in two-player races, loose parts in Road Rage, car stats, the rivals' turn signals, the paint picker, painted car pictures and the reflections that reach further (ideas only, none of their code).", "Le mod per PCSX2 che hanno ispirato il contagiri, la barra del boost che trema, il tono dei takedown in serie, l'inclinazione della telecamera, le inquadrature fisse della telecamera d'arrivo, il cambio manuale, l'ELIMINAZIONE A TEMPO, le impostazioni del traffico, la SPINTA AL TRAFFICO nelle gare a due giocatori, i pezzi staccati in Road Rage, i dati auto, le frecce dei rivali, il selettore colore, le immagini delle auto verniciate e i riflessi che arrivano più lontano (solo le idee, niente del loro codice)."},   // credits140 (the launcher's Credits)
+    {"The Heavyweights-in-the-garage mod behind the Heavyweights in Single Event.", "La mod dei Pesi massimi nel garage, all'origine dei Pesi massimi in Evento singolo."},   // credits140 (the launcher's Credits)
+    {"The traffic-checking edit behind TRAFFIC CHECK (2 PLAYERS) Extreme.", "La modifica della spinta al traffico all'origine di SPINTA AL TRAFFICO (2 GIOCATORI) Estremo."},   // credits140 (the launcher's Credits)
+    {"The Traffic Checking mod restoring Burnout Revenge's code, the reference for TRAFFIC CHECK (2 PLAYERS) Revenge.", "La mod Traffic Checking che ripristina il codice di Burnout Revenge, il riferimento per SPINTA AL TRAFFICO (2 GIOCATORI) Revenge."},   // credits140 (the launcher's Credits)
+    {"The Revenge-style orbit camera mod behind the orbit camera's feel.", "La mod della telecamera orbitale in stile Revenge all'origine della sensazione della telecamera orbitale."},   // credits140 (the launcher's Credits)
+    {"CRASHBREAKER AFTER", "CRASHBREAKER DOPO"},   // gameopts
+    {"How many vehicles your crash must hit before the CRASHBREAKER button works, as Crash mode counts them (races have less traffic, so fewer).", "Quanti veicoli deve colpire l'incidente prima che il tasto CRASHBREAKER funzioni, contati come nella modalità Crash (le gare hanno meno traffico, quindi meno)."},   // gameopts
+    {"0: ready as soon as you crash.", "0: pronto appena si fa un incidente."},   // gameopts
+    {"GAMEPLAY", "GIOCO"},   // gameopts
+    {"MIRROR MODE", "MODALITÀ SPECCHIO"},   // gameopts
+    {"CRASHBREAKER IN EVERY MODE", "CRASHBREAKER IN OGNI MODALITÀ"},   // gameopts
+    {"Single races and two-player races on mirrored tracks: the world is drawn reversed left to right and the steering follows it, so left still steers left on the screen.", "Gare singole e a due giocatori su piste specchiate: il mondo è mostrato invertito da sinistra a destra e lo sterzo lo segue, quindi a sinistra si sterza ancora a sinistra sullo schermo."},   // gameopts
+    {"The HUD is not mirrored; the writing on signs is.", "L'HUD non è specchiato; le scritte sui cartelli sì."},   // gameopts
+    {"These races keep their results apart from your records.", "I risultati di queste gare sono tenuti separati dai record."},   // gameopts
+    {"Applies from the next race.", "Si applica dalla prossima gara."},   // gameopts
+    {"After a crash in a single or two-player race, Time Attack or Road Rage, the CRASHBREAKER button blows your wreck up as in Crash mode, wrecking the traffic around it.", "Dopo un incidente in una gara singola o a due giocatori, in Sfida sul tempo o in Road Rage, il tasto CRASHBREAKER fa esplodere il relitto come nella modalità Crash, distruggendo il traffico intorno."},   // gameopts
     {"VOICES", "VOCI"},   // 1.3.0 VOICES
     {"The Crash FM DJ and the race training's narrator.", "Il DJ di Crash FM e il narratore dell'allenamento."},   // 1.3.0 VOICES
     {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Lingua: parlano la LINGUA scelta (francese, tedesco, italiano e spagnolo hanno le proprie; inglese britannico, olandese e svedese hanno le voci inglesi, come sui loro dischi)."},   // 1.3.0 VOICES
@@ -3745,6 +4653,8 @@ inline constexpr Entry kIT[] = {   // Italian
     {"FRAME RATE LIMIT", "LIMITE FOTOGRAMMI"},
     {"The most frames per second drawn.", "Il numero massimo di fotogrammi disegnati al secondo."},
     {"The game itself always runs at its own speed.", "Il gioco in sé gira sempre alla propria velocità."},
+    {"Auto: 60 on a processor with 4 threads or fewer, so the game itself keeps up; no limit on others.", "Auto: 60 su un processore con 4 thread o meno, perché il gioco stesso stia al passo; nessun limite sugli altri."},
+    {"Unlimited: no limit at all, for fast processors.", "Illimitato: nessun limite, per i processori veloci."},
     {"PAUSE WHEN UNFOCUSED", "PAUSA IN SECONDO PIANO"},
     {"The game holds while its window is in the background (the native game only).", "Il gioco si ferma mentre la sua finestra è in secondo piano (solo il gioco nativo)."},
     {"FAST LOADING", "CARICAMENTO RAPIDO"},
@@ -3801,6 +4711,12 @@ inline constexpr Entry kIT[] = {   // Italian
     {"150% and 200% want a graphics card with plenty of memory.", "150% e 200% richiedono una scheda grafica con molta memoria."},
     {"DITHER", "DITHERING"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Un motivo fine che nasconde i gradini nelle sfumature uniformi come il cielo."},
+    {"GRAPHICS API", "API GRAFICA"},   // d3d12
+    {"Vulkan", "Vulkan"},
+    {"D3D12", "D3D12"},
+    {"The graphics interface the game draws with.", "L'interfaccia grafica con cui il gioco disegna."},
+    {"Auto uses Vulkan, and Direct3D 12 when no working Vulkan device can be created.", "Auto usa Vulkan, e Direct3D 12 quando non si può creare un dispositivo Vulkan funzionante."},
+    {"Try D3D12 if the picture shows faults with your graphics card.", "Prova D3D12 se l'immagine mostra difetti con la tua scheda grafica."},
     {"None", "Nessuno"},
     {"A PCSX2 texture replacement folder for this game (its SLUS-21050 folder, or the folder above it).", "Una cartella di texture sostitutive di PCSX2 per questo gioco (la sua cartella SLUS-21050 o quella superiore)."},
     {"HD TEXTURE PACK", "PACCHETTO TEXTURE HD"},
@@ -3822,6 +4738,25 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Highest", "Massimo"},
     {"Highest draws every car at full detail at any distance.", "Massimo disegna ogni auto al massimo dettaglio a qualsiasi distanza."},
     {"CAR REFLECTIONS", "RIFLESSI AUTO"},
+    {"REFLECTION DISTANCE", "DISTANZA RIFLESSI"},   // reflect2
+    {"200 m", "200 m"},   // reflect2
+    {"300 m", "300 m"},   // reflect2
+    {"How far the cars' reflections reach.", "Fin dove arrivano i riflessi delle auto."},   // reflect2
+    {"Game: 100 m, as the original.", "Gioco: 100 m, come l'originale."},   // reflect2
+    {"Further shows more of the track in the paint and costs more.", "Più lontano mostra più pista nella vernice e costa di più."},   // reflect2
+    {"REFLECTION DETAIL", "DETTAGLIO RIFLESSI"},   // reflect2
+    {"Track", "Pista"},   // reflect2
+    {"Track and props", "Pista e oggetti"},   // reflect2
+    {"Track, props and cars", "Pista, oggetti e auto"},   // reflect2
+    {"Track, props and cars: the other cars nearby as well.", "Pista, oggetti e auto: anche le altre auto vicine."},   // reflect2
+    {"Track and props: the barriers, signs, cones and lamp posts near the car show in its reflections too.", "Pista e oggetti: barriere, cartelli, coni e lampioni vicini all'auto compaiono anche nei suoi riflessi."},   // reflect2
+    {"REFLECTION UPDATE", "AGGIORNAMENTO RIFLESSI"},   // reflect2
+    {"Every frame", "Ogni fotogramma"},   // reflect2
+    {"Every 2nd frame", "Un fotogramma su due"},   // reflect2
+    {"Every 2nd frame: the reflections are redrawn half as often, for slower graphics cards.", "Un fotogramma su due: i riflessi vengono ridisegnati la metà delle volte, per schede grafiche più lente."},   // reflect2
+    {"REFLECTION RESOLUTION", "RISOLUZIONE RIFLESSI"},   // reflect2
+    {"High: sharper reflections, drawn at twice the size.", "Alta: riflessi più nitidi, disegnati al doppio della dimensione."},   // reflect2
+    {"Standard: as the original.", "Standard: come l'originale."},   // reflect2
     {"Original", "Originale"},
     {"Enhanced", "Migliorato"},
     {"Enhanced: glossy sky and sun reflections on the paint and glass.", "Migliorato: riflessi lucidi di cielo e sole su vernice e vetri."},
@@ -3924,6 +4859,11 @@ inline constexpr Entry kIT[] = {   // Italian
     {"On: the race's pause menu has a PHOTO MODE row after SETTINGS, which opens photo mode (the key P, or L3 + R3 on a controller, does too).", "Sì: il menu di pausa della gara ha una voce MODALITÀ FOTO dopo IMPOSTAZIONI, che apre la modalità foto (lo fanno anche il tasto P o L3 + R3 su un controller)."},
     {"Off: the pause menu is the game's own.", "No: il menu di pausa è quello del gioco."},
     {"From the next pause.", "Dalla prossima pausa."},
+    {"SETTINGS BACK BUTTON", "TASTO INDIETRO NELLE IMPOSTAZIONI"},   // settingsback
+    {"Keep changes", "Mantieni le modifiche"},   // settingsback
+    {"Leaving a page of DRIVER DETAILS > SETTINGS (GAMEPLAY, AUDIO, VIDEO, CONTROLLERS) with Back.", "Uscire da una pagina delle impostazioni del gioco nel profilo del pilota (gioco, audio, video, controller) con Indietro."},   // settingsback
+    {"Keep changes: what you changed there stays.", "Mantieni le modifiche: ciò che hai cambiato lì resta."},   // settingsback
+    {"Cancel: Back puts the old values back, as on the PS2 (confirm keeps them).", "Annulla: Indietro ripristina i valori precedenti, come su PS2 (conferma li mantiene)."},   // settingsback
     {"English", "English"},
     {"LANGUAGE", "LINGUA"},
     {"Choose a European disc image (or its folder) of Burnout 3: Takedown: its languages are copied to this PC (two small files each); the disc is not needed afterwards.", "Scegliere un'immagine disco europea (o la sua cartella) di Burnout 3: Takedown: le sue lingue vengono copiate su questo PC (due piccoli file ciascuna); in seguito il disco non serve più."},
@@ -4026,7 +4966,13 @@ inline constexpr Entry kIT[] = {   // Italian
     {"From the next song.", "Dal prossimo brano."},
     {"CUSTOM MUSIC VOLUME", "VOLUME MUSICA PERSONALE"},
     {"How loud your own songs play, on top of RADIO VOLUME.", "Quanto forte suonano i tuoi brani, in aggiunta al VOLUME RADIO."},
-    {"At 100% a song plays as loud as the game plays its own songs; raise it for quiet files.", "Al 100% un brano suona forte quanto il gioco suona i propri brani; alzalo per i file a basso volume."},
+    {"CUSTOM MUSIC LOUDNESS", "LIVELLO MUSICA PERSONALE"},   // musicloud
+    {"Even out", "Uniforma"},   // musicloud
+    {"They follow RADIO VOLUME (DRIVER DETAILS > SETTINGS > AUDIO) and the radio's fades like the game's songs.", "Seguono il VOLUME RADIO (DETTAGLI PILOTA > IMPOSTAZIONI > AUDIO) e le dissolvenze della radio come i brani del gioco."},   // musicloud
+    {"At 100% a song plays as loud as the game plays its own songs.", "Al 100% un brano suona forte quanto il gioco suona i propri brani."},   // musicloud
+    {"Even out: each of your songs is measured once (in the background; kept for the next start) and played as loud as the game's own songs, so a quiet file and a loud one sound alike.", "Uniforma: ogni tuo brano viene misurato una volta (in background; conservato per il prossimo avvio) e suonato forte quanto i brani del gioco, così un file debole e uno forte suonano uguali."},   // musicloud
+    {"A quiet song with loud peaks is raised only a little.", "Un brano debole con picchi forti viene alzato solo di poco."},   // musicloud
+    {"Off: each file plays at its own level.", "No: ogni file suona al proprio livello."},   // musicloud
     {"A limiter keeps loud songs from clipping.", "Un limitatore impedisce ai brani forti di distorcere."},
     {"The game's songs and the DJ do not change.", "I brani del gioco e il DJ non cambiano."},
     {"Live.", "Immediato."},
@@ -4237,6 +5183,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"File {} (new)", "File {} (nuovo)"},
     {"{} DEG", "{} GRADI"},
     {"SETTINGS", "IMPOSTAZIONI"},
+    {"QUIT GAME", "ESCI DAL GIOCO"},   // i18n2: the main menu's row (tools/native/pc_menu.h)
     {"UP / DOWN  SELECT     LEFT / RIGHT  CHANGE     CONFIRM  CHOOSE", "SU / GIÙ  SELEZIONA     SINISTRA / DESTRA  CAMBIA     CONFERMA  SCEGLI"},
     {"BACK  CLOSE AND SAVE", "INDIETRO  CHIUDI E SALVA"},
     {"PS2 ORIGINAL", "PS2 ORIGINALE"},
@@ -4414,6 +5361,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Include my save: NO", "Includi il salvataggio: NO"},
     {"Whether the report also holds your active save file (profile-N.sav): useful when the problem is in your progress.", "Se la segnalazione contiene anche il file di salvataggio attivo (profile-N.sav): utile quando il problema riguarda i progressi."},
     {"Off by default.", "Disattivato per impostazione predefinita."},
+    {"On by default.", "Attivato per impostazione predefinita."},
     {"Clear the crash count", "Azzera conteggio crash"},
     {"The last run did not end cleanly.", "L'ultima sessione non si è chiusa correttamente."},
     {"This marks it as ended, so the next start uses your own settings (safe mode is not chosen by itself).", "Questo la segna come chiusa, così il prossimo avvio usa le proprie impostazioni (la modalità sicura non viene scelta automaticamente)."},
@@ -4488,8 +5436,8 @@ inline constexpr Entry kIT[] = {   // Italian
     {"A reference for RenderWare's PS2 rasters and geometry packets.", "Un riferimento per i raster e i pacchetti di geometria PS2 di RenderWare."},
     {"Burn3 (UwUCammie)", "Burn3 (UwUCammie)"},
     {"Another PC project for the game.", "Un altro progetto PC per il gioco."},
-    {"PS2Recomp (ran-j) and burnout3-pc", "PS2Recomp (ran-j) e burnout3-pc"},
-    {"Other PC projects for the game.", "Altri progetti PC per il gioco."},
+    {"PS2Recomp (ran-j)", "PS2Recomp (ran-j)"},
+    {"burnout3-pc (danielgomesvieira2000)", "burnout3-pc (danielgomesvieira2000)"},
     {"The Burnout 3: Takedown USA HD Remaster, the HD texture pack for PCSX2 that the HD Textures page links to and this port can use.", "Burnout 3: Takedown USA HD Remaster, il pacchetto texture HD per PCSX2 a cui rimanda la pagina Texture HD e che questo port può usare."},
     {"PCSX2 and mymcplus", "PCSX2 e mymcplus"},
     {"Their texture-pack and memory-card formats, which this port reads, and PS2 save tooling.", "I loro formati di pacchetti texture e memory card, che questo port legge, e gli strumenti per i salvataggi PS2."},
@@ -4718,7 +5666,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Switch Pro", "Switch Pro"},
     {"Joy-Con (L)", "Joy-Con (L)"},
     {"Joy-Con (R)", "Joy-Con (R)"},
-    {"Joy-Con pair", "Joy-Con pair"},
+    {"Joy-Con pair", "Coppia di Joy-Con"},
     {"Unknown", "Sconosciuto"},
     {"SELECT", "SELECT"},
     {"SHARE", "SHARE"},
@@ -4890,33 +5838,33 @@ inline constexpr Entry kIT[] = {   // Italian
     {"[files]", "[files]"},
     {"[mod]", "[mod]"},
     {"[script]", "[script]"},
-    {"SHOW", "SHOW"},
-    {"MODE", "MODE"},
-    {"One", "One"},
-    {"Two", "Two"},
-    {"Three", "Three"},
-    {"Settings >", "Settings >"},
-    {"Walk", "Walk"},
-    {"Controllers (keyboard)", "Controllers (keyboard)"},
-    {"Controllers (controller)", "Controllers (controller)"},
-    {"Back from", "Back from"},
-    {"Down pressed on and on stopped at", "Down pressed on and on stopped at"},
-    {"PASS (no widgets: stays in the side bar)", "PASS (no widgets: stays in the side bar)"},
-    {"FAIL (no widgets, but went into the page)", "FAIL (no widgets, but went into the page)"},
-    {"FAIL (Right did not go into the page)", "FAIL (Right did not go into the page)"},
+    {"SHOW", "MOSTRA"},
+    {"MODE", "MODALITÀ"},
+    {"One", "Uno"},
+    {"Two", "Due"},
+    {"Three", "Tre"},
+    {"Settings >", "Impostazioni >"},
+    {"Walk", "Percorso"},
+    {"Controllers (keyboard)", "Controller (tastiera)"},
+    {"Controllers (controller)", "Controller (controller)"},
+    {"Back from", "Indietro da"},
+    {"Down pressed on and on stopped at", "Giù premuto di continuo, fermo a"},
+    {"PASS (no widgets: stays in the side bar)", "PASS (nessun widget: resta nella barra laterale)"},
+    {"FAIL (no widgets, but went into the page)", "FAIL (nessun widget, ma entrato nella pagina)"},
+    {"FAIL (Right did not go into the page)", "FAIL (Destra non è entrato nella pagina)"},
     {"Reset all settings?", "Ripristinare tutte le impostazioni?"},
     {"A message with one button.", "A message with one button."},
     {"Replace file?", "Sostituire il file?"},
     {"Allow", "Consenti"},
     {"Type a path (a text field)", "Type a path (a text field)"},
     {"Game data folder", "Cartella dei dati di gioco"},
-    {"FAIL (not opened)", "FAIL (not opened)"},
-    {"NO on-screen keyboard:", "NO on-screen keyboard:"},
-    {"CHANGED", "CHANGED"},
+    {"FAIL (not opened)", "FAIL (non aperto)"},
+    {"NO on-screen keyboard:", "NESSUNA tastiera su schermo:"},
+    {"CHANGED", "MODIFICATO"},
     {"Everything back to the original layout", "Tutto torna alla configurazione originale"},
     {"Music for B3", "Music for B3"},
     {"Type or paste", "Digitare o incollare"},
-    {"FAILED", "FAILED"},
+    {"FAILED", "NON RIUSCITO"},
     {"Alpha", "Alpha"},
     {"Beta/Inner", "Beta/Inner"},
     {"Gamma", "Gamma"},
@@ -4926,29 +5874,29 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Your disc's image file", "Il file immagine del disco"},
     {"\", \"name\": \"", "\", \"name\": \""},
     {"Takedown at 60", "Takedown at 60"},
-    {"MISSING", "MISSING"},
-    {"NOT saved", "NOT saved"},
+    {"MISSING", "MANCANTE"},
+    {"NOT saved", "NON salvato"},
     {"First release", "First release"},
-    {"SHOWN", "SHOWN"},
+    {"SHOWN", "MOSTRATO"},
     {"HTTP/1.1 404 Not Found", "HTTP/1.1 404 Not Found"},
-    {"Asks GitHub", "Asks GitHub"},
-    {"Once a day", "Once a day"},
-    {"NOT found", "NOT found"},
-    {"STARTED", "STARTED"},
+    {"Asks GitHub", "Chiede a GitHub"},
+    {"Once a day", "Una volta al giorno"},
+    {"NOT found", "NON trovato"},
+    {"STARTED", "AVVIATO"},
     {"SUPR", "SUPR"},
     {"HEVY", "HEVY"},
     {"/home/me/Games/Burnout 3/game", "/home/me/Games/Burnout 3/game"},
-    {"(expected", "(expected"},
-    {"Shift / Back held at the start: the launcher shows (", "Shift / Back held at the start: the launcher shows ("},
-    {"Shift pressed on the Starting screen: the launcher opens", "Shift pressed on the Starting screen: the launcher opens"},
-    {"Back held on a controller on the Starting screen: the launcher opens", "Back held on a controller on the Starting screen: the launcher opens"},
-    {"(no virtual pad)", "(no virtual pad)"},
-    {"Start skipped", "Start skipped"},
-    {"A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does).", "A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does)."},
+    {"(expected", "(previsto"},
+    {"Shift / Back held at the start: the launcher shows (", "Maiusc / Indietro tenuto all'avvio: il launcher appare ("},
+    {"Shift pressed on the Starting screen: the launcher opens", "Maiusc premuto nella schermata di avvio: il launcher si apre"},
+    {"Back held on a controller on the Starting screen: the launcher opens", "Indietro tenuto su un controller nella schermata di avvio: il launcher si apre"},
+    {"(no virtual pad)", "(nessun pad virtuale)"},
+    {"Start skipped", "Avvio saltato"},
+    {"A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does).", "Un controllo delle schermate non avvia il gioco (B3LAUNCHER_SHOT_START=1 con un sostituto lo fa)."},
     {"Burnout 3 Launcher", "Burnout 3 Launcher"},
     {"Burnout 3 Launcher -", "Burnout 3 Launcher -"},
     {"Resources", "Resources"},
-    {"# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)", "# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)"},
+    {"# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)", "# Launcher di Burnout 3: le sue scelte (le impostazioni del gioco sono in pc_settings.ini)"},
     {"NUL", "NUL"},
     {"SLUS_210.50", "SLUS_210.50"},
     {"SYSTEM.CNF", "SYSTEM.CNF"},
@@ -5220,6 +6168,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Gloss", "Lucido"},
     {"Metallic", "Metallizzato"},
     {"Pearl", "Perlato"},
+    {"Chrome", "Cromato"},   // options3
     {"PLAYER 2 CAR PAINT", "VERNICE AUTO GIOCATORE 2"},
     {"P2 CAR PAINT", "VERNICE G2"},
     {"P2 PAINT RED", "VERNICE G2 ROSSO"},
@@ -5230,6 +6179,7 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Gloss: the game's.", "Lucido: quella del gioco."},
     {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metallizzato: un riflesso più forte nel colore della vernice, con scaglie che brillano alla luce."},
     {"Pearl: the colour shifts as the car turns to the light.", "Perlato: il colore cambia quando l'auto gira verso la luce."},
+    {"Chrome: a mirror finish that shows the world around the car, tinted by the paint's colour.", "Cromato: una finitura a specchio che riflette il mondo intorno all'auto, tinta dal colore della vernice."},   // options3
     {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "L'auto del giocatore 2 a schermo diviso: Personalizzato la mostra nel colore delle tre voci sotto invece della vernice scelta nella selezione auto."},
     {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Disattivato: l'auto del giocatore 2 senza loghi, numeri e strisce, in tinta unita."},
     {"LIGHTING", "ILLUMINAZIONE"},   // night
@@ -5239,6 +6189,45 @@ inline constexpr Entry kIT[] = {   // Italian
     {"TIME OF DAY PER RACE", "ORA DEL GIORNO PER GARA"},   // todrace
     {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Pagine del circuito (evento singolo, multigiocatore): Predefinito, Giorno o Notte per la prossima gara."},   // todrace
     {"Time of day: {}", "Ora del giorno: {}"},   // todrace
+    {"LAYER", "LIVELLO"},   // paint2
+    {"Body", "Carrozzeria"},   // paint2
+    {"Decals", "Decalcomanie"},   // paint2
+    {"Wheels", "Ruote"},   // paint2
+    {"Boost glow", "Bagliore del boost"},   // paint2
+    {"COLOUR PICKER", "SELETTORE COLORE"},   // paint2
+    {"FACTORY COLOURS", "COLORI ORIGINALI"},   // paint2
+    {"DECAL COLOUR", "COLORE DECALCOMANIE"},   // paint2
+    {"WHEEL COLOUR", "COLORE RUOTE"},   // paint2
+    {"BOOST GLOW COLOUR", "COLORE BAGLIORE DEL BOOST"},   // paint2
+    {"P2 DECAL COLOUR", "G2 COLORE DECALCOMANIE"},   // paint2
+    {"P2 WHEEL COLOUR", "G2 COLORE RUOTE"},   // paint2
+    {"P2 BOOST GLOW COLOUR", "G2 COLORE BAGLIORE DEL BOOST"},   // paint2
+    {"HUE", "TINTA"},   // paint2
+    {"SHADE", "SFUMATURA"},   // paint2
+    {"FINE", "FINE"},   // paint2
+    {"OK", "OK"},   // paint2
+    {"CANCEL", "ANNULLA"},   // paint2
+    {"Which part of the car the rows below colour: the body, its decals (logos, numbers and stripes), the wheels' rims or the boost glow.", "Quale parte dell'auto colorano le voci sotto: la carrozzeria, le sue decalcomanie (loghi, numeri e strisce), i cerchi o il bagliore del boost."},   // paint2
+    {"One colour of each for all your cars.", "Un colore di ciascuno per tutte le tue auto."},   // paint2
+    {"Game: the game's own colour.", "Gioco: il colore del gioco."},   // paint2
+    {"A ready colour, or Custom: the colour of the rows below.", "Un colore pronto, o Personalizzato: il colore delle voci sotto."},   // paint2
+    {"Any colour: the square sets how strong and how bright it is, the bar its hue (L1 / R1).", "Qualsiasi colore: il quadrato ne regola l'intensità e la luminosità, la barra la tinta (L1 / R1)."},   // paint2
+    {"CONFIRM keeps it, BACK puts the colour before back.", "CONFERMA lo tiene, INDIETRO rimette il colore di prima."},   // paint2
+    {"Every layer back to the game's colours, and the decals on.", "Ogni livello torna ai colori del gioco, e le decalcomanie attive."},   // paint2
+    {"The colour of the logos, numbers and stripes.", "Il colore di loghi, numeri e strisce."},   // paint2
+    {"Game: their own colours.", "Gioco: i loro colori."},   // paint2
+    {"Any colour: the paint panel on SELECT CAR.", "Qualsiasi colore: il pannello della vernice nella selezione auto."},   // paint2
+    {"The colour of the wheels' rims (the tyres stay dark).", "Il colore dei cerchi (gli pneumatici restano scuri)."},   // paint2
+    {"Game: their own.", "Gioco: il loro."},   // paint2
+    {"The colour of the exhaust's glow while boosting.", "Il colore del bagliore dello scarico durante il boost."},   // paint2
+    {"Game: the game's.", "Gioco: quello del gioco."},   // paint2
+    {"CAR PAINT PANEL", "PANNELLO VERNICE"},   // paintsel
+    {"SHIFT UP", "MARCIA SU"},   // gearbox
+    {"SHIFT DOWN", "MARCIA GIÙ"},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear up.", "Una gara con CAMBIO Manuale (SCEGLI OPZIONI): la marcia successiva."},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear down.", "Una gara con CAMBIO Manuale (SCEGLI OPZIONI): la marcia precedente."},   // gearbox
+    {"SELECT CAR: open or close the car paint panel (a controller: the menus' Circle button, Y on the Xbox and Nintendo layouts).", "Selezione auto: apre o chiude il pannello della vernice (controller: il tasto Cerchio dei menu, Y con i layout Xbox e Nintendo)."},   // paintsel
+    {"Changing the colour on SELECT CAR sets it back to Game.", "Cambiare il colore nella selezione auto la riporta su Gioco."},   // paintsel
     {"Default ({})", "Predefinito ({})"},   // todrace
     {"MOON", "LUNA"},   // night
     {"SURFACE DETAIL", "DETTAGLIO SUPERFICI"},   // night
@@ -5249,6 +6238,20 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Soft contact shadows under the cars and along walls and kerbs.", "Morbide ombre di contatto sotto le auto e lungo muri e cordoli."},   // night
     {"Draws the scene twice: for fast graphics cards.", "Disegna la scena due volte: per schede grafiche veloci."},   // night
     {"SUN SHADOWS", "OMBRE DEL SOLE"},   // sunshadow
+    {"PROP SHADOWS", "OMBRE DEGLI OGGETTI"},   // propshadow1
+    {"With SUN SHADOWS: the lamp posts, signs, barriers and other roadside props cast shadows too.", "Con OMBRE DEL SOLE: anche lampioni, cartelli, barriere e altri oggetti a bordo strada proiettano ombre."},   // propshadow1
+    {"TUNNEL LIGHTS", "LUCI DEI TUNNEL"},   // nightfix
+    {"Glow", "Luminose"},   // nightfix
+    {"Glow: the light fittings in tunnels and underpasses glow, with small halos.", "Luminose: le lampade di gallerie e sottopassaggi si illuminano, con piccoli aloni."},   // nightfix, xboxglow
+    {"Xbox: their lit parts glow through the bloom, as on the Xbox.", "Xbox: le loro parti accese brillano con il bloom, come su Xbox."},   // xboxglow
+    {"Game: the original look.", "Gioco: l'aspetto originale."},   // nightfix
+    {"WEATHER", "METEO"},   // weather
+    {"Dry", "Asciutto"},   // weather
+    {"Rain", "Pioggia"},   // weather
+    {"Rain: falling rain, wet roads that mirror the lights, spray from the wheels and a grey sky.", "Pioggia: pioggia che cade, strade bagnate che riflettono le luci, spruzzi dalle ruote e cielo grigio."},   // weather
+    {"Dry: the game's own weather.", "Asciutto: il tempo originale del gioco."},   // weather
+    {"RAIN VOLUME", "VOLUME PIOGGIA"},   // weather
+    {"The rain's sound, on top of the game's own EFFECTS volume.", "Il suono della pioggia, oltre al volume EFFETTI del gioco."},   // weather
     {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Vere ombre delle auto sulla strada, proiettate dal sole o, di notte, dalla luna."},   // sunshadow
     {"None in tunnels and under bridges.", "Nessuna nelle gallerie e sotto i ponti."},   // sunshadow
     {"Sharper with ANTI-ALIASING at 4x or more.", "Più nitide con l'ANTI-ALIASING a 4x o più."},   // sunshadow
@@ -5436,6 +6439,14 @@ inline constexpr Entry kIT[] = {   // Italian
     {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Nulla viene scaricato o condiviso, e il tuo pacchetto HD e i pacchetti delle mod hanno sempre la precedenza."},
     {"Not imported.", "Non importate."},
     {"{} textures imported.", "{} texture importate."},
+    {"HD texture cache", "Cache delle texture HD"},   // hdcache
+    {"{} MB of textures converted from the pack, read back on later races.", "{} MB di texture convertite dal pacchetto, rilette nelle gare successive."},   // hdcache
+    {"Empty: the game fills it as it draws the pack's textures.", "Vuota: il gioco la riempie mentre disegna le texture del pacchetto."},   // hdcache
+    {"Clear cache", "Svuota la cache"},   // hdcache
+    {"Deletes the converted textures.", "Elimina le texture convertite."},   // hdcache
+    {"The game converts them again as it draws them, and the first race on each track loads a little longer.", "Il gioco le converte di nuovo mentre le disegna, e la prima gara su ogni tracciato si carica un po' più a lungo."},   // hdcache
+    {"Cleared.", "Svuotata."},   // hdcache
+    {"{} entries could not be deleted (in use by a running game?)", "{} voci non sono state eliminate (in uso da un gioco in esecuzione?)"},   // hdcache
     {"Size: {} MB.", "Dimensione: {} MB."},
     {"From: {}.", "Da: {}."},
     {"Made by an older version: import again for the newest result.", "Create da una versione precedente: importa di nuovo per il risultato migliore."},
@@ -5543,9 +6554,288 @@ inline constexpr Entry kIT[] = {   // Italian
     {"QUIT AND START AGAIN WHEN IT IS DONE", "ESCI E RIAVVIA QUANDO HA FINITO"},   // portable mode
     {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "LA CARTELLA DATI PORTATILE NON È SCRIVIBILE"},   // portable mode
     {"SAVES AND SETTINGS WON'T BE KEPT", "SALVATAGGI E IMPOSTAZIONI NON VERRANNO CONSERVATI"},   // portable mode
+    {"START AT", "AVVIO SU"},   // gamemods1
+    {"Intro films", "Filmati iniziali"},   // gamemods1
+    {"Title screen", "Schermata del titolo"},   // gamemods1
+    {"Main menu, profile 1", "Menu principale, profilo 1"},   // gamemods1
+    {"Main menu, profile 2", "Menu principale, profilo 2"},   // gamemods1
+    {"Main menu, profile 3", "Menu principale, profilo 3"},   // gamemods1
+    {"IDLE PAUSE", "PAUSA PER INATTIVITÀ"},   // gamemods1
+    {"END VERY LONG EVENTS", "FINE DEGLI EVENTI MOLTO LUNGHI"},   // gamemods1
+    {"Where the game starts after it has loaded.", "Dove inizia il gioco dopo il caricamento."},   // gamemods1
+    {"Title screen: the intro films are not played.", "Schermata del titolo: i filmati iniziali non vengono riprodotti."},   // gamemods1
+    {"Main menu: also Start on the title and that profile loaded, as LOAD PROFILE does; a profile the save does not hold leaves the game's profile choice.", "Menu principale: viene anche premuto Start nella schermata del titolo e caricato quel profilo, come fa CARICA PROFILO; un profilo assente dal salvataggio lascia la scelta del profilo del gioco."},   // gamemods1
+    {"On: as in the game, a race pauses itself after 5 minutes without input.", "Attivo: come nel gioco, una gara si mette in pausa dopo 5 minuti senza input."},   // gamemods1
+    {"Off: it never does.", "Disattivo: non succede mai."},   // gamemods1
+    {"On: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Attivo: come nel gioco, un evento ancora in corso dopo 25-40 minuti viene concluso per tutte le auto."},   // gamemods1
+    {"Off: it goes on until it ends the normal way; an event kept going past the game's limit keeps no records.", "Disattivo: continua finché non termina normalmente; un evento proseguito oltre il limite del gioco non salva record."},   // gamemods1
+    {"Traffic only", "Solo traffico"},   // gamemods1
+    {"Full: the rivals and the other player in the blast are wrecked too, each counted as your Aftertouch Takedown.", "Completo: anche i rivali e l'altro giocatore coinvolti nell'esplosione vengono distrutti, ciascuno contato come tuo Aftertouch Takedown."},   // gamemods1
+    {"RACE HUD", "HUD IN GARA"},   // hudmods
+    {"RPM METER", "CONTAGIRI"},   // hudmods
+    {"BOOST BAR SHAKE", "BARRA DEL BOOST CHE TREMA"},   // hudmods
+    {"RACE SOUNDS", "SUONI DI GARA"},   // hudmods
+    {"TAKEDOWN STREAK PITCH", "TONO DEI TAKEDOWN IN SERIE"},   // hudmods
+    {"On: a thin bar of the engine revs under the speedometer, red near the rev limit.", "Attivo: una sottile barra dei giri del motore sotto il tachimetro, rossa vicino al limitatore."},   // hudmods
+    {"For the automatic and the manual gearbox alike.", "Sia con il cambio automatico sia con quello manuale."},   // hudmods
+    {"On: the boost bar shakes while you boost, as in the game's 2004 preview build.", "Attivo: la barra del boost trema mentre usi il boost, come nella versione di anteprima del gioco del 2004."},   // hudmods
+    {"On: outside World Tour, each takedown after your 10th since your last crash sounds higher, as World Tour's takedown targets do.", "Attivo: fuori dal World Tour, ogni takedown dopo il 10° dall'ultimo incidente suona più acuto, come con gli obiettivi di takedown del World Tour."},   // hudmods
+    {"A crash starts the count again.", "Un incidente fa ripartire il conteggio."},   // hudmods
+    {"Sound only.", "Solo audio."},   // hudmods
+    {"On SELECT CAR: {}", "In SELECT CAR: {}"},   // customseries
+    {"Custom cars", "Auto personalizzate"},   // customseries
+    {"Car mods as cars of their own: they race as the CUSTOM series in SINGLE EVENT, after the game's cars, never in place of one, each with the engine sound and handling of the car it was made to replace. Races with them keep their results apart from your records.", "Mod di auto come auto a sé: corrono nella serie PERSONALIZZATE di SINGLE EVENT, dopo le auto del gioco, mai al posto di una, ognuna con il suono del motore e la guida dell'auto che doveva sostituire. Le loro gare tengono i risultati separati dai tuoi record."},   // customseries
+    {"None.", "Nessuna."},   // customseries
+    {"Import from folder...", "Importa da cartella..."},   // customseries
+    {"Choose a car mod's folder: its car files (named after the car they replace, in a folder named after its class: COMP/CAR7.BGV) or its folders with a car.ini are checked and copied into the custom cars folder.", "Scegli la cartella di un mod di auto: i suoi file di auto (con il nome dell'auto che sostituiscono, in una cartella con il nome della sua classe: COMP/CAR7.BGV) o le sue cartelle con un car.ini vengono controllati e copiati nella cartella delle auto personalizzate."},   // customseries
+    {"Opens the custom cars folder in the file manager (made when it is not there yet).", "Apre la cartella delle auto personalizzate nel gestore file (creata se manca)."},   // customseries
+    {"Reads the custom cars folder again (cars added or removed since).", "Rilegge la cartella delle auto personalizzate (auto aggiunte o tolte da allora)."},   // customseries
+    {"Deletes this car's files from the custom cars folder.", "Elimina i file di questa auto dalla cartella delle auto personalizzate."},   // customseries
+    {"Remove this custom car?", "Rimuovere questa auto personalizzata?"},   // customseries
+    {"Its files are deleted from the custom cars folder.", "I suoi file vengono eliminati dalla cartella delle auto personalizzate."},   // customseries
+    {"Imported: {}", "Importate: {}"},   // customseries
+    {"Removed: {}", "Rimossa: {}"},   // customseries
+    {"Not removed: {}", "Non rimossa: {}"},   // customseries
+    {"{}'s handling", "Guida di {}"},   // customseries
+    {"Traffic", "Traffico"},   // customseries
+    {"Traffic special", "Traffico speciale"},   // customseries
+    {"Not shown", "Non mostrata"},   // customseries
+    {"Custom cars: choose the folder of a car mod", "Auto personalizzate: scegli la cartella di un mod di auto"},   // customseries
+    {"Open the car mod's folder, then Start: its cars are copied into the custom cars folder.", "Apri la cartella del mod di auto, poi Start: le sue auto vengono copiate nella cartella delle auto personalizzate."},   // customseries
+    {"Every player car on your disc, in the game's own car model, then the traffic vehicles and your custom and prototype cars as SELECT CAR offers them. Looking here changes nothing: it unlocks nothing and the save files are not read.", "Tutte le auto giocabili del tuo disco, con il modello del gioco, poi i veicoli del traffico e le tue auto personalizzate e prototipo come le offre SELECT CAR. Guardare non cambia nulla: non sblocca nulla e i salvataggi non vengono letti."},   // customseries
+    {"TUK-TUKS", "TUK-TUK"},   // party1
+    {"In SINGLE EVENT, you and every rival drive the tuk-tuk from the city traffic, with the engine sound and handling of a compact.", "In SINGLE EVENT tu e tutti i rivali guidate il tuk-tuk del traffico cittadino, con il suono del motore e la guida di una compatta."},   // party1
+    {"Crash events too.", "Anche negli eventi Crash."},   // party1
+    {"Import car pack...", "Importa pacchetto auto..."},   // carpacks
+    {"A car pack made to replace the game's cars (a .zip, or its folder): the cars it changes become cars of their own, never in place of the game's. Cars your disc already has, BETA cars you have and cars imported before are left out.", "Un pacchetto di auto fatto per sostituire quelle del gioco (un .zip o la sua cartella): le auto che cambia diventano auto a sé, mai al posto di quelle del gioco. Le auto che il tuo disco ha già, le tue auto BETA e quelle già importate vengono escluse."},   // carpacks
+    {"Choose the game's own data first (above): a pack's cars are compared with your disc's.", "Scegli prima i dati del gioco (sopra): le auto di un pacchetto vengono confrontate con quelle del tuo disco."},   // carpacks
+    {"Custom cars: choose a car pack (a .zip file, or its folder)", "Auto personalizzate: scegli un pacchetto di auto (un file .zip o la sua cartella)"},   // carpacks
+    {"A on the pack's .zip chooses it; or open the pack's folder, then Start.", "A sul .zip del pacchetto lo sceglie; oppure apri la cartella del pacchetto, poi Start."},   // carpacks
+    {"Open the pack's folder, then Start.", "Apri la cartella del pacchetto, poi Start."},   // carpacks
+    {"Cut cars (BETA series)", "Auto tagliate (serie BETA)"},   // carpacks
+    {"Cut cars", "Auto tagliate"},   // carpacks
+    {"New models", "Nuovi modelli"},   // carpacks
+    {"Early versions", "Prime versioni"},   // carpacks
+    {"New paint", "Nuova vernice"},   // carpacks
+    {"Other cars", "Altre auto"},   // carpacks
+    {"Choose whether these cars are imported.", "Scegli se importare queste auto."},   // carpacks
+    {"Import {} cars", "Importa {} auto"},   // carpacks
+    {"Writes the chosen cars into the custom cars folder (the cut cars of the BETA series into its folder).", "Scrive le auto scelte nella cartella delle auto personalizzate (le auto tagliate della serie BETA nella sua)."},   // carpacks
+    {"Nothing is written.", "Non viene scritto nulla."},   // carpacks
+    {"{} cars", "{} auto"},   // carpacks
+    {"Deletes this pack's cars from the custom cars folder.", "Elimina le auto di questo pacchetto dalla cartella delle auto personalizzate."},   // carpacks
+    {"Remove this car pack?", "Rimuovere questo pacchetto di auto?"},   // carpacks
+    {"Its cars are deleted from the custom cars folder.", "Le sue auto vengono eliminate dalla cartella delle auto personalizzate."},   // carpacks
+    {"already in the game", "già nel gioco"},   // carpacks
+    {"already a BETA car", "già un'auto BETA"},   // carpacks
+    {"already imported", "già importata"},   // carpacks
+    {"not chosen", "non scelta"},   // carpacks
+    {"an old-layout prototype file: import it with Beta / Prototype cars", "un file prototipo nel vecchio formato: importalo con Beta / Prototype cars"},   // carpacks
+    {"the pack's vehicle list: not used (the game's own is kept)", "l'elenco veicoli del pacchetto: non usato (resta quello del gioco)"},   // carpacks
+    {"the pack's handling and camera values: not applied (the game's own are kept)", "guida e telecamere del pacchetto: non applicate (restano quelle del gioco)"},   // carpacks
+    {"A cut car's file, whatever its paint, is that BETA car (matched by its shape): it goes into the BETA series once, not as a car of its own.", "Il file di un'auto tagliata, qualunque sia la sua vernice, è quell'auto BETA (riconosciuta dalla forma): va una sola volta nella serie BETA, non come auto a sé."},   // carpacks
+    // extras (2026-11-23): the EXTRAS tab
+    {"NIGHT (EXPERIMENTAL)", "NOTTE (SPERIMENTALE)"},
+    {"RAIN (EXPERIMENTAL)", "PIOGGIA (SPERIMENTALE)"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a TIME OF DAY row (Day / Night).", "Sì: SELECT OPTIONS di SINGLE EVENT ha una riga ORARIO (Giorno / Notte)."},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a WEATHER row (Clear / Rain).", "Sì: SELECT OPTIONS di SINGLE EVENT ha una riga METEO (Sereno / Pioggia)."},
+    {"NIGHT IN WORLD TOUR", "NOTTE NEL WORLD TOUR"},
+    {"RAIN IN WORLD TOUR", "PIOGGIA NEL WORLD TOUR"},
+    {"Always", "Sempre"},
+    {"Random", "Casuale"},
+    {"World Tour's events at night: Always, or Random (each event as it starts).", "Gli eventi del World Tour di notte: Sempre, o Casuale (ogni evento alla partenza)."},
+    {"World Tour's events in the rain: Always, or Random (each event as it starts).", "Gli eventi del World Tour sotto la pioggia: Sempre, o Casuale (ogni evento alla partenza)."},
+    {"Drawn only: your progress and records count as usual.", "Solo grafica: i tuoi progressi e record contano come sempre."},
+    {"EXPERIMENTAL", "SPERIMENTALE"},
+    {"Experimental: work in progress.", "Sperimentale: lavori in corso."},
+    {"Tell us what you think.", "Facci sapere cosa ne pensi."},
+    {"ROAD RAGE RIVALS", "RIVALI ROAD RAGE"},
+    {"EXTRAS", "EXTRA"},
+    {"SINGLE EVENT", "EVENTO SINGOLO"},
+    {"SELECT OPTIONS", "SELECT OPTIONS"},
+    {"SELECT CAR", "SELECT CAR"},
+    {"ELIMINATOR", "ELIMINATOR"},
+    {"MORE RIVALS", "PIÙ RIVALI"},
+    {"TRAFFIC", "TRAFFICO"},
+    {"LAPS", "GIRI"},
+    {"TIMED ELIMINATION", "ELIMINAZIONE A TEMPO"},
+    {"TRANSMISSION", "CAMBIO"},
+    {"RIVAL STYLE", "STILE RIVALI"},
+    {"BURNOUT POINTS", "PUNTI BURNOUT"},
+    {"TIME LIMIT", "LIMITE TEMPO"},
+    {"TRAFFIC PATTERN", "SCHEMA TRAFFICO"},
+    {"RIVALS' CARS", "AUTO RIVALI"},
+    {"TRAFFIC CHECK", "SPINTA AL TRAFFICO"},
+    {"HEAVYWEIGHTS", "PESI MASSIMI"},
+    {"TRAFFIC SERIES", "SERIE TRAFFICO"},
+    {"CUSTOM CARS", "AUTO PERSONALI"},
+    {"BETA CARS", "AUTO BETA"},
+    {"CAR VIEWER", "VISORE AUTO"},
+    {"NO IDLE PAUSE", "NESSUNA PAUSA INATTIVITÀ"},
+    {"NO EVENT TIME LIMIT", "NESSUN LIMITE DI TEMPO"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has this row.", "Sì: SELECT OPTIONS di SINGLE EVENT ha questa riga."},
+    {"Off: the game's own page.", "Disattivo: la pagina del gioco così com'è."},
+    {"On: SINGLE EVENT's SELECT MODE has a fifth mode, ELIMINATOR: the last car is out at the end of each lap.", "Sì: SELECT MODE di SINGLE EVENT ha una quinta modalità, ELIMINATOR: l'ultima auto esce alla fine di ogni giro."},
+    {"Off: the game's four modes.", "Disattivo: le quattro modalità del gioco."},
+    {"On: a SINGLE EVENT race's RIVALS row goes up to 7, for 8 cars.", "Sì: la riga RIVALS di una gara SINGLE EVENT arriva fino a 7, per 8 auto."},
+    {"Off: up to 5, as in the game.", "Disattivo: fino a 5, come nel gioco."},
+    {"On: the HEAVYWEIGHTS series in every SINGLE EVENT mode.", "Sì: la serie HEAVYWEIGHTS in ogni modalità SINGLE EVENT."},
+    {"Off: in Crash only, as in the game.", "Disattivo: solo in Crash, come nel gioco."},
+    {"On: SINGLE EVENT's SELECT CAR has the TRAFFIC and TRAFFIC SPECIAL series: drive a car, bus or tuk-tuk from the traffic.", "Sì: SELECT CAR di SINGLE EVENT ha le serie TRAFFIC e TRAFFIC SPECIAL: guida un'auto, un autobus o un tuk-tuk del traffico."},
+    {"On: the car mods in your custom cars folder, as the CUSTOM series.", "Sì: le auto modificate nella tua cartella delle auto personali, come serie CUSTOM."},
+    {"On: the prototype cars the launcher imported, as the BETA series.", "Sì: le auto prototipo importate dal launcher, come serie BETA."},
+    {"On: YOUR GARAGE opens the game's leftover car viewer.", "Sì: YOUR GARAGE apre il visore auto rimasto nel gioco."},
+    {"On: a race never pauses itself.", "Sì: una gara non va mai in pausa da sola."},
+    {"Off: as in the game, it pauses after 5 minutes without input.", "Disattivo: come nel gioco, va in pausa dopo 5 minuti senza comandi."},
+    {"On: an event goes on until it ends the normal way; one kept going past the game's limit keeps no records.", "Sì: un evento continua finché finisce normalmente; uno prolungato oltre il limite del gioco non tiene record."},
+    {"Off: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Disattivo: come nel gioco, un evento ancora in corso dopo 25-40 minuti viene concluso per tutte le auto."},
 };
 
 inline constexpr Entry kSP[] = {   // Spanish
+    {"HD TEXTURE MEMORY", "MEMORIA DE TEXTURAS HD"},   // texpack: HD TEXTURE MEMORY
+    {"Full quality", "Calidad completa"},   // texpack: HD TEXTURE MEMORY
+    {"Compressed", "Comprimidas"},   // texpack: HD TEXTURE MEMORY
+    {"How an HD texture pack's PNG and BC7 files are kept on the graphics card.", "Cómo se guardan en la tarjeta gráfica los archivos PNG y BC7 de un pack de texturas HD."},   // texpack: HD TEXTURE MEMORY
+    {"Full quality: as the files are, as PCSX2 keeps them; they take about four times the memory.", "Calidad completa: tal como son los archivos, como los guarda PCSX2; ocupan unas cuatro veces más memoria."},   // texpack: HD TEXTURE MEMORY
+    {"Compressed: packed when they load, a quarter of the memory, a little less sharp.", "Comprimidas: compactadas al cargar, una cuarta parte de la memoria, algo menos nítidas."},   // texpack: HD TEXTURE MEMORY
+    {"Auto: full quality on a graphics card with 6 GB of its own memory or more, compressed otherwise.", "Auto: calidad completa en una tarjeta gráfica con 6 GB de memoria propia o más; si no, comprimidas."},   // texpack: HD TEXTURE MEMORY
+    {"SOUND OUTPUT", "SALIDA DE SONIDO"},   // audioq
+    {"OUTPUT", "SALIDA"},   // audioq
+    {"Clean", "Limpia"},   // audioq
+    {"Clean: the loudest moments (a crash over the engines and the music) are turned down for an instant instead of clipping.", "Limpia: los momentos más fuertes (un choque sobre los motores y la música) se bajan un instante en lugar de saturar."},   // audioq
+    {"Original: the PS2's own output, which crackles when it clips.", "Original: la salida de la propia PS2, que cruje cuando satura."},   // audioq
+    {"Revenge", "Revenge"},   // trafficcheck (the game's name)
+    {"TRAFFIC CHECK (2 PLAYERS)", "EMBESTIR TRÁFICO (2 JUGADORES)"},   // trafficcheck
+    {"Extreme", "Extremo"},   // trafficcheck
+    {"Two-player races: ram a car, van or lorry going your way and it is launched ahead instead of wrecking you, for boost and a scored chain, as in Burnout Revenge.", "Carreras a dos jugadores: embiste un coche, una furgoneta o un camión que vaya en tu sentido y saldrá despedido hacia delante en lugar de hacerte chocar, a cambio de turbo y una serie puntuada, como en Burnout Revenge."},   // trafficcheck
+    {"A car you check that hits your rival takes them out for you.", "Un coche embestido que golpea a tu rival lo elimina por ti."},   // trafficcheck
+    {"Revenge: oncoming traffic, buses and big rigs still crash you.", "Revenge: el tráfico en sentido contrario, los autobuses y los tráileres te siguen haciendo chocar."},   // trafficcheck
+    {"Extreme: they are shoved aside too.", "Extremo: también salen despedidos."},   // trafficcheck
+    {"Single races have their own TRAFFIC CHECK row on SELECT OPTIONS.", "Las carreras individuales tienen su propia fila EMBESTIR TRÁFICO en SELECT OPTIONS."},   // trafficcheck
+    {"ORBIT STYLE", "ESTILO ORBITAL"},   // orbitcam2
+    {"Look", "Mirada"},   // orbitcam2
+    {"Swing", "Giro"},   // orbitcam2
+    {"Look: the view turns to where you point the stick (down looks behind), as in Burnout Revenge.", "Mirada: la vista gira hacia donde apuntas el stick (abajo mira atrás), como en Burnout Revenge."},   // orbitcam2
+    {"Swing: the stick turns the view round while you hold it, and up or down raises or lowers it.", "Giro: el stick gira la vista mientras lo mantienes, y arriba o abajo la sube o la baja."},   // orbitcam2
+    {"FINISH CAMERA", "CÁMARA DE META"},   // finishcam1
+    {"Set pieces", "Secuencias"},   // finishcam1
+    {"After you cross the finish line, the camera cycles through 12 set pieces of angles around the finish, 5 seconds each, from the game's own data.", "Tras cruzar la meta, la cámara recorre 12 secuencias de ángulos alrededor de la meta, 5 segundos cada una, con los datos del propio juego."},   // finishcam1
+    {"Game: the game's finish shot.", "Juego: el plano de meta del juego."},   // finishcam1
+    {"CAMERA ROLL", "INCLINACIÓN DE CÁMARA"},   // camroll1
+    {"Subtle", "Suave"},   // camroll1
+    {"Strong", "Fuerte"},   // camroll1
+    {"In a race, the chase camera leans into corners.", "En carrera, la cámara de persecución se inclina en las curvas."},   // camroll1
+    {"Subtle: up to 4 degrees.", "Suave: hasta 4 grados."},   // camroll1
+    {"Strong: up to 8 degrees.", "Fuerte: hasta 8 grados."},   // camroll1
+    {"CAR STATS", "DATOS DEL COCHE"},   // carstats1 / blinkers1 / rrparts1
+    {"More", "Más"},   // carstats1 / blinkers1 / rrparts1
+    {"TURN SIGNALS", "INTERMITENTES"},   // carstats1 / blinkers1 / rrparts1
+    {"ROAD RAGE PARTS", "PIEZAS EN ROAD RAGE"},   // carstats1 / blinkers1 / rrparts1
+    {"All loose", "Todas sueltas"},   // carstats1 / blinkers1 / rrparts1
+    {"More: the car select page also shows GRIP and ACCELERATION, worked out from each car's handling.", "Más: la selección de coche muestra también AGARRE y ACELERACIÓN, calculados a partir del manejo de cada coche."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: TOP SPEED and WEIGHT only.", "Juego: solo VELOCIDAD MÁXIMA y PESO."},   // carstats1 / blinkers1 / rrparts1
+    {"On: the other racers' indicators blink before a bend, on every track.", "Activado: los intermitentes de los otros pilotos parpadean antes de una curva, en todos los circuitos."},   // carstats1 / blinkers1 / rrparts1
+    {"Their lights only: the race is unchanged.", "Solo sus luces: la carrera no cambia."},   // carstats1 / blinkers1 / rrparts1
+    {"All loose: in a single-event Road Rage, every loose part can come off a damaged car, not only the ones the game lets go.", "Todas sueltas: en un Road Rage de evento único, cualquier pieza suelta puede desprenderse de un coche dañado, no solo las que suelta el juego."},   // carstats1 / blinkers1 / rrparts1
+    {"Loose parts are physical, so the race is not the original: its records are kept apart.", "Las piezas sueltas son físicas, así que la carrera no es la original: sus récords se guardan aparte."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: the original.", "Juego: el original."},   // carstats1 / blinkers1 / rrparts1
+    {"PARTY MODES", "MODOS FIESTA"},   // party1
+    {"CRAZY AI PHYSICS", "FÍSICA LOCA DE LA IA"},   // party1
+    {"Basic", "Básico"},   // party1
+    {"Local Wildlife", "Fauna local"},   // party1
+    {"Mayhem", "Caos"},   // party1
+    {"The rivals' physics go haywire: their wheels never leave the road as far as the game knows, and gravity barely holds them.", "La física de los rivales se vuelve loca: para el juego sus ruedas nunca dejan la carretera, y la gravedad apenas los sujeta."},   // party1
+    {"Local Wildlife: they tumble without crashing.", "Fauna local: dan vueltas sin chocar."},   // party1
+    {"Mayhem: a rival that flips over blows up.", "Caos: un rival que vuelca explota."},   // party1
+    {"Your own car drives as usual.", "Tu coche se conduce como siempre."},   // party1
+    {"MOON JUMP", "SALTO LUNAR"},   // party1
+    {"Hold the MOON JUMP button to lift your car into the air (4 on the keyboard; a controller button can be set in CONTROLS).", "Mantén el botón SALTO LUNAR para elevar el coche en el aire (4 en el teclado; un botón del mando se puede asignar en CONTROLES)."},   // party1
+    {"CRASH ON DEMAND", "CHOQUE A DEMANDA"},   // party1
+    {"The CRASH button crashes your car at once (5 on the keyboard; a controller button can be set in CONTROLS).", "El botón CHOQUE estrella el coche al instante (5 en el teclado; un botón del mando se puede asignar en CONTROLES)."},   // party1
+    {"AI DRIVER BUTTON", "BOTÓN PILOTO IA"},   // party1
+    {"The AI DRIVER button hands your car to the game's own AI driver, and back on the next press (6 on the keyboard; a controller button can be set in CONTROLS).", "El botón PILOTO IA cede el coche al piloto IA del juego, y te lo devuelve con la siguiente pulsación (6 en el teclado; un botón del mando se puede asignar en CONTROLES)."},   // party1
+    {"KAMIKAZE TRAFFIC", "TRÁFICO KAMIKAZE"},   // party1
+    {"Traffic close ahead of any race car throws itself at it.", "El tráfico cercano delante de un coche de carreras se lanza contra él."},   // party1
+    {"Expect many wrecks.", "Habrá muchos restos."},   // party1
+    {"AI DRIVER", "PILOTO IA"},   // party1
+    {"REPLAY: PREVIOUS CAMERA", "REPETICIÓN: CÁMARA ANTERIOR"},   // replaycams
+    {"REPLAY: NEXT CAMERA", "REPETICIÓN: CÁMARA SIGUIENTE"},   // replaycams
+    {"REPLAY: PREVIOUS CAR", "REPETICIÓN: COCHE ANTERIOR"},   // replaycams
+    {"REPLAY: NEXT CAR", "REPETICIÓN: COCHE SIGUIENTE"},   // replaycams
+    {"REPLAY: FREE CAMERA", "REPETICIÓN: CÁMARA LIBRE"},   // replaycams
+    {"REPLAY CAMERA CUTS", "CORTES DE CÁMARA EN LA REPETICIÓN"},   // replaycams
+    {"Stay", "Mantener"},   // replaycams
+    {"Game: in a race replay, a crash cuts to the game's crash camera, whatever camera you chose.", "Juego: en la repetición de una carrera, un choque corta a la cámara de choques del juego, sea cual sea la cámara elegida."},   // replaycams
+    {"Stay: the camera you chose stays on.", "Mantener: la cámara elegida se queda."},   // replaycams
+    {"While a race replay plays: the previous camera angle.", "Durante la repetición de una carrera: el ángulo de cámara anterior."},   // replaycams
+    {"While a race replay plays: the next camera angle.", "Durante la repetición de una carrera: el ángulo de cámara siguiente."},   // replaycams
+    {"While a race replay plays: watch the previous car.", "Durante la repetición de una carrera: seguir el coche anterior."},   // replaycams
+    {"While a race replay plays: watch the next car.", "Durante la repetición de una carrera: seguir el coche siguiente."},   // replaycams
+    {"While a race replay plays: a free camera (photo mode's controls), and back.", "Durante la repetición de una carrera: una cámara libre (los controles del modo foto), y vuelta."},   // replaycams
+    {"CRASH", "CHOQUE"},   // party1
+    {"Held in a race: lifts your car into the air (GAME > PARTY MODES > MOON JUMP on).", "Mantenido en carrera: eleva el coche en el aire (JUEGO > MODOS FIESTA > SALTO LUNAR activado)."},   // party1
+    {"In a race: crashes your car at once (GAME > PARTY MODES > CRASH ON DEMAND on).", "En carrera: estrella el coche al instante (JUEGO > MODOS FIESTA > CHOQUE A DEMANDA activado)."},   // party1
+    {"In a race: the game's AI drives your car, and you again on the next press (GAME > PARTY MODES > AI DRIVER BUTTON on).", "En carrera: la IA del juego conduce tu coche, y tú otra vez con la siguiente pulsación (JUEGO > MODOS FIESTA > BOTÓN PILOTO IA activado)."},   // party1
+    {"ORBIT CAMERA", "CÁMARA ORBITAL"},   // orbitcam1
+    {"CRASH CAMERA", "CÁMARA DE CHOQUE"},   // options3
+    {"On: when you crash, the game cuts to its crash camera, as the original.", "Sí: cuando chocas, el juego pasa a su cámara de choque, como el original."},   // options3
+    {"Off: the view stays behind your car.", "No: la vista se queda detrás de tu coche."},   // options3
+    {"The takedown camera is the game's own option (DRIVER DETAILS > SETTINGS).", "La cámara de los takedowns es una opción del juego (DATOS DEL PILOTO > AJUSTES)."},   // options3
+    {"Camera only.", "Solo la cámara."},   // options3
+    {"RACE REPLAY", "REPETICIÓN"},   // replayview
+    {"APPLIES AT THE NEXT START", "SE APLICA EN EL PRÓXIMO INICIO"},   // nextstart
+    {"RESTART", "REINICIO"},   // nextstart
+    {"KEEP", "MANTENER"},   // nextstart
+    {"Next start", "Próximo inicio"},   // nextstart
+    {"Saved: the game uses it from its next start.", "Guardado: el juego lo usa desde su próximo inicio."},   // nextstart
+    {"APPLY AND RESTART", "APLICAR Y REINICIAR"},   // nextstart
+    {"Restart", "Reiniciar"},   // nextstart
+    {"Saved, then the game closes and starts again at the title screen, the change in use.", "Guardado; después el juego se cierra y vuelve a empezar en la pantalla de título, con el cambio."},   // nextstart
+    {"The race in progress ends.", "La carrera en curso termina."},   // nextstart
+    {"REVERT", "DESHACER"},   // nextstart
+    {"Undo", "Deshacer"},   // nextstart
+    {"These settings go back to what they were when the page opened.", "Estos ajustes vuelven a como estaban al abrir la página."},   // nextstart
+    {"BACK  KEEP", "ATRÁS  MANTENER"},   // nextstart
+    {"Changed: applies at the next start.", "Cambiado: se aplica en el próximo inicio."},   // nextstart
+    {"REPLAY", "REPETICIÓN"},   // replayview
+    {"A race's results page, with RACE REPLAY on (GAME > MODES): watch the race again; while it plays: back to the results.", "Página de resultados de una carrera, con REPETICIÓN activado (JUEGO > MODOS): ver la carrera otra vez; durante ella: volver a los resultados."},   // replayview
+    {"Replay", "Repetición"},   // replayview
+    {"On: a race's results page offers REPLAY (F6, or Square / X): the game's own replay of the race you have just driven.", "Sí: la página de resultados de una carrera ofrece REPLAY (F6, o Cuadrado / X): la repetición del juego de la carrera que acabas de correr."},   // replayview
+    {"Every offline mode but Crash, which has its own.", "Todos los modos sin conexión menos Crash, que tiene la suya."},   // replayview
+    {"Your results, records and progress stay as they were.", "Tus resultados, récords y progreso se quedan como estaban."},   // replayview
+    {"DEFORMATION", "DEFORMACIÓN"},   // options3
+    {"How much the cars' bodies crumple when they hit something.", "Cuánto se arrugan las carrocerías de los coches al chocar con algo."},   // options3
+    {"How much the cars' bodies crumple when they hit something, in Single Event and two-player races.", "Cuánto se arrugan las carrocerías de los coches al chocar con algo, en las carreras de Evento único y de dos jugadores."},   // options3
+    {"100% is the original game's.", "100% es el valor del juego original."},   // options3
+    {"Another amount changes the race after the first hard hit, so these races keep their results apart from your records.", "Otro valor cambia la carrera tras el primer golpe fuerte, así que estas carreras guardan sus resultados aparte de tus récords."},   // options3
+    {"DRIVER LABELS", "ETIQUETAS DE PILOTOS"},   // options3
+    {"Names", "Nombres"},   // options3
+    {"Names + distance", "Nombres + distancia"},   // options3
+    {"Distance", "Distancia"},   // options3
+    {"Over the rival cars in a race: each driver's name, the distance to them, or both.", "Sobre los coches rivales en carrera: el nombre de cada piloto, la distancia hasta él o ambos."},   // options3
+    {"On: in a race, the right stick turns the chase camera around your car to look left, right or behind; it stops short of walls.", "Activada: en carrera, el stick derecho gira la cámara de persecución alrededor de tu coche para mirar a la izquierda, a la derecha o atrás; se detiene antes de las paredes."},   // orbitcam2
+    {"A moment after you let go, the view eases back behind the car.", "Un momento después de soltarlo, la vista vuelve suavemente detrás del coche."},   // orbitcam1
+    {"The mouse does it too, with the right button held.", "El ratón también lo hace, con el botón derecho pulsado."},   // orbitcam1
+    {"On the PlayStation controller layout the right stick is the throttle and brake, so it stays the game's there.", "Con la disposición de mando de PlayStation el stick derecho es el acelerador y el freno, así que ahí sigue siendo del juego."},   // orbitcam1
+    {"DISPLAY, GRAPHICS, CAR, CONTROLS AND MORE", "PANTALLA, GRÁFICOS, COCHE, CONTROLES Y MÁS"},   // 1.3.1: the main menu's SETTINGS help (tools/native/pc_menu.h)
+    {"LEAVE THE GAME", "SALIR DEL JUEGO"},   // 1.3.1: the main menu's QUIT GAME help
+    {"Their PS2 mods inspired MIRROR MODE, CRASHBREAKER IN EVERY MODE, the PARTY MODES and the race options (rival names and distances, rivals' cars, standing start, Road Rage time limit and rival style, Burnout points, varied traffic, DEFORMATION, the Chrome finish, the crash camera switch), START AT, the idle pause and long-event switches, the Crashbreaker's full blast, the car viewer and the replay viewer: the ideas only, none of their code.", "Sus mods de PS2 inspiraron MODO ESPEJO, CRASHBREAKER EN TODOS LOS MODOS, los MODOS FIESTA y las opciones de carrera (nombres y distancias de los rivales, coches de los rivales, salida parada, límite de tiempo y estilo de los rivales en Road Rage, puntos Burnout, tráfico variable, DEFORMACIÓN, el acabado Cromado, la elección de la cámara de choque), INICIAR EN, los ajustes de pausa por inactividad y de pruebas largas, la explosión completa del Crashbreaker, el visor de coches y el visor de repeticiones: solo las ideas, nada de su código."},   // credits140 (the launcher's Credits)
+    {"The PCSX2 mods that inspired the RPM meter, the boost bar shake, the takedown streak pitch, camera roll, the finish camera's set pieces, manual gears, TIMED ELIMINATION, the traffic presets, traffic checking in two-player races, loose parts in Road Rage, car stats, the rivals' turn signals, the paint picker, painted car pictures and the reflections that reach further (ideas only, none of their code).", "Los mods de PCSX2 que inspiraron el cuentarrevoluciones, la barra de boost que tiembla, el tono de la racha de takedowns, la inclinación de cámara, los planos fijos de la cámara de meta, el cambio manual, la ELIMINACIÓN POR TIEMPO, los preajustes de tráfico, EMBESTIR TRÁFICO en las carreras de dos jugadores, las piezas sueltas en Road Rage, los datos del coche, los intermitentes de los rivales, el selector de color, las imágenes de coches pintados y los reflejos que llegan más lejos (solo las ideas, nada de su código)."},   // credits140 (the launcher's Credits)
+    {"The Heavyweights-in-the-garage mod behind the Heavyweights in Single Event.", "El mod de los Pesos pesados en el garaje, el origen de los Pesos pesados en Evento único."},   // credits140 (the launcher's Credits)
+    {"The traffic-checking edit behind TRAFFIC CHECK (2 PLAYERS) Extreme.", "La edición para embestir el tráfico detrás de EMBESTIR TRÁFICO (2 JUGADORES) Extremo."},   // credits140 (the launcher's Credits)
+    {"The Traffic Checking mod restoring Burnout Revenge's code, the reference for TRAFFIC CHECK (2 PLAYERS) Revenge.", "El mod Traffic Checking que restaura el código de Burnout Revenge, la referencia para EMBESTIR TRÁFICO (2 JUGADORES) Revenge."},   // credits140 (the launcher's Credits)
+    {"The Revenge-style orbit camera mod behind the orbit camera's feel.", "El mod de cámara orbital al estilo Revenge detrás de la sensación de la cámara orbital."},   // credits140 (the launcher's Credits)
+    {"CRASHBREAKER AFTER", "CRASHBREAKER TRAS"},   // gameopts
+    {"How many vehicles your crash must hit before the CRASHBREAKER button works, as Crash mode counts them (races have less traffic, so fewer).", "Cuántos vehículos debe golpear tu choque antes de que funcione el botón CRASHBREAKER, contados como en el modo Crash (las carreras tienen menos tráfico, así que menos)."},   // gameopts
+    {"0: ready as soon as you crash.", "0: listo en cuanto chocas."},   // gameopts
+    {"GAMEPLAY", "JUGABILIDAD"},   // gameopts
+    {"MIRROR MODE", "MODO ESPEJO"},   // gameopts
+    {"CRASHBREAKER IN EVERY MODE", "CRASHBREAKER EN TODOS LOS MODOS"},   // gameopts
+    {"Single races and two-player races on mirrored tracks: the world is drawn reversed left to right and the steering follows it, so left still steers left on the screen.", "Carreras individuales y a dos jugadores en circuitos en espejo: el mundo se muestra invertido de izquierda a derecha y la dirección lo sigue, así que izquierda sigue girando a la izquierda en la pantalla."},   // gameopts
+    {"The HUD is not mirrored; the writing on signs is.", "El HUD no se invierte; la escritura de los carteles sí."},   // gameopts
+    {"These races keep their results apart from your records.", "Los resultados de estas carreras se guardan aparte de los récords."},   // gameopts
+    {"Applies from the next race.", "Se aplica desde la próxima carrera."},   // gameopts
+    {"After a crash in a single or two-player race, Time Attack or Road Rage, the CRASHBREAKER button blows your wreck up as in Crash mode, wrecking the traffic around it.", "Tras un choque en una carrera individual o a dos jugadores, en Contrarreloj o en Road Rage, el botón CRASHBREAKER hace explotar los restos del coche como en el modo Crash, destrozando el tráfico de alrededor."},   // gameopts
     {"VOICES", "VOCES"},   // 1.3.0 VOICES
     {"The Crash FM DJ and the race training's narrator.", "El DJ de Crash FM y el narrador del entrenamiento."},   // 1.3.0 VOICES
     {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Idioma: hablan el IDIOMA elegido (el francés, el alemán, el italiano y el español tienen las suyas; el inglés británico, el neerlandés y el sueco tienen las voces inglesas, como en sus discos)."},   // 1.3.0 VOICES
@@ -5589,6 +6879,8 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"FRAME RATE LIMIT", "LÍMITE DE FOTOGRAMAS"},
     {"The most frames per second drawn.", "El máximo de fotogramas por segundo dibujados."},
     {"The game itself always runs at its own speed.", "El juego en sí siempre funciona a su propia velocidad."},
+    {"Auto: 60 on a processor with 4 threads or fewer, so the game itself keeps up; no limit on others.", "Auto: 60 en un procesador de 4 hilos o menos, para que el propio juego no se retrase; sin límite en los demás."},
+    {"Unlimited: no limit at all, for fast processors.", "Sin límite: ningún límite, para procesadores rápidos."},
     {"PAUSE WHEN UNFOCUSED", "PAUSAR EN SEGUNDO PLANO"},
     {"The game holds while its window is in the background (the native game only).", "El juego se detiene mientras su ventana está en segundo plano (solo el juego nativo)."},
     {"FAST LOADING", "CARGA RÁPIDA"},
@@ -5645,6 +6937,12 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"150% and 200% want a graphics card with plenty of memory.", "150% y 200% necesitan una tarjeta gráfica con mucha memoria."},
     {"DITHER", "TRAMADO"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Un patrón fino que oculta los escalones de los degradados suaves, como el cielo."},
+    {"GRAPHICS API", "API GRÁFICA"},   // d3d12
+    {"Vulkan", "Vulkan"},
+    {"D3D12", "D3D12"},
+    {"The graphics interface the game draws with.", "La interfaz gráfica con la que dibuja el juego."},
+    {"Auto uses Vulkan, and Direct3D 12 when no working Vulkan device can be created.", "Auto usa Vulkan, y Direct3D 12 cuando no se puede crear un dispositivo Vulkan que funcione."},
+    {"Try D3D12 if the picture shows faults with your graphics card.", "Prueba D3D12 si la imagen muestra fallos con tu tarjeta gráfica."},
     {"None", "Ninguno"},
     {"A PCSX2 texture replacement folder for this game (its SLUS-21050 folder, or the folder above it).", "Una carpeta de texturas de reemplazo de PCSX2 para este juego (su carpeta SLUS-21050, o la carpeta superior)."},
     {"HD TEXTURE PACK", "PAQUETE DE TEXTURAS HD"},
@@ -5666,6 +6964,25 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Highest", "Máximo"},
     {"Highest draws every car at full detail at any distance.", "Máximo dibuja todos los coches con todo detalle a cualquier distancia."},
     {"CAR REFLECTIONS", "REFLEJOS DE COCHES"},
+    {"REFLECTION DISTANCE", "DISTANCIA DE REFLEJOS"},   // reflect2
+    {"200 m", "200 m"},   // reflect2
+    {"300 m", "300 m"},   // reflect2
+    {"How far the cars' reflections reach.", "Hasta dónde llegan los reflejos de los coches."},   // reflect2
+    {"Game: 100 m, as the original.", "Juego: 100 m, como el original."},   // reflect2
+    {"Further shows more of the track in the paint and costs more.", "Más lejos muestra más circuito en la pintura y cuesta más."},   // reflect2
+    {"REFLECTION DETAIL", "DETALLE DE REFLEJOS"},   // reflect2
+    {"Track", "Circuito"},   // reflect2
+    {"Track and props", "Circuito y objetos"},   // reflect2
+    {"Track, props and cars", "Circuito, objetos y coches"},   // reflect2
+    {"Track, props and cars: the other cars nearby as well.", "Circuito, objetos y coches: también los demás coches cercanos."},   // reflect2
+    {"Track and props: the barriers, signs, cones and lamp posts near the car show in its reflections too.", "Circuito y objetos: las barreras, señales, conos y farolas cercanos al coche también aparecen en sus reflejos."},   // reflect2
+    {"REFLECTION UPDATE", "ACTUALIZACIÓN DE REFLEJOS"},   // reflect2
+    {"Every frame", "Cada fotograma"},   // reflect2
+    {"Every 2nd frame", "Uno de cada dos fotogramas"},   // reflect2
+    {"Every 2nd frame: the reflections are redrawn half as often, for slower graphics cards.", "Uno de cada dos fotogramas: los reflejos se redibujan la mitad de veces, para tarjetas gráficas más lentas."},   // reflect2
+    {"REFLECTION RESOLUTION", "RESOLUCIÓN DE REFLEJOS"},   // reflect2
+    {"High: sharper reflections, drawn at twice the size.", "Alta: reflejos más nítidos, dibujados al doble de tamaño."},   // reflect2
+    {"Standard: as the original.", "Estándar: como el original."},   // reflect2
     {"Original", "Original"},
     {"Enhanced", "Mejorado"},
     {"Enhanced: glossy sky and sun reflections on the paint and glass.", "Mejorado: reflejos brillantes del cielo y el sol en la pintura y los cristales."},
@@ -5768,6 +7085,11 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"On: the race's pause menu has a PHOTO MODE row after SETTINGS, which opens photo mode (the key P, or L3 + R3 on a controller, does too).", "Activado: el menú de pausa de la carrera tiene una fila MODO FOTO después de AJUSTES, que abre el modo foto (también la tecla P, o L3 + R3 en un mando)."},
     {"Off: the pause menu is the game's own.", "Desactivado: el menú de pausa es el del propio juego."},
     {"From the next pause.", "A partir de la siguiente pausa."},
+    {"SETTINGS BACK BUTTON", "BOTÓN ATRÁS EN LOS AJUSTES"},   // settingsback
+    {"Keep changes", "Conservar los cambios"},   // settingsback
+    {"Leaving a page of DRIVER DETAILS > SETTINGS (GAMEPLAY, AUDIO, VIDEO, CONTROLLERS) with Back.", "Salir de una página de los ajustes del juego en el perfil del piloto (juego, audio, vídeo, mandos) con Atrás."},   // settingsback
+    {"Keep changes: what you changed there stays.", "Conservar los cambios: lo que cambiaste allí se mantiene."},   // settingsback
+    {"Cancel: Back puts the old values back, as on the PS2 (confirm keeps them).", "Cancelar: Atrás restaura los valores anteriores, como en PS2 (confirmar los conserva)."},   // settingsback
     {"English", "English"},
     {"LANGUAGE", "IDIOMA"},
     {"Choose a European disc image (or its folder) of Burnout 3: Takedown: its languages are copied to this PC (two small files each); the disc is not needed afterwards.", "Elegir una imagen de disco europea (o su carpeta) de Burnout 3: Takedown: sus idiomas se copian a este PC (dos archivos pequeños cada uno); después no se necesita el disco."},
@@ -5870,7 +7192,13 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"From the next song.", "A partir de la siguiente canción."},
     {"CUSTOM MUSIC VOLUME", "VOLUMEN DE MÚSICA PROPIA"},
     {"How loud your own songs play, on top of RADIO VOLUME.", "El volumen de tus propias canciones, además del VOLUMEN DE LA RADIO."},
-    {"At 100% a song plays as loud as the game plays its own songs; raise it for quiet files.", "Al 100% una canción suena tan fuerte como el juego pone sus propias canciones; súbelo para archivos con poco volumen."},
+    {"CUSTOM MUSIC LOUDNESS", "NIVEL DE MÚSICA PROPIA"},   // musicloud
+    {"Even out", "Igualar"},   // musicloud
+    {"They follow RADIO VOLUME (DRIVER DETAILS > SETTINGS > AUDIO) and the radio's fades like the game's songs.", "Siguen el VOLUMEN DE LA RADIO (DATOS DEL PILOTO > AJUSTES > AUDIO) y los fundidos de la radio como las canciones del juego."},   // musicloud
+    {"At 100% a song plays as loud as the game plays its own songs.", "Al 100% una canción suena tan fuerte como el juego suena sus propias canciones."},   // musicloud
+    {"Even out: each of your songs is measured once (in the background; kept for the next start) and played as loud as the game's own songs, so a quiet file and a loud one sound alike.", "Igualar: cada una de tus canciones se mide una vez (en segundo plano; se guarda para el próximo inicio) y suena tan fuerte como las del juego, así un archivo flojo y uno fuerte suenan igual."},   // musicloud
+    {"A quiet song with loud peaks is raised only a little.", "Una canción floja con picos fuertes solo se sube un poco."},   // musicloud
+    {"Off: each file plays at its own level.", "Desactivado: cada archivo suena a su propio nivel."},   // musicloud
     {"A limiter keeps loud songs from clipping.", "Un limitador evita que las canciones fuertes saturen."},
     {"The game's songs and the DJ do not change.", "Las canciones del juego y el DJ no cambian."},
     {"Live.", "Al instante."},
@@ -6081,6 +7409,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"File {} (new)", "Archivo {} (nuevo)"},
     {"{} DEG", "{} GRADOS"},
     {"SETTINGS", "AJUSTES"},
+    {"QUIT GAME", "SALIR DEL JUEGO"},   // i18n2: the main menu's row (tools/native/pc_menu.h)
     {"UP / DOWN  SELECT     LEFT / RIGHT  CHANGE     CONFIRM  CHOOSE", "ARRIBA / ABAJO  SELECCIONAR     IZQUIERDA / DERECHA  CAMBIAR     CONFIRMAR  ELEGIR"},
     {"BACK  CLOSE AND SAVE", "ATRÁS  CERRAR Y GUARDAR"},
     {"PS2 ORIGINAL", "PS2 ORIGINAL"},
@@ -6258,6 +7587,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Include my save: NO", "Incluir mi partida: NO"},
     {"Whether the report also holds your active save file (profile-N.sav): useful when the problem is in your progress.", "Si el informe incluye también el archivo de guardado activo (profile-N.sav): útil cuando el problema está en el progreso."},
     {"Off by default.", "Desactivado por defecto."},
+    {"On by default.", "Activado por defecto."},
     {"Clear the crash count", "Borrar el recuento de fallos"},
     {"The last run did not end cleanly.", "La última sesión no terminó correctamente."},
     {"This marks it as ended, so the next start uses your own settings (safe mode is not chosen by itself).", "Esto la marca como terminada, para que el siguiente inicio use los ajustes propios (el modo seguro no se elige por sí solo)."},
@@ -6332,8 +7662,8 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"A reference for RenderWare's PS2 rasters and geometry packets.", "Una referencia para los rásteres y paquetes de geometría de PS2 de RenderWare."},
     {"Burn3 (UwUCammie)", "Burn3 (UwUCammie)"},
     {"Another PC project for the game.", "Otro proyecto de PC para el juego."},
-    {"PS2Recomp (ran-j) and burnout3-pc", "PS2Recomp (ran-j) y burnout3-pc"},
-    {"Other PC projects for the game.", "Otros proyectos de PC para el juego."},
+    {"PS2Recomp (ran-j)", "PS2Recomp (ran-j)"},
+    {"burnout3-pc (danielgomesvieira2000)", "burnout3-pc (danielgomesvieira2000)"},
     {"The Burnout 3: Takedown USA HD Remaster, the HD texture pack for PCSX2 that the HD Textures page links to and this port can use.", "Burnout 3: Takedown USA HD Remaster, el paquete de texturas HD para PCSX2 al que enlaza la página Texturas HD y que este port puede usar."},
     {"PCSX2 and mymcplus", "PCSX2 y mymcplus"},
     {"Their texture-pack and memory-card formats, which this port reads, and PS2 save tooling.", "Sus formatos de paquete de texturas y de tarjeta de memoria, que este port lee, y herramientas de partidas de PS2."},
@@ -6734,33 +8064,33 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"[files]", "[files]"},
     {"[mod]", "[mod]"},
     {"[script]", "[script]"},
-    {"SHOW", "SHOW"},
-    {"MODE", "MODE"},
-    {"One", "One"},
-    {"Two", "Two"},
-    {"Three", "Three"},
-    {"Settings >", "Settings >"},
-    {"Walk", "Walk"},
-    {"Controllers (keyboard)", "Controllers (keyboard)"},
-    {"Controllers (controller)", "Controllers (controller)"},
-    {"Back from", "Back from"},
-    {"Down pressed on and on stopped at", "Down pressed on and on stopped at"},
-    {"PASS (no widgets: stays in the side bar)", "PASS (no widgets: stays in the side bar)"},
-    {"FAIL (no widgets, but went into the page)", "FAIL (no widgets, but went into the page)"},
-    {"FAIL (Right did not go into the page)", "FAIL (Right did not go into the page)"},
+    {"SHOW", "MOSTRAR"},
+    {"MODE", "MODO"},
+    {"One", "Uno"},
+    {"Two", "Dos"},
+    {"Three", "Tres"},
+    {"Settings >", "Ajustes >"},
+    {"Walk", "Recorrido"},
+    {"Controllers (keyboard)", "Mandos (teclado)"},
+    {"Controllers (controller)", "Mandos (mando)"},
+    {"Back from", "Atrás desde"},
+    {"Down pressed on and on stopped at", "Abajo pulsado sin parar, detenido en"},
+    {"PASS (no widgets: stays in the side bar)", "PASS (sin widgets: se queda en la barra lateral)"},
+    {"FAIL (no widgets, but went into the page)", "FAIL (sin widgets, pero entró en la página)"},
+    {"FAIL (Right did not go into the page)", "FAIL (Derecha no entró en la página)"},
     {"Reset all settings?", "Reset all settings?"},
     {"A message with one button.", "A message with one button."},
     {"Replace file?", "Replace file?"},
     {"Allow", "Allow"},
     {"Type a path (a text field)", "Type a path (a text field)"},
     {"Game data folder", "Game data folder"},
-    {"FAIL (not opened)", "FAIL (not opened)"},
-    {"NO on-screen keyboard:", "NO on-screen keyboard:"},
-    {"CHANGED", "CHANGED"},
+    {"FAIL (not opened)", "FAIL (no abierto)"},
+    {"NO on-screen keyboard:", "SIN teclado en pantalla:"},
+    {"CHANGED", "CAMBIADO"},
     {"Everything back to the original layout", "Everything back to the original layout"},
     {"Music for B3", "Music for B3"},
     {"Type or paste", "Type or paste"},
-    {"FAILED", "FAILED"},
+    {"FAILED", "FALLIDO"},
     {"Alpha", "Alpha"},
     {"Beta/Inner", "Beta/Inner"},
     {"Gamma", "Gamma"},
@@ -6770,29 +8100,29 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Your disc's image file", "Your disc's image file"},
     {"\", \"name\": \"", "\", \"name\": \""},
     {"Takedown at 60", "Takedown at 60"},
-    {"MISSING", "MISSING"},
-    {"NOT saved", "NOT saved"},
+    {"MISSING", "FALTA"},
+    {"NOT saved", "NO guardado"},
     {"First release", "First release"},
-    {"SHOWN", "SHOWN"},
+    {"SHOWN", "MOSTRADO"},
     {"HTTP/1.1 404 Not Found", "HTTP/1.1 404 Not Found"},
-    {"Asks GitHub", "Asks GitHub"},
-    {"Once a day", "Once a day"},
-    {"NOT found", "NOT found"},
-    {"STARTED", "STARTED"},
+    {"Asks GitHub", "Consulta GitHub"},
+    {"Once a day", "Una vez al día"},
+    {"NOT found", "NO encontrado"},
+    {"STARTED", "INICIADO"},
     {"SUPR", "SUPR"},
     {"HEVY", "HEVY"},
     {"/home/me/Games/Burnout 3/game", "/home/me/Games/Burnout 3/game"},
-    {"(expected", "(expected"},
-    {"Shift / Back held at the start: the launcher shows (", "Shift / Back held at the start: the launcher shows ("},
-    {"Shift pressed on the Starting screen: the launcher opens", "Shift pressed on the Starting screen: the launcher opens"},
-    {"Back held on a controller on the Starting screen: the launcher opens", "Back held on a controller on the Starting screen: the launcher opens"},
-    {"(no virtual pad)", "(no virtual pad)"},
-    {"Start skipped", "Start skipped"},
-    {"A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does).", "A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does)."},
+    {"(expected", "(esperado"},
+    {"Shift / Back held at the start: the launcher shows (", "Mayús / Atrás mantenido al inicio: el lanzador aparece ("},
+    {"Shift pressed on the Starting screen: the launcher opens", "Mayús pulsado en la pantalla de inicio: el lanzador se abre"},
+    {"Back held on a controller on the Starting screen: the launcher opens", "Atrás mantenido en un mando en la pantalla de inicio: el lanzador se abre"},
+    {"(no virtual pad)", "(sin mando virtual)"},
+    {"Start skipped", "Inicio omitido"},
+    {"A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does).", "Una comprobación de capturas no inicia el juego (B3LAUNCHER_SHOT_START=1 con un sustituto sí)."},
     {"Burnout 3 Launcher", "Burnout 3 Launcher"},
     {"Burnout 3 Launcher -", "Burnout 3 Launcher -"},
     {"Resources", "Resources"},
-    {"# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)", "# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)"},
+    {"# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)", "# Lanzador de Burnout 3: sus propias opciones (los ajustes del juego están en pc_settings.ini)"},
     {"NUL", "NUL"},
     {"SLUS_210.50", "SLUS_210.50"},
     {"SYSTEM.CNF", "SYSTEM.CNF"},
@@ -7064,6 +8394,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Gloss", "Brillo"},
     {"Metallic", "Metalizado"},
     {"Pearl", "Perlado"},
+    {"Chrome", "Cromado"},   // options3
     {"PLAYER 2 CAR PAINT", "PINTURA DEL COCHE DEL JUGADOR 2"},
     {"P2 CAR PAINT", "PINTURA J2"},
     {"P2 PAINT RED", "PINTURA J2 ROJO"},
@@ -7074,6 +8405,7 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Gloss: the game's.", "Brillo: el del juego."},
     {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metalizado: un reflejo más fuerte del color de la pintura, con escamas que brillan con la luz."},
     {"Pearl: the colour shifts as the car turns to the light.", "Perlado: el color cambia cuando el coche gira hacia la luz."},
+    {"Chrome: a mirror finish that shows the world around the car, tinted by the paint's colour.", "Cromado: un acabado de espejo que refleja el mundo alrededor del coche, teñido por el color de la pintura."},   // options3
     {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "El coche del jugador 2 en pantalla dividida: Personalizada lo muestra en el color de las tres filas de abajo en lugar de la pintura elegida en la selección de coche."},
     {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Desactivado: el coche del jugador 2 sin logotipos, números ni franjas, en pintura lisa."},
     {"LIGHTING", "ILUMINACIÓN"},   // night
@@ -7083,6 +8415,45 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"TIME OF DAY PER RACE", "HORA DEL DÍA POR CARRERA"},   // todrace
     {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Páginas del circuito (evento individual, multijugador): Predeterminado, Día o Noche para la próxima carrera."},   // todrace
     {"Time of day: {}", "Hora del día: {}"},   // todrace
+    {"LAYER", "CAPA"},   // paint2
+    {"Body", "Carrocería"},   // paint2
+    {"Decals", "Calcomanías"},   // paint2
+    {"Wheels", "Ruedas"},   // paint2
+    {"Boost glow", "Brillo del turbo"},   // paint2
+    {"COLOUR PICKER", "SELECTOR DE COLOR"},   // paint2
+    {"FACTORY COLOURS", "COLORES DE FÁBRICA"},   // paint2
+    {"DECAL COLOUR", "COLOR DE CALCOMANÍAS"},   // paint2
+    {"WHEEL COLOUR", "COLOR DE RUEDAS"},   // paint2
+    {"BOOST GLOW COLOUR", "COLOR DEL BRILLO DEL TURBO"},   // paint2
+    {"P2 DECAL COLOUR", "J2 COLOR DE CALCOMANÍAS"},   // paint2
+    {"P2 WHEEL COLOUR", "J2 COLOR DE RUEDAS"},   // paint2
+    {"P2 BOOST GLOW COLOUR", "J2 COLOR DEL BRILLO DEL TURBO"},   // paint2
+    {"HUE", "TONO"},   // paint2
+    {"SHADE", "MATIZ"},   // paint2
+    {"FINE", "FINO"},   // paint2
+    {"OK", "OK"},   // paint2
+    {"CANCEL", "CANCELAR"},   // paint2
+    {"Which part of the car the rows below colour: the body, its decals (logos, numbers and stripes), the wheels' rims or the boost glow.", "Qué parte del coche colorean las filas de abajo: la carrocería, sus calcomanías (logotipos, números y franjas), las llantas o el brillo del turbo."},   // paint2
+    {"One colour of each for all your cars.", "Un color de cada uno para todos tus coches."},   // paint2
+    {"Game: the game's own colour.", "Juego: el color del juego."},   // paint2
+    {"A ready colour, or Custom: the colour of the rows below.", "Un color listo, o Personalizada: el color de las filas de abajo."},   // paint2
+    {"Any colour: the square sets how strong and how bright it is, the bar its hue (L1 / R1).", "Cualquier color: el cuadrado fija su intensidad y su brillo, la barra su tono (L1 / R1)."},   // paint2
+    {"CONFIRM keeps it, BACK puts the colour before back.", "CONFIRMAR lo guarda, ATRÁS devuelve el color de antes."},   // paint2
+    {"Every layer back to the game's colours, and the decals on.", "Todas las capas vuelven a los colores del juego, y las calcomanías se muestran."},   // paint2
+    {"The colour of the logos, numbers and stripes.", "El color de los logotipos, números y franjas."},   // paint2
+    {"Game: their own colours.", "Juego: sus propios colores."},   // paint2
+    {"Any colour: the paint panel on SELECT CAR.", "Cualquier color: el panel de pintura en la selección de coche."},   // paint2
+    {"The colour of the wheels' rims (the tyres stay dark).", "El color de las llantas (los neumáticos siguen oscuros)."},   // paint2
+    {"Game: their own.", "Juego: el suyo."},   // paint2
+    {"The colour of the exhaust's glow while boosting.", "El color del brillo del escape al usar el turbo."},   // paint2
+    {"Game: the game's.", "Juego: el del juego."},   // paint2
+    {"CAR PAINT PANEL", "PANEL DE PINTURA"},   // paintsel
+    {"SHIFT UP", "SUBIR MARCHA"},   // gearbox
+    {"SHIFT DOWN", "BAJAR MARCHA"},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear up.", "Una carrera con CAMBIO Manual (SELECCIONAR OPCIONES): la marcha siguiente."},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear down.", "Una carrera con CAMBIO Manual (SELECCIONAR OPCIONES): la marcha anterior."},   // gearbox
+    {"SELECT CAR: open or close the car paint panel (a controller: the menus' Circle button, Y on the Xbox and Nintendo layouts).", "Selección de coche: abre o cierra el panel de pintura (mando: el botón Círculo de los menús, Y con las disposiciones de Xbox y Nintendo)."},   // paintsel
+    {"Changing the colour on SELECT CAR sets it back to Game.", "Cambiar el color en la selección de coche la devuelve a Juego."},   // paintsel
     {"Default ({})", "Predeterminado ({})"},   // todrace
     {"MOON", "LUNA"},   // night
     {"SURFACE DETAIL", "DETALLE DE SUPERFICIES"},   // night
@@ -7093,6 +8464,20 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Soft contact shadows under the cars and along walls and kerbs.", "Suaves sombras de contacto bajo los coches y a lo largo de muros y bordillos."},   // night
     {"Draws the scene twice: for fast graphics cards.", "Dibuja la escena dos veces: para tarjetas gráficas rápidas."},   // night
     {"SUN SHADOWS", "SOMBRAS DEL SOL"},   // sunshadow
+    {"PROP SHADOWS", "SOMBRAS DE OBJETOS"},   // propshadow1
+    {"With SUN SHADOWS: the lamp posts, signs, barriers and other roadside props cast shadows too.", "Con SOMBRAS DEL SOL: las farolas, señales, barreras y otros objetos junto a la carretera también proyectan sombras."},   // propshadow1
+    {"TUNNEL LIGHTS", "LUCES DE TÚNEL"},   // nightfix
+    {"Glow", "Brillo"},   // nightfix
+    {"Glow: the light fittings in tunnels and underpasses glow, with small halos.", "Brillo: las luces de túneles y pasos inferiores brillan, con pequeños halos."},   // nightfix, xboxglow
+    {"Xbox: their lit parts glow through the bloom, as on the Xbox.", "Xbox: sus partes encendidas brillan con el bloom, como en Xbox."},   // xboxglow
+    {"Game: the original look.", "Juego: el aspecto original."},   // nightfix
+    {"WEATHER", "CLIMA"},   // weather
+    {"Dry", "Seco"},   // weather
+    {"Rain", "Lluvia"},   // weather
+    {"Rain: falling rain, wet roads that mirror the lights, spray from the wheels and a grey sky.", "Lluvia: lluvia que cae, carreteras mojadas que reflejan las luces, agua levantada por las ruedas y cielo gris."},   // weather
+    {"Dry: the game's own weather.", "Seco: el tiempo original del juego."},   // weather
+    {"RAIN VOLUME", "VOLUMEN DE LLUVIA"},   // weather
+    {"The rain's sound, on top of the game's own EFFECTS volume.", "El sonido de la lluvia, además del volumen de EFECTOS del juego."},   // weather
     {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Sombras reales de los coches sobre la carretera, proyectadas por el sol o, de noche, por la luna."},   // sunshadow
     {"None in tunnels and under bridges.", "Ninguna en túneles ni bajo puentes."},   // sunshadow
     {"Sharper with ANTI-ALIASING at 4x or more.", "Más nítidas con el ANTI-ALIASING a 4x o más."},   // sunshadow
@@ -7280,6 +8665,14 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "No se descarga ni se comparte nada, y tu propio paquete HD y los paquetes de los mods siguen teniendo prioridad."},
     {"Not imported.", "No importadas."},
     {"{} textures imported.", "{} texturas importadas."},
+    {"HD texture cache", "Caché de texturas HD"},   // hdcache
+    {"{} MB of textures converted from the pack, read back on later races.", "{} MB de texturas convertidas del paquete, que se leen de nuevo en las siguientes carreras."},   // hdcache
+    {"Empty: the game fills it as it draws the pack's textures.", "Vacía: el juego la llena a medida que dibuja las texturas del paquete."},   // hdcache
+    {"Clear cache", "Vaciar caché"},   // hdcache
+    {"Deletes the converted textures.", "Elimina las texturas convertidas."},   // hdcache
+    {"The game converts them again as it draws them, and the first race on each track loads a little longer.", "El juego las convierte de nuevo al dibujarlas, y la primera carrera en cada circuito tarda un poco más en cargar."},   // hdcache
+    {"Cleared.", "Vaciada."},   // hdcache
+    {"{} entries could not be deleted (in use by a running game?)", "No se pudieron eliminar {} entradas (¿en uso por un juego abierto?)"},   // hdcache
     {"Size: {} MB.", "Tamaño: {} MB."},
     {"From: {}.", "De: {}."},
     {"Made by an older version: import again for the newest result.", "Creadas por una versión anterior: vuelve a importar para obtener el mejor resultado."},
@@ -7387,9 +8780,288 @@ inline constexpr Entry kSP[] = {   // Spanish
     {"QUIT AND START AGAIN WHEN IT IS DONE", "SAL Y VUELVE A EMPEZAR CUANDO TERMINE"},   // portable mode
     {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "NO SE PUEDE ESCRIBIR EN LA CARPETA DE DATOS PORTÁTIL"},   // portable mode
     {"SAVES AND SETTINGS WON'T BE KEPT", "LAS PARTIDAS Y LOS AJUSTES NO SE GUARDARÁN"},   // portable mode
+    {"START AT", "INICIAR EN"},   // gamemods1
+    {"Intro films", "Vídeos de introducción"},   // gamemods1
+    {"Title screen", "Pantalla de título"},   // gamemods1
+    {"Main menu, profile 1", "Menú principal, perfil 1"},   // gamemods1
+    {"Main menu, profile 2", "Menú principal, perfil 2"},   // gamemods1
+    {"Main menu, profile 3", "Menú principal, perfil 3"},   // gamemods1
+    {"IDLE PAUSE", "PAUSA POR INACTIVIDAD"},   // gamemods1
+    {"END VERY LONG EVENTS", "FIN DE PRUEBAS MUY LARGAS"},   // gamemods1
+    {"Where the game starts after it has loaded.", "Dónde empieza el juego tras cargarse."},   // gamemods1
+    {"Title screen: the intro films are not played.", "Pantalla de título: no se reproducen los vídeos de introducción."},   // gamemods1
+    {"Main menu: also Start on the title and that profile loaded, as LOAD PROFILE does; a profile the save does not hold leaves the game's profile choice.", "Menú principal: también se pulsa Start en la pantalla de título y se carga ese perfil, como hace CARGAR PERFIL; un perfil que no está en la partida guardada deja la elección de perfil del juego."},   // gamemods1
+    {"On: as in the game, a race pauses itself after 5 minutes without input.", "Activado: como en el juego, una carrera se pausa sola tras 5 minutos sin pulsar nada."},   // gamemods1
+    {"Off: it never does.", "Desactivado: nunca lo hace."},   // gamemods1
+    {"On: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Activado: como en el juego, una prueba que sigue en curso tras 25 a 40 minutos se termina para todos los coches."},   // gamemods1
+    {"Off: it goes on until it ends the normal way; an event kept going past the game's limit keeps no records.", "Desactivado: sigue hasta terminar de forma normal; una prueba que continúa más allá del límite del juego no guarda récords."},   // gamemods1
+    {"Traffic only", "Solo tráfico"},   // gamemods1
+    {"Full: the rivals and the other player in the blast are wrecked too, each counted as your Aftertouch Takedown.", "Completo: los rivales y el otro jugador alcanzados por la explosión también quedan destrozados, cada uno contado como tu Aftertouch Takedown."},   // gamemods1
+    {"RACE HUD", "HUD DE CARRERA"},   // hudmods
+    {"RPM METER", "CUENTARREVOLUCIONES"},   // hudmods
+    {"BOOST BAR SHAKE", "BARRA DE BOOST QUE TIEMBLA"},   // hudmods
+    {"RACE SOUNDS", "SONIDOS DE CARRERA"},   // hudmods
+    {"TAKEDOWN STREAK PITCH", "TONO DE LA RACHA DE TAKEDOWNS"},   // hudmods
+    {"On: a thin bar of the engine revs under the speedometer, red near the rev limit.", "Activado: una barra fina de las revoluciones del motor bajo el velocímetro, roja cerca del límite de vueltas."},   // hudmods
+    {"For the automatic and the manual gearbox alike.", "Tanto con el cambio automático como con el manual."},   // hudmods
+    {"On: the boost bar shakes while you boost, as in the game's 2004 preview build.", "Activado: la barra de boost tiembla mientras usas el boost, como en la versión preliminar del juego de 2004."},   // hudmods
+    {"On: outside World Tour, each takedown after your 10th since your last crash sounds higher, as World Tour's takedown targets do.", "Activado: fuera del World Tour, cada takedown después del 10.º desde tu último choque suena más agudo, como con los objetivos de takedowns del World Tour."},   // hudmods
+    {"A crash starts the count again.", "Un choque reinicia la cuenta."},   // hudmods
+    {"Sound only.", "Solo sonido."},   // hudmods
+    {"On SELECT CAR: {}", "En SELECT CAR: {}"},   // customseries
+    {"Custom cars", "Coches personalizados"},   // customseries
+    {"Car mods as cars of their own: they race as the CUSTOM series in SINGLE EVENT, after the game's cars, never in place of one, each with the engine sound and handling of the car it was made to replace. Races with them keep their results apart from your records.", "Mods de coche como coches propios: corren en la serie PERSONALIZADOS de SINGLE EVENT, tras los coches del juego, nunca en lugar de uno, cada uno con el sonido del motor y el manejo del coche al que iba a sustituir. Sus carreras guardan los resultados aparte de tus récords."},   // customseries
+    {"None.", "Ninguno."},   // customseries
+    {"Import from folder...", "Importar desde carpeta..."},   // customseries
+    {"Choose a car mod's folder: its car files (named after the car they replace, in a folder named after its class: COMP/CAR7.BGV) or its folders with a car.ini are checked and copied into the custom cars folder.", "Elige la carpeta de un mod de coche: sus archivos de coche (con el nombre del coche al que sustituyen, en una carpeta con el nombre de su clase: COMP/CAR7.BGV) o sus carpetas con un car.ini se comprueban y se copian en la carpeta de coches personalizados."},   // customseries
+    {"Opens the custom cars folder in the file manager (made when it is not there yet).", "Abre la carpeta de coches personalizados en el gestor de archivos (se crea si no existe)."},   // customseries
+    {"Reads the custom cars folder again (cars added or removed since).", "Vuelve a leer la carpeta de coches personalizados (coches añadidos o quitados desde entonces)."},   // customseries
+    {"Deletes this car's files from the custom cars folder.", "Borra los archivos de este coche de la carpeta de coches personalizados."},   // customseries
+    {"Remove this custom car?", "¿Quitar este coche personalizado?"},   // customseries
+    {"Its files are deleted from the custom cars folder.", "Sus archivos se borran de la carpeta de coches personalizados."},   // customseries
+    {"Imported: {}", "Importados: {}"},   // customseries
+    {"Removed: {}", "Quitado: {}"},   // customseries
+    {"Not removed: {}", "No quitado: {}"},   // customseries
+    {"{}'s handling", "Manejo de {}"},   // customseries
+    {"Traffic", "Tráfico"},   // customseries
+    {"Traffic special", "Tráfico especial"},   // customseries
+    {"Not shown", "No mostrado"},   // customseries
+    {"Custom cars: choose the folder of a car mod", "Coches personalizados: elige la carpeta de un mod de coche"},   // customseries
+    {"Open the car mod's folder, then Start: its cars are copied into the custom cars folder.", "Abre la carpeta del mod de coche y luego Start: sus coches se copian en la carpeta de coches personalizados."},   // customseries
+    {"Every player car on your disc, in the game's own car model, then the traffic vehicles and your custom and prototype cars as SELECT CAR offers them. Looking here changes nothing: it unlocks nothing and the save files are not read.", "Todos los coches jugables de tu disco, con el modelo del juego, y luego los vehículos del tráfico y tus coches personalizados y prototipo como los ofrece SELECT CAR. Mirar no cambia nada: no desbloquea nada y no se leen las partidas guardadas."},   // customseries
+    {"TUK-TUKS", "TUK-TUKS"},   // party1
+    {"In SINGLE EVENT, you and every rival drive the tuk-tuk from the city traffic, with the engine sound and handling of a compact.", "En SINGLE EVENT, tú y todos los rivales conducís el tuk-tuk del tráfico de la ciudad, con el sonido del motor y el manejo de un compacto."},   // party1
+    {"Crash events too.", "También en los eventos Crash."},   // party1
+    {"Import car pack...", "Importar paquete de coches..."},   // carpacks
+    {"A car pack made to replace the game's cars (a .zip, or its folder): the cars it changes become cars of their own, never in place of the game's. Cars your disc already has, BETA cars you have and cars imported before are left out.", "Un paquete de coches hecho para sustituir los del juego (un .zip o su carpeta): los coches que cambia pasan a ser coches propios, nunca en lugar de los del juego. Se omiten los coches que ya tiene tu disco, tus coches BETA y los ya importados."},   // carpacks
+    {"Choose the game's own data first (above): a pack's cars are compared with your disc's.", "Elige primero los datos del juego (arriba): los coches de un paquete se comparan con los de tu disco."},   // carpacks
+    {"Custom cars: choose a car pack (a .zip file, or its folder)", "Coches personalizados: elige un paquete de coches (un archivo .zip o su carpeta)"},   // carpacks
+    {"A on the pack's .zip chooses it; or open the pack's folder, then Start.", "A en el .zip del paquete lo elige; o abre la carpeta del paquete y luego Start."},   // carpacks
+    {"Open the pack's folder, then Start.", "Abre la carpeta del paquete y luego Start."},   // carpacks
+    {"Cut cars (BETA series)", "Coches eliminados (serie BETA)"},   // carpacks
+    {"Cut cars", "Coches eliminados"},   // carpacks
+    {"New models", "Modelos nuevos"},   // carpacks
+    {"Early versions", "Primeras versiones"},   // carpacks
+    {"New paint", "Pintura nueva"},   // carpacks
+    {"Other cars", "Otros coches"},   // carpacks
+    {"Choose whether these cars are imported.", "Elige si estos coches se importan."},   // carpacks
+    {"Import {} cars", "Importar {} coches"},   // carpacks
+    {"Writes the chosen cars into the custom cars folder (the cut cars of the BETA series into its folder).", "Escribe los coches elegidos en la carpeta de coches personalizados (los coches eliminados de la serie BETA en la suya)."},   // carpacks
+    {"Nothing is written.", "No se escribe nada."},   // carpacks
+    {"{} cars", "{} coches"},   // carpacks
+    {"Deletes this pack's cars from the custom cars folder.", "Borra los coches de este paquete de la carpeta de coches personalizados."},   // carpacks
+    {"Remove this car pack?", "¿Quitar este paquete de coches?"},   // carpacks
+    {"Its cars are deleted from the custom cars folder.", "Sus coches se borran de la carpeta de coches personalizados."},   // carpacks
+    {"already in the game", "ya en el juego"},   // carpacks
+    {"already a BETA car", "ya es un coche BETA"},   // carpacks
+    {"already imported", "ya importado"},   // carpacks
+    {"not chosen", "no elegido"},   // carpacks
+    {"an old-layout prototype file: import it with Beta / Prototype cars", "un archivo de prototipo con el formato antiguo: impórtalo con Beta / Prototype cars"},   // carpacks
+    {"the pack's vehicle list: not used (the game's own is kept)", "la lista de vehículos del paquete: no se usa (se mantiene la del juego)"},   // carpacks
+    {"the pack's handling and camera values: not applied (the game's own are kept)", "el manejo y las cámaras del paquete: no se aplican (se mantienen los del juego)"},   // carpacks
+    {"A cut car's file, whatever its paint, is that BETA car (matched by its shape): it goes into the BETA series once, not as a car of its own.", "El archivo de un coche eliminado, sea cual sea su pintura, es ese coche BETA (reconocido por su forma): va una sola vez a la serie BETA, no como un coche propio."},   // carpacks
+    // extras (2026-11-23): the EXTRAS tab
+    {"NIGHT (EXPERIMENTAL)", "NOCHE (EXPERIMENTAL)"},
+    {"RAIN (EXPERIMENTAL)", "LLUVIA (EXPERIMENTAL)"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a TIME OF DAY row (Day / Night).", "Activado: SELECT OPTIONS de SINGLE EVENT tiene una fila HORA (Día / Noche)."},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a WEATHER row (Clear / Rain).", "Activado: SELECT OPTIONS de SINGLE EVENT tiene una fila CLIMA (Despejado / Lluvia)."},
+    {"NIGHT IN WORLD TOUR", "NOCHE EN EL WORLD TOUR"},
+    {"RAIN IN WORLD TOUR", "LLUVIA EN EL WORLD TOUR"},
+    {"Always", "Siempre"},
+    {"Random", "Aleatorio"},
+    {"World Tour's events at night: Always, or Random (each event as it starts).", "Las pruebas del World Tour de noche: Siempre, o Aleatorio (cada prueba al empezar)."},
+    {"World Tour's events in the rain: Always, or Random (each event as it starts).", "Las pruebas del World Tour con lluvia: Siempre, o Aleatorio (cada prueba al empezar)."},
+    {"Drawn only: your progress and records count as usual.", "Solo visual: tu progreso y tus récords cuentan como siempre."},
+    {"EXPERIMENTAL", "EXPERIMENTAL"},
+    {"Experimental: work in progress.", "Experimental: en desarrollo."},
+    {"Tell us what you think.", "Dinos qué te parece."},
+    {"ROAD RAGE RIVALS", "RIVALES ROAD RAGE"},
+    {"EXTRAS", "EXTRAS"},
+    {"SINGLE EVENT", "EVENTO INDIVIDUAL"},
+    {"SELECT OPTIONS", "SELECT OPTIONS"},
+    {"SELECT CAR", "SELECT CAR"},
+    {"ELIMINATOR", "ELIMINATOR"},
+    {"MORE RIVALS", "MÁS RIVALES"},
+    {"TRAFFIC", "TRÁFICO"},
+    {"LAPS", "VUELTAS"},
+    {"TIMED ELIMINATION", "ELIMINACIÓN POR TIEMPO"},
+    {"TRANSMISSION", "CAMBIO"},
+    {"RIVAL STYLE", "ESTILO RIVALES"},
+    {"BURNOUT POINTS", "PUNTOS BURNOUT"},
+    {"TIME LIMIT", "LÍMITE TIEMPO"},
+    {"TRAFFIC PATTERN", "PATRÓN TRÁFICO"},
+    {"RIVALS' CARS", "COCHES RIVALES"},
+    {"TRAFFIC CHECK", "EMBESTIR TRÁFICO"},
+    {"HEAVYWEIGHTS", "PESOS PESADOS"},
+    {"TRAFFIC SERIES", "SERIE TRÁFICO"},
+    {"CUSTOM CARS", "COCHES PROPIOS"},
+    {"BETA CARS", "COCHES BETA"},
+    {"CAR VIEWER", "VISOR DE COCHES"},
+    {"NO IDLE PAUSE", "SIN PAUSA POR INACTIVIDAD"},
+    {"NO EVENT TIME LIMIT", "SIN LÍMITE DE TIEMPO"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has this row.", "Activado: SELECT OPTIONS de SINGLE EVENT tiene esta fila."},
+    {"Off: the game's own page.", "Desactivado: la página del juego tal cual."},
+    {"On: SINGLE EVENT's SELECT MODE has a fifth mode, ELIMINATOR: the last car is out at the end of each lap.", "Activado: SELECT MODE de SINGLE EVENT tiene un quinto modo, ELIMINATOR: el último coche queda fuera al final de cada vuelta."},
+    {"Off: the game's four modes.", "Desactivado: los cuatro modos del juego."},
+    {"On: a SINGLE EVENT race's RIVALS row goes up to 7, for 8 cars.", "Activado: la fila RIVALS de una carrera SINGLE EVENT llega hasta 7, para 8 coches."},
+    {"Off: up to 5, as in the game.", "Desactivado: hasta 5, como en el juego."},
+    {"On: the HEAVYWEIGHTS series in every SINGLE EVENT mode.", "Activado: la serie HEAVYWEIGHTS en cada modo SINGLE EVENT."},
+    {"Off: in Crash only, as in the game.", "Desactivado: solo en Crash, como en el juego."},
+    {"On: SINGLE EVENT's SELECT CAR has the TRAFFIC and TRAFFIC SPECIAL series: drive a car, bus or tuk-tuk from the traffic.", "Activado: SELECT CAR de SINGLE EVENT tiene las series TRAFFIC y TRAFFIC SPECIAL: conduce un coche, un autobús o un tuk-tuk del tráfico."},
+    {"On: the car mods in your custom cars folder, as the CUSTOM series.", "Activado: los coches modificados de tu carpeta de coches propios, como serie CUSTOM."},
+    {"On: the prototype cars the launcher imported, as the BETA series.", "Activado: los coches prototipo que importó el lanzador, como serie BETA."},
+    {"On: YOUR GARAGE opens the game's leftover car viewer.", "Activado: YOUR GARAGE abre el visor de coches que quedó en el juego."},
+    {"On: a race never pauses itself.", "Activado: una carrera nunca se pausa sola."},
+    {"Off: as in the game, it pauses after 5 minutes without input.", "Desactivado: como en el juego, se pausa tras 5 minutos sin acciones."},
+    {"On: an event goes on until it ends the normal way; one kept going past the game's limit keeps no records.", "Activado: un evento sigue hasta que acaba de forma normal; uno que se alarga más allá del límite del juego no guarda récords."},
+    {"Off: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Desactivado: como en el juego, un evento que sigue en curso tras 25 a 40 minutos termina para todos los coches."},
 };
 
 inline constexpr Entry kDU[] = {   // Dutch
+    {"HD TEXTURE MEMORY", "HD-TEXTUURGEHEUGEN"},   // texpack: HD TEXTURE MEMORY
+    {"Full quality", "Volle kwaliteit"},   // texpack: HD TEXTURE MEMORY
+    {"Compressed", "Gecomprimeerd"},   // texpack: HD TEXTURE MEMORY
+    {"How an HD texture pack's PNG and BC7 files are kept on the graphics card.", "Hoe de PNG- en BC7-bestanden van een HD-textuurpakket op de videokaart worden bewaard."},   // texpack: HD TEXTURE MEMORY
+    {"Full quality: as the files are, as PCSX2 keeps them; they take about four times the memory.", "Volle kwaliteit: zoals de bestanden zijn, zoals PCSX2 ze bewaart; ze nemen ongeveer vier keer zoveel geheugen in."},   // texpack: HD TEXTURE MEMORY
+    {"Compressed: packed when they load, a quarter of the memory, a little less sharp.", "Gecomprimeerd: bij het laden ingepakt, een kwart van het geheugen, iets minder scherp."},   // texpack: HD TEXTURE MEMORY
+    {"Auto: full quality on a graphics card with 6 GB of its own memory or more, compressed otherwise.", "Auto: volle kwaliteit op een videokaart met 6 GB eigen geheugen of meer, anders gecomprimeerd."},   // texpack: HD TEXTURE MEMORY
+    {"SOUND OUTPUT", "GELUIDSUITVOER"},   // audioq
+    {"OUTPUT", "UITVOER"},   // audioq
+    {"Clean", "Schoon"},   // audioq
+    {"Clean: the loudest moments (a crash over the engines and the music) are turned down for an instant instead of clipping.", "Schoon: de luidste momenten (een crash boven de motoren en de muziek) worden even zachter gezet in plaats van te clippen."},   // audioq
+    {"Original: the PS2's own output, which crackles when it clips.", "Origineel: de uitvoer van de PS2 zelf, die kraakt als hij clipt."},   // audioq
+    {"Revenge", "Revenge"},   // trafficcheck (the game's name)
+    {"TRAFFIC CHECK (2 PLAYERS)", "VERKEER RAMMEN (2 SPELERS)"},   // trafficcheck
+    {"Extreme", "Extreem"},   // trafficcheck
+    {"Two-player races: ram a car, van or lorry going your way and it is launched ahead instead of wrecking you, for boost and a scored chain, as in Burnout Revenge.", "Races met twee spelers: ram je een auto, bestelbus of vrachtwagen die jouw kant op rijdt, dan wordt die vooruit geschoten in plaats van dat jij crasht, voor boost en een gescoorde reeks, zoals in Burnout Revenge."},   // trafficcheck
+    {"A car you check that hits your rival takes them out for you.", "Een geramde auto die je rivaal raakt, schakelt die voor jou uit."},   // trafficcheck
+    {"Revenge: oncoming traffic, buses and big rigs still crash you.", "Revenge: tegenliggers, bussen en trekkers met oplegger laten je nog steeds crashen."},   // trafficcheck
+    {"Extreme: they are shoved aside too.", "Extreem: ook die worden weggeduwd."},   // trafficcheck
+    {"Single races have their own TRAFFIC CHECK row on SELECT OPTIONS.", "Losse races hebben hun eigen regel VERKEER RAMMEN in SELECT OPTIONS."},   // trafficcheck
+    {"ORBIT STYLE", "ORBITSTIJL"},   // orbitcam2
+    {"Look", "Kijken"},   // orbitcam2
+    {"Swing", "Zwaaien"},   // orbitcam2
+    {"Look: the view turns to where you point the stick (down looks behind), as in Burnout Revenge.", "Kijken: het beeld draait naar waar je de stick op richt (omlaag kijkt achter), zoals in Burnout Revenge."},   // orbitcam2
+    {"Swing: the stick turns the view round while you hold it, and up or down raises or lowers it.", "Zwaaien: de stick draait het beeld zolang je hem vasthoudt, en omhoog of omlaag zet het hoger of lager."},   // orbitcam2
+    {"FINISH CAMERA", "FINISHCAMERA"},   // finishcam1
+    {"Set pieces", "Scènes"},   // finishcam1
+    {"After you cross the finish line, the camera cycles through 12 set pieces of angles around the finish, 5 seconds each, from the game's own data.", "Na de finishlijn wisselt de camera door 12 scènes met hoeken rond de finish, elk 5 seconden, uit de eigen gegevens van het spel."},   // finishcam1
+    {"Game: the game's finish shot.", "Spel: het finishshot van het spel."},   // finishcam1
+    {"CAMERA ROLL", "CAMERAKANTELING"},   // camroll1
+    {"Subtle", "Licht"},   // camroll1
+    {"Strong", "Sterk"},   // camroll1
+    {"In a race, the chase camera leans into corners.", "In een race helt de achtervolgcamera mee in de bochten."},   // camroll1
+    {"Subtle: up to 4 degrees.", "Licht: tot 4 graden."},   // camroll1
+    {"Strong: up to 8 degrees.", "Sterk: tot 8 graden."},   // camroll1
+    {"CAR STATS", "AUTOGEGEVENS"},   // carstats1 / blinkers1 / rrparts1
+    {"More", "Meer"},   // carstats1 / blinkers1 / rrparts1
+    {"TURN SIGNALS", "RICHTINGAANWIJZERS"},   // carstats1 / blinkers1 / rrparts1
+    {"ROAD RAGE PARTS", "ROAD RAGE-ONDERDELEN"},   // carstats1 / blinkers1 / rrparts1
+    {"All loose", "Alles los"},   // carstats1 / blinkers1 / rrparts1
+    {"More: the car select page also shows GRIP and ACCELERATION, worked out from each car's handling.", "Meer: de autokeuze toont ook GRIP en ACCELERATIE, berekend uit het rijgedrag van elke auto."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: TOP SPEED and WEIGHT only.", "Spel: alleen TOPSNELHEID en GEWICHT."},   // carstats1 / blinkers1 / rrparts1
+    {"On: the other racers' indicators blink before a bend, on every track.", "Aan: de richtingaanwijzers van de andere coureurs knipperen voor een bocht, op elk circuit."},   // carstats1 / blinkers1 / rrparts1
+    {"Their lights only: the race is unchanged.", "Alleen hun lichten: de race blijft ongewijzigd."},   // carstats1 / blinkers1 / rrparts1
+    {"All loose: in a single-event Road Rage, every loose part can come off a damaged car, not only the ones the game lets go.", "Alles los: in een losse Road Rage kan elk los onderdeel van een beschadigde auto vallen, niet alleen die het spel loslaat."},   // carstats1 / blinkers1 / rrparts1
+    {"Loose parts are physical, so the race is not the original: its records are kept apart.", "Losse onderdelen zijn fysiek, dus de race is niet het origineel: de records worden apart bewaard."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: the original.", "Spel: het origineel."},   // carstats1 / blinkers1 / rrparts1
+    {"PARTY MODES", "PARTYMODI"},   // party1
+    {"CRAZY AI PHYSICS", "GEKKE AI-FYSICA"},   // party1
+    {"Basic", "Basis"},   // party1
+    {"Local Wildlife", "Wilde dieren"},   // party1
+    {"Mayhem", "Chaos"},   // party1
+    {"The rivals' physics go haywire: their wheels never leave the road as far as the game knows, and gravity barely holds them.", "De fysica van de tegenstanders slaat op hol: voor het spel verlaten hun wielen nooit de weg, en de zwaartekracht houdt ze nauwelijks vast."},   // party1
+    {"Local Wildlife: they tumble without crashing.", "Wilde dieren: ze buitelen rond zonder te crashen."},   // party1
+    {"Mayhem: a rival that flips over blows up.", "Chaos: een tegenstander die over de kop slaat, ontploft."},   // party1
+    {"Your own car drives as usual.", "Je eigen auto rijdt zoals altijd."},   // party1
+    {"MOON JUMP", "MAANSPRONG"},   // party1
+    {"Hold the MOON JUMP button to lift your car into the air (4 on the keyboard; a controller button can be set in CONTROLS).", "Houd de MAANSPRONG-knop vast om je auto de lucht in te tillen (4 op het toetsenbord; een controllerknop kun je instellen bij BESTURING)."},   // party1
+    {"CRASH ON DEMAND", "CRASH OP AFROEP"},   // party1
+    {"The CRASH button crashes your car at once (5 on the keyboard; a controller button can be set in CONTROLS).", "De CRASH-knop laat je auto meteen crashen (5 op het toetsenbord; een controllerknop kun je instellen bij BESTURING)."},   // party1
+    {"AI DRIVER BUTTON", "AI-BESTUURDERKNOP"},   // party1
+    {"The AI DRIVER button hands your car to the game's own AI driver, and back on the next press (6 on the keyboard; a controller button can be set in CONTROLS).", "De AI-BESTUURDER-knop geeft je auto aan de AI-bestuurder van het spel, en bij de volgende druk weer terug (6 op het toetsenbord; een controllerknop kun je instellen bij BESTURING)."},   // party1
+    {"KAMIKAZE TRAFFIC", "KAMIKAZEVERKEER"},   // party1
+    {"Traffic close ahead of any race car throws itself at it.", "Verkeer vlak voor een raceauto werpt zich erop."},   // party1
+    {"Expect many wrecks.", "Reken op veel wrakken."},   // party1
+    {"AI DRIVER", "AI-BESTUURDER"},   // party1
+    {"REPLAY: PREVIOUS CAMERA", "REPLAY: VORIGE CAMERA"},   // replaycams
+    {"REPLAY: NEXT CAMERA", "REPLAY: VOLGENDE CAMERA"},   // replaycams
+    {"REPLAY: PREVIOUS CAR", "REPLAY: VORIGE AUTO"},   // replaycams
+    {"REPLAY: NEXT CAR", "REPLAY: VOLGENDE AUTO"},   // replaycams
+    {"REPLAY: FREE CAMERA", "REPLAY: VRIJE CAMERA"},   // replaycams
+    {"REPLAY CAMERA CUTS", "CAMERASNEDES IN DE REPLAY"},   // replaycams
+    {"Stay", "Blijven"},   // replaycams
+    {"Game: in a race replay, a crash cuts to the game's crash camera, whatever camera you chose.", "Spel: in de replay van een race schakelt een crash naar de crashcamera van het spel, welke camera je ook koos."},   // replaycams
+    {"Stay: the camera you chose stays on.", "Blijven: de gekozen camera blijft."},   // replaycams
+    {"While a race replay plays: the previous camera angle.", "Tijdens de replay van een race: de vorige camerahoek."},   // replaycams
+    {"While a race replay plays: the next camera angle.", "Tijdens de replay van een race: de volgende camerahoek."},   // replaycams
+    {"While a race replay plays: watch the previous car.", "Tijdens de replay van een race: de vorige auto volgen."},   // replaycams
+    {"While a race replay plays: watch the next car.", "Tijdens de replay van een race: de volgende auto volgen."},   // replaycams
+    {"While a race replay plays: a free camera (photo mode's controls), and back.", "Tijdens de replay van een race: een vrije camera (de bediening van de fotomodus), en terug."},   // replaycams
+    {"CRASH", "CRASH"},   // party1
+    {"Held in a race: lifts your car into the air (GAME > PARTY MODES > MOON JUMP on).", "Vastgehouden in een race: tilt je auto de lucht in (SPEL > PARTYMODI > MAANSPRONG aan)."},   // party1
+    {"In a race: crashes your car at once (GAME > PARTY MODES > CRASH ON DEMAND on).", "In een race: laat je auto meteen crashen (SPEL > PARTYMODI > CRASH OP AFROEP aan)."},   // party1
+    {"In a race: the game's AI drives your car, and you again on the next press (GAME > PARTY MODES > AI DRIVER BUTTON on).", "In een race: de AI van het spel bestuurt je auto, en jij weer bij de volgende druk (SPEL > PARTYMODI > AI-BESTUURDERKNOP aan)."},   // party1
+    {"ORBIT CAMERA", "ORBITCAMERA"},   // orbitcam1
+    {"CRASH CAMERA", "CRASHCAMERA"},   // options3
+    {"On: when you crash, the game cuts to its crash camera, as the original.", "Aan: als je crasht, schakelt het spel naar zijn crashcamera, zoals het origineel."},   // options3
+    {"Off: the view stays behind your car.", "Uit: het beeld blijft achter je auto."},   // options3
+    {"The takedown camera is the game's own option (DRIVER DETAILS > SETTINGS).", "De takedowncamera is een optie van het spel (RIJDERGEGEVENS > INSTELLINGEN)."},   // options3
+    {"Camera only.", "Alleen de camera."},   // options3
+    {"RACE REPLAY", "RACE TERUGZIEN"},   // replayview
+    {"APPLIES AT THE NEXT START", "GELDT VANAF DE VOLGENDE START"},   // nextstart
+    {"RESTART", "HERSTART"},   // nextstart
+    {"KEEP", "BEHOUDEN"},   // nextstart
+    {"Next start", "Volgende start"},   // nextstart
+    {"Saved: the game uses it from its next start.", "Opgeslagen: het spel gebruikt het vanaf de volgende start."},   // nextstart
+    {"APPLY AND RESTART", "TOEPASSEN EN HERSTARTEN"},   // nextstart
+    {"Restart", "Herstarten"},   // nextstart
+    {"Saved, then the game closes and starts again at the title screen, the change in use.", "Opgeslagen, daarna sluit het spel en start het opnieuw bij het titelscherm, met de wijziging."},   // nextstart
+    {"The race in progress ends.", "De lopende race eindigt."},   // nextstart
+    {"REVERT", "TERUGZETTEN"},   // nextstart
+    {"Undo", "Ongedaan maken"},   // nextstart
+    {"These settings go back to what they were when the page opened.", "Deze instellingen gaan terug naar hoe ze waren toen de pagina openging."},   // nextstart
+    {"BACK  KEEP", "TERUG  BEHOUDEN"},   // nextstart
+    {"Changed: applies at the next start.", "Gewijzigd: geldt vanaf de volgende start."},   // nextstart
+    {"REPLAY", "HERHALING"},   // replayview
+    {"A race's results page, with RACE REPLAY on (GAME > MODES): watch the race again; while it plays: back to the results.", "Uitslagpagina van een race, met RACE TERUGZIEN aan (SPEL > MODI): de race opnieuw bekijken; tijdens de herhaling: terug naar de uitslag."},   // replayview
+    {"Replay", "Herhaling"},   // replayview
+    {"On: a race's results page offers REPLAY (F6, or Square / X): the game's own replay of the race you have just driven.", "Aan: de uitslagpagina van een race biedt REPLAY (F6, of Vierkant / X): de herhaling van het spel van de race die je net hebt gereden."},   // replayview
+    {"Every offline mode but Crash, which has its own.", "Alle offline-modi behalve Crash, dat zijn eigen heeft."},   // replayview
+    {"Your results, records and progress stay as they were.", "Je resultaten, records en voortgang blijven zoals ze waren."},   // replayview
+    {"DEFORMATION", "VERVORMING"},   // options3
+    {"How much the cars' bodies crumple when they hit something.", "Hoe sterk de carrosserie van de auto's kreukt als ze ergens tegenaan rijden."},   // options3
+    {"How much the cars' bodies crumple when they hit something, in Single Event and two-player races.", "Hoe sterk de carrosserie van de auto's kreukt als ze ergens tegenaan rijden, in losse races en races met twee spelers."},   // options3
+    {"100% is the original game's.", "100% is de waarde van het originele spel."},   // options3
+    {"Another amount changes the race after the first hard hit, so these races keep their results apart from your records.", "Een andere waarde verandert de race na de eerste harde klap, dus deze races houden hun resultaten apart van je records."},   // options3
+    {"DRIVER LABELS", "COUREURLABELS"},   // options3
+    {"Names", "Namen"},   // options3
+    {"Names + distance", "Namen + afstand"},   // options3
+    {"Distance", "Afstand"},   // options3
+    {"Over the rival cars in a race: each driver's name, the distance to them, or both.", "Boven de auto's van je rivalen in een race: de naam van elke coureur, de afstand tot hen of allebei."},   // options3
+    {"On: in a race, the right stick turns the chase camera around your car to look left, right or behind; it stops short of walls.", "Aan: in een race draait de rechterstick de achtervolgcamera om je auto om naar links, rechts of achter te kijken; hij stopt vóór muren."},   // orbitcam2
+    {"A moment after you let go, the view eases back behind the car.", "Kort nadat je loslaat, keert het beeld rustig terug achter de auto."},   // orbitcam1
+    {"The mouse does it too, with the right button held.", "De muis kan het ook, met de rechterknop ingedrukt."},   // orbitcam1
+    {"On the PlayStation controller layout the right stick is the throttle and brake, so it stays the game's there.", "Bij de PlayStation-controllerindeling is de rechterstick gas en rem, dus daar blijft hij van het spel."},   // orbitcam1
+    {"DISPLAY, GRAPHICS, CAR, CONTROLS AND MORE", "SCHERM, GRAFISCH, AUTO, BESTURING EN MEER"},   // 1.3.1: the main menu's SETTINGS help (tools/native/pc_menu.h)
+    {"LEAVE THE GAME", "HET SPEL AFSLUITEN"},   // 1.3.1: the main menu's QUIT GAME help
+    {"Their PS2 mods inspired MIRROR MODE, CRASHBREAKER IN EVERY MODE, the PARTY MODES and the race options (rival names and distances, rivals' cars, standing start, Road Rage time limit and rival style, Burnout points, varied traffic, DEFORMATION, the Chrome finish, the crash camera switch), START AT, the idle pause and long-event switches, the Crashbreaker's full blast, the car viewer and the replay viewer: the ideas only, none of their code.", "Hun PS2-mods inspireerden SPIEGELMODUS, CRASHBREAKER IN ELKE MODUS, de PARTYMODI en de race-opties (namen en afstanden van rivalen, auto's van rivalen, staande start, tijdslimiet en rivalenstijl in Road Rage, Burnout-punten, wisselend verkeer, VERVORMING, de afwerking Chroom, de keuze voor de crashcamera), STARTEN BIJ, de schakelaars voor de inactiviteitspauze en lange evenementen, de volledige explosie van de Crashbreaker, de autoviewer en de replayviewer: alleen de ideeën, niets van hun code."},   // credits140 (the launcher's Credits)
+    {"The PCSX2 mods that inspired the RPM meter, the boost bar shake, the takedown streak pitch, camera roll, the finish camera's set pieces, manual gears, TIMED ELIMINATION, the traffic presets, traffic checking in two-player races, loose parts in Road Rage, car stats, the rivals' turn signals, the paint picker, painted car pictures and the reflections that reach further (ideas only, none of their code).", "De PCSX2-mods die de toerenteller, de trillende boostbalk, de toonhoogte van de takedownreeks, de camerakanteling, de vaste shots van de finishcamera, de handgeschakelde versnellingsbak, de ELIMINATIE OP TIJD, de verkeersvoorinstellingen, VERKEER RAMMEN in races met twee spelers, losse onderdelen in Road Rage, de autogegevens, de richtingaanwijzers van de rivalen, de kleurkiezer, gelakte autoafbeeldingen en de reflecties die verder reiken inspireerden (alleen de ideeën, niets van hun code)."},   // credits140 (the launcher's Credits)
+    {"The Heavyweights-in-the-garage mod behind the Heavyweights in Single Event.", "De mod met de zwaargewichten in de garage, de basis voor de zwaargewichten in losse races."},   // credits140 (the launcher's Credits)
+    {"The traffic-checking edit behind TRAFFIC CHECK (2 PLAYERS) Extreme.", "De aanpassing voor verkeer rammen achter VERKEER RAMMEN (2 SPELERS) Extreem."},   // credits140 (the launcher's Credits)
+    {"The Traffic Checking mod restoring Burnout Revenge's code, the reference for TRAFFIC CHECK (2 PLAYERS) Revenge.", "De Traffic Checking-mod die de code van Burnout Revenge terugbrengt, de referentie voor VERKEER RAMMEN (2 SPELERS) Revenge."},   // credits140 (the launcher's Credits)
+    {"The Revenge-style orbit camera mod behind the orbit camera's feel.", "De orbitcamera-mod in Revenge-stijl achter het gevoel van de orbitcamera."},   // credits140 (the launcher's Credits)
+    {"CRASHBREAKER AFTER", "CRASHBREAKER NA"},   // gameopts
+    {"How many vehicles your crash must hit before the CRASHBREAKER button works, as Crash mode counts them (races have less traffic, so fewer).", "Hoeveel voertuigen je crash moet raken voordat de CRASHBREAKER-knop werkt, geteld zoals in de Crash-modus (races hebben minder verkeer, dus minder)."},   // gameopts
+    {"0: ready as soon as you crash.", "0: klaar zodra je crasht."},   // gameopts
+    {"GAMEPLAY", "GAMEPLAY"},   // gameopts
+    {"MIRROR MODE", "SPIEGELMODUS"},   // gameopts
+    {"CRASHBREAKER IN EVERY MODE", "CRASHBREAKER IN ELKE MODUS"},   // gameopts
+    {"Single races and two-player races on mirrored tracks: the world is drawn reversed left to right and the steering follows it, so left still steers left on the screen.", "Losse races en races met twee spelers op gespiegelde banen: de wereld wordt van links naar rechts omgekeerd getoond en het sturen volgt, dus links stuurt op het scherm nog steeds naar links."},   // gameopts
+    {"The HUD is not mirrored; the writing on signs is.", "De HUD wordt niet gespiegeld; de tekst op borden wel."},   // gameopts
+    {"These races keep their results apart from your records.", "De uitslagen van deze races worden apart van je records bewaard."},   // gameopts
+    {"Applies from the next race.", "Geldt vanaf de volgende race."},   // gameopts
+    {"After a crash in a single or two-player race, Time Attack or Road Rage, the CRASHBREAKER button blows your wreck up as in Crash mode, wrecking the traffic around it.", "Na een crash in een losse race of een race met twee spelers, in Time Attack of in Road Rage blaast de CRASHBREAKER-knop je wrak op zoals in de Crash-modus en vernielt het verkeer eromheen."},   // gameopts
     {"VOICES", "STEMMEN"},   // 1.3.0 VOICES
     {"The Crash FM DJ and the race training's narrator.", "De DJ van Crash FM en de verteller van de racetraining."},   // 1.3.0 VOICES
     {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Taal: ze spreken de gekozen TAAL (Frans, Duits, Italiaans en Spaans hebben eigen stemmen; Brits-Engels, Nederlands en Zweeds hebben de Engelse stemmen, zoals op hun schijven)."},   // 1.3.0 VOICES
@@ -7433,6 +9105,8 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"FRAME RATE LIMIT", "FRAMERATELIMIET"},
     {"The most frames per second drawn.", "Het maximale aantal frames per seconde dat wordt getekend."},
     {"The game itself always runs at its own speed.", "Het spel zelf draait altijd op zijn eigen snelheid."},
+    {"Auto: 60 on a processor with 4 threads or fewer, so the game itself keeps up; no limit on others.", "Auto: 60 op een processor met 4 threads of minder, zodat het spel zelf bijblijft; geen limiet op andere."},
+    {"Unlimited: no limit at all, for fast processors.", "Onbeperkt: helemaal geen limiet, voor snelle processors."},
     {"PAUSE WHEN UNFOCUSED", "PAUZEREN BUITEN FOCUS"},
     {"The game holds while its window is in the background (the native game only).", "Het spel wacht terwijl het venster op de achtergrond staat (alleen de native versie)."},
     {"FAST LOADING", "SNEL LADEN"},
@@ -7489,6 +9163,12 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"150% and 200% want a graphics card with plenty of memory.", "150% en 200% vragen een grafische kaart met veel geheugen."},
     {"DITHER", "DITHER"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Een fijn patroon dat de stappen in vloeiende kleurverlopen zoals de lucht verbergt."},
+    {"GRAPHICS API", "GRAFISCHE API"},   // d3d12
+    {"Vulkan", "Vulkan"},
+    {"D3D12", "D3D12"},
+    {"The graphics interface the game draws with.", "De grafische interface waarmee het spel tekent."},
+    {"Auto uses Vulkan, and Direct3D 12 when no working Vulkan device can be created.", "Auto gebruikt Vulkan, en Direct3D 12 als er geen werkend Vulkan-apparaat kan worden gemaakt."},
+    {"Try D3D12 if the picture shows faults with your graphics card.", "Probeer D3D12 als het beeld fouten toont met je grafische kaart."},
     {"None", "Geen"},
     {"A PCSX2 texture replacement folder for this game (its SLUS-21050 folder, or the folder above it).", "Een PCSX2-map met vervangende texturen voor dit spel (de map SLUS-21050, of de map erboven)."},
     {"HD TEXTURE PACK", "HD-TEXTUURPAKKET"},
@@ -7510,6 +9190,25 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Highest", "Hoogste"},
     {"Highest draws every car at full detail at any distance.", "Hoogste tekent elke auto op volledig detail op elke afstand."},
     {"CAR REFLECTIONS", "REFLECTIES OP AUTO'S"},
+    {"REFLECTION DISTANCE", "REFLECTIEAFSTAND"},   // reflect2
+    {"200 m", "200 m"},   // reflect2
+    {"300 m", "300 m"},   // reflect2
+    {"How far the cars' reflections reach.", "Hoe ver de reflecties van de auto's reiken."},   // reflect2
+    {"Game: 100 m, as the original.", "Spel: 100 m, zoals het origineel."},   // reflect2
+    {"Further shows more of the track in the paint and costs more.", "Verder toont meer van het circuit in de lak en kost meer."},   // reflect2
+    {"REFLECTION DETAIL", "REFLECTIEDETAIL"},   // reflect2
+    {"Track", "Circuit"},   // reflect2
+    {"Track and props", "Circuit en objecten"},   // reflect2
+    {"Track, props and cars", "Circuit, objecten en auto's"},   // reflect2
+    {"Track, props and cars: the other cars nearby as well.", "Circuit, objecten en auto's: ook de andere auto's in de buurt."},   // reflect2
+    {"Track and props: the barriers, signs, cones and lamp posts near the car show in its reflections too.", "Circuit en objecten: de vangrails, borden, pionnen en lantaarnpalen bij de auto zie je ook in zijn reflecties."},   // reflect2
+    {"REFLECTION UPDATE", "REFLECTIE-UPDATE"},   // reflect2
+    {"Every frame", "Elk beeld"},   // reflect2
+    {"Every 2nd frame", "Om het andere beeld"},   // reflect2
+    {"Every 2nd frame: the reflections are redrawn half as often, for slower graphics cards.", "Om het andere beeld: de reflecties worden half zo vaak opnieuw getekend, voor tragere videokaarten."},   // reflect2
+    {"REFLECTION RESOLUTION", "REFLECTIERESOLUTIE"},   // reflect2
+    {"High: sharper reflections, drawn at twice the size.", "Hoog: scherpere reflecties, op dubbele grootte getekend."},   // reflect2
+    {"Standard: as the original.", "Standaard: zoals het origineel."},   // reflect2
     {"Original", "Origineel"},
     {"Enhanced", "Verbeterd"},
     {"Enhanced: glossy sky and sun reflections on the paint and glass.", "Verbeterd: glanzende reflecties van lucht en zon op de lak en het glas."},
@@ -7612,6 +9311,11 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"On: the race's pause menu has a PHOTO MODE row after SETTINGS, which opens photo mode (the key P, or L3 + R3 on a controller, does too).", "Aan: het pauzemenu van de race heeft na INSTELLINGEN een rij FOTOMODUS, die de fotomodus opent (de toets P, of L3 + R3 op een controller, doet dat ook)."},
     {"Off: the pause menu is the game's own.", "Uit: het pauzemenu is dat van het spel zelf."},
     {"From the next pause.", "Vanaf de volgende pauze."},
+    {"SETTINGS BACK BUTTON", "TERUG-KNOP IN DE INSTELLINGEN"},   // settingsback
+    {"Keep changes", "Wijzigingen bewaren"},   // settingsback
+    {"Leaving a page of DRIVER DETAILS > SETTINGS (GAMEPLAY, AUDIO, VIDEO, CONTROLLERS) with Back.", "Een pagina van de instellingen van het spel in het coureursprofiel (gameplay, audio, video, controllers) verlaten met Terug."},   // settingsback
+    {"Keep changes: what you changed there stays.", "Wijzigingen bewaren: wat je daar hebt gewijzigd, blijft."},   // settingsback
+    {"Cancel: Back puts the old values back, as on the PS2 (confirm keeps them).", "Annuleren: Terug zet de oude waarden terug, zoals op de PS2 (bevestigen bewaart ze)."},   // settingsback
     {"English", "English"},
     {"LANGUAGE", "TAAL"},
     {"Choose a European disc image (or its folder) of Burnout 3: Takedown: its languages are copied to this PC (two small files each); the disc is not needed afterwards.", "Kies een Europese schijfkopie (of de map ervan) van Burnout 3: Takedown: de talen worden naar deze pc gekopieerd (elk twee kleine bestanden); de schijf is daarna niet meer nodig."},
@@ -7714,7 +9418,13 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"From the next song.", "Vanaf het volgende nummer."},
     {"CUSTOM MUSIC VOLUME", "VOLUME EIGEN MUZIEK"},
     {"How loud your own songs play, on top of RADIO VOLUME.", "Hoe hard je eigen nummers spelen, bovenop het RADIOVOLUME."},
-    {"At 100% a song plays as loud as the game plays its own songs; raise it for quiet files.", "Op 100% speelt een nummer even hard als het spel zijn eigen nummers speelt; zet het hoger voor zachte bestanden."},
+    {"CUSTOM MUSIC LOUDNESS", "NIVEAU EIGEN MUZIEK"},   // musicloud
+    {"Even out", "Gelijktrekken"},   // musicloud
+    {"They follow RADIO VOLUME (DRIVER DETAILS > SETTINGS > AUDIO) and the radio's fades like the game's songs.", "Ze volgen het RADIOVOLUME (RIJDERGEGEVENS > INSTELLINGEN > AUDIO) en de overgangen van de radio, net als de nummers van het spel."},   // musicloud
+    {"At 100% a song plays as loud as the game plays its own songs.", "Op 100% speelt een nummer zo hard als het spel zijn eigen nummers speelt."},   // musicloud
+    {"Even out: each of your songs is measured once (in the background; kept for the next start) and played as loud as the game's own songs, so a quiet file and a loud one sound alike.", "Gelijktrekken: elk van je nummers wordt één keer gemeten (op de achtergrond; bewaard voor de volgende start) en zo hard gespeeld als de nummers van het spel, zodat een zacht en een hard bestand even hard klinken."},   // musicloud
+    {"A quiet song with loud peaks is raised only a little.", "Een zacht nummer met harde pieken wordt maar een beetje versterkt."},   // musicloud
+    {"Off: each file plays at its own level.", "Uit: elk bestand speelt op zijn eigen niveau."},   // musicloud
     {"A limiter keeps loud songs from clipping.", "Een limiter voorkomt dat harde nummers vervormen."},
     {"The game's songs and the DJ do not change.", "De nummers van het spel en de DJ veranderen niet."},
     {"Live.", "Direct."},
@@ -7925,6 +9635,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"File {} (new)", "Bestand {} (nieuw)"},
     {"{} DEG", "{} GR"},
     {"SETTINGS", "INSTELLINGEN"},
+    {"QUIT GAME", "SPEL AFSLUITEN"},   // i18n2: the main menu's row (tools/native/pc_menu.h)
     {"UP / DOWN  SELECT     LEFT / RIGHT  CHANGE     CONFIRM  CHOOSE", "OMHOOG / OMLAAG  SELECTEREN     LINKS / RECHTS  WIJZIGEN     BEVESTIGEN  KIEZEN"},
     {"BACK  CLOSE AND SAVE", "TERUG  SLUITEN EN OPSLAAN"},
     {"PS2 ORIGINAL", "PS2 ORIGINEEL"},
@@ -8102,6 +9813,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Include my save: NO", "Mijn opslag meesturen: NEE"},
     {"Whether the report also holds your active save file (profile-N.sav): useful when the problem is in your progress.", "Of het rapport ook je actieve opslagbestand (profile-N.sav) bevat: handig als het probleem in je voortgang zit."},
     {"Off by default.", "Standaard uit."},
+    {"On by default.", "Standaard aan."},
     {"Clear the crash count", "Crashteller wissen"},
     {"The last run did not end cleanly.", "De laatste sessie is niet netjes afgesloten."},
     {"This marks it as ended, so the next start uses your own settings (safe mode is not chosen by itself).", "Dit markeert hem als afgesloten, zodat de volgende start je eigen instellingen gebruikt (de veilige modus wordt niet vanzelf gekozen)."},
@@ -8176,8 +9888,8 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"A reference for RenderWare's PS2 rasters and geometry packets.", "Een naslagwerk voor de PS2-rasters en geometriepakketten van RenderWare."},
     {"Burn3 (UwUCammie)", "Burn3 (UwUCammie)"},
     {"Another PC project for the game.", "Een ander pc-project voor het spel."},
-    {"PS2Recomp (ran-j) and burnout3-pc", "PS2Recomp (ran-j) en burnout3-pc"},
-    {"Other PC projects for the game.", "Andere pc-projecten voor het spel."},
+    {"PS2Recomp (ran-j)", "PS2Recomp (ran-j)"},
+    {"burnout3-pc (danielgomesvieira2000)", "burnout3-pc (danielgomesvieira2000)"},
     {"The Burnout 3: Takedown USA HD Remaster, the HD texture pack for PCSX2 that the HD Textures page links to and this port can use.", "De Burnout 3: Takedown USA HD Remaster, het HD-textuurpakket voor PCSX2 waarnaar de pagina HD-texturen linkt en dat deze port kan gebruiken."},
     {"PCSX2 and mymcplus", "PCSX2 en mymcplus"},
     {"Their texture-pack and memory-card formats, which this port reads, and PS2 save tooling.", "Hun formaten voor textuurpakketten en geheugenkaarten, die deze port leest, en PS2-opslagtools."},
@@ -8908,6 +10620,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Gloss", "Glans"},
     {"Metallic", "Metallic"},
     {"Pearl", "Parelmoer"},
+    {"Chrome", "Chroom"},   // options3
     {"PLAYER 2 CAR PAINT", "AUTOLAK SPELER 2"},
     {"P2 CAR PAINT", "AUTOLAK S2"},
     {"P2 PAINT RED", "LAK S2 ROOD"},
@@ -8918,6 +10631,7 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Gloss: the game's.", "Glans: die van het spel."},
     {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metallic: een sterkere weerspiegeling in de kleur van de lak, met schilfers die schitteren in het licht."},
     {"Pearl: the colour shifts as the car turns to the light.", "Parelmoer: de kleur verschuift als de auto naar het licht draait."},
+    {"Chrome: a mirror finish that shows the world around the car, tinted by the paint's colour.", "Chroom: een spiegelafwerking die de wereld rond de auto toont, getint door de kleur van de lak."},   // options3
     {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "De auto van speler 2 in gedeeld scherm: Aangepast toont hem in de kleur van de drie rijen hieronder in plaats van de lak die bij de autokeuze is gekozen."},
     {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Uit: de auto van speler 2 zonder logo's, nummers en strepen, in effen lak."},
     {"LIGHTING", "VERLICHTING"},   // night
@@ -8927,6 +10641,45 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"TIME OF DAY PER RACE", "TIJD VAN DE DAG PER RACE"},   // todrace
     {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Circuitpagina's (los evenement, multiplayer): Standaard, Dag of Nacht voor de volgende race."},   // todrace
     {"Time of day: {}", "Tijd van de dag: {}"},   // todrace
+    {"LAYER", "LAAG"},   // paint2
+    {"Body", "Carrosserie"},   // paint2
+    {"Decals", "Stickers"},   // paint2
+    {"Wheels", "Wielen"},   // paint2
+    {"Boost glow", "Boostgloed"},   // paint2
+    {"COLOUR PICKER", "KLEURKIEZER"},   // paint2
+    {"FACTORY COLOURS", "FABRIEKSKLEUREN"},   // paint2
+    {"DECAL COLOUR", "STICKERKLEUR"},   // paint2
+    {"WHEEL COLOUR", "WIELKLEUR"},   // paint2
+    {"BOOST GLOW COLOUR", "BOOSTGLOEDKLEUR"},   // paint2
+    {"P2 DECAL COLOUR", "S2 STICKERKLEUR"},   // paint2
+    {"P2 WHEEL COLOUR", "S2 WIELKLEUR"},   // paint2
+    {"P2 BOOST GLOW COLOUR", "S2 BOOSTGLOEDKLEUR"},   // paint2
+    {"HUE", "TINT"},   // paint2
+    {"SHADE", "SCHAKERING"},   // paint2
+    {"FINE", "FIJN"},   // paint2
+    {"OK", "OK"},   // paint2
+    {"CANCEL", "ANNULEREN"},   // paint2
+    {"Which part of the car the rows below colour: the body, its decals (logos, numbers and stripes), the wheels' rims or the boost glow.", "Welk deel van de auto de rijen hieronder kleuren: de carrosserie, de stickers (logo's, nummers en strepen), de velgen of de boostgloed."},   // paint2
+    {"One colour of each for all your cars.", "Eén kleur van elk voor al je auto's."},   // paint2
+    {"Game: the game's own colour.", "Spel: de kleur van het spel."},   // paint2
+    {"A ready colour, or Custom: the colour of the rows below.", "Een kant-en-klare kleur, of Aangepast: de kleur van de rijen hieronder."},   // paint2
+    {"Any colour: the square sets how strong and how bright it is, the bar its hue (L1 / R1).", "Elke kleur: het vierkant bepaalt hoe fel en hoe licht hij is, de balk zijn tint (L1 / R1)."},   // paint2
+    {"CONFIRM keeps it, BACK puts the colour before back.", "BEVESTIGEN houdt hem, TERUG zet de kleur van daarvoor terug."},   // paint2
+    {"Every layer back to the game's colours, and the decals on.", "Elke laag terug naar de kleuren van het spel, en de stickers aan."},   // paint2
+    {"The colour of the logos, numbers and stripes.", "De kleur van de logo's, nummers en strepen."},   // paint2
+    {"Game: their own colours.", "Spel: hun eigen kleuren."},   // paint2
+    {"Any colour: the paint panel on SELECT CAR.", "Elke kleur: het lakpaneel bij auto kiezen."},   // paint2
+    {"The colour of the wheels' rims (the tyres stay dark).", "De kleur van de velgen (de banden blijven donker)."},   // paint2
+    {"Game: their own.", "Spel: hun eigen."},   // paint2
+    {"The colour of the exhaust's glow while boosting.", "De kleur van de uitlaatgloed tijdens het boosten."},   // paint2
+    {"Game: the game's.", "Spel: die van het spel."},   // paint2
+    {"CAR PAINT PANEL", "LAKPANEEL"},   // paintsel
+    {"SHIFT UP", "OPSCHAKELEN"},   // gearbox
+    {"SHIFT DOWN", "TERUGSCHAKELEN"},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear up.", "Een race met VERSNELLINGSBAK Handgeschakeld (OPTIES KIEZEN): een versnelling hoger."},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear down.", "Een race met VERSNELLINGSBAK Handgeschakeld (OPTIES KIEZEN): een versnelling lager."},   // gearbox
+    {"SELECT CAR: open or close the car paint panel (a controller: the menus' Circle button, Y on the Xbox and Nintendo layouts).", "Auto kiezen: opent of sluit het lakpaneel (controller: de Rondje-knop van de menu's, Y bij de Xbox- en Nintendo-indeling)."},   // paintsel
+    {"Changing the colour on SELECT CAR sets it back to Game.", "Een andere kleur kiezen bij auto kiezen zet het terug op Spel."},   // paintsel
     {"Default ({})", "Standaard ({})"},   // todrace
     {"MOON", "MAAN"},   // night
     {"SURFACE DETAIL", "OPPERVLAKTEDETAIL"},   // night
@@ -8937,6 +10690,20 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Soft contact shadows under the cars and along walls and kerbs.", "Zachte contactschaduwen onder de auto's en langs muren en stoepranden."},   // night
     {"Draws the scene twice: for fast graphics cards.", "Tekent de scène twee keer: voor snelle videokaarten."},   // night
     {"SUN SHADOWS", "ZONSCHADUWEN"},   // sunshadow
+    {"PROP SHADOWS", "SCHADUWEN VAN OBJECTEN"},   // propshadow1
+    {"With SUN SHADOWS: the lamp posts, signs, barriers and other roadside props cast shadows too.", "Met ZONSCHADUWEN: lantaarnpalen, borden, vangrails en andere objecten langs de weg werpen ook schaduwen."},   // propshadow1
+    {"TUNNEL LIGHTS", "TUNNELVERLICHTING"},   // nightfix
+    {"Glow", "Gloed"},   // nightfix
+    {"Glow: the light fittings in tunnels and underpasses glow, with small halos.", "Gloed: de lampen in tunnels en onderdoorgangen gloeien, met kleine halo's."},   // nightfix, xboxglow
+    {"Xbox: their lit parts glow through the bloom, as on the Xbox.", "Xbox: hun verlichte delen gloeien via de bloom, zoals op de Xbox."},   // xboxglow
+    {"Game: the original look.", "Spel: het oorspronkelijke uiterlijk."},   // nightfix
+    {"WEATHER", "WEER"},   // weather
+    {"Dry", "Droog"},   // weather
+    {"Rain", "Regen"},   // weather
+    {"Rain: falling rain, wet roads that mirror the lights, spray from the wheels and a grey sky.", "Regen: vallende regen, natte wegen die de lichten weerspiegelen, opspattend water van de wielen en een grijze lucht."},   // weather
+    {"Dry: the game's own weather.", "Droog: het weer van het spel zelf."},   // weather
+    {"RAIN VOLUME", "REGENVOLUME"},   // weather
+    {"The rain's sound, on top of the game's own EFFECTS volume.", "Het geluid van de regen, bovenop het EFFECTEN-volume van het spel."},   // weather
     {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Echte schaduwen van de auto's op de weg, geworpen door de zon of 's nachts door de maan."},   // sunshadow
     {"None in tunnels and under bridges.", "Geen in tunnels en onder bruggen."},   // sunshadow
     {"Sharper with ANTI-ALIASING at 4x or more.", "Scherper met ANTI-ALIASING op 4x of meer."},   // sunshadow
@@ -9124,6 +10891,14 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Er wordt niets gedownload of gedeeld, en je eigen HD-pakket en de pakketten van de mods gaan nog steeds voor."},
     {"Not imported.", "Niet geïmporteerd."},
     {"{} textures imported.", "{} texturen geïmporteerd."},
+    {"HD texture cache", "HD-texturecache"},   // hdcache
+    {"{} MB of textures converted from the pack, read back on later races.", "{} MB aan uit het pakket omgezette texturen, opnieuw gelezen in latere races."},   // hdcache
+    {"Empty: the game fills it as it draws the pack's textures.", "Leeg: het spel vult hem terwijl het de texturen van het pakket tekent."},   // hdcache
+    {"Clear cache", "Cache wissen"},   // hdcache
+    {"Deletes the converted textures.", "Verwijdert de omgezette texturen."},   // hdcache
+    {"The game converts them again as it draws them, and the first race on each track loads a little longer.", "Het spel zet ze opnieuw om terwijl het ze tekent, en de eerste race op elk circuit laadt iets langer."},   // hdcache
+    {"Cleared.", "Gewist."},   // hdcache
+    {"{} entries could not be deleted (in use by a running game?)", "{} items konden niet worden verwijderd (in gebruik door een draaiend spel?)"},   // hdcache
     {"Size: {} MB.", "Grootte: {} MB."},
     {"From: {}.", "Van: {}."},
     {"Made by an older version: import again for the newest result.", "Gemaakt door een oudere versie: importeer opnieuw voor het beste resultaat."},
@@ -9231,9 +11006,288 @@ inline constexpr Entry kDU[] = {   // Dutch
     {"QUIT AND START AGAIN WHEN IT IS DONE", "STOP EN START OPNIEUW ALS HIJ KLAAR IS"},   // portable mode
     {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "ER KAN NIET IN DE DRAAGBARE GEGEVENSMAP WORDEN GESCHREVEN"},   // portable mode
     {"SAVES AND SETTINGS WON'T BE KEPT", "OPSLAG EN INSTELLINGEN WORDEN NIET BEWAARD"},   // portable mode
+    {"START AT", "STARTEN BIJ"},   // gamemods1
+    {"Intro films", "Introfilms"},   // gamemods1
+    {"Title screen", "Titelscherm"},   // gamemods1
+    {"Main menu, profile 1", "Hoofdmenu, profiel 1"},   // gamemods1
+    {"Main menu, profile 2", "Hoofdmenu, profiel 2"},   // gamemods1
+    {"Main menu, profile 3", "Hoofdmenu, profiel 3"},   // gamemods1
+    {"IDLE PAUSE", "PAUZE BIJ INACTIVITEIT"},   // gamemods1
+    {"END VERY LONG EVENTS", "ZEER LANGE EVENEMENTEN BEËINDIGEN"},   // gamemods1
+    {"Where the game starts after it has loaded.", "Waar het spel begint nadat het geladen is."},   // gamemods1
+    {"Title screen: the intro films are not played.", "Titelscherm: de introfilms worden niet afgespeeld."},   // gamemods1
+    {"Main menu: also Start on the title and that profile loaded, as LOAD PROFILE does; a profile the save does not hold leaves the game's profile choice.", "Hoofdmenu: ook wordt Start ingedrukt op het titelscherm en dat profiel geladen, zoals PROFIEL LADEN doet; een profiel dat niet in de opslag staat laat de profielkeuze van het spel."},   // gamemods1
+    {"On: as in the game, a race pauses itself after 5 minutes without input.", "Aan: zoals in het spel pauzeert een race zichzelf na 5 minuten zonder invoer."},   // gamemods1
+    {"Off: it never does.", "Uit: dat gebeurt nooit."},   // gamemods1
+    {"On: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Aan: zoals in het spel wordt een evenement dat na 25 tot 40 minuten nog loopt voor alle auto's beëindigd."},   // gamemods1
+    {"Off: it goes on until it ends the normal way; an event kept going past the game's limit keeps no records.", "Uit: het gaat door tot het normaal eindigt; een evenement dat voorbij de limiet van het spel doorgaat, bewaart geen records."},   // gamemods1
+    {"Traffic only", "Alleen verkeer"},   // gamemods1
+    {"Full: the rivals and the other player in the blast are wrecked too, each counted as your Aftertouch Takedown.", "Volledig: rivalen en de andere speler in de explosie worden ook vernield, elk geteld als jouw Aftertouch Takedown."},   // gamemods1
+    {"RACE HUD", "RACE-HUD"},   // hudmods
+    {"RPM METER", "TOERENTELLER"},   // hudmods
+    {"BOOST BAR SHAKE", "TRILLENDE BOOSTBALK"},   // hudmods
+    {"RACE SOUNDS", "RACEGELUIDEN"},   // hudmods
+    {"TAKEDOWN STREAK PITCH", "TOONHOOGTE VAN TAKEDOWNREEKS"},   // hudmods
+    {"On: a thin bar of the engine revs under the speedometer, red near the rev limit.", "Aan: een dunne balk met het motortoerental onder de snelheidsmeter, rood bij de toerenbegrenzer."},   // hudmods
+    {"For the automatic and the manual gearbox alike.", "Voor de automatische en de handgeschakelde versnellingsbak."},   // hudmods
+    {"On: the boost bar shakes while you boost, as in the game's 2004 preview build.", "Aan: de boostbalk trilt terwijl je boost, zoals in de previewversie van het spel uit 2004."},   // hudmods
+    {"On: outside World Tour, each takedown after your 10th since your last crash sounds higher, as World Tour's takedown targets do.", "Aan: buiten de World Tour klinkt elke takedown na je 10e sinds je laatste crash hoger, zoals bij de takedowndoelen van de World Tour."},   // hudmods
+    {"A crash starts the count again.", "Een crash begint de telling opnieuw."},   // hudmods
+    {"Sound only.", "Alleen geluid."},   // hudmods
+    {"On SELECT CAR: {}", "In SELECT CAR: {}"},   // customseries
+    {"Custom cars", "Eigen auto's"},   // customseries
+    {"Car mods as cars of their own: they race as the CUSTOM series in SINGLE EVENT, after the game's cars, never in place of one, each with the engine sound and handling of the car it was made to replace. Races with them keep their results apart from your records.", "Automods als eigen auto's: ze rijden in de serie EIGEN van SINGLE EVENT, na de auto's van het spel, nooit in plaats van een auto, elk met het motorgeluid en weggedrag van de auto die hij moest vervangen. Races ermee houden hun resultaten apart van je records."},   // customseries
+    {"None.", "Geen."},   // customseries
+    {"Import from folder...", "Importeren uit map..."},   // customseries
+    {"Choose a car mod's folder: its car files (named after the car they replace, in a folder named after its class: COMP/CAR7.BGV) or its folders with a car.ini are checked and copied into the custom cars folder.", "Kies de map van een automod: zijn autobestanden (genoemd naar de auto die ze vervangen, in een map met de naam van zijn klasse: COMP/CAR7.BGV) of zijn mappen met een car.ini worden gecontroleerd en naar de map met eigen auto's gekopieerd."},   // customseries
+    {"Opens the custom cars folder in the file manager (made when it is not there yet).", "Opent de map met eigen auto's in de bestandsbeheerder (aangemaakt als hij er niet is)."},   // customseries
+    {"Reads the custom cars folder again (cars added or removed since).", "Leest de map met eigen auto's opnieuw (sindsdien toegevoegde of verwijderde auto's)."},   // customseries
+    {"Deletes this car's files from the custom cars folder.", "Verwijdert de bestanden van deze auto uit de map met eigen auto's."},   // customseries
+    {"Remove this custom car?", "Deze eigen auto verwijderen?"},   // customseries
+    {"Its files are deleted from the custom cars folder.", "Zijn bestanden worden uit de map met eigen auto's verwijderd."},   // customseries
+    {"Imported: {}", "Geïmporteerd: {}"},   // customseries
+    {"Removed: {}", "Verwijderd: {}"},   // customseries
+    {"Not removed: {}", "Niet verwijderd: {}"},   // customseries
+    {"{}'s handling", "Weggedrag van {}"},   // customseries
+    {"Traffic", "Verkeer"},   // customseries
+    {"Traffic special", "Speciaal verkeer"},   // customseries
+    {"Not shown", "Niet getoond"},   // customseries
+    {"Custom cars: choose the folder of a car mod", "Eigen auto's: kies de map van een automod"},   // customseries
+    {"Open the car mod's folder, then Start: its cars are copied into the custom cars folder.", "Open de map van de automod en dan Start: zijn auto's worden naar de map met eigen auto's gekopieerd."},   // customseries
+    {"Every player car on your disc, in the game's own car model, then the traffic vehicles and your custom and prototype cars as SELECT CAR offers them. Looking here changes nothing: it unlocks nothing and the save files are not read.", "Alle speelbare auto's van je schijf, in het model van het spel, dan de verkeersvoertuigen en je eigen en prototype-auto's zoals SELECT CAR ze aanbiedt. Kijken verandert niets: er wordt niets vrijgespeeld en de opslagbestanden worden niet gelezen."},   // customseries
+    {"TUK-TUKS", "TUKTUKS"},   // party1
+    {"In SINGLE EVENT, you and every rival drive the tuk-tuk from the city traffic, with the engine sound and handling of a compact.", "In SINGLE EVENT rijden jij en alle rivalen de tuktuk uit het stadsverkeer, met het motorgeluid en weggedrag van een compacte auto."},   // party1
+    {"Crash events too.", "Ook in Crash-evenementen."},   // party1
+    {"Import car pack...", "Autopakket importeren..."},   // carpacks
+    {"A car pack made to replace the game's cars (a .zip, or its folder): the cars it changes become cars of their own, never in place of the game's. Cars your disc already has, BETA cars you have and cars imported before are left out.", "Een autopakket dat de auto's van het spel moet vervangen (een .zip of de map ervan): de auto's die het verandert worden eigen auto's, nooit in plaats van die van het spel. Auto's die je schijf al heeft, je BETA-auto's en eerder geïmporteerde auto's worden overgeslagen."},   // carpacks
+    {"Choose the game's own data first (above): a pack's cars are compared with your disc's.", "Kies eerst de gegevens van het spel (hierboven): de auto's van een pakket worden vergeleken met die van je schijf."},   // carpacks
+    {"Custom cars: choose a car pack (a .zip file, or its folder)", "Eigen auto's: kies een autopakket (een .zip-bestand of de map ervan)"},   // carpacks
+    {"A on the pack's .zip chooses it; or open the pack's folder, then Start.", "A op de .zip van het pakket kiest die; of open de map van het pakket en dan Start."},   // carpacks
+    {"Open the pack's folder, then Start.", "Open de map van het pakket en dan Start."},   // carpacks
+    {"Cut cars (BETA series)", "Geschrapte auto's (BETA-serie)"},   // carpacks
+    {"Cut cars", "Geschrapte auto's"},   // carpacks
+    {"New models", "Nieuwe modellen"},   // carpacks
+    {"Early versions", "Vroege versies"},   // carpacks
+    {"New paint", "Nieuwe lak"},   // carpacks
+    {"Other cars", "Andere auto's"},   // carpacks
+    {"Choose whether these cars are imported.", "Kies of deze auto's worden geïmporteerd."},   // carpacks
+    {"Import {} cars", "{} auto's importeren"},   // carpacks
+    {"Writes the chosen cars into the custom cars folder (the cut cars of the BETA series into its folder).", "Schrijft de gekozen auto's in de map met eigen auto's (de geschrapte auto's van de BETA-serie in die van hen)."},   // carpacks
+    {"Nothing is written.", "Er wordt niets geschreven."},   // carpacks
+    {"{} cars", "{} auto's"},   // carpacks
+    {"Deletes this pack's cars from the custom cars folder.", "Verwijdert de auto's van dit pakket uit de map met eigen auto's."},   // carpacks
+    {"Remove this car pack?", "Dit autopakket verwijderen?"},   // carpacks
+    {"Its cars are deleted from the custom cars folder.", "Zijn auto's worden uit de map met eigen auto's verwijderd."},   // carpacks
+    {"already in the game", "al in het spel"},   // carpacks
+    {"already a BETA car", "al een BETA-auto"},   // carpacks
+    {"already imported", "al geïmporteerd"},   // carpacks
+    {"not chosen", "niet gekozen"},   // carpacks
+    {"an old-layout prototype file: import it with Beta / Prototype cars", "een prototypebestand in het oude formaat: importeer het met Beta / Prototype cars"},   // carpacks
+    {"the pack's vehicle list: not used (the game's own is kept)", "de voertuigenlijst van het pakket: niet gebruikt (die van het spel blijft)"},   // carpacks
+    {"the pack's handling and camera values: not applied (the game's own are kept)", "het weggedrag en de camera's van het pakket: niet toegepast (die van het spel blijven)"},   // carpacks
+    {"A cut car's file, whatever its paint, is that BETA car (matched by its shape): it goes into the BETA series once, not as a car of its own.", "Het bestand van een geschrapte auto is, in welke lak ook, die BETA-auto (herkend aan zijn vorm): het gaat één keer naar de BETA-serie, niet als eigen auto."},   // carpacks
+    // extras (2026-11-23): the EXTRAS tab
+    {"NIGHT (EXPERIMENTAL)", "NACHT (EXPERIMENTEEL)"},
+    {"RAIN (EXPERIMENTAL)", "REGEN (EXPERIMENTEEL)"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a TIME OF DAY row (Day / Night).", "Aan: SELECT OPTIONS van SINGLE EVENT heeft een rij TIJDSTIP (Dag / Nacht)."},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a WEATHER row (Clear / Rain).", "Aan: SELECT OPTIONS van SINGLE EVENT heeft een rij WEER (Helder / Regen)."},
+    {"NIGHT IN WORLD TOUR", "NACHT IN WORLD TOUR"},
+    {"RAIN IN WORLD TOUR", "REGEN IN WORLD TOUR"},
+    {"Always", "Altijd"},
+    {"Random", "Willekeurig"},
+    {"World Tour's events at night: Always, or Random (each event as it starts).", "De evenementen van de World Tour 's nachts: Altijd, of Willekeurig (elk evenement bij de start)."},
+    {"World Tour's events in the rain: Always, or Random (each event as it starts).", "De evenementen van de World Tour in de regen: Altijd, of Willekeurig (elk evenement bij de start)."},
+    {"Drawn only: your progress and records count as usual.", "Alleen beeld: je voortgang en records tellen zoals altijd."},
+    {"EXPERIMENTAL", "EXPERIMENTEEL"},
+    {"Experimental: work in progress.", "Experimenteel: nog in ontwikkeling."},
+    {"Tell us what you think.", "Laat ons weten wat je ervan vindt."},
+    {"ROAD RAGE RIVALS", "ROAD RAGE-RIVALEN"},
+    {"EXTRAS", "EXTRA'S"},
+    {"SINGLE EVENT", "LOSSE RACE"},
+    {"SELECT OPTIONS", "SELECT OPTIONS"},
+    {"SELECT CAR", "SELECT CAR"},
+    {"ELIMINATOR", "ELIMINATOR"},
+    {"MORE RIVALS", "MEER RIVALEN"},
+    {"TRAFFIC", "VERKEER"},
+    {"LAPS", "RONDES"},
+    {"TIMED ELIMINATION", "ELIMINATIE OP TIJD"},
+    {"TRANSMISSION", "VERSNELLINGSBAK"},
+    {"RIVAL STYLE", "RIVALENSTIJL"},
+    {"BURNOUT POINTS", "BURNOUT-PUNTEN"},
+    {"TIME LIMIT", "TIJDLIMIET"},
+    {"TRAFFIC PATTERN", "VERKEERSPATROON"},
+    {"RIVALS' CARS", "RIVALENAUTO'S"},
+    {"TRAFFIC CHECK", "VERKEER RAMMEN"},
+    {"HEAVYWEIGHTS", "ZWAARGEWICHTEN"},
+    {"TRAFFIC SERIES", "VERKEERSSERIE"},
+    {"CUSTOM CARS", "EIGEN AUTO'S"},
+    {"BETA CARS", "BÈTA-AUTO'S"},
+    {"CAR VIEWER", "AUTOVIEWER"},
+    {"NO IDLE PAUSE", "GEEN INACTIVITEITSPAUZE"},
+    {"NO EVENT TIME LIMIT", "GEEN TIJDLIMIET"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has this row.", "Aan: SELECT OPTIONS van SINGLE EVENT heeft deze rij."},
+    {"Off: the game's own page.", "Uit: de pagina van het spel zelf."},
+    {"On: SINGLE EVENT's SELECT MODE has a fifth mode, ELIMINATOR: the last car is out at the end of each lap.", "Aan: SELECT MODE van SINGLE EVENT heeft een vijfde modus, ELIMINATOR: de laatste auto valt aan het eind van elke ronde af."},
+    {"Off: the game's four modes.", "Uit: de vier modi van het spel."},
+    {"On: a SINGLE EVENT race's RIVALS row goes up to 7, for 8 cars.", "Aan: de RIVALS-rij van een SINGLE EVENT-race gaat tot 7, voor 8 auto's."},
+    {"Off: up to 5, as in the game.", "Uit: tot 5, zoals in het spel."},
+    {"On: the HEAVYWEIGHTS series in every SINGLE EVENT mode.", "Aan: de HEAVYWEIGHTS-serie in elke SINGLE EVENT-modus."},
+    {"Off: in Crash only, as in the game.", "Uit: alleen in Crash, zoals in het spel."},
+    {"On: SINGLE EVENT's SELECT CAR has the TRAFFIC and TRAFFIC SPECIAL series: drive a car, bus or tuk-tuk from the traffic.", "Aan: SELECT CAR van SINGLE EVENT heeft de series TRAFFIC en TRAFFIC SPECIAL: rijd een auto, bus of tuktuk uit het verkeer."},
+    {"On: the car mods in your custom cars folder, as the CUSTOM series.", "Aan: de automods in je map met eigen auto's, als de CUSTOM-serie."},
+    {"On: the prototype cars the launcher imported, as the BETA series.", "Aan: de prototypeauto's die de launcher heeft geïmporteerd, als de BETA-serie."},
+    {"On: YOUR GARAGE opens the game's leftover car viewer.", "Aan: YOUR GARAGE opent de autoviewer die in het spel is achtergebleven."},
+    {"On: a race never pauses itself.", "Aan: een race pauzeert nooit vanzelf."},
+    {"Off: as in the game, it pauses after 5 minutes without input.", "Uit: zoals in het spel, pauzeert hij na 5 minuten zonder invoer."},
+    {"On: an event goes on until it ends the normal way; one kept going past the game's limit keeps no records.", "Aan: een evenement loopt door tot het normaal eindigt; een evenement dat langer duurt dan de limiet van het spel bewaart geen records."},
+    {"Off: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Uit: zoals in het spel, wordt een evenement dat na 25 tot 40 minuten nog loopt voor alle auto's beëindigd."},
 };
 
 inline constexpr Entry kSW[] = {   // Swedish
+    {"HD TEXTURE MEMORY", "MINNE FÖR HD-TEXTURER"},   // texpack: HD TEXTURE MEMORY
+    {"Full quality", "Full kvalitet"},   // texpack: HD TEXTURE MEMORY
+    {"Compressed", "Komprimerat"},   // texpack: HD TEXTURE MEMORY
+    {"How an HD texture pack's PNG and BC7 files are kept on the graphics card.", "Hur ett HD-texturpakets PNG- och BC7-filer hålls på grafikkortet."},   // texpack: HD TEXTURE MEMORY
+    {"Full quality: as the files are, as PCSX2 keeps them; they take about four times the memory.", "Full kvalitet: som filerna är, som PCSX2 håller dem; de tar ungefär fyra gånger så mycket minne."},   // texpack: HD TEXTURE MEMORY
+    {"Compressed: packed when they load, a quarter of the memory, a little less sharp.", "Komprimerat: packade när de laddas, en fjärdedel av minnet, lite mindre skarpa."},   // texpack: HD TEXTURE MEMORY
+    {"Auto: full quality on a graphics card with 6 GB of its own memory or more, compressed otherwise.", "Auto: full kvalitet på ett grafikkort med 6 GB eget minne eller mer, annars komprimerat."},   // texpack: HD TEXTURE MEMORY
+    {"SOUND OUTPUT", "LJUDUTGÅNG"},   // audioq
+    {"OUTPUT", "UTGÅNG"},   // audioq
+    {"Clean", "Ren"},   // audioq
+    {"Clean: the loudest moments (a crash over the engines and the music) are turned down for an instant instead of clipping.", "Ren: de starkaste ögonblicken (en krasch över motorerna och musiken) sänks ett ögonblick i stället för att klippa."},   // audioq
+    {"Original: the PS2's own output, which crackles when it clips.", "Original: PS2:ans egen utgång, som knastrar när den klipper."},   // audioq
+    {"Revenge", "Revenge"},   // trafficcheck (the game's name)
+    {"TRAFFIC CHECK (2 PLAYERS)", "KNUFFA TRAFIK (2 SPELARE)"},   // trafficcheck
+    {"Extreme", "Extrem"},   // trafficcheck
+    {"Two-player races: ram a car, van or lorry going your way and it is launched ahead instead of wrecking you, for boost and a scored chain, as in Burnout Revenge.", "Lopp för två spelare: ramma en bil, skåpbil eller lastbil som kör åt ditt håll så slungas den framåt i stället för att du kraschar, för boost och en poängsatt serie, som i Burnout Revenge."},   // trafficcheck
+    {"A car you check that hits your rival takes them out for you.", "En knuffad bil som träffar din rival slår ut den åt dig."},   // trafficcheck
+    {"Revenge: oncoming traffic, buses and big rigs still crash you.", "Revenge: mötande trafik, bussar och långtradare får dig fortfarande att krascha."},   // trafficcheck
+    {"Extreme: they are shoved aside too.", "Extrem: de knuffas också undan."},   // trafficcheck
+    {"Single races have their own TRAFFIC CHECK row on SELECT OPTIONS.", "Enskilda lopp har en egen rad KNUFFA TRAFIK i SELECT OPTIONS."},   // trafficcheck
+    {"ORBIT STYLE", "OMLOPPSSTIL"},   // orbitcam2
+    {"Look", "Blick"},   // orbitcam2
+    {"Swing", "Svep"},   // orbitcam2
+    {"Look: the view turns to where you point the stick (down looks behind), as in Burnout Revenge.", "Blick: vyn vänds dit du pekar spaken (nedåt tittar bakåt), som i Burnout Revenge."},   // orbitcam2
+    {"Swing: the stick turns the view round while you hold it, and up or down raises or lowers it.", "Svep: spaken vrider vyn medan du håller den, och upp eller ned höjer eller sänker den."},   // orbitcam2
+    {"FINISH CAMERA", "MÅLKAMERA"},   // finishcam1
+    {"Set pieces", "Scener"},   // finishcam1
+    {"After you cross the finish line, the camera cycles through 12 set pieces of angles around the finish, 5 seconds each, from the game's own data.", "Efter mållinjen växlar kameran mellan 12 scener med vinklar runt målet, 5 sekunder var, från spelets egna data."},   // finishcam1
+    {"Game: the game's finish shot.", "Spel: spelets målbild."},   // finishcam1
+    {"CAMERA ROLL", "KAMERALUTNING"},   // camroll1
+    {"Subtle", "Lätt"},   // camroll1
+    {"Strong", "Kraftig"},   // camroll1
+    {"In a race, the chase camera leans into corners.", "I ett race lutar jaktkameran in i kurvorna."},   // camroll1
+    {"Subtle: up to 4 degrees.", "Lätt: upp till 4 grader."},   // camroll1
+    {"Strong: up to 8 degrees.", "Kraftig: upp till 8 grader."},   // camroll1
+    {"CAR STATS", "BILDATA"},   // carstats1 / blinkers1 / rrparts1
+    {"More", "Mer"},   // carstats1 / blinkers1 / rrparts1
+    {"TURN SIGNALS", "BLINKERS"},   // carstats1 / blinkers1 / rrparts1
+    {"ROAD RAGE PARTS", "ROAD RAGE-DELAR"},   // carstats1 / blinkers1 / rrparts1
+    {"All loose", "Alla lösa"},   // carstats1 / blinkers1 / rrparts1
+    {"More: the car select page also shows GRIP and ACCELERATION, worked out from each car's handling.", "Mer: bilvalet visar även GREPP och ACCELERATION, beräknade från varje bils köregenskaper."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: TOP SPEED and WEIGHT only.", "Spel: endast TOPPFART och VIKT."},   // carstats1 / blinkers1 / rrparts1
+    {"On: the other racers' indicators blink before a bend, on every track.", "På: de andra förarnas blinkers blinkar före en kurva, på alla banor."},   // carstats1 / blinkers1 / rrparts1
+    {"Their lights only: the race is unchanged.", "Bara deras lampor: loppet är oförändrat."},   // carstats1 / blinkers1 / rrparts1
+    {"All loose: in a single-event Road Rage, every loose part can come off a damaged car, not only the ones the game lets go.", "Alla lösa: i ett enskilt Road Rage kan varje lös del lossna från en skadad bil, inte bara de som spelet släpper."},   // carstats1 / blinkers1 / rrparts1
+    {"Loose parts are physical, so the race is not the original: its records are kept apart.", "Lösa delar är fysiska, så loppet är inte originalet: dess rekord hålls isär."},   // carstats1 / blinkers1 / rrparts1
+    {"Game: the original.", "Spel: originalet."},   // carstats1 / blinkers1 / rrparts1
+    {"PARTY MODES", "FESTLÄGEN"},   // party1
+    {"CRAZY AI PHYSICS", "GALEN AI-FYSIK"},   // party1
+    {"Basic", "Grund"},   // party1
+    {"Local Wildlife", "Vilda djur"},   // party1
+    {"Mayhem", "Kaos"},   // party1
+    {"The rivals' physics go haywire: their wheels never leave the road as far as the game knows, and gravity barely holds them.", "Rivalernas fysik spårar ur: för spelet lämnar deras hjul aldrig vägen, och tyngdkraften håller dem knappt kvar."},   // party1
+    {"Local Wildlife: they tumble without crashing.", "Vilda djur: de voltar utan att krascha."},   // party1
+    {"Mayhem: a rival that flips over blows up.", "Kaos: en rival som voltar exploderar."},   // party1
+    {"Your own car drives as usual.", "Din egen bil kör som vanligt."},   // party1
+    {"MOON JUMP", "MÅNHOPP"},   // party1
+    {"Hold the MOON JUMP button to lift your car into the air (4 on the keyboard; a controller button can be set in CONTROLS).", "Håll ned MÅNHOPP-knappen för att lyfta bilen upp i luften (4 på tangentbordet; en handkontrollsknapp kan ställas in under STYRNING)."},   // party1
+    {"CRASH ON DEMAND", "KRASCH PÅ BEGÄRAN"},   // party1
+    {"The CRASH button crashes your car at once (5 on the keyboard; a controller button can be set in CONTROLS).", "KRASCH-knappen kraschar bilen direkt (5 på tangentbordet; en handkontrollsknapp kan ställas in under STYRNING)."},   // party1
+    {"AI DRIVER BUTTON", "AI-FÖRARKNAPP"},   // party1
+    {"The AI DRIVER button hands your car to the game's own AI driver, and back on the next press (6 on the keyboard; a controller button can be set in CONTROLS).", "AI-FÖRARE-knappen lämnar över bilen till spelets AI-förare, och tillbaka vid nästa tryck (6 på tangentbordet; en handkontrollsknapp kan ställas in under STYRNING)."},   // party1
+    {"KAMIKAZE TRAFFIC", "KAMIKAZETRAFIK"},   // party1
+    {"Traffic close ahead of any race car throws itself at it.", "Trafik precis framför en racerbil kastar sig mot den."},   // party1
+    {"Expect many wrecks.", "Räkna med många vrak."},   // party1
+    {"AI DRIVER", "AI-FÖRARE"},   // party1
+    {"REPLAY: PREVIOUS CAMERA", "REPRIS: FÖREGÅENDE KAMERA"},   // replaycams
+    {"REPLAY: NEXT CAMERA", "REPRIS: NÄSTA KAMERA"},   // replaycams
+    {"REPLAY: PREVIOUS CAR", "REPRIS: FÖREGÅENDE BIL"},   // replaycams
+    {"REPLAY: NEXT CAR", "REPRIS: NÄSTA BIL"},   // replaycams
+    {"REPLAY: FREE CAMERA", "REPRIS: FRI KAMERA"},   // replaycams
+    {"REPLAY CAMERA CUTS", "KAMERAKLIPP I REPRISEN"},   // replaycams
+    {"Stay", "Stanna"},   // replaycams
+    {"Game: in a race replay, a crash cuts to the game's crash camera, whatever camera you chose.", "Spel: i reprisen av ett lopp klipper en krasch till spelets kraschkamera, vilken kamera du än valt."},   // replaycams
+    {"Stay: the camera you chose stays on.", "Stanna: kameran du valt ligger kvar."},   // replaycams
+    {"While a race replay plays: the previous camera angle.", "Medan en repris av ett lopp spelas: föregående kameravinkel."},   // replaycams
+    {"While a race replay plays: the next camera angle.", "Medan en repris av ett lopp spelas: nästa kameravinkel."},   // replaycams
+    {"While a race replay plays: watch the previous car.", "Medan en repris av ett lopp spelas: följ föregående bil."},   // replaycams
+    {"While a race replay plays: watch the next car.", "Medan en repris av ett lopp spelas: följ nästa bil."},   // replaycams
+    {"While a race replay plays: a free camera (photo mode's controls), and back.", "Medan en repris av ett lopp spelas: en fri kamera (fotolägets kontroller), och tillbaka."},   // replaycams
+    {"CRASH", "KRASCH"},   // party1
+    {"Held in a race: lifts your car into the air (GAME > PARTY MODES > MOON JUMP on).", "Hålls ned i ett lopp: lyfter bilen upp i luften (SPEL > FESTLÄGEN > MÅNHOPP på)."},   // party1
+    {"In a race: crashes your car at once (GAME > PARTY MODES > CRASH ON DEMAND on).", "I ett lopp: kraschar bilen direkt (SPEL > FESTLÄGEN > KRASCH PÅ BEGÄRAN på)."},   // party1
+    {"In a race: the game's AI drives your car, and you again on the next press (GAME > PARTY MODES > AI DRIVER BUTTON on).", "I ett lopp: spelets AI kör din bil, och du igen vid nästa tryck (SPEL > FESTLÄGEN > AI-FÖRARKNAPP på)."},   // party1
+    {"ORBIT CAMERA", "OMLOPPSKAMERA"},   // orbitcam1
+    {"CRASH CAMERA", "KRASCHKAMERA"},   // options3
+    {"On: when you crash, the game cuts to its crash camera, as the original.", "På: när du kraschar byter spelet till sin kraschkamera, som originalet."},   // options3
+    {"Off: the view stays behind your car.", "Av: vyn stannar bakom din bil."},   // options3
+    {"The takedown camera is the game's own option (DRIVER DETAILS > SETTINGS).", "Takedownkameran är spelets eget alternativ (FÖRARUPPGIFTER > INSTÄLLNINGAR)."},   // options3
+    {"Camera only.", "Bara kameran."},   // options3
+    {"RACE REPLAY", "SE LOPPET IGEN"},   // replayview
+    {"APPLIES AT THE NEXT START", "GÄLLER FRÅN NÄSTA START"},   // nextstart
+    {"RESTART", "OMSTART"},   // nextstart
+    {"KEEP", "BEHÅLL"},   // nextstart
+    {"Next start", "Nästa start"},   // nextstart
+    {"Saved: the game uses it from its next start.", "Sparat: spelet använder det från nästa start."},   // nextstart
+    {"APPLY AND RESTART", "TILLÄMPA OCH STARTA OM"},   // nextstart
+    {"Restart", "Starta om"},   // nextstart
+    {"Saved, then the game closes and starts again at the title screen, the change in use.", "Sparat, sedan stängs spelet och startar om vid titelskärmen, med ändringen."},   // nextstart
+    {"The race in progress ends.", "Loppet som pågår avslutas."},   // nextstart
+    {"REVERT", "ÅNGRA"},   // nextstart
+    {"Undo", "Ångra"},   // nextstart
+    {"These settings go back to what they were when the page opened.", "De här inställningarna går tillbaka till hur de var när sidan öppnades."},   // nextstart
+    {"BACK  KEEP", "TILLBAKA  BEHÅLL"},   // nextstart
+    {"Changed: applies at the next start.", "Ändrad: gäller från nästa start."},   // nextstart
+    {"REPLAY", "REPRIS"},   // replayview
+    {"A race's results page, with RACE REPLAY on (GAME > MODES): watch the race again; while it plays: back to the results.", "Ett lopps resultatsida, med SE LOPPET IGEN på (SPEL > LÄGEN): se loppet igen; medan det spelas: tillbaka till resultaten."},   // replayview
+    {"Replay", "Repris"},   // replayview
+    {"On: a race's results page offers REPLAY (F6, or Square / X): the game's own replay of the race you have just driven.", "På: ett lopps resultatsida erbjuder REPLAY (F6, eller Fyrkant / X): spelets egen repris av loppet du just kört."},   // replayview
+    {"Every offline mode but Crash, which has its own.", "Alla offlinelägen utom Crash, som har sin egen."},   // replayview
+    {"Your results, records and progress stay as they were.", "Dina resultat, rekord och framsteg förblir som de var."},   // replayview
+    {"DEFORMATION", "DEFORMATION"},   // options3
+    {"How much the cars' bodies crumple when they hit something.", "Hur mycket bilarnas kaross skrynklas ihop när de krockar med något."},   // options3
+    {"How much the cars' bodies crumple when they hit something, in Single Event and two-player races.", "Hur mycket bilarnas kaross skrynklas ihop när de krockar med något, i enskilda lopp och lopp för två spelare."},   // options3
+    {"100% is the original game's.", "100% är originalspelets värde."},   // options3
+    {"Another amount changes the race after the first hard hit, so these races keep their results apart from your records.", "Ett annat värde ändrar loppet efter den första hårda smällen, så dessa lopp håller sina resultat skilda från dina rekord."},   // options3
+    {"DRIVER LABELS", "FÖRARETIKETTER"},   // options3
+    {"Names", "Namn"},   // options3
+    {"Names + distance", "Namn + avstånd"},   // options3
+    {"Distance", "Avstånd"},   // options3
+    {"Over the rival cars in a race: each driver's name, the distance to them, or both.", "Över rivalernas bilar i ett lopp: varje förares namn, avståndet till dem eller båda."},   // options3
+    {"On: in a race, the right stick turns the chase camera around your car to look left, right or behind; it stops short of walls.", "På: i ett race vrider höger spak jaktkameran runt din bil för att titta åt vänster, höger eller bakåt; den stannar före väggar."},   // orbitcam2
+    {"A moment after you let go, the view eases back behind the car.", "En stund efter att du släppt glider vyn tillbaka bakom bilen."},   // orbitcam1
+    {"The mouse does it too, with the right button held.", "Musen gör det också, med höger knapp nedtryckt."},   // orbitcam1
+    {"On the PlayStation controller layout the right stick is the throttle and brake, so it stays the game's there.", "Med PlayStation-kontrollens layout är höger spak gas och broms, så där förblir den spelets."},   // orbitcam1
+    {"DISPLAY, GRAPHICS, CAR, CONTROLS AND MORE", "SKÄRM, GRAFIK, BIL, STYRNING OCH MER"},   // 1.3.1: the main menu's SETTINGS help (tools/native/pc_menu.h)
+    {"LEAVE THE GAME", "AVSLUTA SPELET"},   // 1.3.1: the main menu's QUIT GAME help
+    {"Their PS2 mods inspired MIRROR MODE, CRASHBREAKER IN EVERY MODE, the PARTY MODES and the race options (rival names and distances, rivals' cars, standing start, Road Rage time limit and rival style, Burnout points, varied traffic, DEFORMATION, the Chrome finish, the crash camera switch), START AT, the idle pause and long-event switches, the Crashbreaker's full blast, the car viewer and the replay viewer: the ideas only, none of their code.", "Deras PS2-moddar inspirerade SPEGELLÄGE, CRASHBREAKER I ALLA LÄGEN, FESTLÄGEN och tävlingsalternativen (rivalernas namn och avstånd, rivalernas bilar, stående start, tidsgräns och rivalstil i Road Rage, Burnout-poäng, varierande trafik, DEFORMATION, Krom-finishen, valet av kraschkamera), STARTA VID, reglagen för inaktivitetspaus och långa event, Crashbreakerns fulla explosion, bilvisaren och replayvisaren: bara idéerna, inget av deras kod."},   // credits140 (the launcher's Credits)
+    {"The PCSX2 mods that inspired the RPM meter, the boost bar shake, the takedown streak pitch, camera roll, the finish camera's set pieces, manual gears, TIMED ELIMINATION, the traffic presets, traffic checking in two-player races, loose parts in Road Rage, car stats, the rivals' turn signals, the paint picker, painted car pictures and the reflections that reach further (ideas only, none of their code).", "PCSX2-moddarna som inspirerade varvräknaren, den skakande boostmätaren, tonhöjden för takedownsviten, kameralutningen, målkamerans fasta vinklar, den manuella växellådan, TIDSELIMINERING, trafikförinställningarna, KNUFFA TRAFIK i lopp för två spelare, lösa delar i Road Rage, bildata, rivalernas blinkers, färgväljaren, lackerade bilbilder och reflektionerna som når längre (bara idéerna, inget av deras kod)."},   // credits140 (the launcher's Credits)
+    {"The Heavyweights-in-the-garage mod behind the Heavyweights in Single Event.", "Modden med tungviktarna i garaget, grunden för tungviktarna i enskilda lopp."},   // credits140 (the launcher's Credits)
+    {"The traffic-checking edit behind TRAFFIC CHECK (2 PLAYERS) Extreme.", "Ändringen för att knuffa trafik bakom KNUFFA TRAFIK (2 SPELARE) Extrem."},   // credits140 (the launcher's Credits)
+    {"The Traffic Checking mod restoring Burnout Revenge's code, the reference for TRAFFIC CHECK (2 PLAYERS) Revenge.", "Traffic Checking-modden som återställer Burnout Revenges kod, förebilden för KNUFFA TRAFIK (2 SPELARE) Revenge."},   // credits140 (the launcher's Credits)
+    {"The Revenge-style orbit camera mod behind the orbit camera's feel.", "Omloppskameramodden i Revenge-stil bakom omloppskamerans känsla."},   // credits140 (the launcher's Credits)
+    {"CRASHBREAKER AFTER", "CRASHBREAKER EFTER"},   // gameopts
+    {"How many vehicles your crash must hit before the CRASHBREAKER button works, as Crash mode counts them (races have less traffic, so fewer).", "Hur många fordon din krasch måste träffa innan CRASHBREAKER-knappen fungerar, räknat som i kraschläget (lopp har mindre trafik, så färre)."},   // gameopts
+    {"0: ready as soon as you crash.", "0: redo så fort du kraschar."},   // gameopts
+    {"GAMEPLAY", "SPELANDE"},   // gameopts
+    {"MIRROR MODE", "SPEGELLÄGE"},   // gameopts
+    {"CRASHBREAKER IN EVERY MODE", "CRASHBREAKER I ALLA LÄGEN"},   // gameopts
+    {"Single races and two-player races on mirrored tracks: the world is drawn reversed left to right and the steering follows it, so left still steers left on the screen.", "Enskilda lopp och lopp för två spelare på spegelvända banor: världen visas omvänd från vänster till höger och styrningen följer med, så vänster styr fortfarande åt vänster på skärmen."},   // gameopts
+    {"The HUD is not mirrored; the writing on signs is.", "HUD:en spegelvänds inte; texten på skyltar gör det."},   // gameopts
+    {"These races keep their results apart from your records.", "Resultaten från de här loppen hålls åtskilda från dina rekord."},   // gameopts
+    {"Applies from the next race.", "Gäller från nästa lopp."},   // gameopts
+    {"After a crash in a single or two-player race, Time Attack or Road Rage, the CRASHBREAKER button blows your wreck up as in Crash mode, wrecking the traffic around it.", "Efter en krasch i ett enskilt lopp eller lopp för två spelare, i Tidsattack eller Road Rage spränger CRASHBREAKER-knappen ditt vrak som i kraschläget och kraschar trafiken runt omkring."},   // gameopts
     {"VOICES", "RÖSTER"},   // 1.3.0 VOICES
     {"The Crash FM DJ and the race training's narrator.", "DJ:n på Crash FM och berättaren i racingträningen."},   // 1.3.0 VOICES
     {"Language: they speak the chosen LANGUAGE (French, German, Italian and Spanish have their own; UK English, Dutch and Swedish have the English voices, as on their discs).", "Språk: de talar det valda SPRÅKET (franska, tyska, italienska och spanska har egna; brittisk engelska, nederländska och svenska har de engelska rösterna, som på sina skivor)."},   // 1.3.0 VOICES
@@ -9277,6 +11331,8 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"FRAME RATE LIMIT", "BILDFREKVENSGRÄNS"},
     {"The most frames per second drawn.", "Högsta antalet bildrutor per sekund som ritas."},
     {"The game itself always runs at its own speed.", "Själva spelet går alltid i sin egen hastighet."},
+    {"Auto: 60 on a processor with 4 threads or fewer, so the game itself keeps up; no limit on others.", "Auto: 60 på en processor med 4 trådar eller färre, så att spelet självt hänger med; ingen gräns på andra."},
+    {"Unlimited: no limit at all, for fast processors.", "Obegränsad: ingen gräns alls, för snabba processorer."},
     {"PAUSE WHEN UNFOCUSED", "PAUSA I BAKGRUNDEN"},
     {"The game holds while its window is in the background (the native game only).", "Spelet pausas medan dess fönster är i bakgrunden (endast det nativa spelet)."},
     {"FAST LOADING", "SNABB LADDNING"},
@@ -9333,6 +11389,12 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"150% and 200% want a graphics card with plenty of memory.", "150% och 200% kräver ett grafikkort med mycket minne."},
     {"DITHER", "DITHERING"},
     {"A fine pattern that hides the steps in smooth gradients such as the sky.", "Ett fint mönster som döljer stegen i mjuka övergångar som himlen."},
+    {"GRAPHICS API", "GRAFIK-API"},   // d3d12
+    {"Vulkan", "Vulkan"},
+    {"D3D12", "D3D12"},
+    {"The graphics interface the game draws with.", "Grafikgränssnittet som spelet ritar med."},
+    {"Auto uses Vulkan, and Direct3D 12 when no working Vulkan device can be created.", "Auto använder Vulkan, och Direct3D 12 när ingen fungerande Vulkan-enhet kan skapas."},
+    {"Try D3D12 if the picture shows faults with your graphics card.", "Prova D3D12 om bilden visar fel med ditt grafikkort."},
     {"None", "Ingen"},
     {"A PCSX2 texture replacement folder for this game (its SLUS-21050 folder, or the folder above it).", "En PCSX2-mapp med ersättningstexturer för det här spelet (dess SLUS-21050-mapp, eller mappen ovanför)."},
     {"HD TEXTURE PACK", "HD-TEXTURPAKET"},
@@ -9354,6 +11416,25 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Highest", "Högsta"},
     {"Highest draws every car at full detail at any distance.", "Högsta ritar alla bilar med full detalj på alla avstånd."},
     {"CAR REFLECTIONS", "BILREFLEKTIONER"},
+    {"REFLECTION DISTANCE", "REFLEKTIONSAVSTÅND"},   // reflect2
+    {"200 m", "200 m"},   // reflect2
+    {"300 m", "300 m"},   // reflect2
+    {"How far the cars' reflections reach.", "Hur långt bilarnas reflektioner når."},   // reflect2
+    {"Game: 100 m, as the original.", "Spel: 100 m, som originalet."},   // reflect2
+    {"Further shows more of the track in the paint and costs more.", "Längre visar mer av banan i lacken och kostar mer."},   // reflect2
+    {"REFLECTION DETAIL", "REFLEKTIONSDETALJ"},   // reflect2
+    {"Track", "Bana"},   // reflect2
+    {"Track and props", "Bana och föremål"},   // reflect2
+    {"Track, props and cars", "Bana, föremål och bilar"},   // reflect2
+    {"Track, props and cars: the other cars nearby as well.", "Bana, föremål och bilar: även de andra bilarna i närheten."},   // reflect2
+    {"Track and props: the barriers, signs, cones and lamp posts near the car show in its reflections too.", "Bana och föremål: räcken, skyltar, koner och lyktstolpar nära bilen syns också i dess reflektioner."},   // reflect2
+    {"REFLECTION UPDATE", "REFLEKTIONSUPPDATERING"},   // reflect2
+    {"Every frame", "Varje bild"},   // reflect2
+    {"Every 2nd frame", "Varannan bild"},   // reflect2
+    {"Every 2nd frame: the reflections are redrawn half as often, for slower graphics cards.", "Varannan bild: reflektionerna ritas om hälften så ofta, för långsammare grafikkort."},   // reflect2
+    {"REFLECTION RESOLUTION", "REFLEKTIONSUPPLÖSNING"},   // reflect2
+    {"High: sharper reflections, drawn at twice the size.", "Hög: skarpare reflektioner, ritade i dubbel storlek."},   // reflect2
+    {"Standard: as the original.", "Standard: som originalet."},   // reflect2
     {"Original", "Original"},
     {"Enhanced", "Förbättrad"},
     {"Enhanced: glossy sky and sun reflections on the paint and glass.", "Förbättrad: blanka reflexer av himmel och sol i lacken och rutorna."},
@@ -9456,6 +11537,11 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"On: the race's pause menu has a PHOTO MODE row after SETTINGS, which opens photo mode (the key P, or L3 + R3 on a controller, does too).", "På: loppets pausmeny har en rad FOTOLÄGE efter INSTÄLLNINGAR, som öppnar fotoläget (tangenten P, eller L3 + R3 på en handkontroll, gör det också)."},
     {"Off: the pause menu is the game's own.", "Av: pausmenyn är spelets egen."},
     {"From the next pause.", "Från nästa paus."},
+    {"SETTINGS BACK BUTTON", "BAKÅT-KNAPPEN I INSTÄLLNINGARNA"},   // settingsback
+    {"Keep changes", "Behåll ändringarna"},   // settingsback
+    {"Leaving a page of DRIVER DETAILS > SETTINGS (GAMEPLAY, AUDIO, VIDEO, CONTROLLERS) with Back.", "Att lämna en sida i spelets inställningar i förarprofilen (spel, ljud, video, handkontroller) med Bakåt."},   // settingsback
+    {"Keep changes: what you changed there stays.", "Behåll ändringarna: det du ändrade där finns kvar."},   // settingsback
+    {"Cancel: Back puts the old values back, as on the PS2 (confirm keeps them).", "Avbryt: Bakåt återställer de gamla värdena, som på PS2 (bekräfta behåller dem)."},   // settingsback
     {"English", "English"},
     {"LANGUAGE", "SPRÅK"},
     {"Choose a European disc image (or its folder) of Burnout 3: Takedown: its languages are copied to this PC (two small files each); the disc is not needed afterwards.", "Välj en europeisk skivavbild (eller dess mapp) av Burnout 3: Takedown: dess språk kopieras till den här datorn (två små filer vardera); skivan behövs inte efteråt."},
@@ -9558,7 +11644,13 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"From the next song.", "Från nästa låt."},
     {"CUSTOM MUSIC VOLUME", "VOLYM FÖR EGEN MUSIK"},
     {"How loud your own songs play, on top of RADIO VOLUME.", "Hur högt dina egna låtar spelas, utöver RADIOVOLYM."},
-    {"At 100% a song plays as loud as the game plays its own songs; raise it for quiet files.", "Vid 100% spelas en låt lika högt som spelet spelar sina egna låtar; höj den för tysta filer."},
+    {"CUSTOM MUSIC LOUDNESS", "NIVÅ FÖR EGEN MUSIK"},   // musicloud
+    {"Even out", "Jämna ut"},   // musicloud
+    {"They follow RADIO VOLUME (DRIVER DETAILS > SETTINGS > AUDIO) and the radio's fades like the game's songs.", "De följer RADIOVOLYM (FÖRARUPPGIFTER > INSTÄLLNINGAR > LJUD) och radions övertoningar precis som spelets låtar."},   // musicloud
+    {"At 100% a song plays as loud as the game plays its own songs.", "Vid 100% spelas en låt lika högt som spelet spelar sina egna låtar."},   // musicloud
+    {"Even out: each of your songs is measured once (in the background; kept for the next start) and played as loud as the game's own songs, so a quiet file and a loud one sound alike.", "Jämna ut: varje låt mäts en gång (i bakgrunden; sparas till nästa start) och spelas lika högt som spelets egna låtar, så att en tyst och en hög fil låter lika."},   // musicloud
+    {"A quiet song with loud peaks is raised only a little.", "En tyst låt med höga toppar höjs bara lite."},   // musicloud
+    {"Off: each file plays at its own level.", "Av: varje fil spelas på sin egen nivå."},   // musicloud
     {"A limiter keeps loud songs from clipping.", "En limiter hindrar starka låtar från att klippa."},
     {"The game's songs and the DJ do not change.", "Spelets låtar och DJ:n ändras inte."},
     {"Live.", "Direkt."},
@@ -9769,6 +11861,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"File {} (new)", "Fil {} (ny)"},
     {"{} DEG", "{} GRADER"},
     {"SETTINGS", "INSTÄLLNINGAR"},
+    {"QUIT GAME", "AVSLUTA SPELET"},   // i18n2: the main menu's row (tools/native/pc_menu.h)
     {"UP / DOWN  SELECT     LEFT / RIGHT  CHANGE     CONFIRM  CHOOSE", "UPP / NED  MARKERA     VÄNSTER / HÖGER  ÄNDRA     BEKRÄFTA  VÄLJ"},
     {"BACK  CLOSE AND SAVE", "TILLBAKA  STÄNG OCH SPARA"},
     {"PS2 ORIGINAL", "PS2-ORIGINAL"},
@@ -9946,6 +12039,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Include my save: NO", "Inkludera min sparning: NEJ"},
     {"Whether the report also holds your active save file (profile-N.sav): useful when the problem is in your progress.", "Om rapporten även innehåller din aktiva sparfil (profile-N.sav): användbart när problemet finns i dina framsteg."},
     {"Off by default.", "Av som standard."},
+    {"On by default.", "På som standard."},
     {"Clear the crash count", "Nollställ kraschräknaren"},
     {"The last run did not end cleanly.", "Den senaste körningen avslutades inte korrekt."},
     {"This marks it as ended, so the next start uses your own settings (safe mode is not chosen by itself).", "Detta markerar den som avslutad, så att nästa start använder dina egna inställningar (felsäkert läge väljs inte automatiskt)."},
@@ -10020,8 +12114,8 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"A reference for RenderWare's PS2 rasters and geometry packets.", "En referens för RenderWares PS2-raster och geometripaket."},
     {"Burn3 (UwUCammie)", "Burn3 (UwUCammie)"},
     {"Another PC project for the game.", "Ett annat PC-projekt för spelet."},
-    {"PS2Recomp (ran-j) and burnout3-pc", "PS2Recomp (ran-j) och burnout3-pc"},
-    {"Other PC projects for the game.", "Andra PC-projekt för spelet."},
+    {"PS2Recomp (ran-j)", "PS2Recomp (ran-j)"},
+    {"burnout3-pc (danielgomesvieira2000)", "burnout3-pc (danielgomesvieira2000)"},
     {"The Burnout 3: Takedown USA HD Remaster, the HD texture pack for PCSX2 that the HD Textures page links to and this port can use.", "Burnout 3: Takedown USA HD Remaster, HD-texturpaketet för PCSX2 som sidan HD-texturer länkar till och som den här porten kan använda."},
     {"PCSX2 and mymcplus", "PCSX2 och mymcplus"},
     {"Their texture-pack and memory-card formats, which this port reads, and PS2 save tooling.", "Deras format för texturpaket och minneskort, som den här porten läser, och verktyg för PS2-sparningar."},
@@ -10250,7 +12344,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Switch Pro", "Switch Pro"},
     {"Joy-Con (L)", "Joy-Con (L)"},
     {"Joy-Con (R)", "Joy-Con (R)"},
-    {"Joy-Con pair", "Joy-Con pair"},
+    {"Joy-Con pair", "Joy-Con-par"},
     {"Unknown", "Okänd"},
     {"SELECT", "SELECT"},
     {"SHARE", "SHARE"},
@@ -10345,7 +12439,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"(no sensor data yet)", "(ingen sensordata än)"},
     {"The game's controller layout and the DJ's volume are in the game: DRIVER DETAILS > SETTINGS.", "Spelets kontrollayout och DJ:ns volym finns i spelet: FÖRARUPPGIFTER > INSTÄLLNINGAR."},
     {"|ok", "|ok"},
-    {"|no", "|no"},
+    {"|no", "|nej"},
     {"No game data yet", "Ingen speldata än"},
     {"The showroom draws the cars from your own Burnout 3 disc: choose it on the Game Data page first.", "Showroomen ritar bilarna från din egen Burnout 3-skiva: välj den på sidan Speldata först."},
     {"No cars found", "Inga bilar hittades"},
@@ -10422,33 +12516,33 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"[files]", "[files]"},
     {"[mod]", "[mod]"},
     {"[script]", "[script]"},
-    {"SHOW", "SHOW"},
-    {"MODE", "MODE"},
-    {"One", "One"},
-    {"Two", "Two"},
-    {"Three", "Three"},
-    {"Settings >", "Settings >"},
-    {"Walk", "Walk"},
-    {"Controllers (keyboard)", "Controllers (keyboard)"},
-    {"Controllers (controller)", "Controllers (controller)"},
-    {"Back from", "Back from"},
-    {"Down pressed on and on stopped at", "Down pressed on and on stopped at"},
-    {"PASS (no widgets: stays in the side bar)", "PASS (no widgets: stays in the side bar)"},
-    {"FAIL (no widgets, but went into the page)", "FAIL (no widgets, but went into the page)"},
-    {"FAIL (Right did not go into the page)", "FAIL (Right did not go into the page)"},
+    {"SHOW", "VISA"},
+    {"MODE", "LÄGE"},
+    {"One", "Ett"},
+    {"Two", "Två"},
+    {"Three", "Tre"},
+    {"Settings >", "Inställningar >"},
+    {"Walk", "Genomgång"},
+    {"Controllers (keyboard)", "Handkontroller (tangentbord)"},
+    {"Controllers (controller)", "Handkontroller (handkontroll)"},
+    {"Back from", "Tillbaka från"},
+    {"Down pressed on and on stopped at", "Ner tryckt hela tiden, stannade vid"},
+    {"PASS (no widgets: stays in the side bar)", "PASS (inga widgets: stannar i sidofältet)"},
+    {"FAIL (no widgets, but went into the page)", "FAIL (inga widgets, men gick in på sidan)"},
+    {"FAIL (Right did not go into the page)", "FAIL (Höger gick inte in på sidan)"},
     {"Reset all settings?", "Återställa alla inställningar?"},
     {"A message with one button.", "Ett meddelande med en knapp."},
     {"Replace file?", "Ersätta fil?"},
     {"Allow", "Tillåt"},
     {"Type a path (a text field)", "Skriv en sökväg (ett textfält)"},
     {"Game data folder", "Speldatamapp"},
-    {"FAIL (not opened)", "FAIL (not opened)"},
-    {"NO on-screen keyboard:", "NO on-screen keyboard:"},
-    {"CHANGED", "CHANGED"},
+    {"FAIL (not opened)", "FAIL (inte öppnad)"},
+    {"NO on-screen keyboard:", "INGET skärmtangentbord:"},
+    {"CHANGED", "ÄNDRAD"},
     {"Everything back to the original layout", "Allt tillbaka till ursprunglig layout"},
     {"Music for B3", "Music for B3"},
     {"Type or paste", "Skriv eller klistra in"},
-    {"FAILED", "FAILED"},
+    {"FAILED", "MISSLYCKADES"},
     {"Alpha", "Alpha"},
     {"Beta/Inner", "Beta/Inner"},
     {"Gamma", "Gamma"},
@@ -10458,29 +12552,29 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Your disc's image file", "Din skivas avbildsfil"},
     {"\", \"name\": \"", "\", \"name\": \""},
     {"Takedown at 60", "Takedown at 60"},
-    {"MISSING", "MISSING"},
-    {"NOT saved", "NOT saved"},
+    {"MISSING", "SAKNAS"},
+    {"NOT saved", "INTE sparad"},
     {"First release", "First release"},
-    {"SHOWN", "SHOWN"},
+    {"SHOWN", "VISAS"},
     {"HTTP/1.1 404 Not Found", "HTTP/1.1 404 Not Found"},
-    {"Asks GitHub", "Asks GitHub"},
-    {"Once a day", "Once a day"},
-    {"NOT found", "NOT found"},
-    {"STARTED", "STARTED"},
+    {"Asks GitHub", "Frågar GitHub"},
+    {"Once a day", "En gång om dagen"},
+    {"NOT found", "HITTADES INTE"},
+    {"STARTED", "STARTAD"},
     {"SUPR", "SUPR"},
     {"HEVY", "HEVY"},
     {"/home/me/Games/Burnout 3/game", "/home/me/Games/Burnout 3/game"},
-    {"(expected", "(expected"},
-    {"Shift / Back held at the start: the launcher shows (", "Shift / Back held at the start: the launcher shows ("},
-    {"Shift pressed on the Starting screen: the launcher opens", "Shift pressed on the Starting screen: the launcher opens"},
-    {"Back held on a controller on the Starting screen: the launcher opens", "Back held on a controller on the Starting screen: the launcher opens"},
-    {"(no virtual pad)", "(no virtual pad)"},
-    {"Start skipped", "Start skipped"},
-    {"A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does).", "A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does)."},
+    {"(expected", "(förväntat"},
+    {"Shift / Back held at the start: the launcher shows (", "Skift / Tillbaka hållen vid start: startprogrammet visas ("},
+    {"Shift pressed on the Starting screen: the launcher opens", "Skift tryckt på startskärmen: startprogrammet öppnas"},
+    {"Back held on a controller on the Starting screen: the launcher opens", "Tillbaka hållen på en handkontroll på startskärmen: startprogrammet öppnas"},
+    {"(no virtual pad)", "(ingen virtuell handkontroll)"},
+    {"Start skipped", "Start överhoppad"},
+    {"A screenshot check does not start the game (B3LAUNCHER_SHOT_START=1 with a stand-in does).", "En skärmbildskontroll startar inte spelet (B3LAUNCHER_SHOT_START=1 med en ersättare gör det)."},
     {"Burnout 3 Launcher", "Burnout 3 Launcher"},
     {"Burnout 3 Launcher -", "Burnout 3 Launcher -"},
     {"Resources", "Resources"},
-    {"# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)", "# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)"},
+    {"# Burnout 3 launcher: its own choices (the game's settings are in pc_settings.ini)", "# Burnout 3-startprogrammet: dess egna val (spelets inställningar finns i pc_settings.ini)"},
     {"NUL", "NUL"},
     {"SLUS_210.50", "SLUS_210.50"},
     {"SYSTEM.CNF", "SYSTEM.CNF"},
@@ -10752,6 +12846,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Gloss", "Blank"},
     {"Metallic", "Metallic"},
     {"Pearl", "Pärlemor"},
+    {"Chrome", "Krom"},   // options3
     {"PLAYER 2 CAR PAINT", "BILLACK SPELARE 2"},
     {"P2 CAR PAINT", "BILLACK S2"},
     {"P2 PAINT RED", "LACK S2 RÖD"},
@@ -10762,6 +12857,7 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Gloss: the game's.", "Blank: spelets egen."},
     {"Metallic: a stronger reflection in the paint's colour, with a sparkle of flakes in the light.", "Metallic: en starkare spegling i lackens färg, med flingor som gnistrar i ljuset."},
     {"Pearl: the colour shifts as the car turns to the light.", "Pärlemor: färgen skiftar när bilen vänder sig mot ljuset."},
+    {"Chrome: a mirror finish that shows the world around the car, tinted by the paint's colour.", "Krom: en spegelyta som visar världen runt bilen, tonad av lackens färg."},   // options3
     {"Player 2's car in the split screen: Custom draws it in the colour of the three rows below instead of the paint picked in the car select.", "Spelare 2:s bil i delad skärm: Egen visar den i färgen från de tre raderna nedan i stället för lacken som valdes i bilvalet."},
     {"Off: player 2's car without its logos, numbers and stripes, in plain paint.", "Av: spelare 2:s bil utan logotyper, nummer och ränder, i enfärgad lack."},
     {"LIGHTING", "BELYSNING"},   // night
@@ -10771,6 +12867,45 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"TIME OF DAY PER RACE", "TID PÅ DYGNET PER LOPP"},   // todrace
     {"The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", "Bansidorna (enskilt evenemang, flerspelare): Standard, Dag eller Natt för nästa lopp."},   // todrace
     {"Time of day: {}", "Tid på dygnet: {}"},   // todrace
+    {"LAYER", "LAGER"},   // paint2
+    {"Body", "Kaross"},   // paint2
+    {"Decals", "Dekaler"},   // paint2
+    {"Wheels", "Hjul"},   // paint2
+    {"Boost glow", "Boostsken"},   // paint2
+    {"COLOUR PICKER", "FÄRGVÄLJARE"},   // paint2
+    {"FACTORY COLOURS", "FABRIKSFÄRGER"},   // paint2
+    {"DECAL COLOUR", "DEKALFÄRG"},   // paint2
+    {"WHEEL COLOUR", "HJULFÄRG"},   // paint2
+    {"BOOST GLOW COLOUR", "BOOSTSKENETS FÄRG"},   // paint2
+    {"P2 DECAL COLOUR", "S2 DEKALFÄRG"},   // paint2
+    {"P2 WHEEL COLOUR", "S2 HJULFÄRG"},   // paint2
+    {"P2 BOOST GLOW COLOUR", "S2 BOOSTSKENETS FÄRG"},   // paint2
+    {"HUE", "NYANS"},   // paint2
+    {"SHADE", "TON"},   // paint2
+    {"FINE", "FIN"},   // paint2
+    {"OK", "OK"},   // paint2
+    {"CANCEL", "AVBRYT"},   // paint2
+    {"Which part of the car the rows below colour: the body, its decals (logos, numbers and stripes), the wheels' rims or the boost glow.", "Vilken del av bilen raderna nedan färgar: karossen, dess dekaler (logotyper, nummer och ränder), fälgarna eller boostskenet."},   // paint2
+    {"One colour of each for all your cars.", "En färg av varje för alla dina bilar."},   // paint2
+    {"Game: the game's own colour.", "Spelets: spelets egen färg."},   // paint2
+    {"A ready colour, or Custom: the colour of the rows below.", "En färdig färg, eller Egen: färgen i raderna nedan."},   // paint2
+    {"Any colour: the square sets how strong and how bright it is, the bar its hue (L1 / R1).", "Vilken färg som helst: kvadraten ställer in hur stark och hur ljus den är, stapeln dess nyans (L1 / R1)."},   // paint2
+    {"CONFIRM keeps it, BACK puts the colour before back.", "BEKRÄFTA behåller den, TILLBAKA sätter tillbaka färgen från förut."},   // paint2
+    {"Every layer back to the game's colours, and the decals on.", "Alla lager tillbaka till spelets färger, och dekalerna på."},   // paint2
+    {"The colour of the logos, numbers and stripes.", "Färgen på logotyper, nummer och ränder."},   // paint2
+    {"Game: their own colours.", "Spelets: deras egna färger."},   // paint2
+    {"Any colour: the paint panel on SELECT CAR.", "Vilken färg som helst: lackpanelen i bilvalet."},   // paint2
+    {"The colour of the wheels' rims (the tyres stay dark).", "Färgen på fälgarna (däcken förblir mörka)."},   // paint2
+    {"Game: their own.", "Spelets: deras egen."},   // paint2
+    {"The colour of the exhaust's glow while boosting.", "Färgen på avgasskenet när du boostar."},   // paint2
+    {"Game: the game's.", "Spelets: spelets."},   // paint2
+    {"CAR PAINT PANEL", "LACKPANEL"},   // paintsel
+    {"SHIFT UP", "VÄXLA UPP"},   // gearbox
+    {"SHIFT DOWN", "VÄXLA NER"},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear up.", "Ett lopp med VÄXELLÅDA Manuell (VÄLJ ALTERNATIV): nästa växel upp."},   // gearbox
+    {"A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear down.", "Ett lopp med VÄXELLÅDA Manuell (VÄLJ ALTERNATIV): nästa växel ner."},   // gearbox
+    {"SELECT CAR: open or close the car paint panel (a controller: the menus' Circle button, Y on the Xbox and Nintendo layouts).", "Välj bil: öppnar eller stänger lackpanelen (handkontroll: menyernas Cirkel-knapp, Y med Xbox- och Nintendo-layouten)."},   // paintsel
+    {"Changing the colour on SELECT CAR sets it back to Game.", "Att byta färg i bilvalet ställer tillbaka den på Spelets."},   // paintsel
     {"Default ({})", "Standard ({})"},   // todrace
     {"MOON", "MÅNE"},   // night
     {"SURFACE DETAIL", "YTDETALJER"},   // night
@@ -10781,6 +12916,20 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Soft contact shadows under the cars and along walls and kerbs.", "Mjuka kontaktskuggor under bilarna och längs väggar och kantstenar."},   // night
     {"Draws the scene twice: for fast graphics cards.", "Ritar scenen två gånger: för snabba grafikkort."},   // night
     {"SUN SHADOWS", "SOLSKUGGOR"},   // sunshadow
+    {"PROP SHADOWS", "FÖREMÅLSSKUGGOR"},   // propshadow1
+    {"With SUN SHADOWS: the lamp posts, signs, barriers and other roadside props cast shadows too.", "Med SOLSKUGGOR: lyktstolpar, skyltar, räcken och andra föremål längs vägen kastar också skuggor."},   // propshadow1
+    {"TUNNEL LIGHTS", "TUNNELLAMPOR"},   // nightfix
+    {"Glow", "Glöd"},   // nightfix
+    {"Glow: the light fittings in tunnels and underpasses glow, with small halos.", "Glöd: lamporna i tunnlar och underfarter lyser, med små glorior."},   // nightfix, xboxglow
+    {"Xbox: their lit parts glow through the bloom, as on the Xbox.", "Xbox: deras tända delar lyser genom bloom, som på Xbox."},   // xboxglow
+    {"Game: the original look.", "Spelets: det ursprungliga utseendet."},   // nightfix
+    {"WEATHER", "VÄDER"},   // weather
+    {"Dry", "Torrt"},   // weather
+    {"Rain", "Regn"},   // weather
+    {"Rain: falling rain, wet roads that mirror the lights, spray from the wheels and a grey sky.", "Regn: fallande regn, våta vägar som speglar ljusen, vattensprut från hjulen och grå himmel."},   // weather
+    {"Dry: the game's own weather.", "Torrt: spelets eget väder."},   // weather
+    {"RAIN VOLUME", "REGNVOLYM"},   // weather
+    {"The rain's sound, on top of the game's own EFFECTS volume.", "Regnets ljud, utöver spelets EFFEKTER-volym."},   // weather
     {"Real shadows of the cars on the road, cast by the sun or, at night, the moon.", "Riktiga skuggor av bilarna på vägen, kastade av solen eller, på natten, av månen."},   // sunshadow
     {"None in tunnels and under bridges.", "Inga i tunnlar och under broar."},   // sunshadow
     {"Sharper with ANTI-ALIASING at 4x or more.", "Skarpare med KANTUTJÄMNING på 4x eller mer."},   // sunshadow
@@ -10968,6 +13117,14 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"Nothing is downloaded or shared, and your own HD pack and the mods' packs still come first.", "Inget laddas ner eller delas, och ditt eget HD-paket och moddarnas paket går fortfarande först."},
     {"Not imported.", "Inte importerade."},
     {"{} textures imported.", "{} texturer importerade."},
+    {"HD texture cache", "HD-texturcache"},   // hdcache
+    {"{} MB of textures converted from the pack, read back on later races.", "{} MB texturer konverterade från paketet, läses in igen i senare lopp."},   // hdcache
+    {"Empty: the game fills it as it draws the pack's textures.", "Tom: spelet fyller den medan det ritar paketets texturer."},   // hdcache
+    {"Clear cache", "Töm cache"},   // hdcache
+    {"Deletes the converted textures.", "Tar bort de konverterade texturerna."},   // hdcache
+    {"The game converts them again as it draws them, and the first race on each track loads a little longer.", "Spelet konverterar dem igen när det ritar dem, och det första loppet på varje bana laddar lite längre."},   // hdcache
+    {"Cleared.", "Tömd."},   // hdcache
+    {"{} entries could not be deleted (in use by a running game?)", "{} poster kunde inte tas bort (används av ett spel som körs?)"},   // hdcache
     {"Size: {} MB.", "Storlek: {} MB."},
     {"From: {}.", "Från: {}."},
     {"Made by an older version: import again for the newest result.", "Skapade av en äldre version: importera igen för bästa resultat."},
@@ -11075,6 +13232,141 @@ inline constexpr Entry kSW[] = {   // Swedish
     {"QUIT AND START AGAIN WHEN IT IS DONE", "AVSLUTA OCH STARTA IGEN NÄR DET ÄR KLART"},   // portable mode
     {"THE PORTABLE DATA FOLDER CAN'T BE WRITTEN", "DEN PORTABLA DATAMAPPEN GÅR INTE ATT SKRIVA I"},   // portable mode
     {"SAVES AND SETTINGS WON'T BE KEPT", "SPARFILER OCH INSTÄLLNINGAR BEHÅLLS INTE"},   // portable mode
+    {"START AT", "STARTA VID"},   // gamemods1
+    {"Intro films", "Introfilmer"},   // gamemods1
+    {"Title screen", "Titelskärm"},   // gamemods1
+    {"Main menu, profile 1", "Huvudmeny, profil 1"},   // gamemods1
+    {"Main menu, profile 2", "Huvudmeny, profil 2"},   // gamemods1
+    {"Main menu, profile 3", "Huvudmeny, profil 3"},   // gamemods1
+    {"IDLE PAUSE", "PAUS VID INAKTIVITET"},   // gamemods1
+    {"END VERY LONG EVENTS", "AVSLUTA MYCKET LÅNGA EVENT"},   // gamemods1
+    {"Where the game starts after it has loaded.", "Var spelet börjar när det har laddats."},   // gamemods1
+    {"Title screen: the intro films are not played.", "Titelskärm: introfilmerna spelas inte upp."},   // gamemods1
+    {"Main menu: also Start on the title and that profile loaded, as LOAD PROFILE does; a profile the save does not hold leaves the game's profile choice.", "Huvudmeny: Start trycks också på titelskärmen och den profilen laddas, som LADDA PROFIL gör; en profil som sparfilen inte har lämnar spelets profilval."},   // gamemods1
+    {"On: as in the game, a race pauses itself after 5 minutes without input.", "På: som i spelet pausas ett lopp av sig självt efter 5 minuter utan inmatning."},   // gamemods1
+    {"Off: it never does.", "Av: det händer aldrig."},   // gamemods1
+    {"On: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "På: som i spelet avslutas ett event som fortfarande pågår efter 25 till 40 minuter för alla bilar."},   // gamemods1
+    {"Off: it goes on until it ends the normal way; an event kept going past the game's limit keeps no records.", "Av: det fortsätter tills det slutar på vanligt sätt; ett event som fortsätter förbi spelets gräns sparar inga rekord."},   // gamemods1
+    {"Traffic only", "Endast trafik"},   // gamemods1
+    {"Full: the rivals and the other player in the blast are wrecked too, each counted as your Aftertouch Takedown.", "Full: rivalerna och den andra spelaren i explosionen kraschas också, var och en räknad som din Aftertouch Takedown."},   // gamemods1
+    {"RACE HUD", "HUD I LOPP"},   // hudmods
+    {"RPM METER", "VARVRÄKNARE"},   // hudmods
+    {"BOOST BAR SHAKE", "SKAKANDE BOOSTMÄTARE"},   // hudmods
+    {"RACE SOUNDS", "LOPPLJUD"},   // hudmods
+    {"TAKEDOWN STREAK PITCH", "TONHÖJD FÖR TAKEDOWNSVIT"},   // hudmods
+    {"On: a thin bar of the engine revs under the speedometer, red near the rev limit.", "På: en tunn stapel med motorns varvtal under hastighetsmätaren, röd nära varvtalsbegränsaren."},   // hudmods
+    {"For the automatic and the manual gearbox alike.", "För både automatisk och manuell växellåda."},   // hudmods
+    {"On: the boost bar shakes while you boost, as in the game's 2004 preview build.", "På: boostmätaren skakar medan du boostar, som i spelets förhandsversion från 2004."},   // hudmods
+    {"On: outside World Tour, each takedown after your 10th since your last crash sounds higher, as World Tour's takedown targets do.", "På: utanför World Tour låter varje takedown efter din 10:e sedan din senaste krasch ljusare, som vid World Tours takedownmål."},   // hudmods
+    {"A crash starts the count again.", "En krasch startar räkningen om."},   // hudmods
+    {"Sound only.", "Endast ljud."},   // hudmods
+    {"On SELECT CAR: {}", "I SELECT CAR: {}"},   // customseries
+    {"Custom cars", "Egna bilar"},   // customseries
+    {"Car mods as cars of their own: they race as the CUSTOM series in SINGLE EVENT, after the game's cars, never in place of one, each with the engine sound and handling of the car it was made to replace. Races with them keep their results apart from your records.", "Bilmoddar som egna bilar: de kör i serien EGNA i SINGLE EVENT, efter spelets bilar, aldrig i stället för en bil, var och en med motorljudet och köregenskaperna hos bilen den skulle ersätta. Lopp med dem håller resultaten skilda från dina rekord."},   // customseries
+    {"None.", "Inga."},   // customseries
+    {"Import from folder...", "Importera från mapp..."},   // customseries
+    {"Choose a car mod's folder: its car files (named after the car they replace, in a folder named after its class: COMP/CAR7.BGV) or its folders with a car.ini are checked and copied into the custom cars folder.", "Välj en bilmods mapp: dess bilfiler (döpta efter bilen de ersätter, i en mapp med namnet på dess klass: COMP/CAR7.BGV) eller dess mappar med en car.ini kontrolleras och kopieras till mappen för egna bilar."},   // customseries
+    {"Opens the custom cars folder in the file manager (made when it is not there yet).", "Öppnar mappen för egna bilar i filhanteraren (skapas om den saknas)."},   // customseries
+    {"Reads the custom cars folder again (cars added or removed since).", "Läser mappen för egna bilar igen (bilar som lagts till eller tagits bort sedan dess)."},   // customseries
+    {"Deletes this car's files from the custom cars folder.", "Tar bort den här bilens filer från mappen för egna bilar."},   // customseries
+    {"Remove this custom car?", "Ta bort den här egna bilen?"},   // customseries
+    {"Its files are deleted from the custom cars folder.", "Dess filer tas bort från mappen för egna bilar."},   // customseries
+    {"Imported: {}", "Importerade: {}"},   // customseries
+    {"Removed: {}", "Borttagen: {}"},   // customseries
+    {"Not removed: {}", "Inte borttagen: {}"},   // customseries
+    {"{}'s handling", "Köregenskaper från {}"},   // customseries
+    {"Traffic", "Trafik"},   // customseries
+    {"Traffic special", "Specialtrafik"},   // customseries
+    {"Not shown", "Visas inte"},   // customseries
+    {"Custom cars: choose the folder of a car mod", "Egna bilar: välj en bilmods mapp"},   // customseries
+    {"Open the car mod's folder, then Start: its cars are copied into the custom cars folder.", "Öppna bilmoddens mapp och sedan Start: dess bilar kopieras till mappen för egna bilar."},   // customseries
+    {"Every player car on your disc, in the game's own car model, then the traffic vehicles and your custom and prototype cars as SELECT CAR offers them. Looking here changes nothing: it unlocks nothing and the save files are not read.", "Alla spelbara bilar på din skiva, i spelets egen bilmodell, sedan trafikfordonen och dina egna bilar och prototypbilar så som SELECT CAR erbjuder dem. Att titta ändrar ingenting: inget låses upp och sparfilerna läses inte."},   // customseries
+    {"TUK-TUKS", "TUK-TUKAR"},   // party1
+    {"In SINGLE EVENT, you and every rival drive the tuk-tuk from the city traffic, with the engine sound and handling of a compact.", "I SINGLE EVENT kör du och alla rivaler tuk-tuken från stadstrafiken, med motorljudet och köregenskaperna hos en kompaktbil."},   // party1
+    {"Crash events too.", "Även i Crash-evenemang."},   // party1
+    {"Import car pack...", "Importera bilpaket..."},   // carpacks
+    {"A car pack made to replace the game's cars (a .zip, or its folder): the cars it changes become cars of their own, never in place of the game's. Cars your disc already has, BETA cars you have and cars imported before are left out.", "Ett bilpaket gjort för att ersätta spelets bilar (en .zip eller dess mapp): bilarna det ändrar blir egna bilar, aldrig i stället för spelets. Bilar som din skiva redan har, dina BETA-bilar och bilar som redan importerats hoppas över."},   // carpacks
+    {"Choose the game's own data first (above): a pack's cars are compared with your disc's.", "Välj först spelets data (ovan): ett pakets bilar jämförs med din skivas."},   // carpacks
+    {"Custom cars: choose a car pack (a .zip file, or its folder)", "Egna bilar: välj ett bilpaket (en .zip-fil eller dess mapp)"},   // carpacks
+    {"A on the pack's .zip chooses it; or open the pack's folder, then Start.", "A på paketets .zip väljer den; eller öppna paketets mapp och sedan Start."},   // carpacks
+    {"Open the pack's folder, then Start.", "Öppna paketets mapp och sedan Start."},   // carpacks
+    {"Cut cars (BETA series)", "Strukna bilar (BETA-serien)"},   // carpacks
+    {"Cut cars", "Strukna bilar"},   // carpacks
+    {"New models", "Nya modeller"},   // carpacks
+    {"Early versions", "Tidiga versioner"},   // carpacks
+    {"New paint", "Ny lack"},   // carpacks
+    {"Other cars", "Andra bilar"},   // carpacks
+    {"Choose whether these cars are imported.", "Välj om dessa bilar importeras."},   // carpacks
+    {"Import {} cars", "Importera {} bilar"},   // carpacks
+    {"Writes the chosen cars into the custom cars folder (the cut cars of the BETA series into its folder).", "Skriver de valda bilarna till mappen för egna bilar (BETA-seriens strukna bilar till dess)."},   // carpacks
+    {"Nothing is written.", "Inget skrivs."},   // carpacks
+    {"{} cars", "{} bilar"},   // carpacks
+    {"Deletes this pack's cars from the custom cars folder.", "Tar bort paketets bilar från mappen för egna bilar."},   // carpacks
+    {"Remove this car pack?", "Ta bort det här bilpaketet?"},   // carpacks
+    {"Its cars are deleted from the custom cars folder.", "Dess bilar tas bort från mappen för egna bilar."},   // carpacks
+    {"already in the game", "redan i spelet"},   // carpacks
+    {"already a BETA car", "redan en BETA-bil"},   // carpacks
+    {"already imported", "redan importerad"},   // carpacks
+    {"not chosen", "inte vald"},   // carpacks
+    {"an old-layout prototype file: import it with Beta / Prototype cars", "en prototypfil i det gamla formatet: importera den med Beta / Prototype cars"},   // carpacks
+    {"the pack's vehicle list: not used (the game's own is kept)", "paketets fordonslista: används inte (spelets behålls)"},   // carpacks
+    {"the pack's handling and camera values: not applied (the game's own are kept)", "paketets köregenskaper och kameror: tillämpas inte (spelets behålls)"},   // carpacks
+    {"A cut car's file, whatever its paint, is that BETA car (matched by its shape): it goes into the BETA series once, not as a car of its own.", "En struken bils fil är, oavsett lack, den BETA-bilen (känd på sin form): den hamnar en gång i BETA-serien, inte som en egen bil."},   // carpacks
+    // extras (2026-11-23): the EXTRAS tab
+    {"NIGHT (EXPERIMENTAL)", "NATT (EXPERIMENTELLT)"},
+    {"RAIN (EXPERIMENTAL)", "REGN (EXPERIMENTELLT)"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a TIME OF DAY row (Day / Night).", "På: SELECT OPTIONS i SINGLE EVENT har en rad TID PÅ DYGNET (Dag / Natt)."},
+    {"On: SINGLE EVENT's SELECT OPTIONS has a WEATHER row (Clear / Rain).", "På: SELECT OPTIONS i SINGLE EVENT har en rad VÄDER (Klart / Regn)."},
+    {"NIGHT IN WORLD TOUR", "NATT I WORLD TOUR"},
+    {"RAIN IN WORLD TOUR", "REGN I WORLD TOUR"},
+    {"Always", "Alltid"},
+    {"Random", "Slumpvis"},
+    {"World Tour's events at night: Always, or Random (each event as it starts).", "World Tours evenemang på natten: Alltid, eller Slumpvis (varje evenemang när det startar)."},
+    {"World Tour's events in the rain: Always, or Random (each event as it starts).", "World Tours evenemang i regn: Alltid, eller Slumpvis (varje evenemang när det startar)."},
+    {"Drawn only: your progress and records count as usual.", "Bara grafik: dina framsteg och rekord räknas som vanligt."},
+    {"EXPERIMENTAL", "EXPERIMENTELLT"},
+    {"Experimental: work in progress.", "Experimentellt: under arbete."},
+    {"Tell us what you think.", "Berätta vad du tycker."},
+    {"ROAD RAGE RIVALS", "ROAD RAGE-RIVALER"},
+    {"EXTRAS", "EXTRA"},
+    {"SINGLE EVENT", "ENSTAKA LOPP"},
+    {"SELECT OPTIONS", "SELECT OPTIONS"},
+    {"SELECT CAR", "SELECT CAR"},
+    {"ELIMINATOR", "ELIMINATOR"},
+    {"MORE RIVALS", "FLER RIVALER"},
+    {"TRAFFIC", "TRAFIK"},
+    {"LAPS", "VARV"},
+    {"TIMED ELIMINATION", "TIDSELIMINERING"},
+    {"TRANSMISSION", "VÄXELLÅDA"},
+    {"RIVAL STYLE", "RIVALSTIL"},
+    {"BURNOUT POINTS", "BURNOUT-POÄNG"},
+    {"TIME LIMIT", "TIDSGRÄNS"},
+    {"TRAFFIC PATTERN", "TRAFIKMÖNSTER"},
+    {"RIVALS' CARS", "RIVALERNAS BILAR"},
+    {"TRAFFIC CHECK", "TRAFIKKNUFF"},
+    {"HEAVYWEIGHTS", "TUNGVIKTARE"},
+    {"TRAFFIC SERIES", "TRAFIKSERIE"},
+    {"CUSTOM CARS", "EGNA BILAR"},
+    {"BETA CARS", "BETABILAR"},
+    {"CAR VIEWER", "BILVISARE"},
+    {"NO IDLE PAUSE", "INGEN VILOPAUS"},
+    {"NO EVENT TIME LIMIT", "INGEN TIDSGRÄNS"},
+    {"On: SINGLE EVENT's SELECT OPTIONS has this row.", "På: SELECT OPTIONS i SINGLE EVENT har den här raden."},
+    {"Off: the game's own page.", "Av: spelets egen sida."},
+    {"On: SINGLE EVENT's SELECT MODE has a fifth mode, ELIMINATOR: the last car is out at the end of each lap.", "På: SELECT MODE i SINGLE EVENT har ett femte läge, ELIMINATOR: den sista bilen åker ut i slutet av varje varv."},
+    {"Off: the game's four modes.", "Av: spelets fyra lägen."},
+    {"On: a SINGLE EVENT race's RIVALS row goes up to 7, for 8 cars.", "På: raden RIVALS i ett SINGLE EVENT-lopp går upp till 7, för 8 bilar."},
+    {"Off: up to 5, as in the game.", "Av: upp till 5, som i spelet."},
+    {"On: the HEAVYWEIGHTS series in every SINGLE EVENT mode.", "På: serien HEAVYWEIGHTS i varje SINGLE EVENT-läge."},
+    {"Off: in Crash only, as in the game.", "Av: bara i Crash, som i spelet."},
+    {"On: SINGLE EVENT's SELECT CAR has the TRAFFIC and TRAFFIC SPECIAL series: drive a car, bus or tuk-tuk from the traffic.", "På: SELECT CAR i SINGLE EVENT har serierna TRAFFIC och TRAFFIC SPECIAL: kör en bil, buss eller tuk-tuk från trafiken."},
+    {"On: the car mods in your custom cars folder, as the CUSTOM series.", "På: bilmoddarna i din mapp för egna bilar, som serien CUSTOM."},
+    {"On: the prototype cars the launcher imported, as the BETA series.", "På: prototypbilarna som launchern importerade, som serien BETA."},
+    {"On: YOUR GARAGE opens the game's leftover car viewer.", "På: YOUR GARAGE öppnar bilvisaren som blev kvar i spelet."},
+    {"On: a race never pauses itself.", "På: ett lopp pausar aldrig av sig självt."},
+    {"Off: as in the game, it pauses after 5 minutes without input.", "Av: som i spelet, det pausar efter 5 minuter utan inmatning."},
+    {"On: an event goes on until it ends the normal way; one kept going past the game's limit keeps no records.", "På: ett evenemang fortsätter tills det slutar på vanligt sätt; ett som pågår längre än spelets gräns sparar inga rekord."},
+    {"Off: as in the game, an event still running after 25 to 40 minutes is ended for every car.", "Av: som i spelet, ett evenemang som fortfarande pågår efter 25 till 40 minuter avslutas för alla bilar."},
 };
 
 inline constexpr Table kTables[] = {

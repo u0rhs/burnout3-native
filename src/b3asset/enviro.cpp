@@ -161,6 +161,7 @@ SkyLayer build_sky_layer(int component, float cloud_u_offset) {
         L.rgba[0] = L.rgba[1] = L.rgba[2] = 0x40;
         L.rgba[3] = 0x80;
         L.blend = true;
+        L.fbmsk = 0xFF000000u;   // whitesky: the frame alpha not written (b3gfx DrawItem::frame_alpha_masked)
     } else {
         L.rgba[0] = L.rgba[1] = L.rgba[2] = 0x80;
         L.rgba[3] = component == 0 ? 0x20 : 0;

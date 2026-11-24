@@ -96,7 +96,7 @@ int cmd_compare(int argc, char** argv) {
             found.insert(*p);
             const DecodedRaster& r = rv.raster;
             Image im;
-            if (!load_dds(*p, im)) { std::printf("  %s: DDS unreadable\n", p->c_str()); return true; }
+            if (!load_replacement(*p, im)) { std::printf("  %s: unreadable (DDS / PNG)\n", p->c_str()); return true; }
             double a[4], b[4];
             means(r.levels[0], a);
             means(im, b);

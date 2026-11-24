@@ -43,6 +43,7 @@ struct Core {
     } stats;
 };
 
+namespace fr4 = b3fp::vufast4;   // vu0lanes: the dest lanes at once (ps2float_hw.h)
 namespace fr = b3fp::vufast;   // rt1: hw under Ps2FloatEnv (Vu0Unit sets it), or ref with B3_VU0_FLOAT=ref (ps2float_hw.h)
 
 // the same as src/b3asset/vu1.cpp's (anonymous namespace there)
@@ -101,6 +102,27 @@ struct Rt {
         if (k.v) { c.clip = ((c.clip << 6) | k.bits) & 0xFFFFFFu; k.v = false; }
         if (qp && qr <= now) commit_q();
         if (pp && pr <= now) { c.P = pn; pp = false; }
+    }
+    // vu0flags: commit() in parts, for the generator to emit only the ones that can fire at a pair (vu0_aot.py)
+    void commit_flags() {
+        Flag& f = fl[now & 3];
+        if (f.v) {
+            c.mac = f.mac;
+            c.status = (c.status & ~0xFu) | f.st | (f.st << 6);
+            f.v = false;
+            ++flag_commits;
+        }
+    }
+    void commit_clip() {
+        Clip& k = cl[now & 3];
+        if (k.v) { c.clip = ((c.clip << 6) | k.bits) & 0xFFFFFFu; k.v = false; }
+    }
+    void commit_q_due() { if (qp && qr <= now) commit_q(); }
+    void commit_p_due() { if (pp && pr <= now) { c.P = pn; pp = false; } }
+    // vu0flags: a VI write no conditional branch within 4 pairs can look behind (Rt::branch_vi): no history entry
+    void set_vi(int r, std::uint16_t v, bool) {
+        r &= 15;
+        if (r != 0) c.vi[r] = v;
     }
     void push_flags(std::uint32_t m) { fl[now & 3] = {true, m, mac_to_status(m)}; }
     void push_clip(std::uint32_t bits) { cl[now & 3] = {true, bits}; }

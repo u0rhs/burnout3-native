@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <random>
+#include <utility>   // std::swap
 
 #if defined(B3HOST_HAVE_PS2_FLOAT_ENV)
 namespace {
@@ -143,6 +144,70 @@ TEST(hw_inlined_in_the_scope) {
     report("add (inlined)", add); report("sub (inlined)", sub); report("mul (inlined)", mul);
     report("madd (inlined)", madd); report("msub (inlined)", msub);
     CHECK(add.bad == 0 && sub.bad == 0 && mul.bad == 0 && madd.bad == 0 && msub.bad == 0);
+}
+// vu0lanes (1.4.1): b3fp::vufast4's four-lane forms (what the generated VU0 programs now call for 2+ dest lanes) against
+// ref lane by lane: every operation, both operand shapes (a register / one value for all lanes), every dest mask,
+// operands of the interesting kinds and per-lane exponent gaps 0..60 (the far-apart fallback inside a packed op)
+namespace w4 {
+using Q = std::uint32_t[4];
+[[gnu::noinline]] void run(int op, bool vs, std::uint32_t* out, const std::uint32_t* acc, const std::uint32_t* a, const std::uint32_t* b,
+                           std::uint32_t s, unsigned mask) {
+    namespace f = b3fp::vufast4;
+    switch (op) {
+    case 0: vs ? f::add_vs(out, a, s, mask) : f::add_vv(out, a, b, mask); break;
+    case 1: vs ? f::sub_vs(out, a, s, mask) : f::sub_vv(out, a, b, mask); break;
+    case 2: vs ? f::mul_vs(out, a, s, mask) : f::mul_vv(out, a, b, mask); break;
+    case 3: vs ? f::madd_vs(out, acc, a, s, mask) : f::madd_vv(out, acc, a, b, mask); break;
+    default: vs ? f::msub_vs(out, acc, a, s, mask) : f::msub_vv(out, acc, a, b, mask); break;
+    }
+}
+}  // namespace w4
+TEST(vufast4_lanes_against_ref) {
+    namespace r = b3fp::ref;
+    const char* names[] = {"add", "sub", "mul", "madd", "msub"};
+    Count k[5][2];
+    std::uint64_t far_lanes = 0;
+    for (int i = 0; i < 4000000; ++i) {
+        const int op = i % 5;
+        const bool vs = (i / 5) % 2;
+        const unsigned mask = 1u + rnd32() % 15u;
+        std::uint32_t acc[4], a[4], b[4], out[4] = {};
+        for (unsigned l = 0; l < 4; ++l) {
+            acc[l] = operand();
+            if (rnd32() % 2) {   // a chosen gap between a and b on this lane
+                const int ea = 1 + static_cast<int>(rnd32() % 254), gap = static_cast<int>(rnd32() % 61);
+                a[l] = make(rnd32() & 1u, ea, rnd32());
+                b[l] = make(rnd32() & 1u, ea - gap >= 1 ? ea - gap : 1, rnd32());
+                if (rnd32() & 1u) std::swap(a[l], b[l]);
+                far_lanes += gap > 28;
+            } else {
+                a[l] = operand();
+                b[l] = operand();
+            }
+        }
+        const std::uint32_t s = b[rnd32() % 4];
+        {
+            b3host::Ps2FloatEnv env;
+            w4::run(op, vs, out, acc, a, b, s, mask);
+        }
+        for (unsigned l = 0; l < 4; ++l) {
+            if (!((mask >> l) & 1)) continue;
+            const std::uint32_t bb = vs ? s : b[l];
+            const std::uint32_t want = op == 0 ? r::add(a[l], bb) : op == 1 ? r::sub(a[l], bb) : op == 2 ? r::mul(a[l], bb)
+                                     : op == 3 ? r::madd(acc[l], a[l], bb) : r::msub(acc[l], a[l], bb);
+            note(k[op][vs], a[l], bb, acc[l], want, out[l]);
+        }
+    }
+    bool ok = true;
+    for (int op = 0; op < 5; ++op)
+        for (int v = 0; v < 2; ++v) {
+            char n[24];
+            std::snprintf(n, sizeof n, "%s_%s (4 lanes)", names[op], v ? "vs" : "vv");
+            report(n, k[op][v]);
+            ok = ok && k[op][v].bad == 0;
+        }
+    std::printf("    (%llu lanes with exponents more than 28 apart)\n", static_cast<unsigned long long>(far_lanes));
+    CHECK(ok);
 }
 #else
 TEST(hw_no_float_env) { std::printf("    (skipped: no host float environment; vufast uses ref)\n"); }

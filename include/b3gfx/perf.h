@@ -194,13 +194,15 @@ inline void frame_end(int w, int h) {
         std::fprintf(s.file, "# b3perf 1 %s\n# t_s frames fps size", s.info.c_str());
         for (int k = 0; k < kStageCount; ++k) std::fprintf(s.file, " %s_avg %s_p95 %s_max", kStageName[k], kStageName[k], kStageName[k]);
         for (int c = 0; c < kCounterCount; ++c) std::fprintf(s.file, " %s", kCounterName[c]);
+        std::fprintf(s.file, " frame_p99");   // ownertests: after the counters, so the columns before it keep their places
         std::fprintf(s.file, "\n# times in ms; frame stages sum over the frame (exclusive: they add up to frame); game_* are per VBlank / poll;"
-                             " counters are the second's totals\n");
+                             " counters are the second's totals; frame_p99: the second's 99th percentile frame time (its 1 %% low)\n");
         s.header_done = true;
     }
     const double secs = double(t - s.sec_start_ns) * 1e-9;
     std::fprintf(s.file, "%.1f %llu %.1f %dx%d", double(t) * 1e-9, static_cast<unsigned long long>(s.frames), double(s.frames) / secs, w, h);
     std::vector<std::uint32_t> v;
+    double frame_p99 = 0;
     for (int k = 0; k < kStageCount; ++k) {
         const std::uint64_t head = s.head[k].load(std::memory_order_acquire);
         std::uint64_t from = s.read[k];
@@ -215,12 +217,13 @@ inline void frame_end(int w, int h) {
         s.read[k] = head;
         const double mx = v.empty() ? 0.0 : double(*std::max_element(v.begin(), v.end())) * 1e-6;
         std::fprintf(s.file, " %.3f %.3f %.3f", v.empty() ? 0.0 : sum / double(v.size()) * 1e-6, pct_ms(v, 0.95), mx);
+        if (k == kFrame) frame_p99 = pct_ms(v, 0.99);
     }
     for (int c = 0; c < kCounterCount; ++c) {
         std::fprintf(s.file, " %llu", static_cast<unsigned long long>(s.counters[c]));
         s.counters[c] = 0;
     }
-    std::fprintf(s.file, "\n");
+    std::fprintf(s.file, " %.3f\n", frame_p99);
     std::fflush(s.file);
     s.frames = 0;
     s.sec_start_ns = t;

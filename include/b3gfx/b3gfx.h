@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <map>
 #include <vector>
 
 struct SDL_Window;
@@ -39,6 +40,10 @@ struct Options {
     bool debug = false;                        // backend validation layers
     std::string driver;                        // "" = SDL's choice, or "vulkan" / "metal" / "direct3d12"
     int frames_in_flight = 0;                  // lat1: window frames the GPU may queue (1..3; 0 = SDL's default, 2)
+    // fifauto: FRAMES IN FLIGHT Auto's queue (frames_in_flight 1 or 2): SDL's queue stays at 2 and one frame in flight is
+    // held by the device itself (wait_swapchain waits for the last window frame's fence), so a change at run time is a
+    // flag, not SDL_SetGPUAllowedFramesInFlight (which stalls and flushes the GPU's queue: a hitch at every change)
+    bool frames_soft = false;
     // perf1 (docs/native-renderer.md §33.8): an ordered dither of +-dither/2 output steps at the present pass, against the
     // visible 8-bit steps of shallow gradients (the sky); 0 = off (the default: output byte-identical)
     float dither = 0.0f;
@@ -51,6 +56,16 @@ struct Options {
     // supersampling budget keeps aside for it (0: none). Drawing does not depend on these: the frame's FrameParams decide.
     bool warm_sun_shadows = false, warm_ambient_occlusion = false;
     int sun_shadow_side = 0;
+    // uploadbatch: the route's uploads batched (Device::upload_batch, where it applies: Vulkan with a window, SDL 3.4.2);
+    // false: one submit per upload (pc_settings upload_batch = 0; $B3_UPLOAD_BATCH wins)
+    bool upload_batch = true;
+    // scenedepth: the passes that read the depth take the scene pass's own (1) instead of a depth pre-pass (0); -1: the
+    // default (include/b3gfx/scene_depth.h scene_depth_mode: night's frames, nightdepth). $B3_SCENE_DEPTH (0 / 1) wins
+    int scene_depth = -1;
+    // nightdepth (Fable): with the default (night's frames), the two-target pipelines are made at start only when night
+    // can be on from the start (EXTRAS > NIGHT, $B3_NIGHT: pcsettings scale_options), else at the first night race's
+    // load (Device::prepare_scene_depth): a day player builds nothing more
+    bool scene_depth_warm_night = false;
 };
 
 // hdgpu: `bc` = 1 / 2 / 3 (b3asset/bc.h kBC1..kBC3): `rgba` points at `bytes` of BC blocks instead (Device::supports_bc)
@@ -103,6 +118,10 @@ struct CarParams {
     // the car's CarPaintMap::mask texture (kNone: mode ignored)
     int paint_mode = 0;
     float paint[3] = {}, paint2[3] = {};   // texel units (texel byte / 255)
+    // paint2: bit 4 the decals coloured (the mask's decals and second colours -> paint3 at the texel's shade), bit 5 a
+    // wheel's bright texels tinted to paint4 at their shade (the rims; the tyre and the darker disc and hub keep theirs)
+    float paint3[3] = {}, paint4[3] = {};
+    bool wheel = false;                    // paint2: one of the wheels' draws (b3view::add_car_draws)
     float paint_ref = 1.0f;
     std::uint32_t paint_mask = 0xFFFFFFFFu;
 };
@@ -113,6 +132,12 @@ struct DrawItem {
     TextureId texture = kNone;                   // kNone = white
     Blend blend = Blend::kOpaque;
     float tint[4] = {1, 1, 1, 1};
+    // weather (§38): the sky dome and backdrops in the rain by day: their colour pulled this far (0..1) to its own grey,
+    // a cool overcast (mesh.frag; 0: as drawn)
+    float overcast = 0;
+    // weather (§38): the share of this draw under a roof (tunnels, covered roads), 0..1: its road stays that much dry
+    // (FrameParams::Surface::wet x (1 - dry))
+    float dry = 0;
     float model[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};  // column-major
     float lighting = 1.0f;                       // 0 = unlit (prelit vertex colour), 1 = simple N.L
     float alpha_ref = 0.5f;                      // Blend::kAlphaTest: discard below
@@ -144,8 +169,22 @@ struct DrawItem {
     // Night mode (nightlights, §17.2): a track draw whose texture is a light fixture (a tunnel's lamp strips and panels, by
     // texture name per region). At night it is drawn once more after the grade and the night sky (beside the coronas),
     // depth GEQUAL, keeping only its bright texels at their pre-grade colour (1), or every texel (2: a backlit panel, an
-    // advertising light box), so the lamps and signs glow and reach the bloom. 0: none. Ignored by day.
+    // advertising light box), so the lamps and signs glow and reach the bloom; or (3, nightfix) a billboard lit from the
+    // front by its own floodlights: every texel at its pre-grade colour x a warm lamp tint (FrameParams::Night::board).
+    // 4 (nightfix round 3): a facade's windows, each lit or not by a hash of its place (night_cols x night_rows windows
+    // per texture repeat, its dark glass texels below the texture's mean light night_mean / 255); 5: a shop front (its
+    // glass bright and warm, the rest a warm wash). 0: none. Ignored by day.
     std::uint8_t night_emissive = 0;
+    std::uint8_t night_mean = 0, night_cols = 0, night_rows = 0;
+    // TUNNEL LIGHTS (nightfix §35.4): 1 a tunnel or underpass light fitting; by day with FrameParams::day_glow its bright
+    // texels are drawn once more, brighter (an emissive boost, as the Xbox version's tunnel lights); xboxglow (§35.5): 2 a
+    // lamp outside the tunnels (street lamps, lit signs, traffic lights): its glow mask only, no day glow (TUNNEL LIGHTS'
+    // Xbox all lamps, which lit them by day, was withdrawn)
+    std::uint8_t day_glow = 0;
+    // xboxglow (§35.5): the texture's alpha is a glow mask (the lamp's lit part, painted for the Xbox renderer; the PS2
+    // draws the surface opaque and ignores it): the fixtures' glow by day and at night is the masked texels, not a
+    // brightness threshold
+    bool glow_mask = false;
     // kCar only. Held by pointer: CarParams is ~700 bytes (zone matrices), and a track item is copied into the draw list
     // ~2,000 times a frame; only the few car items own one. car() reads (defaults when none), car_mut() makes / unshares it.
     std::shared_ptr<CarParams> car_;
@@ -174,6 +213,10 @@ struct DrawItem {
     // `repeat_u` / `repeat_v`: CLAMP_1 WMS / WMT REPEAT (else clamped to the edge).
     bool overlay = false;
     bool overlay_blend = true;
+    // propshadow1 (PROP SHADOWS): a track draw that casts a sun shadow while FrameParams::SunShadow::props is on (the
+    // props, the dynamic props, the units' instances: lamp posts, signs, barriers); set once when the track is indexed
+    bool sun_caster = false;
+    float sun_radius = 0;   // its mesh's bounding radius round the model origin (world metres): the caster box test
     bool alpha_only = false;
     bool point_sample = false;
     bool repeat_u = false, repeat_v = false;
@@ -190,7 +233,16 @@ struct DrawItem {
     // sun's occlusion pass leaves out an item whose box lies wholly outside FrameParams::sun_box (it could not cover any of
     // it: the result is the same); items without one are always drawn there.
     float bounds[6] = {1, 1, 1, 0, 0, 0};
+    // whitesky: the draw leaves the frame alpha as it is (the GS FRAME's FBMSK 0xFF000000: b3asset SkyLayer::fbmsk, the
+    // sky's blended components); keeps_frame_alpha
+    bool frame_alpha_masked = false;
 };
+
+// whitesky (docs/sky-enviro.md S.1 / S.3): a blended draw the game makes with the frame alpha masked (the sky's clouds:
+// GS ALPHA 0x44, FBMSK 0xFF000000) leaves the frame alpha as the dome wrote it (0 above the horizon), so the full-screen
+// specular (ROAD SHINE, colour x frame alpha) passes over the sky as on the PS2. Written, the clouds' alpha (up to 0x80)
+// took the whole specular colour: a white sky wherever there were clouds. From the draw's own mask, not its shading.
+inline bool keeps_frame_alpha(const DrawItem& it) { return it.frame_alpha_masked && it.blend == Blend::kAlpha; }
 
 // The enhanced car reflections' look (docs/car-look.md; b3replay's carlook.h edits it live). Presentation only. The defaults
 // are the shipped look; the same numbers are the hard-coded block carlook.cpp checks against (tests/test_carlook.cpp).
@@ -216,7 +268,16 @@ struct CarLook {
 };
 
 struct FrameParams {
+    // TUNNEL LIGHTS (nightfix §35.4): > 0 by day with the setting on: DrawItem::day_glow draws glow, x this (0: nothing runs)
+    float day_glow = 0;
+    // xboxglow (§35.5): 2 Xbox (the masked texels self-lit at the texture's full colour, opaque: the frame's bloom makes
+    // the glow), else (1) Glow
+    int day_glow_mode = 1;
     CarLook car_look;              // the enhanced car reflections' look
+    // gameopts (MIRROR MODE, tools/native/game_options.h): the 3D picture (with the 2D drawn into it: overlay_ztest) shown
+    // reversed left to right, the rest of the 2D stage (the HUD, the menus) over it as it is. A view's own (split screen:
+    // each view about its own middle). Off: the frame exactly as before
+    bool mirror_x = false;
 
     float view_proj[16];                         // column-major, reverse-Z (near -> depth 1, far -> 0)
     float clear[4] = {0.10f, 0.11f, 0.13f, 1.0f};
@@ -300,6 +361,15 @@ struct FrameParams {
     // world point: what the turned camera sees there). Since the frame is frozen, each window frame adds 8 taps to an
     // accumulation (Device: restarted when the camera or this changes) up to `frames`; an offscreen draw (a screenshot,
     // a shot) takes all of them at once. Off (`on` false): nothing of it runs and the frame is as before.
+    // weather (§38): rain drops on the lens (shaders/drops.frag), over the 3D picture before the 2D stage; drawn only in
+    // the rain, which always has the grade's split (Night::on): the drops read its frame copy and grade it themselves.
+    // A drop: centre (uv), radius (uv of the height), alpha. count 0: none.
+    struct Drops {
+        static constexpr int kMax = 24;
+        int count = 0;
+        float aspect = 1.0f;
+        float drop[kMax][4] = {};
+    } drops;
     struct Motion {
         static constexpr int kBoxes = 8;
         bool on = false;
@@ -340,6 +410,10 @@ struct FrameParams {
         float moon_light[3] = {0, 0, 0};         // the moonlight's colour (frame units; 0: none)
         float car[3] = {1, 1, 0};                // cars: SH scale, env scale, moon key gain
         float facing = 0;                        // track: moonlit faces (with the relief)
+        // track (nightfix): the baked daylight's contrast flattened at night, 0..1 (0: as baked). The vertex light's
+        // luminance l becomes 0.5 x (l / 0.5)^(1 - flat), hue kept: the sun's stripes through a lattice roof and the hard
+        // shadows of decks and pillars (the day's sun, baked) no longer read as bright and black patches in the dark
+        float flat = 0;
         // nightlights (§17.2): the headlights as projected spot lights. `spot` true: a full-screen light pass after the
         // world's grade (shaders/beam.frag) over a single-sample depth pre-pass (the DOF's), lighting what the lamps
         // point at (road, walls, cars, props) by bringing the pre-grade colour back (tinted `lamp`) with the alpha
@@ -361,15 +435,31 @@ struct FrameParams {
         float tunnel[3] = {0.8f, 60.0f, 140.0f};
         // the fixtures (DrawItem::night_emissive): the glow's gain over the pre-grade colour, the ramp on the texel's brightest channel
         float fixture[3] = {1.0f, 0.6f, 0.8f};
+        // weather (§38): false for the rain's day grade (the same pass, day values): none of the night's own lights (the
+        // fixtures' glow); TUNNEL LIGHTS' day glow (day_glow) draws after the grade instead
+        bool lit = true;
+        // the front-lit billboards (night_emissive 3, nightfix): rgb the floodlights' tint x gain over the pre-grade
+        // colour, w the share of the board they light (the rest keeps the grade)
+        float board[4] = {1.0f, 0.9f, 0.76f, 0.0f};   // (round 3: 0.9 -> 0.2; round 3d: 0, the floodlights alone light it)
         // Street lights (§17.2): the route's lamps found at load (View::night_street_load, a per-region texture list), the
         // nearest in view each frame; in the spot pass a pool of light under each (a downward cone, faded out by
         // street_range), the pre-grade colour brought back tinted `colour` (sodium orange or warm white by region)
-        struct Street { float pos[3] = {0, 0, 0}, colour[3] = {1, 1, 1}; };
-        static constexpr int kMaxStreet = 24;
+        // gain 0..1 (the fade at the cap), scale: the pool's d0 and fade distances x this (the lamp's height, nightfix)
+        struct Street { float pos[3] = {0, 0, 0}, colour[3] = {1, 1, 1}, gain = 1, scale = 1; };
+        static constexpr int kMaxStreet = 32;
         int streets = 0;
         Street street[kMaxStreet];
         float street_shape[4] = {0.707f, 0.309f, 7.0f, 2.2f};   // cos of the pool's inner / outer angle from straight down, d0 (m), gain
         float street_range[2] = {14.0f, 24.0f};                // the pool fades out between these distances from the lamp (m)
+        // Billboard floodlights (nightfix): fixtures 1 m in front of a front-lit board's bottom edge, aimed up at it; in the
+        // spot pass a cone along `axis` (cos inner / outer in board_shape), the falloff 1 / (1 + (d / (0.6 size))^2)
+        // faded out by 1.5 size (size: the board's height), the pre-grade colour brought back tinted `board_light`
+        struct Board { float pos[3] = {0, 0, 0}, axis[3] = {0, 1, 0}, size = 4, gain = 1; };
+        static constexpr int kMaxBoard = 16;
+        int boards = 0;
+        Board board_lamp[kMaxBoard];
+        // (owner, round 3d: a narrow fan from each fixture, 7 / 17 degrees, gain 7: bright fans up the board, dim corners and gaps)
+        float board_shape[3] = {0.9925f, 0.956f, 7.0f};        // cos of the cone's inner / outer half angle, gain (tint: warm white)
         // Hook for SUN SHADOWS (brief B): at night the shadow's receiver term belongs in the spot pass (it has the
         // position): graded x shadow, scaled by (1 - a), so a beam fills the moon's shadow. Not implemented here.
     } night;
@@ -398,6 +488,8 @@ struct FrameParams {
                                      // a receiver darker than this is in a baked shadow and darkens only down to it
         int size = 2048;             // the map's side (texels)
         int filter = 0;              // 0: a 3 x 3 kernel, 1: 5 x 5 (softer, ULTRA)
+        bool props = false;          // propshadow1 (PROP SHADOWS): the track draws marked DrawItem::sun_caster cast too
+                                     // (mesh.vert + shaders/shadow_mesh.frag, cut by their texture's alpha), gate 255
     } sun_shadow;
     // surface (remaster prototype, docs/remaster-features.md §18; off by default, presentation only): on the opaque track
     // draws (kTrack types 0/1/4-7, not the sky, lines, blended or 2D draws, not the car env map), a normal per pixel from
@@ -413,6 +505,9 @@ struct FrameParams {
         float grazing = 2.0f;                    // the sheen's Fresnel-like boost at grazing angles
         float ao = 0;                            // ambient occlusion strength (0: off; 1: full)
         float ao_radius = 1.2f;                  // m, the occlusion's reach in the world
+        // weather (§38): a wet road, 0..1 (0: dry): the upward, grey ground of the opaque track darker and mirroring the
+        // sky into the frame alpha (Fresnel), which the full-screen specular turns into FrameParams::specular's colour
+        float wet = 0;
         bool debug = false;                      // false colour: the relief factor (red), the sheen (blue), the AO alone
     } surface;
 };
@@ -439,11 +534,21 @@ struct EnvPass {
     FrameParams fp;                              // eye / light / sun inputs of the track model (view_proj set per face)
     std::vector<DrawItem> items;                 // kTrack draws
     std::vector<std::uint8_t> faces;             // per item: bit f = drawn into face f (empty: every face)
+    // reflect2 G: at night the fixtures (DrawItem::night_emissive) glow in the map: drawn once more per face through the
+    // emissive pipeline with a constant warm source x `night_glow` (0: off; the map is not graded, the car pixel is, and
+    // its night env scale dims it: the gain makes up for both), ramp / board as FrameParams::Night's fixture / board
+    float night_glow = 0;
+    float glow_colour[3] = {1.0f, 0.92f, 0.78f};
+    float glow_ramp[2] = {0.6f, 0.8f};
+    float glow_board[4] = {1.0f, 0.9f, 0.76f, 0.9f};
 };
 // The cube faces' bases (shared with car.frag's env_world): forward, right, up, world axes.
 void env_face(int f, float fwd[3], float right[3], float up[3]);
 
 class Device {
+    std::map<int, std::vector<std::uint8_t>> sync_pictures_;   // paint3 (picture_begin's fallback)
+    int sync_picture_id_ = 0;
+
 public:
     // `window` = nullptr creates a device without a swapchain (offscreen rendering only).
     static std::unique_ptr<Device> create(SDL_Window* window, const Options& opt, std::string* err);
@@ -454,6 +559,9 @@ public:
     virtual void* sdl_gpu_device() const { return nullptr; }
     virtual int msaa() const = 0;
     virtual const char* present_mode_name() const = 0;
+    // nextstart: VSYNC while running (the window's swapchain present mode again, SDL_SetGPUSwapchainParameters, as at
+    // the start); false where there is no window or the mode was refused (the present mode stays)
+    virtual bool set_present(PresentMode) { return false; }
     // lat1: frames the GPU may have queued for the window (SDL_SetGPUAllowedFramesInFlight; 0 = no window)
     virtual int frames_in_flight() const = 0;
     // lat1: blocks until the next window frame can be acquired without waiting (SDL_WaitForGPUSwapchain), so that a frame
@@ -467,6 +575,10 @@ public:
     virtual TextureId create_texture(const std::vector<TextureLevel>& levels) = 0;
     // hdgpu: BC1, BC2 and BC3 can be sampled (SDL_GPUTextureSupportsFormat); else create_texture refuses BC levels
     virtual bool supports_bc() const { return false; }
+    // texpack (HD TEXTURE MEMORY's Auto): the graphics device's own memory in MB (0: not known) and its kind as Vulkan
+    // reports it (1 integrated: shares the system's memory, 2 discrete, 3 virtual, 4 CPU; 0: not known)
+    virtual double device_local_mb() const { return 0; }
+    virtual int gpu_kind() const { return 0; }
     // A dynamic texture (one level, no mips; menu1's movie pictures): `id` == kNone or another size creates one in a new
     // or the same slot, else the pixels are replaced in place. What the next drawn frame samples.
     virtual void update_texture(TextureId& id, int w, int h, const std::uint8_t* rgba) = 0;
@@ -487,6 +599,34 @@ public:
     // Offscreen frame of w x h, read back as RGBA8 rows (top row first).
     virtual bool draw_offscreen(int w, int h, const FrameParams& fp, const std::vector<DrawItem>& items,
                                 std::vector<std::uint8_t>& rgba) = 0;
+    // paint3: a small picture drawn and read back as draw_offscreen does, in render targets of its own (the car pages'
+    // thumbnails: the window's and the shots' targets, and the pictures their post passes keep, are not touched)
+    virtual bool draw_picture(int w, int h, const FrameParams& fp, const std::vector<DrawItem>& items, std::vector<std::uint8_t>& rgba) {
+        return draw_offscreen(w, h, fp, items, rgba);
+    }
+    // paint3: draw_picture without waiting: picture_begin submits the drawing and its read-back (0: failed), picture_take
+    // gives the picture once the GPU has done it (1: `rgba` filled; 0: not yet, `wait` false; -1: failed or unknown).
+    // (Here: drawn at once by draw_picture.) Every begun picture is to be taken (or the device cleared).
+    virtual int picture_begin(int w, int h, const FrameParams& fp, const std::vector<DrawItem>& items) {
+        std::vector<std::uint8_t> px;
+        if (!draw_picture(w, h, fp, items, px)) return 0;
+        sync_pictures_[++sync_picture_id_] = std::move(px);
+        return sync_picture_id_;
+    }
+    virtual int picture_take(int id, std::vector<std::uint8_t>& rgba, bool wait) {
+        (void)wait;
+        const auto it = sync_pictures_.find(id);
+        if (it == sync_pictures_.end()) return -1;
+        rgba = std::move(it->second);
+        sync_pictures_.erase(it);
+        return 1;
+    }
+    // paint3: a begun picture given up without waiting for it (a lost device: its fence never passes)
+    virtual void picture_drop(int id) { sync_pictures_.erase(id); }
+    // paint3: a buffer's / texture's GPU memory given back (freed once the GPU is done with it); the id is not to be drawn
+    // again. A texture's HD original (create_texture_hd) goes with it. (Here: kept.)
+    virtual void release_buffer(BufferId) {}
+    virtual void release_texture(TextureId) {}
 
     // gsoff1 (docs/native-renderer.md §29): one frame of several views (the 2-player split screen). Each view is drawn as a
     // frame of its own (3D, effects, its post passes and their kept pictures; DrawItem::overlay items are left out) at
@@ -530,15 +670,30 @@ public:
     virtual void set_sharp_upscale(bool on) { (void)on; }
 
     // perf4 (adaptive frames in flight, include/b3gfx/frames_auto.h): the window's frame queue changed at run time
-    // (SDL_SetGPUAllowedFramesInFlight: the GPU's queue is flushed once). false: not changed (no window, or refused).
+    // (DeviceOptions::frames_soft: 1 / 2 held by the device, no flush; else SDL_SetGPUAllowedFramesInFlight: the GPU's queue
+    // is flushed once). false: not changed (no window, or refused).
     virtual bool set_frames_in_flight(int n) { (void)n; return false; }
     // perf4: the time the window frames spent waiting for the GPU since the last call (wait_swapchain, the swapchain acquire and
-    // the frame's submit), in ns
+    // the frame's submit), in ns. fifauto: the acquire's part alone is also kept (take_acquire_ns): there the wait is for a
+    // free swapchain image / drawable, which the presentation side (the display, a compositor: macOS's CAMetalLayer
+    // nextDrawable) holds -- not GPU work
     virtual std::uint64_t take_wait_ns() { return 0; }
+    virtual std::uint64_t take_acquire_ns() { return 0; }
+    // fifauto: GPU work timing for diagnostics (B3_GPU_TIME, B3_PERF_BISECT): every `every`-th window frame (0: off) waits for
+    // its fence right after the submit; take_gpu_ms gives that frame's time from the submit's start to the fence (the GPU's work,
+    // with nothing else in flight), -1 when none was measured since the last call
+    virtual void set_gpu_timing(int every) { (void)every; }
+    // fifauto (B3_PERF_BISECT): the MSAA bloom's lean form at run time (1 on, 0 off, -1: $B3_BLOOM_LEAN as at the start)
+    virtual void set_bloom_lean(int on) { (void)on; }
+    virtual double take_gpu_ms() { return -1.0; }
     // perf4 (pipeline warm-up): the 2D stage's pipeline keys made so far (DrawItem::overlay's GS ALPHA byte and flags), and
     // those made now (the keys a previous run saved: their pipelines are not created at the first draw that needs them)
     virtual std::vector<int> overlay_keys() const { return {}; }
     virtual void warm_overlay_keys(const std::vector<int>& keys) { (void)keys; }
+    // nightdepth: the scene depth's two-target pipelines made now, if the device has the scene depth and they are not
+    // made yet (View::load_prepared, a night race's load: inside the loading screen); a form that cannot be made turns it
+    // off for the device (the pre-pass from then on, logged)
+    virtual void prepare_scene_depth() {}
     // perf4 (route loads): while on, create_texture and create_*_buffer share one staging buffer and one command buffer
     // (submitted when it is full, at off, or before anything else reaches the GPU: the call order is kept). Off: each
     // its own, as before.

@@ -465,4 +465,147 @@ TEST(ea_trax_modes_store) {
     fs::remove_all(dir, ec);
 }
 
+// musicloud: EBU R128 against EBU Tech 3341's cases (1 kHz stereo sines; +-0.1 LU), the gates, the gain rule, the cache
+namespace {
+// `seconds` of a 1 kHz sine at `lufs` (a stereo 1 kHz sine of peak A reads 20 log10 A LUFS: the K-weighting is ~0 dB
+// there and the -0.691 offsets the two channels' sum)
+void sine(std::vector<float>& lr, unsigned rate, double seconds, double lufs) {
+    const double a = lufs < -200.0 ? 0.0 : std::pow(10.0, lufs / 20.0), pi = 3.14159265358979323846;
+    const std::size_t n = std::size_t(seconds * rate), at = lr.size() / 2;
+    for (std::size_t k = 0; k < n; ++k) {
+        const float v = float(a * std::sin(2.0 * pi * 1000.0 * double(at + k) / rate));
+        lr.push_back(v), lr.push_back(v);
+    }
+}
+double meter(unsigned rate, const std::vector<float>& lr) {
+    b3music::LoudnessMeter m(rate);
+    m.add(lr.data(), lr.size() / 2);
+    return m.integrated();
+}
+}  // namespace
+
+TEST(loudness_r128) {
+    for (unsigned rate : {44100u, 48000u}) {
+        std::vector<float> a;   // Tech 3341 case 1: -23 dBFS, 20 s
+        sine(a, rate, 20.0, -23.0);
+        CHECK(std::fabs(meter(rate, a) + 23.0) < 0.1);
+        std::vector<float> b;   // case 2: -33 dBFS
+        sine(b, rate, 20.0, -33.0);
+        CHECK(std::fabs(meter(rate, b) + 33.0) < 0.1);
+        std::vector<float> c;   // case 3: -36, -23, -36 (10 / 60 / 10 s): the relative gate drops the quiet ends
+        sine(c, rate, 10.0, -36.0), sine(c, rate, 60.0, -23.0), sine(c, rate, 10.0, -36.0);
+        CHECK(std::fabs(meter(rate, c) + 23.0) < 0.1);
+        std::vector<float> d;   // case 5: -26, -20, -26 (20 / 20.1 / 20 s)
+        sine(d, rate, 20.0, -26.0), sine(d, rate, 20.1, -20.0), sine(d, rate, 20.0, -26.0);
+        CHECK(std::fabs(meter(rate, d) + 23.0) < 0.1);
+        std::vector<float> e;   // silence around: the absolute gate (the six 400 ms blocks across the edges, partly
+        sine(e, rate, 10.0, -300.0), sine(e, rate, 10.0, -23.0), sine(e, rate, 10.0, -300.0);   // the tone, count: -23.13)
+        CHECK(std::fabs(meter(rate, e) + 23.13) < 0.05);
+        b3music::LoudnessMeter m(rate);   // case 4's tone peak, and nothing gated in
+        m.add(e.data(), e.size() / 2);
+        CHECK(std::fabs(m.peak() - std::pow(10.0, -23.0 / 20.0)) < 1e-4);
+    }
+    std::vector<float> z;
+    sine(z, 48000, 5.0, -300.0);
+    CHECK(std::isinf(meter(48000, z)));
+    std::vector<float> s;   // too short for one 400 ms block
+    sine(s, 48000, 0.3, -20.0);
+    CHECK(std::isinf(meter(48000, s)));
+}
+
+TEST(loudness_gain_rule) {
+    const auto db = [](float g) { return 20.0 * std::log10(double(g)); };
+    const double t = b3music::kLoudnessTarget;
+    CHECK(std::fabs(db(b3music::loudness_gain(t, 1.0))) < 1e-4);                 // at the target: as is
+    CHECK(std::fabs(db(b3music::loudness_gain(t + 6.0, 1.0)) + 6.0) < 1e-3);     // louder: turned down
+    CHECK(std::fabs(db(b3music::loudness_gain(t - 40.0, 0.001)) - 12.0) < 1e-3); // very quiet: at most +12 dB
+    CHECK(std::fabs(db(b3music::loudness_gain(t + 40.0, 1.0)) + 20.0) < 1e-3);   // very loud: at most -20 dB
+    // quiet with full-scale peaks: raised only to kLimitAllowance dB over the Limiter's ceiling
+    const double room = 20.0 * std::log10(double(b3music::Limiter::kCeiling)) + b3music::kLimitAllowance;
+    CHECK(std::fabs(db(b3music::loudness_gain(t - 8.0, 1.0)) - room) < 1e-3);
+    // peaks low enough: the whole way
+    CHECK(std::fabs(db(b3music::loudness_gain(t - 8.0, 0.25)) - 8.0) < 1e-3);
+    CHECK(b3music::loudness_gain(-HUGE_VAL, 0.0) == 1.0f);   // nothing measured: as is
+}
+
+TEST(loudness_cache_and_service) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = fs::path("build") / "test_custom_music_loud.d";
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const std::string quiet = (dir / "quiet.wav").string(), loud = (dir / "loud.wav").string();
+    write_wav(quiet, 48000, 2, 1000.0, 3.0, 0.05);
+    write_wav(loud, 44100, 2, 1000.0, 3.0, 0.9);
+    double lq = 0.0, pq = 0.0, ll = 0.0, pl = 0.0;
+    CHECK(b3music::measure_loudness(quiet, lq, pq));
+    CHECK(b3music::measure_loudness(loud, ll, pl));
+    CHECK(std::fabs(lq - 20.0 * std::log10(0.05)) < 0.2 && std::fabs(pq - 0.05) < 1e-3);
+    CHECK(std::fabs(ll - 20.0 * std::log10(0.9)) < 0.2 && std::fabs(pl - 0.9) < 1e-3);
+    double x = 0.0, y = 0.0;
+    CHECK(!b3music::measure_loudness((dir / "none.wav").string(), x, y));
+
+    const std::string file = (dir / "cache" / "music_loudness.txt").string();
+    float g1 = 0.0f, g2 = 0.0f, g3 = 0.0f;
+    {
+        b3music::LoudnessService svc;
+        svc.set_cache_file(file);
+        float g = 0.0f;
+        CHECK(!svc.lookup(quiet, g));
+        svc.start({quiet, loud, (dir / "none.wav").string()});
+        CHECK(svc.need(quiet, g1));   // measured now or by the worker: the same value
+        svc.finish();
+        CHECK(svc.lookup(loud, g2));
+        CHECK(svc.measured() >= 2);
+    }
+    CHECK(fs::exists(file) && !fs::exists(file + ".tmp"));
+    {   // a new run: from the file, nothing measured, the same gains
+        b3music::LoudnessService svc;
+        svc.set_cache_file(file);
+        CHECK(svc.lookup(quiet, g3));
+        CHECK(g3 == g1);
+        float g = 0.0f;
+        CHECK(svc.lookup(loud, g) && g == g2);
+        CHECK(svc.measured() == 0);
+        CHECK(g1 > 1.0f && g2 < 1.0f);
+    }
+    {   // a changed file is measured again
+        write_wav(quiet, 48000, 2, 1000.0, 4.0, 0.05);
+        b3music::LoudnessCache c;
+        c.load(file);
+        b3music::LoudnessCache::Entry e;
+        CHECK(!c.get(quiet, e));
+        CHECK(c.get(loud, e));
+    }
+    {   // a big file: left to the worker (need() false, gain 1), its gain there once the worker is done
+        const std::string big = (dir / "big.wav").string();
+        write_wav(big, 48000, 2, 1000.0, 2.0, 0.05);
+        b3music::LoudnessService svc;
+        svc.set_cache_file(file);
+        svc.now_bytes = 1000;   // (x5 for a WAV: still under the file's 384 kB)
+        float g = 0.0f;
+        CHECK(!svc.need(big, g) && g == 1.0f);   // no worker running: one started for it
+        svc.finish();
+        CHECK(svc.lookup(big, g) && g > 1.0f);
+        std::atomic<bool> stop{true};   // a measure cancelled
+        double l = 0.0, pk = 0.0;
+        bool stopped = false;
+        CHECK(!b3music::measure_loudness(big, l, pk, nullptr, &stop, &stopped) && stopped);
+        fs::remove(big, ec);
+    }
+    {   // a song no longer there is dropped at the load
+        b3music::LoudnessCache c;
+        c.load(file);
+        b3music::LoudnessCache::Entry e;
+        CHECK(c.text().find("big.wav") == std::string::npos);
+        CHECK(c.get(loud, e));
+    }
+    b3music::LoudnessCache p;   // the text form round trip, a bad line skipped
+    CHECK(!p.parse("# c\n-12.50\t0.50000\t10\t20\t/a b/c.mp3\nbroken line\n-inf\t0.00000\t1\t2\t/s.wav\n"));
+    const std::string t = p.text();
+    CHECK(t.find("-12.50\t0.50000\t10\t20\t/a b/c.mp3\n") != std::string::npos);
+    CHECK(t.find("-inf\t0.00000\t1\t2\t/s.wav\n") != std::string::npos);
+    fs::remove_all(dir, ec);
+}
+
 TEST_MAIN("custom_music (remaster-features §6: tags, folder, decoders, player)")

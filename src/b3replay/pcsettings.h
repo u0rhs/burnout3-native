@@ -18,6 +18,9 @@ namespace b3replay {
 void filter_options(b3settings::Filter f, b3gfx::Options& o);
 // effects2: RENDER SCALE into the device options (the percent of the settings; 100: the picture as before)
 void scale_options(const b3settings::Settings& s, b3gfx::Options& o);
+// d3d12: GRAPHICS API's device name for b3gfx::Options::driver: "" (Auto: Vulkan, then Direct3D 12), "vulkan" or
+// "direct3d12"; "" off Windows (SDL's choice: Vulkan on Linux, Metal on macOS)
+std::string graphics_api_driver(const b3settings::Settings& s);
 
 }  // namespace b3replay
 

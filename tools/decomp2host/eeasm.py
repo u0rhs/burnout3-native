@@ -25,6 +25,14 @@ class AsmError(Exception):
     pass
 
 
+# vu0flags (Fable): EE code that reads VU0's MAC / STATUS / CLIP flags (cfc2 from $vi16 / $vi17 / $vi18) would see what the
+# generated VU0 programs no longer keep up (tools/native/vu0_aot.py: only the observable flag pushes are made). None does
+# (a census of every function, 2026-11-23); if one ever appears the whole generation stops here -- never a dropped unit:
+# a BaseException, so decomp2host's keep-going (except Exception) cannot swallow it
+class VuFlagRead(BaseException):
+    pass
+
+
 # ---------------------------------------------------------------- statement location / parsing
 ASM_KW = re.compile(r"\b(?:__asm__|asm)\b(\s*(?:volatile|__volatile__)\s*)?\s*\(")
 
@@ -683,8 +691,11 @@ def insn(e, ins):
             src = "_S.q"
         elif a == 27:   # vu0: CMSAR0
             src = "static_cast<std::uint32_t>(_S.cmsar0)"
+        elif a in (16, 17, 18):
+            raise VuFlagRead("cfc2 from $vi%d (VU0 %s): the generated VU0 programs keep only the flags their own code reads "
+                             "(tools/native/vu0_aot.py); keep every push there before allowing this" % (a, {16: "STATUS", 17: "MAC", 18: "CLIP"}[a]))
         else:
-            raise AsmError("cfc2 from $vi%d (MAC/STATUS/CLIP flags or control) not modelled" % a)
+            raise AsmError("cfc2 from $vi%d (VU control register) not modelled" % a)
         d = e.gpr_dst(args[0])
         return "" if d is None else "b3asm::set32(%s, %s);" % (d, src)
     if mn in ("lqc2", "sqc2"):
@@ -1172,6 +1183,17 @@ def selftest():
             sys.exit(1)
         except AsmError as x:
             print("refused: %s -> %s" % (c, x))
+    for r in (16, 17, 18):   # vu0flags: a hard stop, not a refusal (AsmError: the unit dropped)
+        c = 'asm volatile("cfc2.i %%0, $vi%d" : "=r"(x))' % r
+        try:
+            translate(c)
+            print("NOT STOPPED: " + c)
+            sys.exit(1)
+        except AsmError:
+            print("REFUSED ONLY (should stop the generation): " + c)
+            sys.exit(1)
+        except VuFlagRead as x:
+            print("stopped: %s -> %s" % (c, x))
 
 
 def emit_cases(src, dst):

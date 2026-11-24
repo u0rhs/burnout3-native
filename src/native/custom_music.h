@@ -9,11 +9,15 @@
 #ifndef B3NATIVE_CUSTOM_MUSIC_H
 #define B3NATIVE_CUSTOM_MUSIC_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace b3music {
@@ -152,6 +156,109 @@ private:
     float env_now_ = 1.0f;
     std::uint64_t limited_ = 0;
     float min_gain_ = 1.0f;
+};
+
+// ---- loudness (musicloud: CUSTOM MUSIC LOUDNESS, Even out) ----
+// EBU R128 / ITU-R BS.1770-4 integrated loudness of a stereo stream: K-weighting (the standard's high shelf and high
+// pass, their coefficients worked out for the stream's own rate), mean squares over 400 ms blocks every 100 ms, the
+// absolute gate (-70 LUFS) and the relative gate (10 LU under the gated mean). Plus the sample peak. Double precision.
+class LoudnessMeter {
+public:
+    explicit LoudnessMeter(unsigned rate);
+    void add(const float* lr, std::size_t frames);   // interleaved stereo (full scale 1.0)
+    // The integrated loudness in LUFS; -inf when no block passes the gates (silence, or less than 400 ms)
+    double integrated() const;
+    double peak() const { return peak_; }            // the largest |sample| (1.0 = full scale)
+private:
+    struct Biquad {
+        double b0, b1, b2, a1, a2;
+        double z1[2] = {0.0, 0.0}, z2[2] = {0.0, 0.0};
+        double run(double x, int c);
+    };
+    Biquad shelf_{}, pass_{};
+    std::size_t sub_len_ = 0, sub_at_ = 0;   // frames per 100 ms, frames in the current 100 ms
+    double sub_sum_ = 0.0, sub_[4] = {};     // the current sub-block's energy, the last four's
+    std::size_t subs_ = 0;                   // sub-blocks done
+    std::vector<double> blocks_;             // each 400 ms block's mean square (the channels summed)
+    double peak_ = 0.0;
+};
+// One file measured from start to end through Decoder (its own rate, no resampling). False: unreadable, or `stop`
+// set while it ran (checked every 4096 frames; *stopped then true).
+bool measure_loudness(const std::string& path, double& lufs, double& peak, std::string* why = nullptr,
+                      const std::atomic<bool>* stop = nullptr, bool* stopped = nullptr);
+
+// CUSTOM MUSIC LOUDNESS's gain for a song of `lufs` with sample peak `peak`: towards kLoudnessTarget, at most
+// kMaxCut down and kMaxBoost up, and a boost only as far as the song's peak goes over the player's Limiter by
+// kLimitAllowance dB (a dynamic, quiet song is raised as far as it stays clean, not squashed to the target). A song
+// with no measured loudness (silence): 1.
+// LUFS: the game's own EA TRAX songs at their source level (the menus' output over the music stream's gain, 0.450 on
+// the 100 % card: "Give It Up" -8.8, the front end's own piece -11.3; musicloud, 2026-11-22)
+constexpr double kLoudnessTarget = -10.0;
+constexpr double kMaxBoost = 12.0, kMaxCut = 20.0, kLimitAllowance = 3.0;   // dB
+float loudness_gain(double lufs, double peak);
+
+// The measured songs, keyed by path, size and modification time (a changed file is measured again); kept in a text
+// file (one song per line, tab separated: LUFS, peak, size, time, path; '#' lines are comments). Thread-safe.
+// The values are kept at the file's precision even when just measured, so a song plays at the same gain whether it
+// came from the file or was measured in this run.
+class LoudnessCache {
+public:
+    struct Entry {
+        double lufs = 0.0, peak = 0.0;
+    };
+    bool load(const std::string& file);   // false: no such file (the cache then empty) or unreadable
+    bool save(std::string* why = nullptr);   // through a temporary and a rename; nothing when unchanged since
+    void set_file(const std::string& file);
+    bool get(const std::string& path, Entry& e) const;   // false: not measured (or the file changed since)
+    void put(const std::string& path, double lufs, double peak);   // the file's size and time read now
+    std::string text() const;
+    bool parse(const std::string& text);
+    static bool stat(const std::string& path, std::uint64_t& size, std::int64_t& time);
+    static double quantize(double v, int decimals);
+private:
+    struct Rec {
+        std::uint64_t size = 0;
+        std::int64_t time = 0;
+        Entry e;
+    };
+    mutable std::mutex m_;
+    std::mutex save_m_;   // one save at a time (the worker's and need()'s share the .tmp file)
+    std::string file_;
+    std::map<std::string, Rec> recs_;
+    bool dirty_ = false;
+};
+
+// The folder's songs measured on a worker thread (in list order, the cached ones skipped), the cache saved as it goes;
+// stop() cancels a measure under way (a quit or a new folder never waits for a long file). need() measures a small
+// song (kNowBytes) on the caller's thread when the worker has not reached it yet; a bigger one goes to the front of the
+// worker's list and need() returns false (the caller plays it at gain 1 and takes the worker's result when lookup()
+// has it: the game's thread never stalls for seconds). The gains only depend on the files; only when a big song's
+// gain arrives depends on the timing.
+class LoudnessService {
+public:
+    ~LoudnessService() { stop(); }
+    void set_cache_file(const std::string& file);   // loads it (once per file)
+    void start(const std::vector<std::string>& paths);   // replaces the worker's list
+    void stop();     // the worker stopped where it is (the cache saved)
+    void finish();   // waits for the worker to go through its list
+    bool lookup(const std::string& path, float& gain);   // the gain if measured (never waits)
+    // The gain (1: unreadable), measured now if need be and small; false: a big song, left to the worker (first)
+    bool need(const std::string& path, float& gain);
+    static constexpr std::uint64_t kNowBytes = 12u << 20;   // MP3 / Ogg (the lossless formats: x5): ~5 min at 320 kbps
+    std::uint64_t now_bytes = kNowBytes;                     // (tests)
+    std::size_t measured() const { return measured_.load(); }   // songs measured in this run (both threads)
+    LoudnessCache& cache() { return cache_; }
+private:
+    void run();
+    LoudnessCache cache_;
+    std::string cache_file_;
+    std::mutex m_;
+    std::vector<std::string> todo_;
+    std::string first_;          // need()'s big song: the worker's next (m_)
+    bool running_ = false;       // the worker is in its loop (m_)
+    std::thread worker_;
+    std::atomic<bool> stop_{false};
+    std::atomic<std::size_t> measured_{0};
 };
 
 // One song at the output rate, driven by the game's music stream (prepare, play, pause, stop, the volume each poll).

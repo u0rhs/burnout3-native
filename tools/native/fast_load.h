@@ -87,6 +87,9 @@ private:
 // native_play waits for the renderer (b3r_scene_wait), before the race's first VBlank, at most this long: never past
 // the time the load takes at real time (FAST LOADING off: `paced_s`, minus the `spent_s` already gone), and never over
 // kSceneHoldMaxMs. Wall time only, like the pacer's sleeps: the game's VBlanks and their state are the same.
+// scenewait (2026-11-24): this is the wait's normal cap; the renderer waits on past it, up to 10 s, only while the race's
+// route or its vehicles are still being prepared (src/b3replay/fastforward.h scene_wait_more: a first race on a track
+// with an empty HD texture cache), so the race is never shown before its scene.
 constexpr int kSceneHoldMaxMs = 3000;
 inline int scene_hold_ms(double paced_s, double spent_s) {
     const double ms = (paced_s - spent_s) * 1000.0;
@@ -105,17 +108,131 @@ struct Pacer {
     // `fl`: this VBlank's FastLoad step (a fast VBlank is not paced; the first one after re-anchors at once, so the
     // VBlanks after a load keep their real-time spacing from there: no catch-up burst).
     std::int64_t vblank(std::int64_t now, bool waiting, bool first, const FastLoad::Step& fl) {
+        on = false;
+        behind = 0;
         if (fl.fast || waiting) return kNow;
+        on = true;
         if (fl.ended) { ++paced; base = now - period * std::int64_t(paced); return kNow; }
-        if (first) { base = now; ++paced; return kNow; }
+        // stutter: the first paced VBlank is due now (its stamp is now), the next one a period later
+        if (first) { ++paced; base = now - period * std::int64_t(paced); return kNow; }
         ++paced;
         const std::int64_t due = base + period * std::int64_t(paced);
         if (now < due) return due;
-        if (now - due > 250000000) { base = now - period * std::int64_t(paced); ++resyncs; }
+        behind = now - due;
+        if (behind > 250000000) { base = now - period * std::int64_t(paced); ++resyncs; }
         return kNow;
     }
     // A hold (the window lost the focus): the game goes on as if no time had passed.
     void hold_ended(std::int64_t now) { base = now - period * std::int64_t(paced); }
+    // stutter: this VBlank's place on the schedule (its due time; 0: not paced: a fast load, before --pace-from). The
+    // polls' latch stamps (gameview_native stamp): the renderer's schedule clock (src/b3replay/clock.h step_sched) shows
+    // the game time by them, so they must be the schedule's steady 1/59.94 s grid, not the moment the game thread got to
+    // its poll (that moved with the wake-up, the frame's work before the poll, a thread moved between cores: the shown
+    // game time stepped back and forth at each tick, a judder with clean frame times). Re-anchored with the schedule
+    // (a resync, a hold, the end of a fast load): one step there, as the game's own time.
+    std::int64_t stamp_ns() const { return on ? base + period * std::int64_t(paced) : 0; }
+    bool on = false;   // the last vblank() was paced
+    // stutter: how late the last vblank() started against its due time (0: on time, not paced, re-anchored), ns; a
+    // VBlank more than a period late is catching up (the one before it ran into its time: a stall), its stamp is marked
+    // (include/b3live/sched_stamp.h) and a run of them is one stall in the log. Less late is ordinary lag: it counts in
+    // the display's margin like any other (step_sched clamps a lag at a VBlank and caps the margin anyway).
+    std::int64_t behind = 0;
+    bool late() const { return behind > period; }
+};
+
+// trafmem: native_play's wait for an offscreen shot runner's full hold (b3r_feed_full / b3r_feed_hold). It waits while
+// the hold is full and moving; a wait that runs out (kLimitNs without the hold moving: a renderer that stopped drawing)
+// is not started again for that hold: the game goes on and the feed's byte bound drops the oldest ticks, until the hold
+// moves (a shot taken), when waiting is allowed again.
+struct FeedWait {
+    static constexpr std::int64_t kLimitNs = 120000000000;   // 120 s without the hold moving
+    static constexpr unsigned kNone = 0xFFFFFFFFu;
+    unsigned gave_up = kNone;   // the hold a wait ran out on
+    // Whether to wait now: the hold is full, and not the one a wait gave up on
+    bool should_wait(bool full, unsigned hold) {
+        if (hold != gave_up) gave_up = kNone;   // (the hold moved on: waiting is allowed again)
+        return full && (gave_up == kNone || hold != gave_up);
+    }
+    // A wait ended because it ran out on `hold`
+    void ran_out(unsigned hold) { gave_up = hold; }
+};
+
+// slowcpu (issue #15): the game behind real time. On a slow CPU the game's own work in a race can take longer than a
+// VBlank; the pacer then lets it fall behind (and resyncs past 250 ms: slow motion). While it is behind, the renderer
+// holds its frame rate to the game's (b3r_game_behind, src/b3replay/game_behind.h), so the CPU it and its driver use go
+// to the game.
+// On only for sustained lateness, never one hitch (Fable): kLateCount new delays within kLateWindow VBlanks -- a VBlank
+// more than kLate late and later than the one before it (the catch-up VBlanks after one stall are each less late:
+// one delay), or two resyncs within kResyncWindow. Off after a run of VBlanks on time (late under half a VBlank) as long
+// as the hold: 3 s, and when it comes back within kRetrigger of a release, longer each time (10 s, 30 s, then the rest
+// of the race), so a game that only keeps up thanks to the hold does not flip it on and off; kDecay VBlanks without a
+// trigger take it one step back (an early 30 s hold does not stay for the whole race). reset() at a new race (a
+// loading screen gone) starts again from 3 s.
+struct BehindWatch {
+    static constexpr std::int64_t kLate = 2 * 16683350;      // a VBlank more than two VBlanks late
+    static constexpr int kLateCount = 3;
+    static constexpr std::uint64_t kLateWindow = 60;         // 1 s
+    static constexpr std::uint64_t kResyncWindow = 300;      // 5 s
+    static constexpr std::int64_t kOnTime = 16683350 / 2;
+    static constexpr std::uint64_t kRetrigger = 600;         // 10 s
+    static constexpr std::uint64_t kDecay = 7200;            // 2 minutes
+    static constexpr std::uint64_t kForever = ~std::uint64_t(0);
+    static constexpr std::uint64_t kHolds[4] = {180, 600, 1800, kForever};   // 3 s, 10 s, 30 s, the rest of the race
+    bool behind = false;
+    int level = 0;                    // index into kHolds
+    std::uint64_t on_time = 0, released_at = 0, triggered_at = 0;
+    std::int64_t prev_late = 0;       // the last step's lateness (a new delay is later than it)
+    bool released = false;            // released at least once since the last reset
+    std::uint64_t late_at[kLateCount]{}, resync_at[2]{};
+    int late_n = 0, resync_n = 0;     // how many of each are recorded (at most the array's size)
+    std::uint64_t resyncs_seen = 0;
+    std::uint64_t hold() const { return kHolds[level]; }
+    // a paced VBlank `v` (`late`: Pacer::behind, `resyncs`: Pacer::resyncs); true when `behind` changed
+    bool step(std::uint64_t v, std::int64_t late, std::uint64_t resyncs) {
+        const bool resynced = resyncs != resyncs_seen;
+        resyncs_seen = resyncs;
+        if (late > kLate && late > prev_late) push(late_at, late_n, v);   // a new delay
+        prev_late = late;
+        if (resynced) push(resync_at, resync_n, v);
+        if (!behind) {
+            if (level > 0 && level < 3 && v - triggered_at >= kDecay) {   // two minutes without a trigger: one step back
+                --level;
+                triggered_at = v;
+            }
+            const bool lates = late_n == kLateCount && v - late_at[0] <= kLateWindow;
+            const bool resyncs2 = resync_n == 2 && v - resync_at[0] <= kResyncWindow;
+            if (!lates && !resyncs2) return false;
+            if (released && v - released_at <= kRetrigger && level < 3) ++level;
+            behind = true;
+            on_time = 0;
+            triggered_at = v;
+            return true;
+        }
+        on_time = late < kOnTime && !resynced ? on_time + 1 : 0;
+        if (hold() == kForever || on_time < hold()) return false;
+        behind = false;
+        released = true;
+        released_at = v;
+        on_time = 0;
+        late_n = resync_n = 0;
+        return true;
+    }
+    // a new race (a loading screen gone): from the first hold again; true when it was behind (released now)
+    bool reset() {
+        const bool was = behind;
+        const std::uint64_t seen = resyncs_seen;
+        *this = BehindWatch{};
+        resyncs_seen = seen;
+        return was;
+    }
+
+private:
+    template <std::size_t N>
+    static void push(std::uint64_t (&a)[N], int& n, std::uint64_t v) {   // the newest N, oldest first
+        if (n < int(N)) { a[n++] = v; return; }
+        for (std::size_t k = 1; k < N; ++k) a[k - 1] = a[k];
+        a[N - 1] = v;
+    }
 };
 
 // The sound of a fast load: muted. One VBlank's frames (s16 stereo) at a time; set_muted() per VBlank. The VBlank that

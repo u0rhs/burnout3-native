@@ -7,6 +7,7 @@
 #include <map>
 #include <tuple>
 
+#include "b3asset/car.h"
 #include "b3asset/gs_memory.h"
 #include "b3asset/model.h"
 #include "b3asset/raster.h"
@@ -152,7 +153,8 @@ const char* car_slot_name(int slot) { return slot >= 0 && slot < 20 ? kSlot[slot
 bool car_read(const Buf& file, CarFile& out, std::string* why) {
     out = CarFile{};
     const Bytes f{file.data(), file.size()};
-    if (file.size() < 0x16F0 || f.u32(0) != 0x17) return fail(why, "not a version 0x17 vehicle file");
+    if (file.size() < 0x16F0) return fail(why, "too short for a vehicle file");
+    if (const std::string e = b3asset::car_file_error(f); !e.empty()) return fail(why, e);   // carmods1: 0x15 .. 0x17, not the old layout
     out.version = f.u32(0);
     out.size = f.u32(8);
     out.kind = f.u32(0x10);

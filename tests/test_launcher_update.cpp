@@ -77,6 +77,13 @@ TEST(newer_than_the_running_build) {
     CHECK(!is_newer("v0.1.0-rc.1", running));        // ... but not one before the build's base
     CHECK(is_newer("v0.2.0", "0.2.0-rc.1"));         // a release candidate is older than its release
     CHECK(!is_newer("v0.2.0-rc.1", "0.2.0-rc.2"));
+    // rcprep (1.4.0's tester release candidate: VERSION 1.4.0-rc.1, the build "1.4.0-rc.1+<commit>")
+    CHECK(is_newer("v1.4.0", "1.4.0-rc.1+1a2b3c4d"));          // the release replaces the candidate
+    CHECK(is_newer("v1.4.0", "1.4.0-rc.1+1a2b3c4d-dirty"));
+    CHECK(!is_newer("v1.3.0", "1.4.0-rc.1+1a2b3c4d"));         // the last release is not an update for it
+    CHECK(!is_newer("v1.4.0-rc.1", "1.4.0-rc.1+1a2b3c4d"));    // itself
+    CHECK(is_newer("v1.4.0-rc.2", "1.4.0-rc.1+1a2b3c4d"));     // a later candidate
+    CHECK(is_newer("v1.4.1", "1.4.0-rc.1+1a2b3c4d"));
     CHECK(!is_newer("nightly", running) && !is_newer("v0.2.0", "unknown") && !is_newer("v0.2.0", ""));
     CHECK(as_running(*parse_version("0.1.0-test")).pre.empty() && as_running(*parse_version("0.1.0-test-2")).pre.empty());
     CHECK(as_running(*parse_version("0.1.0-testing")).pre.size() == 1);

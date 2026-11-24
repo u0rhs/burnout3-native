@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "hash.glsl"   // d3dhash
 // b3gfx car fragment shader: the GS for the car program's two passes, folded into one draw (docs/native-renderer.md
 // §12.6). Frame units as the track's (texel bytes / 255, the present pass scales by 255/128).
 //   pass 1 (context 1): Cs = Ct x Cf >> 7 (MODULATE, clamped), As = At x Af >> 7; ALPHA_1 (Cs - Cd) C + Cd with
@@ -15,8 +17,13 @@ layout(location = 2) in vec3 v_refl;
 layout(location = 3) in float v_w;
 layout(location = 4) in vec3 v_nrm;
 layout(location = 5) in vec3 v_view;
+layout(location = 6) in vec3 v_part;   // weather: part space (car.vert)
+layout(location = 7) in vec3 v_pnrm;
 
 layout(location = 0) out vec4 out_color;
+#ifdef SCENE_DEPTH
+layout(location = 1) out float out_depth;   // scenedepth (car_depth.frag): every car draw's depth, glass too, as the pre-pass
+#endif
 
 layout(set = 2, binding = 0) uniform sampler2D tex;      // the mesh's texture slot (atlas / underside / glass)
 layout(set = 2, binding = 1) uniform sampler2D envsky;   // the 64x32 sky backdrop (display units)
@@ -38,10 +45,13 @@ layout(set = 3, binding = 0) uniform CarFragmentUniforms {
     vec4 look2;       // glass weight, glass Fresnel, glass gain, glass darkening
     vec4 look3;       // rim, paint colour keep, 1 = envworld bound, strength
     vec4 paint;       // carpaint: rgb the paint (texel units); w the mode: 0 off, bit 0 recolour, bit 1 decals off,
-                      // bit 2 metallic, bit 3 pearl (padpaint: the finish)
+                      // bit 2 metallic, bit 3 pearl, both chrome (padpaint: the finish; options3: chrome)
     vec4 paint2;      // carpaint: rgb the second colour's paint; w the reference level (main paint's mean brightest channel)
     vec4 night;       // night mode (§17): x the SH light's scale, y the env map's, z the moon key light's gain; w: 1 = on
-    vec4 moon;        // night mode: rgb the moonlight (frame units), towards to_sun.xyz (the moon at night)
+    vec4 moon;        // night mode: rgb the moonlight (frame units), towards to_sun.xyz (the moon at night); w (weather,
+                      // §38): the rain's wetness 0..1 (the wet paint's gloss and beads; 0 dry: nothing)
+    vec4 paint3;      // paint2: rgb the decals' colour (paint.w bit 4)
+    vec4 paint4;      // paint2: rgb the wheel's tint (paint.w bit 5: a wheel's draws)
 };
 
 float fog_amount(float w) {
@@ -168,11 +178,8 @@ vec3 env_sharp(vec3 d, float lit, float open, out float dark, out float glint) {
 }
 
 // padpaint: the finish's flakes, one value per atlas cell (a hash: no texture)
-float flake_hash(vec2 c) {
-    vec3 p = fract(vec3(c.xyx) * vec3(0.1031, 0.1030, 0.0973));
-    p += dot(p, p.yzx + 33.33);
-    return fract((p.x + p.y) * p.z);
-}
+// d3dhash: an integer cell (hash.glsl), its third component the stream (independent values for one cell)
+float flake_hash(vec2 c, float stream) { return hash3i(vec3(c, stream)).x; }
 
 // padpaint: `c` turned round the grey axis by `a` radians (its hue), its brightness kept
 vec3 hue_turn(vec3 c, float a) {
@@ -182,6 +189,9 @@ vec3 hue_turn(vec3 c, float a) {
 }
 
 void main() {
+#ifdef SCENE_DEPTH
+    out_depth = gl_FragCoord.z;
+#endif
     // mac5: a screen-door fade (the Time Attack ghost's see-through look): a 4 x 4 ordered threshold against the fade,
     // so the car stays opaque in the depth buffer and needs no sorting
     // traffic-popin: traffic coming and going uses the opacity instead (w < 0): the 4 x 4 pattern read as a speckled,
@@ -208,6 +218,11 @@ void main() {
             c = mix(c, paint2.rgb * sh, m.g);
         }
         if ((pm & 2) != 0) c = mix(c, paint.rgb * (2.0 * m.a), min(m.g + m.b, 1.0));
+        else if ((pm & 16) != 0) c = mix(c, paint3.rgb * sh, min(m.g + m.b, 1.0));   // paint2: the decals in their colour
+        if ((pm & 32) != 0) {   // paint2: a wheel's rim tinted (its bright texels: the tyre and the darker disc and hub stay)
+            float tm = max(t.r, max(t.g, t.b));
+            c = mix(c, paint4.rgb * (tm / (120.0 / 255.0)), smoothstep(0.22, 0.38, tm));
+        }
         t.rgb = min(c, vec3(1.0));
     }
     const bool glass_mesh = mode.x < 0.5 && mode.y < 0.99;
@@ -272,25 +287,69 @@ void main() {
         vec3 R = normalize(v_refl);
         float mx = max(max(X.r, X.g), X.b);
         vec3 hue = mx > 0.02 ? X / mx : vec3(1.0);
-        if ((pm & 4) != 0) {
+        if ((pm & 12) == 4) {
             // metallic: the sky mirrored in the paint's colour, strongest towards the edges, and flakes that catch the sun
             float fr = 0.35 + 0.65 * pow(1.0 - ndv, 2.0);
             vec3 E = env_map(R);
             float Ls = dot(E, vec3(0.3333));
             X = X * (1.0 - 0.25 * pw * fr) + pw * fr * (0.55 * Ls + 0.10 * lit) * hue;
             vec2 cell = floor(v_uv * 900.0);
-            float h = flake_hash(cell + floor(ndv * 6.0) * 17.0);   // the flakes that face the eye change as it moves
+            float h = flake_hash(cell, 8.0 + floor(ndv * 6.0));   // the flakes that face the eye change as it moves
             float flake = smoothstep(0.93, 0.995, h);
             float sun = to_sun.w > 0.5 ? pow(max(dot(R, to_sun.xyz), 0.0), 6.0) : 0.0;
             X += pw * flake * (0.06 + 0.45 * sun) * (0.4 + 0.6 * lit) * mix(hue, vec3(1.0), 0.6);
         }
-        if ((pm & 8) != 0) {
+        if ((pm & 12) == 12) {
+            // chrome (options3: PAINT FINISH Chrome): a mirror -- the world around the car
+            // (the env map) at nearly full strength, a little of the paint's hue in it, and a hard sun glint
+            float fr = 0.80 + 0.20 * pow(1.0 - ndv, 3.0);
+            vec3 E = env_map(R);
+            vec3 mirror = E * mix(vec3(1.0), hue, 0.25) * (0.85 + 0.30 * lit);
+            X = mix(X, mirror, pw * fr);
+            float sun = to_sun.w > 0.5 ? pow(max(dot(R, to_sun.xyz), 0.0), 48.0) : 0.0;
+            X += pw * sun * 0.9 * vec3(1.0);
+        }
+        if ((pm & 12) == 8) {
             // pearl: the hue turns with the angle to the eye (face-on the paint's own; at the edges about a sixth of the
             // way round the colour wheel), with a soft white sheen there
             float edge = pow(1.0 - ndv, 2.0);
             vec3 turned = hue_turn(X, 1.0 * edge);
             X = mix(X, max(turned, vec3(0.0)), pw);
             X += pw * edge * edge * 0.18 * (0.3 + 0.7 * lit) * vec3(1.0);
+        }
+    }
+    // (the beads' coordinates: 4 cm cells in part space on the plane the face is turned to, so they stay on the body as it
+    // moves whatever its texture mapping; their size on screen taken here, in uniform control flow, for the branch below)
+    vec3 an = abs(v_pnrm);
+    vec2 bq = (an.x > an.y && an.x > an.z ? v_part.yz : an.y > an.z ? v_part.xz : v_part.xy) / 0.04;
+    float bsize = max(fwidth(bq.x), fwidth(bq.y));
+    // weather (§38): a wet car. The paint's clearcoat mirrors more of the (grey) sky, by a Fresnel term; beads of water on
+    // the paint and the glass, in the car's own texture space (they stay on the body as it moves), more on faces turned
+    // up, each a soft highlight and a darker rim; beads smaller than a pixel fade out (no shimmer at a distance)
+    if (moon.w > 0.0 && dot(v_nrm, v_nrm) > 1e-12 && dot(v_view, v_view) > 1e-12 && dot(v_refl, v_refl) > 1e-12) {
+        vec3 N = normalize(v_nrm), V = -normalize(v_view);
+        float ndv = clamp(abs(dot(N, V)), 0.0, 1.0);
+        float lit = clamp(dot(v_colour.rgb, vec3(0.3333)) / 128.0, 0.0, 1.0);
+        float body = smoothstep(0.15, 0.40, t.a);   // (the atlas' paint and glass, not its holes: alpha 0x80 reads ~0.5)
+        float Ls = dot(env_map(normalize(v_refl)), vec3(0.3333));
+        if (night.w > 0.5) Ls *= night.y;
+        float fr = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);
+        X += moon.w * body * fr * 0.35 * Ls * (0.4 + 0.6 * lit) * vec3(1.0);
+        vec2 q = bq;
+        vec2 cell = floor(q);
+        float h = flake_hash(cell, 1.0);
+        float upf = 0.35 + 0.65 * smoothstep(-0.2, 0.8, N.y);   // (more beads on the bonnet and the roof)
+        float size = bsize;
+        if (h > 1.0 - 0.22 * upf && size < 0.9) {
+            vec2 o = vec2(flake_hash(cell, 2.0), flake_hash(cell, 3.0)) * 0.4 - 0.2;
+            float r = 0.24 + 0.18 * flake_hash(cell, 4.0);
+            vec2 f = (fract(q) - 0.5 - o) / r;
+            float d = length(f);
+            if (d < 1.0) {
+                float vis = moon.w * body * (1.0 - smoothstep(0.45, 0.9, size));
+                float hl = 1.0 - smoothstep(0.0, 0.6, length(f - vec2(-0.3, 0.3)));
+                X = X * (1.0 - vis * 0.35 * smoothstep(0.6, 1.0, d)) + vis * hl * (0.10 + 0.20 * lit) * vec3(1.0);
+            }
         }
     }
     // CB3Fog::Render is a post pass over the whole frame by Z [C]: fog the car's own contribution here; what shows

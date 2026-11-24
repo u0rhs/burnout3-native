@@ -19,11 +19,22 @@ namespace b3settings {
 enum class Filter : std::uint8_t { kPoint, kBilinear, kTrilinear, kAniso2, kAniso4, kAniso8, kAniso16 };
 enum class Preset : std::uint8_t { kPs2, kLow, kMedium, kHigh, kUltra, kCustom };
 
+// slowcpu (issue #15): FRAME RATE LIMIT Auto (frame_cap -1) on a CPU of this many logical processors or fewer is 60
+constexpr int kFrameCapAuto = -1;
+constexpr int kAutoCapThreads = 4;
+// The limit in effect (0: none): Auto resolved for a CPU of `logical_cpus` (0: unknown: unlimited)
+constexpr int effective_frame_cap(int frame_cap, int logical_cpus) {
+    if (frame_cap != kFrameCapAuto) return frame_cap > 0 ? frame_cap : 0;
+    return logical_cpus > 0 && logical_cpus <= kAutoCapThreads ? 60 : 0;
+}
+
 struct Settings {
     // Display
     bool fullscreen = false;          // borderless desktop fullscreen (F11 still toggles it)
     bool vsync = false;               // b3gfx IMMEDIATE / MAILBOX when off (applies at the next start)
-    int frame_cap = 0;                // presented frames per second, 0 = unlimited (--max-fps)
+    // presented frames per second (--max-fps): 0 unlimited; -1 Auto (slowcpu, the default since 1.3.1: unlimited, or 60 on
+    // a CPU of kAutoCapThreads logical processors or fewer, where the game's own work needs the CPU: effective_frame_cap)
+    int frame_cap = -1;
     bool interpolation = true;        // frames between the game's ticks (key I); off = the game's 60 / 30 Hz steps
     bool hud_wide = true;             // the race HUD anchored to the window's edges (hud2) / the 4:3 layout (key Y)
     int fe_layout = 2;                // the front end at wide aspects: 0 edges (hud2), 1 4:3 (wide1), 2 panels (fe3; --fe-layout)
@@ -54,10 +65,20 @@ struct Settings {
                                       // launcher (a PCSX2 replacement folder; empty: none, or $B3_HD_PACK). --hd-pack wins.
                                       // Applies at the next start
     bool xbox_textures = false;       // xboximport (1.3.0): the pack Import Xbox textures built from the player's Xbox disc
+    int hd_texture_memory = 0;        // texpack: HD TEXTURE MEMORY: 0 Auto, 1 Full quality (PNG / BC7 as RGBA8), 2 Compressed
+                                      // (encoded to BC1 / BC3 at load); next start
                                       // (<user data>/xbox-textures, b3asset/xboximport.h), below the mods' packs and hd_pack_dir;
                                       // set by a finished import, off by default; used with hd_textures (F4). Next start
     int car_reflections = 2;          // reflect1: 0 off (no env pass), 1 original (the game's own pass), 2 enhanced (glossy sky / sun
                                       // reflections on the paint and glass; drawn only). PS2 ORIGINAL and LOW use 1
+    // reflect2 (docs/car-shading.md §10): what the car env map's track part holds. REFLECTION DISTANCE 0 the game's 100 m
+    // (env cameras' far plane), 1 200 m, 2 300 m; REFLECTION DETAIL 0 the track, 1 and the props; REFLECTION UPDATE 0 every
+    // frame, 1 every second frame. Drawn only; HIGH (the defaults) keeps the game's map, ULTRA 200 m with the props and cars
+    // (reflect_detail 2: Track, props and cars)
+    int reflect_distance = 0;
+    int reflect_detail = 0;
+    int reflect_update = 0;
+    int reflect_resolution = 0;       // reflect2 D: REFLECTION RESOLUTION 0 Standard (128 px faces, the PS2's / Xbox's), 1 High (256)
     bool car_detail_highest = false;  // cars at LOD 3 at any distance (else the game's LOD choice)
     bool shadows = true, skid_marks = true, specular = true, sun = true, coronas = true;
     bool whole_track = true;          // mac5: every unit of the track drawn (frustum culled), no streaming pop-in; off: the PS2's
@@ -98,7 +119,16 @@ struct Settings {
     int p2_car_paint = 0;
     int p2_paint_red = 30, p2_paint_green = 90, p2_paint_blue = 210;
     bool p2_car_decals = true;
-    int paint_finish = 0;
+    int paint_finish = 0;          // 0 gloss (the game's), 1 metallic, 2 pearl, 3 chrome (options3)
+    // paint2 (2026-11-22): the car's other layers, per player, drawn only, one set for every car: the DECALS' colour (its
+    // logos, numbers and stripes), the WHEELS' (the rims; the tyres stay dark) and the BOOST GLOW's (the exhaust glow while
+    // boosting). *_paint 1: the layer in *_red / green / blue (0..255 as on screen); 0: the game's. All 0 by default
+    int decal_paint = 0, decal_red = 240, decal_green = 240, decal_blue = 240;
+    int wheel_paint = 0, wheel_red = 165, wheel_green = 165, wheel_blue = 180;
+    int flame_paint = 0, flame_red = 255, flame_green = 120, flame_blue = 0;
+    int p2_decal_paint = 0, p2_decal_red = 240, p2_decal_green = 240, p2_decal_blue = 240;
+    int p2_wheel_paint = 0, p2_wheel_red = 165, p2_wheel_green = 165, p2_wheel_blue = 180;
+    int p2_flame_paint = 0, p2_flame_red = 255, p2_flame_green = 120, p2_flame_blue = 0;
     // night (remaster-features §17 / §18), drawn only, off by default: time_of_day 1 = TIME OF DAY Night (the races after
     // dark: the grade, the night sky, the headlights); moon: MOON (the disc and its light, at night); surface_detail:
     // SURFACE DETAIL (relief and sheen from the track's textures); ambient_occlusion: AMBIENT OCCLUSION
@@ -109,6 +139,18 @@ struct Settings {
     // SUN SHADOWS (remaster-features §19), drawn only, off by default: the cars' shadows from the sun (the moon at night)
     // on the road. The map's size and kernel follow ANTI-ALIASING (b3replay::apply_view); the PS2 and Low presets turn it off
     bool sun_shadows = false;
+    bool prop_shadows = false;   // propshadow1 (PROP SHADOWS, 613): with SUN SHADOWS, the props and lamp posts cast too
+    // TUNNEL LIGHTS (nightfix, remaster-features §35.4), drawn only: 1 Glow (default: the light fittings of tunnels and
+    // underpasses glow by day, with small halos), 0 Game (the PS2's look: plain textures); xboxglow (§35.5): 2 Xbox (the
+    // fittings' lit parts -- the textures' alpha glow masks -- self-lit as the Xbox draws them, glowing through the bloom).
+    // 3 (Xbox all lamps, withdrawn) is read from an older ini as 2
+    int tunnel_lights = 1;
+    // WEATHER (weather, remaster-features §38), drawn only: 0 Dry (default, the game's), 1 Rain (falling rain, wet roads,
+    // spray, a grey sky). Held back with night mode until it is released: the row is not shown, the races stay dry
+    int weather = 0;
+    // RAIN VOLUME (weather, §38): the rain's sound in percent of its level (0..200, 100 default), x the game's own EFFECTS
+    // volume. Held back with WEATHER (the row not shown)
+    int rain_volume = 100;
     // Interface
     int fps_view = 0;                 // fpsoverlay2: the FPS COUNTER (src/b3replay/fpspanel.h): 0 off, 1 minimal, 2 standard, 3 detailed.
                                       // An ini from before the views holds `fps_counter = true / false`: true reads as 2, false as 0
@@ -122,6 +164,8 @@ struct Settings {
                                       // stats): 0 miles (the US game's), 1 kilometres (tools/native/speed_units.h)
     int date_format = 0;              // mac5: the game's dates (DATE OF SAVE ...): 0 month/day/year (the US game's), 1 day/month/year
     bool photo_row = true;            // photorow1: the race pause menu gets a PHOTO MODE row (after SETTINGS; tools/native/pc_menu.h)
+    bool settings_back_keeps = true;  // settingsback: Back on the game's DRIVER DETAILS > SETTINGS pages keeps the changes (false:
+                                      // the game's cancel; tools/native/settings_back.h)
                                       // that enters photo mode, as P does. The presets never touch it
     bool battery_saver = false;       // effects2: BATTERY SAVER (opt-in): while the PC runs on battery, the frame rate is capped to 60
                                       // and the particle effects to Medium (host-only: native_play reads SDL's power state)
@@ -133,8 +177,14 @@ struct Settings {
     // follows those songs' lengths; physics, AI and gameplay never)
     std::string music_folder;         // the user's music folder (MP3 / FLAC / Ogg Vorbis / WAV, subfolders too); empty: none
     int playlist_mode = 0;            // 0 EA Trax only (the game's), 1 custom only, 2 mixed (custom and EA Trax in turn)
+    // Sound output (audioq; src/audio/spu2_mixer_impl.h Limiter): 0 Clean (the default: a peak limiter instead of the
+    // SPU2's hard clip on the final output, 1 ms later), 1 Original (the PS2's own clamped output). The sound only:
+    // the game and its logs are the same either way (B3_AUDIO_HARD_CLIP=1 forces Original)
+    int sound_output = 0;
     int custom_music_volume = 100;    // musicvol1: CUSTOM MUSIC VOLUME, 0..200 % in steps of 10: the custom songs only, on
                                       // top of RADIO VOLUME (100: as loud as the game's own songs; host audio only)
+    int custom_music_loudness = 1;    // musicloud: CUSTOM MUSIC LOUDNESS, 0 Off (each file's own level), 1 Even out (each
+                                      // song measured, EBU R128, and brought to the game's own songs' level; host audio only)
     int other_music_apps = 0;         // nowplaying1: 0 off (no system calls at all), 1 another app's song in the EA TRAX popup
                                       // (the system's now-playing interface; tools/native/now_playing_popup.h; drawn only)
     // Language (1.0.1, b3asset/language.h): the game's text from the player's own European disc, imported once by the
@@ -167,6 +217,41 @@ struct Settings {
     // own pause menu (RESTART, then YES): INPUT-INJECTING, opt-in -- the game reads menu presses the player did not make
     int speedrun_timer = 0;
     int instant_restart = 0;
+    // replayview: RACE REPLAY (GAME > MODES; tools/native/replay_view.h): 0 off (the results pages and the game's replay
+    // untouched), 1 a race's results page offers REPLAY, the game's own replay of the race. Applies at the next start
+    int replays = 0;
+    // gameopts (remaster-features §24; tools/native/game_options.h), GAMEPLAY-CHANGING, opt-in, off by default: both apply
+    // to SINGLE EVENT and the two-player races only (World Tour, Crash party and online stay the game's), latched when the
+    // race starts, and keep that race's results apart from the game's records (no records, profile totals or unlocks;
+    // ghosts and best times in their own folder). mirror_mode: MIRROR MODE, the world drawn mirrored left to right and
+    // the players' steering inverted with it (the HUD stays as it is). crashbreaker_all: CRASHBREAKER IN EVERY MODE, the
+    // Crashbreaker after any crash in RACE / TIME ATTACK / ROAD RAGE (Crash mode has its own)
+    bool mirror_mode = false;
+    bool crashbreaker_all = false;
+    // gamemods1: with crashbreaker_all, Full (CRASHBREAKER IN EVERY MODE's third value): the rivals and the other player in
+    // the blast are wrecked too and counted as the player's Aftertouch Takedowns (tools/native/game_options.h blast)
+    bool crashbreaker_full = false;
+    // CRASHBREAKER AFTER (shown with crashbreaker_all on): the vehicles the player's crash must hit (the game's own crash
+    // count, CB3CrashCombo's) before the breaker is ready, 0..3; 0: at once when the crash starts
+    int crashbreaker_cars = 1;
+    // party1: GAME > PARTY MODES (tools/native/party_modes.h), GAMEPLAY-CHANGING, off by default, the same races, latch,
+    // replay entry and records apart as GAMEPLAY's. party_crazy_ai: CRAZY AI PHYSICS 0 off, 1 Basic, 2 Local Wildlife,
+    // 3 Mayhem; party_moon_jump: MOON JUMP 0 off,
+    // 1..3 its lift (the MOON JUMP port action held); party_crash: CRASH ON DEMAND (the CRASH port action); party_ai_driver:
+    // the AI DRIVER port action hands player 1's car to the AI and back; party_kamikaze: KAMIKAZE TRAFFIC; party_tuk_tuks:
+    // TUK-TUKS, every race car of a SINGLE EVENT race the tuk-tuk (trafficseries' traffic vehicles as race cars)
+    int party_crazy_ai = 0;
+    int party_moon_jump = 0;
+    bool party_crash = false;
+    bool party_ai_driver = false;
+    bool party_kamikaze = false;
+    bool party_tuk_tuks = false;
+    // trafficcheck (remaster-features §33; tools/native/traffic_check.h), GAMEPLAY-CHANGING, opt-in, off by default: TRAFFIC
+    // CHECK (2 PLAYERS), traffic pushed ahead instead of crashing you (Burnout Revenge's traffic check), with its chain
+    // scored, in the two-player races (Single Event has its own row on SELECT OPTIONS: race_choice.h). 0 Off, 1 Revenge
+    // (cars and vans going your way), 2 Extreme (oncoming, crossing and heavy traffic too). Latched when the race starts;
+    // that race keeps its results apart from the game's records (ghosts and best times in their own folder)
+    int traffic_check = 0;
     // Controller rumble (rumble1, remaster-features §3; src/native/pad_actuator.h; native_play). 0 off (the default): the
     // game's rumble requests are left pending as before (no motor driven; the run identical to one without the row).
     // 1 on: they are acknowledged and their motor values given to the pads (SDL rumble). GAME-VISIBLE, opt-in: the game
@@ -182,16 +267,107 @@ struct Settings {
     // state as the window reads it (nothing is written to the game; the reports are unchanged). Strength: percent (10..100)
     int adaptive_triggers = 0;
     int adaptive_triggers_strength = 100;
-    // Car series on the shoulders (carsel1; src/native/input_keys.h ShoulderSeries; native_play). 0 off (the default: the
-    // reports untouched, nothing drawn). 1 on: on the car select page, L1 / R1 presses reach the game as Left / Right
-    // (the page's own series change) and small L1 / R1 glyphs (the device's buttons) are drawn beside its series arrows.
-    // INPUT-CHANGING, opt-in: the game reads presses the player made on other buttons
-    int series_shoulders = 0;
+    // Car series on the shoulders (carsel1; src/native/input_keys.h ShoulderSeries; native_play). 1 on (the default since
+    // 2026-11-23, the owner's call): on the car select page, L1 / R1 presses reach the game as Left / Right (the page's own
+    // series change) and small L1 / R1 glyphs (the device's buttons) are drawn beside its series arrows. 0 off: the reports
+    // untouched, nothing drawn. INPUT-CHANGING (the game reads presses the player made on other buttons; the page itself
+    // reads no shoulder button). An ini of version 1 with 0 is read as 1 (from_ini: 0 was only ever the old default)
+    int series_shoulders = 1;
+    // carstats1 / blinkers1 / rrparts1 (tools/native/): CAR STATS (carstats1, car_stats.h): 1 (the
+    // default) SELECT CAR shows GRIP and ACCELERATION bars beside TOP SPEED and WEIGHT, from each car's handling values
+    // (front end only); 0 the game's two. TURN SIGNALS (blinkers1, turn_signals.h): 1 the AI racers' indicators blink
+    // before bends (their lights only); default 0. ROAD RAGE PARTS (rrparts1, road_rage_parts.h): 1 every kind of
+    // loose part can come off a damaged car in an offline Road Rage (loose parts are physics bodies: gameplay; that
+    // race's records kept apart); default 0, the game's
+    int car_stats = 1;
+    int turn_signals = 0;
+    int road_rage_parts = 0;
     // Garage camera (garagecam1; src/b3replay/garagecam.h): on (the default), on the front end's car pages the right
     // stick (or a mouse drag on the car) turns the view round the car, the game's spin back a second after it is let
     // go. Drawn only: the game's camera, input and state are untouched (without the stick the frames are the game's).
     // Off: the car pages as the game draws them, and a mouse click there presses Cross on the press as before
     bool garage_camera = true;
+    // Orbit camera (orbitcam1; src/b3replay/orbitcam.h): on (the default), in a race the right stick (or the mouse with
+    // its right button held) swings the chase camera round the car, easing back to the game's view a moment after it is
+    // let go; each split-screen player with their own pad. Only pads whose layout leaves the right stick free while
+    // driving (not the PlayStation layout: its right stick is the analog throttle and brake). Drawn only: the game's
+    // camera, input and state are untouched (without the stick the frames are the game's). Off: none of it
+    bool orbit_camera = true;
+    // gamemods1 (remaster-features §37). START AT (tools/native/boot_boost.h): 0 the
+    // intro films (the game's), 1 the title screen, 2..4 the main menu with profile 1..3 loaded. Read at the start
+    int boot_to = 0;
+    // IDLE PAUSE / END VERY LONG EVENTS (tools/native/game_limits.h): on = the game's; off: a race never pauses itself
+    // after 5 minutes idle / an event is not ended by the game's 25-40 minute limits (its records then not kept)
+    bool idle_pause = true;
+    bool long_event_end = true;
+    // extras (2026-11-23; PC SETTINGS > EXTRAS, docs/pc-settings.md §7.46): the port's gameplay and content additions,
+    // each off by default, so a fresh install plays as the game shipped. native_play takes them as one word
+    // (extras_bits, b3r_extras); a replay plays with the recording's. The SELECT OPTIONS rows one by one (their RaceRow
+    // order, tools/native/race_choice.h; TIME OF DAY is night's, held back):
+    bool extra_traffic = false;            // TRAFFIC
+    bool extra_laps = false;               // LAPS
+    bool extra_road_rage_rivals = false;   // ROAD RAGE's RIVALS (the game: 3; the row: 1 / 2 / 3)
+    bool extra_timed_elimination = false;  // TIMED ELIMINATION (ELIMINATOR's)
+    bool extra_transmission = false;       // TRANSMISSION (the game's manual gearbox)
+    bool extra_start = false;              // START (Rolling / Standing, with the game's BOOST START)
+    bool extra_rival_style = false;        // RIVAL STYLE
+    bool extra_burnout_points = false;     // BURNOUT POINTS
+    bool extra_time_limit = false;         // TIME LIMIT
+    bool extra_traffic_pattern = false;    // TRAFFIC PATTERN
+    bool extra_rivals_cars = false;        // RIVALS' CARS
+    bool extra_traffic_check = false;      // TRAFFIC CHECK (single races; two-player: traffic_check below)
+    // SINGLE EVENT: ELIMINATOR (SELECT MODE's fifth row; on by default: the owner's, 2026-11-23); MORE RIVALS (RACE's
+    // RIVALS up to 7: 8 cars)
+    bool extra_eliminator = true;
+    bool extra_more_rivals = false;
+    // SELECT CAR: HEAVYWEIGHTS in every Single Event mode (the game: Crash only); the TRAFFIC / TRAFFIC SPECIAL series;
+    // the CAR VIEWER (YOUR GARAGE)
+    bool extra_heavyweights = false;
+    bool extra_traffic_series = false;
+    bool extra_car_viewer = false;
+    // CUSTOM / BETA series: 0 off, 1 on, -1 an install from before EXTRAS (pc_settings.ini version 1 or 2): on when the
+    // folder already holds a usable car (resolve_extra_cars; the player put them there). The launcher's imports turn on
+    int extra_custom_cars = 0;
+    int extra_beta_cars = 0;
+    // EXPERIMENTAL (1.4.0, for feedback; race_time.h, weather §38): NIGHT and RAIN, each its own row. NIGHT gives SELECT
+    // OPTIONS a TIME OF DAY row (Day / Night), RAIN a WEATHER row (Clear / Rain); both: both rows (Night + Rain: night
+    // rain); neither: none (condrows, the owner's). MOON shows with NIGHT, RAIN VOLUME with RAIN. A Single Event race at
+    // night or in the rain counts as any (drawn only; the owner's). World Tour (shown with NIGHT / RAIN):
+    // 0 Off, 1 Always, 2 Random (each event's start); drawn only, so its progress and records count
+    bool extra_night = false;
+    bool extra_rain = false;
+    int night_world_tour = 0;
+    int rain_world_tour = 0;
+    // hudmods (remaster-features §29): opt-in, all off by default.
+    // RPM METER (src/b3replay/hudmods.h): a thin segmented bar of the engine revs under the race speedometer. Drawn only
+    bool rpm_meter = false;
+    // BOOST BAR SHAKE (src/b3replay/hudmods.h): the boost bar shakes while the car boosts, as in the game's April 2004
+    // preview build. Drawn only
+    bool boost_shake = false;
+    // TAKEDOWN STREAK PITCH (tools/native/takedown_pitch.h; native_play): outside World Tour the takedown sound climbs in
+    // pitch once the takedowns since the last crash pass 10 (World Tour's takedown-target rule). Sound only
+    bool takedown_pitch = false;
+    // Orbit style (orbitcam2; ChaseOrbit::Style): 0 Look (the default; as in Burnout Revenge: the stick's direction is where
+    // the view looks, eased 10 % of the way every 1/60 s, held 0.4 s after the stick is let go, the field of view up to
+    // 20 degrees narrower with the eye in front of the car), 1 Swing (orbitcam1's: the stick turns the view while held)
+    int orbit_style = 0;
+    // Camera roll (camroll1; src/b3replay/orbitcam.h ChaseRoll): 0 off (the default), 1
+    // subtle (up to 4 degrees), 2 strong (up to 8): in a race the chase camera leans into corners. Drawn only
+    int camera_roll = 0;
+    // Finish camera (finishcam1; src/b3replay/finishcam.h): 0 the game's (the default), 1
+    // set pieces: after the finish line the race view cycles through 12 set pieces of camera angles round the line, 5 s
+    // each (their offsets read from the disc's VDB.XML). Drawn only
+    int finish_camera = 0;
+    // options3: DRIVER LABELS over the rival cars (0 Off, 1 names, 2 names + distance, 3 distance; drawn only:
+    // src/b3replay/driverlabels.h)
+    int driver_labels = 0;
+    // options3: CRASH CAMERA (Off: when you crash the view stays behind your car instead of the game's crash camera; drawn
+    // only: src/b3replay/crashhold.h)
+    bool crash_camera = true;
+    bool replay_camera_stay = false;   // replaycams (REPLAY CAMERA CUTS, 660): true Stay (the viewer's angle through crashes), false Game
+    // options3: DEFORMATION, how much the cars' bodies crumple (0 100 % the game's, 1 none, 2 50 %, 3 150 %, 4 200 %;
+    // GAMEPLAY-CHANGING, its races' records kept apart: tools/native/game_mods.h)
+    int deformation = 0;
     // Replay files (replay1, remaster-features §5; src/native/replay_file.h). Host-only: 0 off (nothing recorded), 1 on:
     // native_play keeps each session from its start to its end as <prefs>/replays/<date-time>.b3replay (the inputs, the
     // save as it was at the start; the newest 20 automatic ones kept), played back from the launcher's Replays page.
@@ -202,6 +378,17 @@ struct Settings {
     // game's tuning registry and the page gets a DEVELOPER tab (and F9 a live overlay in a race) to read and edit the
     // variables. GAMEPLAY-CHANGING when an edit is made: each one goes into the session's pad recording / replay file
     int developer_mods = 0;
+    // uploadbatch (ini only, no page row): the route's textures and buffers go up to the GPU in a few batched submits
+    // (b3gfx Device::upload_batch; Vulkan with a window, SDL 3.4.2 only). false: one submit per upload, as on the other
+    // backends (a troubleshooting switch: slower track loads, the same picture). $B3_UPLOAD_BATCH wins
+    bool upload_batch = true;
+    // d3d12 (GRAPHICS API, Windows only; GRAPHICS > IMAGE): 0 Auto (Vulkan, Direct3D 12 when no working Vulkan device can
+    // be created), 1 Vulkan, 2 D3D12 (each falls back to the other when it cannot start). Applies at the next start
+    int graphics_api = 0;
+    // scenedepth (ini only, no page row): night's lights, the AO, the depth of field and the motion blur read the scene
+    // pass's own depth instead of drawing the frame's geometry a second time (b3gfx Options::scene_depth). -1: the
+    // renderer's choice for its backend (off on every backend for now), 0 off, 1 on. $B3_SCENE_DEPTH wins
+    int scene_depth = -1;
 
     bool operator==(const Settings&) const = default;
 };
@@ -223,8 +410,41 @@ Preset matching_preset(const Settings& s);    // kCustom when no preset gives ex
 const char* preset_name(Preset p);
 
 // key = value text (also the HSET payload). Unknown keys are ignored, bad values keep the default.
+// The ini's `version`: 4. 2 (2026-11-23): series_shoulders' default 0 -> 1 (a version 1 file's 0 is read as 1).
+// 3 (slowcpu): frame_cap 0 of an older file read as Auto. 4 (extras, 2026-11-23): the EXTRAS rows (an older file's
+// CUSTOM / BETA series are -1: on when their folder holds cars). Each step is keyed "version > 0 && version < N"; a file
+// without the line (written by hand, a test's) is taken as it is.
+inline constexpr int kIniVersion = 4;
 std::string to_ini(const Settings& s);
-Settings from_ini(std::string_view text, std::vector<std::string>* warnings = nullptr);
+// `version`: the file's `version` line (0: none)
+Settings from_ini(std::string_view text, std::vector<std::string>* warnings = nullptr, int* version = nullptr);
+
+// extras: the EXTRAS rows as one word (native_play's b3r_extras; a replay's "extras"). Bits 0..12: the SELECT OPTIONS
+// rows by their RaceRow index (race_choice.h: 0 TRAFFIC, 1 LAPS, 2 ROAD RAGE's RIVALS, 4 TIMED ELIMINATION, 5
+// TRANSMISSION, 6 START, 7 RIVAL STYLE, 8 BURNOUT POINTS, 9 TIME LIMIT, 10 TRAFFIC PATTERN, 11 RIVALS' CARS, 12 TRAFFIC
+// CHECK; 3 TIME OF DAY is night's, held back); then the modes and series.
+enum ExtraBit : std::uint32_t {
+    kExtraTraffic = 1u << 0, kExtraLaps = 1u << 1, kExtraRoadRageRivals = 1u << 2, kExtraTimedElimination = 1u << 4, kExtraTransmission = 1u << 5,
+    kExtraStart = 1u << 6, kExtraRivalStyle = 1u << 7, kExtraBurnoutPoints = 1u << 8, kExtraTimeLimit = 1u << 9,
+    kExtraTrafficPattern = 1u << 10, kExtraRivalsCars = 1u << 11, kExtraTrafficCheck = 1u << 12,
+    kExtraEliminator = 1u << 16, kExtraMoreRivals = 1u << 17, kExtraHeavyweights = 1u << 18, kExtraTrafficSeries = 1u << 19,
+    kExtraCustomCars = 1u << 20, kExtraBetaCars = 1u << 21, kExtraCarViewer = 1u << 22,
+    kExtraNight = 1u << 23, kExtraRain = 1u << 24,   // EXPERIMENTAL
+    // World Tour (with NIGHT / RAIN): 0 Off, 1 Always, 2 Random in two bits each (extras_world_tour_night / _rain)
+    kExtraNightWorldTour = 3u << 25, kExtraRainWorldTour = 3u << 27,
+};
+inline int extras_world_tour_night(std::uint32_t w) { return int(w >> 25 & 3u) % 3; }
+inline int extras_world_tour_rain(std::uint32_t w) { return int(w >> 27 & 3u) % 3; }
+inline constexpr std::uint32_t kExtraRaceRows = 0x1FF7u;   // bits 0..2, 4..12
+// "all" (B3NATIVE_EXTRAS=all, race_check's default, a recording from before EXTRAS): every extra but the experimental ones
+inline constexpr std::uint32_t kExtrasAll = kExtraRaceRows | 0x7F0000u;
+inline constexpr std::uint32_t kExtrasMask = kExtrasAll | kExtraNight | kExtraRain | kExtraNightWorldTour | kExtraRainWorldTour;
+// The word. CUSTOM / BETA at -1 (not resolved yet) count as on: the game side then takes them when the folder has cars,
+// as before EXTRAS
+std::uint32_t extras_bits(const Settings& s);
+// The CUSTOM / BETA series of an install from before EXTRAS (-1): on when their folder holds a usable car, else off.
+// true when a value changed (the caller saves)
+bool resolve_extra_cars(Settings& s, bool custom_has_cars, bool beta_has_cars);
 // portable mode (1.3.0): the folder settings (hd_pack_dir, music_folder) that lie inside `install` (the program's
 // folder) are kept in the file as "<install>/..." (b3port/user_dir.h install_relative) and read back against it, so a
 // USB stick whose drive letter changes still finds them. load_file / save_file do it with the program's own folder.

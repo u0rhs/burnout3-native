@@ -28,6 +28,7 @@
 
 #include "b3host/call.h"
 #include "b3host/host.h"
+#include "b3settings/i18n.h"   // 1.3.1: the main menu's help texts in the LANGUAGE
 #include "hook_table.h"
 #include "pause_rows.h"
 
@@ -36,7 +37,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
+#include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -54,6 +58,15 @@ public:
     // photorow1: whether the pause menu gets the PHOTO MODE row now (called on the game thread by the pause page's selection
     // Prepare); unset: no row. The Update wrapper sets the request when Confirm is on the row; the caller acts on it.
     void set_photo_row_query(std::function<bool()> f) { photo_row_query_ = std::move(f); }
+    // 1.3.1: the main menu's two help texts. The game lays out (and spends its time on) the English ones 1.3.0 had, at the
+    // same guest addresses, so a run is as before (its help bar's draw cost follows the text's words: a longer text made
+    // the online tour run apart); the renderer shows this version's words in the LANGUAGE in their place: `sink` gets
+    // (guest text, the text shown; empty: the game's own) at each Prepare (native_play: b3gv_native::set_ticker_text).
+    // `language`: the code of the game's text (platform_disc.h language_text(); "" English).
+    void set_help_text(std::string language, void (*sink)(b3host::gaddr, const std::u16string&)) {
+        language_ = std::move(language);
+        help_sink_ = sink;
+    }
     bool take_photo_request() { const bool r = photo_requested_; photo_requested_ = false; return r; }
     // the row's place in the page just prepared (0: none); tests and logs
     unsigned photo_row_index() const { return photo_shown_ ? photo_idx_ : 0u; }
@@ -78,6 +91,8 @@ private:
     bool strings_ = false, region_bad_ = false;
     bool open_requested_ = false, quit_requested_ = false, photo_requested_ = false;
     std::function<bool()> photo_row_query_;
+    std::string language_;                                            // 1.3.1: the help texts' LANGUAGE ("" English)
+    void (*help_sink_)(b3host::gaddr, const std::u16string&) = nullptr;
     bool photo_shown_ = false;                    // the page's rows are in the private array with the PHOTO MODE row
     unsigned photo_idx_ = 0, photo_count_ = 0;    // its index, and the count the page holds with it
     bool photo_logged_ = false;
@@ -112,6 +127,46 @@ inline b3host::gaddr write_utf16(b3host::gaddr at, const char* text) {
     return (at + 2 + 3) & ~3u;
 }
 inline u_long128 reg(std::uint32_t v) { u_long128 q{}; q.w[0] = v; return q; }
+// 1.3.1: the help texts. kGame*: what the game lays out (1.3.0's words, kept for its timing: PcMenu::set_help_text);
+// kShown*: the words on screen, in the LANGUAGE through the port's table (include/b3settings/i18n.h)
+constexpr const char* kGamePcHelp = "DISPLAY, GRAPHICS, EFFECTS AND CAMERA";
+constexpr const char* kGameQuitHelp = "LEAVE THE GAME";
+constexpr const char* kShownPcHelp = "DISPLAY, GRAPHICS, CAR, CONTROLS AND MORE";
+constexpr const char* kShownQuitHelp = "LEAVE THE GAME";
+inline const char* port_text(const char* en, const std::string& language) {   // as b3settings::translate_text (exact entries)
+    for (const b3settings::i18n::Table& t : b3settings::i18n::kTables)
+        if (language == t.code)
+            for (std::size_t k = 0; k < t.count; ++k)
+                if (std::strcmp(t.entries[k].en, en) == 0) return t.entries[k].text;
+    return en;
+}
+inline std::u16string utf16(const char* s) {   // UTF-8 -> UTF-16 (the tables' text: the BMP)
+    std::u16string o;
+    for (const unsigned char* p = reinterpret_cast<const unsigned char*>(s); *p;) {
+        std::uint32_t c = *p++;
+        int more = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+        c &= more == 3 ? 0x07u : more == 2 ? 0x0Fu : more == 1 ? 0x1Fu : 0x7Fu;
+        for (; more > 0 && (*p & 0xC0u) == 0x80u; --more) c = c << 6 | (*p++ & 0x3Fu);
+        o.push_back(c > 0xFFFFu ? u'?' : char16_t(c));
+    }
+    return o;
+}
+// i18n2: a row label the game lays out, in the LANGUAGE (the port's table, include/b3settings/i18n.h). English (or a
+// language without the entry): the same bytes as before. `units`: the buffer's UTF-16 units, the terminator included (a
+// longer text is cut there). Returns the next 4-aligned address, as write_utf16.
+inline b3host::gaddr write_label(b3host::gaddr at, const char* en, const std::string& language, unsigned units) {
+    if (language.empty()) return write_utf16(at, en);
+    const std::u16string t = utf16(port_text(en, language));
+    unsigned n = 0;
+    for (; n < t.size() && n + 1 < units; ++n, at += 2) b3host::store<std::uint16_t>(at, static_cast<std::uint16_t>(t[n]));
+    b3host::store<std::uint16_t>(at, 0);
+    return (at + 2 + 3) & ~3u;
+}
+// the labels' room: the main menu's two share kStrings .. +0x80 (kHelp's texts follow), the pause page's SETTINGS and
+// PHOTO MODE have 0x40 bytes each
+constexpr unsigned kMainLabelUnits = 30, kPauseLabelUnits = 32;
+static_assert(2u * (2u * kMainLabelUnits + 2u) <= 0x80u, "the main menu's labels stay before the help texts");
+static_assert(kPhotoLabel - kPauseLabel == 2u * kPauseLabelUnits && kPhotoRows - kPhotoLabel >= 2u * kPauseLabelUnits, "the pause labels' room");
 }  // namespace pc_menu_detail
 
 inline bool PcMenu::requested() {
@@ -170,7 +225,7 @@ inline void PcMenu::add_pause_row() {
     auto action = [](unsigned i) { return kPausePage + 0x44u + 4u * i; };
     for (unsigned i = 0; i < n; ++i)
         if (b3host::load<std::uint32_t>(row(i)) == kPauseLabel) return;
-    write_utf16(kPauseLabel, "SETTINGS");
+    write_label(kPauseLabel, "SETTINGS", instance() ? instance()->language_ : std::string(), kPauseLabelUnits);   // i18n2
     b3host::store<std::uint32_t>(row(n), b3host::load<std::uint32_t>(row(n - 1)));
     b3host::store<std::uint32_t>(row(n) + 4u, b3host::load<std::uint32_t>(row(n - 1) + 4u));
     b3host::store<std::uint32_t>(action(n), b3host::load<std::uint32_t>(action(n - 1)));
@@ -206,7 +261,7 @@ inline b3host::gaddr PcMenu::add_photo_row(PcMenu* p, std::uint32_t sp) {
         b3host::detail::dispatch(kIs2PlayerSplit, c, cr);
         if (cr.v0.w[0] & 0xFFu) return 0;
     }
-    write_utf16(kPhotoLabel, "PHOTO MODE");
+    write_label(kPhotoLabel, "PHOTO MODE", p->language_, kPauseLabelUnits);   // i18n2
     for (unsigned i = 0; i <= n; ++i) {
         b3host::store<std::uint32_t>(kPhotoRows + 8u * i, out[i].label);
         b3host::store<std::uint32_t>(kPhotoRows + 8u * i + 4u, out[i].flags);
@@ -243,8 +298,8 @@ inline void PcMenu::select_prepare(const b3host::CallArgs& a, b3host::CallResult
     const b3host::gaddr game_rows = a.gpr[2].w[0] & 0x01FFFFFFu;
     for (unsigned k = 0; k < kGameRows * 8u; k += 4) b3host::store<std::uint32_t>(kRows + k, b3host::load<std::uint32_t>(game_rows + k));
     b3host::gaddr s = kStrings;
-    const b3host::gaddr pc_label = s;   s = write_utf16(s, "SETTINGS");
-    const b3host::gaddr quit_label = s; s = write_utf16(s, "QUIT GAME");
+    const b3host::gaddr pc_label = s;   s = write_label(s, "SETTINGS", p->language_, kMainLabelUnits);   // i18n2: in the LANGUAGE
+    const b3host::gaddr quit_label = s; s = write_label(s, "QUIT GAME", p->language_, kMainLabelUnits);
     b3host::store<std::uint32_t>(kRows + kRowPcSettings * 8u, pc_label);
     b3host::store<std::uint32_t>(kRows + kRowPcSettings * 8u + 4u, 0);   // +4 enabled (0), +5 0, as the game's rows
     b3host::store<std::uint32_t>(kRows + kRowQuit * 8u, quit_label);
@@ -266,8 +321,13 @@ inline void PcMenu::help_prepare(const b3host::CallArgs& a, b3host::CallResult& 
     const b3host::gaddr game_help = a.gpr[2].w[0] & 0x01FFFFFFu;
     for (unsigned k = 0; k < kGameRows; ++k) b3host::store<std::uint32_t>(kHelp + 4u * k, b3host::load<std::uint32_t>(game_help + 4u * k));
     b3host::gaddr s = kStrings + 0x80u;
-    const b3host::gaddr pc_help = s;   s = write_utf16(s, "DISPLAY, GRAPHICS, EFFECTS AND CAMERA");
-    const b3host::gaddr quit_help = s; s = write_utf16(s, "LEAVE THE GAME");
+    const b3host::gaddr pc_help = s;   s = write_utf16(s, kGamePcHelp);
+    const b3host::gaddr quit_help = s; s = write_utf16(s, kGameQuitHelp);
+    if (p->help_sink_)   // 1.3.1: the words shown (set_help_text); the game's own where they are the same
+        for (const auto& [at, game, shown] : {std::tuple{pc_help, kGamePcHelp, kShownPcHelp}, std::tuple{quit_help, kGameQuitHelp, kShownQuitHelp}}) {
+            const std::u16string text = utf16(port_text(shown, p->language_));
+            p->help_sink_(at, text == utf16(game) ? std::u16string() : text);
+        }
     b3host::store<std::uint32_t>(kHelp + 4u * kRowPcSettings, pc_help);
     b3host::store<std::uint32_t>(kHelp + 4u * kRowQuit, quit_help);
     b3host::CallArgs b = a;

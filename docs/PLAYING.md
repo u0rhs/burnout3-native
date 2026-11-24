@@ -232,11 +232,11 @@ mouse:
 | **Saves** | Your save files: which one the game uses, export, and importing PS2 saves (section 6). |
 | **Settings** | The same settings as the game's own SETTINGS page, in the same tabs, saved to the same file; the controls, the music folder and the HD pack have a row that opens their own launcher page. The last tab, **LAUNCHER**, holds the launcher's own: **OPEN THE LAUNCHER AT START**, **CHECK FOR UPDATES** (see below), **Add to Steam** and **Reset all settings**. |
 | **Controllers** | Two tabs: **TEST**, your connected controllers live, with a button test and a rumble test; **BINDINGS**, the keys and buttons for each player, which you can change (section 5). |
-| **HD Textures** | Choose an HD texture pack. Packs made for PCSX2 work as they are: choose the pack's `SLUS-21050` folder, or the folder above it. It is used from the next start. In the game, F4 switches the pack off and on at once, to compare. **Import Xbox textures...** builds a pack on your PC from your own Xbox disc image of the game (`.iso` or `.xiso`), for players who want to use their Xbox disc. It is a small improvement: some building fronts, signs and car paint are somewhat sharper, in the PS2 colours; an HD texture pack looks far better. It takes about a minute and about 90 MB, and nothing is downloaded. Your own HD pack and the mods' textures come first; XBOX TEXTURES (Settings > GRAPHICS > TEXTURES) turns the import off, F4 switches it with the rest, and **Remove** deletes it. |
+| **HD Textures** | Choose an HD texture pack. Packs made for PCSX2 work as they are (their `.dds` and `.png` files): choose the pack's `SLUS-21050` folder, its `replacements` folder, or the folder above it. It is used from the next start. A pack that offers several versions of one texture in separate folders (colour options) uses the first in name order: copy the ones you want into a folder of their own, as for PCSX2. Packs of `.png` (or BC7 `.dds`) files take about four times the graphics memory of the usual compressed ones: HD TEXTURE MEMORY (Settings > GRAPHICS > TEXTURES) packs them when they load on a graphics card with less than 6 GB of its own memory (Auto), always (Compressed), or never (Full quality). In the game, F4 switches the pack off and on at once, to compare. **Import Xbox textures...** builds a pack on your PC from your own Xbox disc image of the game (`.iso` or `.xiso`), for players who want to use their Xbox disc. It is a small improvement: some building fronts, signs and car paint are somewhat sharper, in the PS2 colours; an HD texture pack looks far better. It takes about a minute and about 90 MB, and nothing is downloaded. Your own HD pack and the mods' textures come first; XBOX TEXTURES (Settings > GRAPHICS > TEXTURES) turns the import off, F4 switches it with the rest, and **Remove** deletes it. The game keeps the pack's textures as it converted them (`cache/hd/` in your data folder, up to 2 GB), so a car or truck seen before appears without a stutter and later races load faster; the page shows its size, and **Clear cache** empties it. |
 | **Music** | Your own music on the game's radio (section 7). |
 | **Mods** | Install mods, turn them on or off, and set their order (section 8). |
 | **Stats** | Each profile's stats as the game saved them, and 13 achievements worked out from them. |
-| **Showroom** | Every player car on your disc in 3D on a turntable, with the game's names. Drag or use the right stick to turn it, the mouse wheel to come nearer or go back, and left / right for the next car. The cars use the same HD textures as the game: your HD pack when HD TEXTURES is on, and the textures of the mods you have turned on. |
+| **Showroom** | Every player car on your disc in 3D on a turntable, with the game's names. Drag or use the right stick to turn it, the mouse wheel to come nearer or go back, and left / right for the next car. The series row above it groups the cars as SELECT CAR does, your custom cars in the same pages of 19 (CUSTOM, CUSTOM 2, ...). The cars use the same HD textures as the game: your HD pack when HD TEXTURES is on, and the textures of the mods you have turned on. |
 | **Replays** | Sessions you recorded (turn on **RECORD REPLAYS** first: section 7). Play one back, exactly as it was played, or delete it. |
 | **Credits** | Who made the port, and the people and projects it builds on. It also shows your version and whether it is up to date. |
 
@@ -428,6 +428,49 @@ second too; push it further or move it to turn the view again). The distance sta
 goes into the car, the cones or the ceiling. This works with every controller layout: the game's menus never use the right stick (on the PlayStation layout
 it is still the throttle while you drive). To turn it off: SETTINGS > CAR > GARAGE > GARAGE CAMERA.
 
+### The car viewer (YOUR GARAGE)
+
+The game has a car viewer its menus never open. With SETTINGS > EXTRAS > **CAR VIEWER** on (off by default), in DRIVER
+DETAILS > REWARDS > GARAGE (YOUR GARAGE) press **Select**
+(Tab on the keyboard) or **L2 + R2 + Square** to look at the car on show on its own. There:
+
+| Button | Does |
+|---|---|
+| D-pad up | open and close the doors, bonnet and boot |
+| D-pad down, R3 | crumple the car |
+| D-pad right | the car back in one piece |
+| D-pad left | the next background colour |
+| L1, R1, Cross, Square, Triangle, Circle | the car's lights |
+| L2 / R2 | turn the wheels backward / forward |
+| Start | the car's next colour |
+| L3 | the game's debug drawing |
+| Select | back to the menus |
+
+It changes nothing in your save.
+
+### Looking around the car in a race
+
+In a race the **right stick** turns the chase camera around your car: point it left or right to look to that side, or
+down to look behind you (pushing up keeps the normal view). The view follows the stick smoothly, stays a moment after
+you let go, then eases back behind the car. Looking back from in front of the car, the view zooms in a little. With the
+mouse, hold the **right button** and move the mouse. The camera stops short of walls, pillars and signs instead of
+going through them (it may still stand behind a low barrier and look over it). Only the chase cameras turn (not the
+bumper or in-car views, nor the takedown and crash cameras), and the game's look-back button works as before. In a
+2-player race each player turns their own view with their own controller. On the PlayStation controller layout the
+right stick is the throttle and brake, so it stays that: there only the mouse turns the view. If you prefer the stick
+to swing the view round while you hold it (and tilt it up or down), choose SETTINGS > DISPLAY > CAMERA > ORBIT STYLE >
+Swing. To turn it off: SETTINGS > DISPLAY > CAMERA > ORBIT CAMERA.
+
+### Car stats, turn signals and loose parts in Road Rage
+
+- SETTINGS > CAR > GARAGE > CAR STATS: the car select page shows GRIP and ACCELERATION next to TOP SPEED and WEIGHT,
+  worked out from each car's handling (on by default; **Game** shows the original two).
+- SETTINGS > CAR > CAR LOOK > TURN SIGNALS: the other racers' indicators blink before a bend, on every track (off by
+  default; their lights only).
+- SETTINGS > EXTRAS > GAMEPLAY > ROAD RAGE PARTS > **All loose**: in a single-event Road Rage every loose part can come
+  off a damaged car, not only the ones the game lets go. Loose parts are physical, so those races' records are kept
+  apart (off by default; World Tour's Road Rage stays the original).
+
 ### Other keys in the game
 
 These are the defaults. Each one can be moved to any key, and most to a controller button too (next section).
@@ -441,6 +484,8 @@ These are the defaults. Each one can be moved to any key, and most to a controll
 | F10 | make a bug report (section 9) |
 | F9 | the tuning overlay in a race, only when **DEVELOPER MODS** is on (section 7) |
 | P (gamepad: L3 + R3) | photo mode, while the game is paused (the PHOTO MODE row in the pause menu does the same; section 7) |
+| P on SELECT CAR (gamepad: Circle, or the button labelled Y on the Xbox and Nintendo layouts) | the car paint panel (section 7) |
+| Tab in DRIVER DETAILS > REWARDS > GARAGE (gamepad: Select, or L2 + R2 + Square) | the car viewer (section 7) |
 | F5 (gamepad: Select + Start) | restart the event, only when **INSTANT RESTART** is on (section 7) |
 | Page Up / Page Down (gamepad: the right stick up / down) | the previous / next section of a long tab in the settings (the prompt bar at the page's foot shows the buttons for the device in use) |
 | Enter, Space or Escape (gamepad: Cross / A or Start) | skip the video that is playing |
@@ -515,8 +560,9 @@ Inside it:
 | `logs/` | a log and a controls recording for each of your last 10 runs |
 | `screenshots/` | the pictures F12 takes |
 | `replays/` | recorded sessions, when RECORD REPLAYS is on |
-| `ghosts/` | your best Time Attack laps, when GHOST is on (`modded-<set>/`: made with gameplay-changing mods, section 8) |
+| `ghosts/` | your best Time Attack laps, when GHOST is on (`modded-<set>/`: made with gameplay-changing mods, section 8; `options-…/`: races with SELECT OPTIONS' or GAMEPLAY's options, e.g. `options-mirror/`) |
 | `speedrun/` | your best times, when SPEEDRUN TIMER is on (`modded-<set>/` likewise) |
+| `cache/` | what the game converted once and reads back: `hd/` the HD pack's textures (up to 2 GB; **Clear cache** on the launcher's HD Textures page), `traffic/` the TRAFFIC series' cars |
 | `mods/` | installed mods |
 | `mods.ini` | which mods are on, and their order |
 | `updates/` | an update's download while the launcher checks and installs it |
@@ -643,59 +689,143 @@ GAME), from the pause menu during a race, or from the launcher's **Settings** pa
 row says "next start". The game's own options (volumes, the DJ, the controller layout, vibration) stay where the game
 keeps them, in **DRIVER DETAILS > SETTINGS**.
 
+When you leave the page in the game with a "next start" row changed (the graphics API, anti-aliasing, the language,
+the HD textures and a few more), a small box asks what to do with it: **Keep** (the default: it applies the next time
+the game starts), **Apply and restart** (the game closes and starts again at the title screen with the change; a race
+in progress ends, and what the game has not saved yet is lost, as with QUIT GAME) or **Revert** (the old values back).
+A row changed but not yet in use shows a `*` after its value until the game starts again.
+
+On the game's own settings pages (DRIVER DETAILS > SETTINGS: GAMEPLAY, AUDIO, VIDEO, CONTROLLERS), what you change
+stays whether you leave the page with **confirm** (Enter, Space or Z; Cross or A on a controller) or **Back** (Backspace
+or C; Triangle or B). On the PS2, Back put the old values back and only confirm kept a change: choose **SETTINGS BACK
+BUTTON: Cancel** (SETTINGS > GAME > INTERFACE) to have that again. So GAMEPLAY's **CRASH MODE IMPACT TIME: Automatic**
+(slow motion at the start of every Crash mode crash, without holding boost) sticks however you leave the page.
+
 **With every setting at its default, the game plays exactly like the PS2 original.** Nothing here changes physics,
-AI or gameplay, except the few settings marked **opt-in** below. Those are off until you turn them on.
+AI or gameplay, except the few settings marked **opt-in** below and the **EXTRAS** page. Those are off until you turn
+them on.
+
+### Extras (SETTINGS > EXTRAS)
+
+Everything the port adds to the game itself (modes, rows, series, gameplay changes) is on the **EXTRAS** page, each
+with its own On / Off, and **all of it is off** on a new install but ELIMINATOR: the front end and the races are the
+game's, with SELECT MODE's fifth mode. Turn on what you want:
+
+- **SINGLE EVENT**: ELIMINATOR (a fifth mode on SELECT MODE; on by default), MORE RIVALS (RACE's RIVALS up to 7).
+- **SELECT OPTIONS**: each extra row of the page on its own (TRAFFIC, LAPS, ROAD RAGE RIVALS, TIMED ELIMINATION,
+  TRANSMISSION, START with the BOOST START, RIVAL STYLE, BURNOUT POINTS, TIME LIMIT, TRAFFIC PATTERN, RIVALS' CARS,
+  TRAFFIC CHECK). With none on, SELECT OPTIONS is the game's page; with a few, they fit on one page.
+- **SELECT CAR**: HEAVYWEIGHTS in every mode (the game: Crash only), the TRAFFIC series, your CUSTOM CARS, the BETA
+  CARS (these two apply at the next start; importing cars in the launcher turns them on), the CAR VIEWER in YOUR GARAGE.
+- **GAMEPLAY**: MIRROR MODE, CRASHBREAKER IN EVERY MODE, TRAFFIC CHECK (2 PLAYERS), DEFORMATION, ROAD RAGE PARTS, and
+  **NO IDLE PAUSE** / **NO EVENT TIME LIMIT** (the game pauses a race after 5 minutes without input and ends an event
+  still running after 25 to 40 minutes; these turn that off).
+- **PARTY MODES** and **RACE REPLAY**.
+- **EXPERIMENTAL**: **NIGHT** gives SELECT OPTIONS a **TIME OF DAY** row (Day / Night) and **RAIN** a **WEATHER** row
+  (Clear / Rain); with both on, Night and Rain together make a race in the rain at night. They also show MOON (GRAPHICS
+  > LIGHTING) and RAIN VOLUME (AUDIO).
+  With them, **NIGHT IN WORLD TOUR** and **RAIN IN WORLD TOUR** (Off / Always / Random, each event as it starts) take
+  World Tour into the dark or the rain. Night and rain only change what you see, so your progress and records count as
+  usual. A work in progress, in this
+  version for your feedback.
+
+A race with a gameplay extra keeps its results apart from your records, as before. A replay plays with the extras it was
+recorded with, whatever the page says now. The small conveniences stay on by default: the car series on L1 / R1, the
+video skip hint, button prompts, fast loading, the photo mode row, the quick PRESS START, the settings Back button,
+car stats, the garage and orbit cameras.
 
 ### Picture and speed
 
-- **QUALITY PRESET** (GRAPHICS, the first row): PS2 ORIGINAL, LOW, MEDIUM, HIGH (the default) or ULTRA. This sets every quality and
+- **QUALITY PRESET** (SETTINGS > GRAPHICS, the first row): PS2 ORIGINAL, LOW, MEDIUM, HIGH (the default) or ULTRA. This sets every quality and
   effects row at once.
-- **BLOOM** (EFFECTS): Off, Soft (the default) or Standard. Standard is the game's own glow around bright lights, which
+- **BLOOM** (SETTINGS > EFFECTS): Off, Soft (the default) or Standard. Standard is the game's own glow around bright lights, which
   is strong on bright tracks (a white sky or a lit sign can wash out). Soft keeps the same glow at about 60% of its
   strength and blends it in so the highlights never clip into white blobs. The PS2 ORIGINAL preset uses Standard.
-- **SPARKS** and **CRASH DEBRIS** (EFFECTS): Off, Low, Medium or High (the default). High draws all of them, as the
+- **SPARKS** and **CRASH DEBRIS** (SETTINGS > EFFECTS): Off, Low, Medium or High (the default). High draws all of them, as the
   game does. Medium draws half, and Low a quarter (a little larger, so a crash still sparks brightly). A crash with
   thousands of sparks is the heaviest picture the game draws, so these are the rows to lower on a weak PC, a handheld
   or a laptop. It is drawn only: the crash itself is the same. The same particles stay on screen from one frame to the
   next, so nothing flickers. The QUALITY PRESET sets them: LOW is Low, MEDIUM is Medium, the others High.
-- **RENDER SCALE** (GRAPHICS): 200%, 150%, 125%, 100% (the default), 85%, 75%, 67% or 50%. Below 100% the 3D picture is
+- **RENDER SCALE** (SETTINGS > GRAPHICS): 200%, 150%, 125%, 100% (the default), 85%, 75%, 67% or 50%. Below 100% the 3D picture is
   drawn at that share of the window and scaled up, which a weak graphics chip draws faster; the HUD and menus stay sharp.
   LOW uses 75%. Above 100% it is drawn larger and scaled down (supersampling): smoother edges, less shimmer on thin wires
   and fences, at a large cost for the graphics card (200% draws four times the pixels); 150% and 200% want a card with
   plenty of memory. In a very large window it is held to what the graphics card can take.
-- **BATTERY SAVER** (DISPLAY > WINDOW, off by default): while the PC runs on battery, the frame rate is held to 60 and the
+- **BATTERY SAVER** (SETTINGS > DISPLAY > WINDOW, off by default): while the PC runs on battery, the frame rate is held to 60 and the
   sparks and crash debris are drawn at Medium at most. Plugged in again, your settings are back. Nothing is changed in
   the game or your saved settings.
 - **For a weak PC, a Steam Deck or a laptop on battery:** choose the LOW preset (no anti-aliasing, no full-screen blur
   or bloom, a quarter of the sparks, the 3D picture at 75%), a FRAME RATE LIMIT of 60 (or 30), and a smaller window. If
   it is still slow, lower RENDER SCALE or set DRAW DISTANCE to PS2.
-- **FRAME RATE LIMIT** (DISPLAY): Unlimited (the default), 30, 60, 120, 144, 165 or 240. The game itself always runs
-  at its own speed. **FRAME INTERPOLATION** draws smooth frames in between the game's own; turn it off to see the
+- **FRAME RATE LIMIT** (SETTINGS > DISPLAY): Auto (the default: 60 on a processor with 4 threads or fewer, so the game
+  itself keeps up; no limit on others), Unlimited (no limit at all, for fast processors), 30, 60, 120, 144, 165 or 240. The game itself always runs at its own speed. If the game falls behind (an
+  older processor in a busy race), the frame rate is held to 60 until it keeps up, so the game gets more of the processor. **FRAME INTERPOLATION** draws smooth frames in between the game's own; turn it off to see the
   PS2's 60 / 30 steps. **VSYNC** is off by default.
-- **FULLSCREEN** (DISPLAY): borderless fullscreen. F11 also switches it.
-- **FAST LOADING** (GAME > STARTING AND LOADING, on by default): loading screens go as fast as your PC can. The game is the same; only
+- **FULLSCREEN** (SETTINGS > DISPLAY): borderless fullscreen. F11 also switches it.
+- **FAST LOADING** (SETTINGS > GAME > STARTING AND LOADING, on by default): loading screens go as fast as your PC can. The game is the same; only
   the wait is shorter.
-- **ANTI-ALIASING** up to MSAA 8x and **TEXTURE FILTERING** up to anisotropic 16x (GRAPHICS > IMAGE), **CAR DETAIL**
-  (CAR > CAR LOOK), shadows, lights and the other effects (GRAPHICS and EFFECTS).
-- **CAR REFLECTIONS** (CAR > CAR LOOK): Enhanced (the default) gives the paint and the glass of the cars in a race (yours, the
+- **ANTI-ALIASING** up to MSAA 8x and **TEXTURE FILTERING** up to anisotropic 16x (SETTINGS > GRAPHICS > IMAGE), **CAR DETAIL**
+  (SETTINGS > CAR > CAR LOOK), shadows, lights and the other effects (SETTINGS > GRAPHICS and SETTINGS > EFFECTS).
+- **GRAPHICS API** (Windows; SETTINGS > GRAPHICS > IMAGE, last): Auto (the default) draws with Vulkan, and with Direct3D 12
+  when no working Vulkan device can be created on your PC; Vulkan or D3D12 picks one (if it cannot start, the other is
+  used). If the picture
+  shows faults with your graphics card, try D3D12. Applies at the next start; the FPS counter's Detailed view shows the
+  one in use.
+- **CAR REFLECTIONS** (SETTINGS > CAR > CAR LOOK): Enhanced (the default) gives the paint and the glass of the cars in a race (yours, the
   other racers, and a little on traffic) a glossy reflection of the track's sky, the horizon and the sun, strongest at
   the edges of the body. In both Enhanced and Original the cars mirror the track around them as on the PS2: in a tunnel
   you see the tunnel and its lights, not the sky. Original is the game's own faint reflection, and Off draws none. The QUALITY PRESET PS2
   ORIGINAL and LOW use Original. It is drawn only: the game itself is unchanged.
+- **REFLECTION DISTANCE**, **REFLECTION DETAIL**, **REFLECTION UPDATE** and **REFLECTION RESOLUTION** (SETTINGS > CAR > CAR
+  LOOK) set what the cars mirror. DISTANCE: Game (100 m, as the original), 200 m or 300 m of the track around the car.
+  DETAIL: the Track alone, Track and props (barriers, signs, cones, lamp posts), or Track, props and cars (the other cars
+  nearby too). UPDATE: Every frame, or Every 2nd frame for slower graphics cards. RESOLUTION: Standard (as the original)
+  or High (sharper, drawn at twice the size). The ULTRA preset sets 200 m, Track, props and cars, and High: that is about
+  twice the reflection work of Game (on a fast graphics card well under a millisecond a frame; if the frame rate drops on
+  ULTRA, try REFLECTION UPDATE Every 2nd frame first). The other presets keep Game, Track and Standard.
 - **CAR PAINT** (the CAR tab): Custom draws your car in your own colour (a ready **COLOUR**, or PAINT RED / GREEN / BLUE,
   with a swatch of the colour beside them), DECALS Off takes its logos, numbers and stripes away, and **FINISH** gives both
-  players' paint a Metallic look (a stronger reflection in the paint's colour, with flakes that sparkle in the sun) or a
-  Pearl one (the colour shifts as the car turns). **PLAYER 2 CAR PAINT** has the same rows for player 2's car in the
-  split screen. All of it is drawn only: the game, replays and saves keep the paint picked in the car select. The
+  players' paint a Metallic look (a stronger reflection in the paint's colour, with flakes that sparkle in the sun), a
+  Pearl one (the colour shifts as the car turns) or Chrome (a mirror finish with a little of the paint's colour). **DECAL COLOUR**, **WHEEL COLOUR** and **BOOST GLOW COLOUR** colour
+  those parts (Game, or a ready colour; any colour in the paint panel below). **PLAYER 2 CAR PAINT** has the same rows
+  for player 2's car in the split screen. All of it is drawn only: the game, replays and saves keep the paint picked in the car select. The
   launcher's Showroom shows your custom paint and finish.
+- **The paint panel on SELECT CAR**: the page shows one more prompt, **Paint**. Press it (Circle on a PlayStation
+  controller; the button labelled Y on the Xbox and Nintendo layouts -- the top one on an Xbox pad, the left one on a
+  Nintendo pad; the P key on the keyboard) to open a small panel over the page. **LAYER**
+  chooses what the colour rows below it paint: the **Body**, its **Decals** (logos, numbers and stripes), the
+  **Wheels** (the rims; the tyres stay dark) or the **Boost glow** (the glow at the exhausts while boosting). For each,
+  **COLOUR** is Game (the game's own), a ready colour or Custom, and **COLOUR PICKER** opens a colour square and a hue
+  bar: the D-pad (or the left stick) sets how strong and how bright the colour is, L1 / R1 turn its hue, Square
+  slows the steps down (FINE), Cross keeps the colour and Back puts the one before back; the mouse can click or drag
+  in the square and the bar. RED / GREEN / BLUE give the exact values, FINISH and DECALS are as in Settings, and
+  **FACTORY COLOURS** puts every layer back to the game's colours (and the decals on). Changes show on the car at
+  once, and the small cars of the carousel are drawn in your colours too; Back (or the Paint button again)
+  closes the panel and saves, as in Settings. In multiplayer, player 2's SELECT
+  CAR (G2) opens player 2's paint. The game's own **Color** choice on SELECT CAR puts your car back on the game's paint
+  (CAR PAINT: Game), so the small car and the big one always match; your custom colour is kept until then, and is used
+  in every race until you change the colour on SELECT CAR again (a car with a single livery has no colour choice, so
+  it keeps it). Only the body goes back: your decal, wheel and flame colours stay until you change them. There is one
+  set of colours for all your cars (the CAR PAINT rows of Settings), not one per car: the panel shows and changes that
+  set, whichever car is on show. All of it is drawn only, as the custom paint. The keyboard key is **CAR PAINT PANEL** in SETTINGS >
+  CONTROLS > BINDINGS (PLAYER: Shortcuts); a controller uses its menus' Circle, so a Custom controller layout with nothing on Circle in the menus has
+  no button for the panel (P on the keyboard still opens it).
 
-- **Night mode** (TIME OF DAY) is still being finished and is not in this version: it comes in a later update. The
-  TIME OF DAY PER RACE shortcut in CONTROLS > BINDINGS belongs to it and does nothing yet.
-- **SURFACE DETAIL** (GRAPHICS, section LIGHTING, off by default): relief and a sheen on the road, kerbs and walls from
+- **Night and rain** are in this version as experimental options: SETTINGS > EXTRAS > EXPERIMENTAL (see Extras above).
+  They are still being finished.
+- **SURFACE DETAIL** (SETTINGS > GRAPHICS, section LIGHTING, off by default): relief and a sheen on the road, kerbs and walls from
   their textures, lit by the sun. (AMBIENT OCCLUSION is held back in this version while it is being fixed.)
-- **DRAW DISTANCE** (GRAPHICS): Whole track (the default) draws the whole course with no pop-in in the distance, and
+- **SUN SHADOWS** (SETTINGS > GRAPHICS, section LIGHTING, off by default): real shadows of the cars on the road, cast by
+  the sun; none in tunnels and under bridges. Sharper with ANTI-ALIASING at 4x or more. **PROP SHADOWS** (under it, with
+  SUN SHADOWS on): the lamp posts, signs, barriers and other roadside props cast shadows too. Each draws its shadow casters
+  once more, seen from the sun, every frame, so they cost some frame rate (PROP SHADOWS the more). Drawn only.
+- **TUNNEL LIGHTS** (SETTINGS > GRAPHICS, section LIGHTING): the light fittings of tunnels and underpasses. **Glow** (the
+  default) makes them glow by day with small halos; **Xbox** draws their lit parts as the Xbox version does, glowing
+  through the bloom; **Game** is the PS2's plain textures (the PS2 ORIGINAL preset sets it). A small cost, only where
+  the fittings are on screen. Drawn only.
+- **DRAW DISTANCE** (SETTINGS > GRAPHICS): Whole track (the default) draws the whole course with no pop-in in the distance, and
   PS2 keeps the original's view.
-- **FPS COUNTER** (GAME > INTERFACE): a frame-rate readout in a corner (**FPS COUNTER POSITION** picks which; top left by
+- **FPS COUNTER** (SETTINGS > GAME > INTERFACE): a frame-rate readout in a corner (**FPS COUNTER POSITION** picks which; top left by
   default). Minimal is a small plate with just the number. Standard adds the 1 % low under it (the rate of your slowest 1 %
   of frames over the last 8 seconds). Both stay small, at most about 8 % of the window's width, so they cover little of
   a menu's title. Detailed is the big plate (about 12 % of the window's width at most on a large window): it adds a graph of frame times over the last 8 seconds with a dashed line at
@@ -703,30 +833,48 @@ AI or gameplay, except the few settings marked **opt-in** below. Those are off u
   quality preset, and your graphics card. The number is green at the target, amber below it and red far below it, and
   its three small cells say the same without colour. **F3** switches between the views (and off) while you play. It is
   never in a screenshot, and in photo mode it sits at the top left.
-- **PHOTO MODE IN PAUSE MENU** (GAME > INTERFACE): On (the default) adds a PHOTO MODE row to a race's pause menu, after
+- **PHOTO MODE IN PAUSE MENU** (SETTINGS > GAME > INTERFACE): On (the default) adds a PHOTO MODE row to a race's pause menu, after
   SETTINGS. Off leaves the pause menu as the game made it; P and L3 + R3 still open photo mode.
-- **SPEED UNITS** (GAME > LANGUAGE AND UNITS): MPH (the default, as the US game) or KM/H. The speedometer, the distance messages,
+- **SETTINGS BACK BUTTON** (SETTINGS > GAME > INTERFACE): what Back does on the game's own settings pages (DRIVER DETAILS >
+  SETTINGS: GAMEPLAY, AUDIO, VIDEO, CONTROLLERS). Keep changes (the default): what you changed there stays when you
+  leave with Back. Cancel: Back puts the old values back, as the PS2 does; only confirm keeps a change.
+- **SPEED UNITS** (SETTINGS > GAME > LANGUAGE AND UNITS): MPH (the default, as the US game) or KM/H. The speedometer, the distance messages,
   records and stats then use kilometres and metres. The speedometer changes from the next race.
 
 ### Widescreen and field of view
 
-- The port fills any window shape, ultrawide included. **RACE HUD LAYOUT** (DISPLAY) puts the race HUD at the screen's
+- The port fills any window shape, ultrawide included. **RACE HUD LAYOUT** (SETTINGS > DISPLAY) puts the race HUD at the screen's
   edges (Wide, the default) or keeps the PS2's 4:3 layout. **MENU LAYOUT** chooses how the menus fit a wide screen.
   **MENU MOVIE SIDES** fills the sides of the 4:3 menu videos with black or with a blurred copy of the video.
-- **FIELD OF VIEW** (DISPLAY > CAMERA): from 60 to 120, where 90 is the game's own. **FOV CORRECTION** keeps your car the same
+- **FIELD OF VIEW** (SETTINGS > DISPLAY > CAMERA): from 60 to 120, where 90 is the game's own. **FOV CORRECTION** keeps your car the same
   size on screen.
+
+### Camera roll
+
+SETTINGS > DISPLAY > CAMERA > CAMERA ROLL makes the chase camera lean into corners, the way the camera tilts in some
+later racing games: **Subtle** leans up to 4 degrees, **Strong** up to 8. The lean builds up over about a second through
+a bend and eases off on the straight. Only the chase cameras lean (not the bumper or in-car views, nor the takedown and
+crash cameras); in a 2-player race each view leans with its own car. It changes only the picture. Off by default.
+
+### Finish camera
+
+SETTINGS > DISPLAY > CAMERA > FINISH CAMERA > **Set pieces**: after you cross the finish line the camera cycles
+through 12 set pieces of angles around the finish line, 5 seconds each: cameras that watch your car cross the line and
+drive away, then the line itself as the others finish, instead of the game's single shot. The angles come from the game's own data on your
+disc, left over from an early version of the game. One player only (not the split screen); the results and everything
+else are as before. **Game** (the default) keeps the game's shot.
 
 ### Photo mode
 
 Pause a race (also during a crash or a Takedown cam), then choose **PHOTO MODE** in the pause menu (it follows
 SETTINGS), or press **P**, or **L3 + R3** on a gamepad. The HUD goes away and you get a free camera. Photo mode is for
 one-player races: in the two-player split screen there is no row, and P and L3 + R3 do nothing. The **PHOTO MODE IN
-PAUSE MENU** setting (GAME > INTERFACE, on by default) can hide the row; P and L3 + R3 work either way:
+PAUSE MENU** setting (SETTINGS > GAME > INTERFACE, on by default) can hide the row; P and L3 + R3 work either way:
 
 - **Keyboard:** WASD move, E / Q up / down, Shift fast, Alt slow, the mouse or the arrow keys look, the mouse wheel
   or the `-` / `=` keys zoom, Z / C tilt, R back to the game's view, **F12 takes the picture**.
   The mouse looks and zooms, and Escape also leaves; every other key and every gamepad control here can be changed in
-  CONTROLS > Shortcuts (the controls strip at the bottom of the screen shows what you set).
+  SETTINGS > CONTROLS > BINDINGS (PLAYER: Shortcuts; the controls strip at the bottom of the screen shows what you set).
 - **Gamepad:** left stick move, right stick look, RT / LT up / down, LB / RB tilt, D-pad up / down zoom.
 - **Depth of field:** F (gamepad: Back) turns it on. V / B (Start) sets the blur, N / M (D-pad left / right) moves
   the focus, and G (L3) chooses between focusing on your car or on the screen centre.
@@ -744,7 +892,7 @@ PAUSE MENU** setting (GAME > INTERFACE, on by default) can hide the row; P and L
   BUTTON PROMPTS setting). **H** (gamepad: Y / Triangle) cycles it: everything, the gauges alone, nothing. It scales
   with HUD SIZE, sits at the screen edges at every aspect ratio, and is never part of a screenshot.
 
-### Accessibility (GAME > ACCESSIBILITY)
+### Accessibility (SETTINGS > GAME > ACCESSIBILITY)
 
 - **SCREEN FLASHES Reduced** tones down full-screen white flashes and the flicker of camera changes.
 - **HUD COLOUR FILTER**: Deuteranopia, Protanopia or Tritanopia. This shifts the HUD's and menus' colours for
@@ -754,7 +902,7 @@ PAUSE MENU** setting (GAME > INTERFACE, on by default) can hide the row; P and L
 - **BOOST Toggle** (*opt-in*): press boost once to keep boosting, and again to stop. This changes the input the game
   gets, so Hold, the original behaviour, is the default.
 
-### Music (AUDIO > MUSIC, or the launcher's Music page)
+### Music (SETTINGS > AUDIO > MUSIC, or the launcher's Music page)
 
 Choose a **MUSIC FOLDER** of MP3, FLAC, Ogg Vorbis or WAV files (subfolders count too), then the **PLAYLIST**: EA
 Trax only (the original and the default), Custom only, or Mixed. Your songs play through the game's own radio, with
@@ -762,28 +910,291 @@ its volume, shuffle and the EA TRAX popup showing each song's title, artist and 
 after the game's 44 on the game's own EA TRAX page (DRIVER DETAILS > SETTINGS > EA GAMES TRAX; the first 200 of the
 folder), where each one is set to ALL, RACE ONLY, MENU ONLY or OFF like the game's songs; Custom only plays
 only yours. Changes apply from the next song. **CUSTOM MUSIC VOLUME** (0% to 200% in steps of 10, default 100%) sets
-how loud your songs play, on top of the game's RADIO VOLUME: at 100% a song plays exactly as loud as the game plays its
-own songs, so a quiet file (many downloads are mastered or normalised quieter than the game's songs) can be raised to
-match, up to twice as loud. A limiter keeps loud songs from clipping; the game's songs and the DJ do not change. It
-applies at once. **OTHER MUSIC APPS** (Windows and Linux, off by default) shows the song Spotify, a browser or any other player is
+how loud your songs play, on top of the game's RADIO VOLUME: your songs follow RADIO VOLUME (DRIVER DETAILS > SETTINGS >
+AUDIO) and the radio's fades exactly like the game's songs, and at 100% a song plays as loud as the game plays its own.
+Up to twice as loud. A limiter keeps loud songs from clipping; the game's songs and the DJ do not change. It applies at
+once. **CUSTOM MUSIC LOUDNESS** (Even out by default, or Off) evens out a folder of songs from different sources: each
+song is measured once (EBU R128 loudness, in the background from the start, a few hundred milliseconds of work per song,
+kept in music_loudness.txt next to pc_settings.ini so it is done once; a changed file is measured again) and played at
+the level of the game's own songs, a quiet file raised and a loud one turned down. A quiet song with loud peaks (a
+dynamic, older master) is raised only as far as it stays clean. Off plays each file at its own level. It applies at
+once. **OTHER MUSIC APPS** (Windows and Linux, off by default) shows the song Spotify, a browser or any other player is
 playing in the same popup; that music still plays from its own app, so turn the game's RADIO VOLUME down to hear only it.
+
+### Eliminator in Single Event
+
+With **SETTINGS > EXTRAS > ELIMINATOR** on (the default), SINGLE EVENT > SELECT MODE has **ELIMINATOR** between ROAD RAGE and CRASH: World Tour's Eliminator on any race track,
+with the game's own rules (the last car at the end of each lap is out; the race runs one lap for each rival). SELECT
+OPTIONS is the race's (REGION, TRACK, RIVALS; at least one rival: 0 counts as 1). The results page is World Tour's
+Eliminator page. An Eliminator in Single Event is kept out of your progress: the game has no Eliminator records (its
+track records are the races'), and it adds no Burnout points, totals or unlocks to your driver. With the SPEEDRUN TIMER
+or ghosts on, its times are kept apart from the races' (a folder of their own). Replays recorded before this version
+play with the four modes they were recorded with. SELECT OPTIONS' TRAFFIC row (Race options, below) works for it too; LAPS is not shown (an
+Eliminator's laps are its cars less one). **TIMED ELIMINATION** (its row on in SETTINGS > EXTRAS > SELECT OPTIONS; Off by default) puts the last car out every 24 seconds
+of race time instead of at each lap, with a countdown on screen in the lettering of the race's own captions (its warning colours in the last seconds). Like
+the other race options it keeps its ghosts and best times apart.
+
+### Race options (Single Event)
+
+SINGLE EVENT's **SELECT OPTIONS** page has more rows under the game's REGION, TRACK and RIVALS, each one with its row on
+in **SETTINGS > EXTRAS > SELECT OPTIONS** (all off by default). Move to them with Up / Down and change them with Left /
+Right, as the game's own rows:
+
+- **TRAFFIC** (Race, Time Attack, Road Rage): Off, Light, Normal (the game's), Busy, Heavy or Extreme (one and a half,
+  two and three times the game's traffic).
+- **TRAFFIC PATTERN** (Race, Time Attack, Road Rage): Fixed (the game's: the same traffic in every race on a track) or
+  Varied (a new pattern each race).
+- **LAPS** (Race): 1 to 8. The track's own count is marked "(Default)". Point-to-point tracks keep their one lap.
+- **RIVALS** (Road Rage): 1 to 5 (3 is the game's). Race already has its own RIVALS row.
+- **RIVALS** (Race, the game's own row): goes up to **7** with SETTINGS > EXTRAS > **MORE RIVALS** on: 8 cars on the grid. The game's own field is
+  5 rivals; the 6th and 7th drive the same cars as two of the others, in another paint. The two extra cars start
+  behind the grid (or ahead of it where a wall is behind).
+- **RIVALS' CARS** (Race, Road Rage): Your class (the game's: rivals from your car's series), one series for all of
+  them (Compact, Muscle, Coupe, Sports, Super, Heavyweights), Same as yours (every rival in your car, in other
+  colours), or Mixed (each rival from a series of its own, picked at random among the series you have unlocked cars
+  in).
+- **START** (Race, Time Attack, Road Rage): Rolling (the game's) or Standing. With a standing start, press Continue
+  again when the cars are lined up. A standing start has the game's own **BOOST START**: hold the brake and the
+  accelerator through the countdown, let go of the accelerator in the last half second before GO, then floor it before
+  GO. You launch with boost and full throttle for three seconds, and score 50.
+- **RIVAL STYLE** (Race): Race (the game's) or Road Rage: the rivals drive as they do in Road Rage, out to wreck you.
+- **TIME LIMIT** (Road Rage): Off (the game's: the event ends when your car is wrecked) or 1, 2, 3 or 5 minutes, with
+  the time left on the HUD.
+- **BURNOUT POINTS** (Road Rage): Takedowns (the game's: boost from takedowns only) or All (boost from driving as in
+  a race too).
+
+The page has room for nine rows, so with many rows on, Race and Road Rage show their options on two pages: the last
+row, **MORE** (1 / 2), shows the other page's rows when you press Left or Right on it. The rows each mode shows with
+every row on, top to bottom (with fewer on, the rows that are on keep this order and close up, on one page when they
+fit):
+
+- **Race**: REGION, TRACK, RIVALS, then TRAFFIC, LAPS, TRANSMISSION, START, RIVALS' CARS, MORE; page 2: TRAFFIC CHECK,
+  RIVAL STYLE, TRAFFIC PATTERN, MORE.
+- **Eliminator**: as Race, with TIMED ELIMINATION in place of LAPS.
+- **Time Attack** (one page): REGION, TRACK, TRAFFIC, TRANSMISSION, TRAFFIC PATTERN, START, TRAFFIC CHECK.
+- **Road Rage**: REGION, TRACK, RIVALS, TRAFFIC, TRANSMISSION, TIME LIMIT, BURNOUT POINTS, START, MORE; page 2: RIVALS'
+  CARS, TRAFFIC PATTERN, TRAFFIC CHECK, MORE.
+
+What you set on either page counts, whichever page shows when you continue. The page opens on page 1 each time.
+With NIGHT on (EXTRAS > EXPERIMENTAL), a **TIME OF DAY** row (Day or Night) joins the last page (in Time Attack, after
+TRANSMISSION), and with RAIN on a **WEATHER** row (Clear or Rain) after it. Day and Clear are the game's. They only
+change the picture and sound, so these races count as any. A choice whose switch you turn off goes back to Day or Clear.
+
+The options last until you leave SINGLE EVENT. With the defaults the race is exactly the game's. A race with any other
+value in these rows, or more than 5 Race rivals, changes gameplay, so it keeps no game records and does not count towards your
+profile's totals and unlocks. Your ghosts and best times from it go to a folder of their own
+(`ghosts/options-.../`, `speedrun/options-.../`), so normal play never sees them. Crash mode has no option rows and is
+not affected.
+
+### SELECT CAR's extra series
+
+In SINGLE EVENT, SELECT CAR's series run in this order: the game's own series, then **HEAVYWEIGHTS** (only once your
+profile has unlocked a heavyweight), **TRAFFIC** and **TRAFFIC SPECIAL**, **CUSTOM** and **BETA**, each with its row on in
+SETTINGS > EXTRAS > SELECT CAR (all off by default; importing cars in the launcher turns CUSTOM or BETA on). Right goes to the next series
+and Left back; SELECT CAR still opens on the first. The shoulder buttons (L1 / R1, LB / RB, or their keys) change the
+series too (SETTINGS > CAR > GARAGE > **CAR SERIES ON L1 / R1**, on by default; Off gives the game's own controls). The sections below say what each one is.
+
+### Heavyweights in Single Event races
+
+In SINGLE EVENT's **RACE**, **TIME ATTACK**, **ROAD RAGE** and **ELIMINATOR**, SELECT CAR has one more series after
+the others (with SETTINGS > EXTRAS > **HEAVYWEIGHTS** on): **HEAVYWEIGHTS**, the buses, trucks and pick-ups the game otherwise offers only in Crash mode. Press Right
+past the last series to reach it. SELECT CAR still opens on the first series, as it always did. The series is there
+only once your profile has unlocked a heavyweight, and a locked one stays locked, as in every series. You don't have
+to use it: the other series are unchanged.
+
+The heavyweight drives as it does in Crash mode, and your rivals are heavyweights too. A heavyweight is not a race
+car, so a race with one keeps no game records and does not count towards your profile's totals and unlocks. Your
+ghosts and best times from it go to a folder of their own (`ghosts/options-heavyweights/`,
+`speedrun/options-heavyweights/`; with race options or Eliminator as well, one folder for both, e.g.
+`options-heavyweights-traffic-off`), so normal play never sees them. World Tour, Crash mode and Multiplayer are not
+affected. Replays record and play back the choice.
+
+### Manual gears (TRANSMISSION)
+
+SELECT OPTIONS in SINGLE EVENT (Race, Time Attack, Road Rage, Eliminator) has **TRANSMISSION** (with its row on in SETTINGS >
+EXTRAS > SELECT OPTIONS): Automatic (the game's)
+or **Manual**, the game's own manual gearbox, which the game itself never switches on. With Manual you change gear
+yourself: **SHIFT UP** (the U key, or a controller's right paddle) and **SHIFT DOWN** (the Y key, or the left paddle), both
+under SETTINGS > CONTROLS > BINDINGS (PLAYER: Shortcuts) (a controller without paddles: bind them to free buttons there, such as the right stick's click on
+the Xbox and Nintendo layouts). Only these two change gear: the Crashbreaker and the music skip stay what they are. First
+and reverse
+still come by themselves from neutral, the game picks the gear when your car is put back on the road, and the engine
+drops to neutral when it slows right down off the throttle. The gear shows above the speedometer. Manual races keep
+their ghosts and best times apart and add nothing to your driver's records.
+### Traffic checking (Single Event and two-player races)
+
+SINGLE EVENT's **SELECT OPTIONS** has a **TRAFFIC CHECK** row (Race, Time Attack, Road Rage and Eliminator; Off by
+default) with its row on in SETTINGS > EXTRAS > SELECT OPTIONS; two-player races take SETTINGS > EXTRAS > GAMEPLAY >
+**TRAFFIC CHECK (2 PLAYERS)** (it applies from the next race). **Revenge** plays traffic
+as Burnout Revenge does: ram a car, van or lorry going your way at 75 mph or more and it is launched ahead instead of
+wrecking you, a hard hit or a shunt alike. Big rigs, buses, oncoming and crossing traffic still crash you. **Extreme**:
+any traffic hit that would crash you shoves the traffic aside instead, oncoming and big rigs too (walls still crash
+you). In both, the car you checked never crashes you, nor does anything it wrecks on down the line. Each check gives 30 boost (half a near miss) and 50 points and builds a chain, shown as TRAFFIC
+CHECK with stars by the boost bar, with GOOD / GREAT / EXTREME CHECKING as it grows. A car you checked that wrecks an
+oncoming car scores TRICK SHOT, a truck or bus SKILL SHOT, an oncoming truck or bus EXTREME SHOT, each with extra boost.
+Five seconds without a new one ends the chain and its total shows on the big sign; crashing loses it. A car you
+checked that hits a rival in the next ten seconds takes the rival out, and the takedown is yours. It changes gameplay,
+so these races keep no game records and do not count towards your profile; their ghosts and best times go to a folder
+with the race's options (`options-trafficcheck`, `options-trafficcheck-extreme`). World Tour, Crash party, Crash mode
+and online play are the game's.
+
+### Traffic vehicles in Single Event
+
+In every SINGLE EVENT mode, with SETTINGS > EXTRAS > **TRAFFIC SERIES** on, SELECT CAR has two more series after the last one: **TRAFFIC** (the cars, taxis, the tuk
+tuk, pickups, vans and the minibus you meet on the road) and **TRAFFIC SPECIAL** (the buses, the big rigs, the gritting
+truck and the motorhome). Press Right past the last series to reach them. SELECT CAR still opens on the first series,
+as it always did. The trailers and the trams are not offered: they are not built to be driven.
+
+A traffic vehicle drives with the engine, handling, sound and chase camera of a race car of the same kind and size
+(a bus uses the City Bus's, a big rig the Tractor Cab's, a van the B-Team Van's, a car a compact's), and keeps its own
+ride height. Its small picture in the list is drawn from its own model (the game has no pictures of traffic vehicles),
+and its name is the game's own. Your CAR PAINT colours apply to it as to a race car, on SELECT CAR and in the race (a
+vehicle with a single livery, such as the taxis, keeps it). Your rivals are race cars of that kind. A race with a traffic vehicle keeps no game records and
+does not count towards your profile's totals and unlocks; your ghosts and best times from it go to
+`ghosts/options-trafficcars/` and `speedrun/options-trafficcars/` (one folder with any race options). The first time you pick a traffic vehicle the port makes its race file from your
+disc's files and keeps it in your data folder (`cache/traffic`). World Tour and Multiplayer are not affected. Replays
+record and play back the choice.
+
+### Your car mods as extra cars
+
+The launcher's Game Data page has **Custom cars**: **Import from folder...** copies a car mod's cars into the `cars/custom`
+folder of your data folder (or put them there yourself: **Open**), and SINGLE EVENT's SELECT CAR shows them in a
+**CUSTOM** series after the traffic series, beside the game's cars: a custom car never replaces one. Cars imported in
+Game Data's **Beta / Prototype cars** come after them as the **BETA** series, the same way. Keep each car file in a
+folder named after its class and named after the car it was made to replace, as car mods come (`COMP/CAR7.BGV`, with
+its `.HWD` / `.LWD` beside it if it has its own engine sound). For a car with a name of its own, give it a folder with
+a `car.ini`:
+
+```
+name = My GT
+donor = COMP/CAR7
+```
+
+A custom car drives with the handling and engine sound of the car it replaces (its donor) and keeps its own model; its
+name is its `car.ini`'s, or its donor's with MOD. Your rivals are cars of the donor's class. A race with a custom car
+keeps no game records and does not count towards your profile; ghosts and best times go to `options-extracars`. The
+series shows with SETTINGS > EXTRAS > **CUSTOM CARS** on (BETA: **BETA CARS**), from the next start; importing cars
+turns it on. The launcher lists each car with **Remove**, and each file it leaves out with the
+reason; its **Showroom** shows them (and the traffic vehicles) after the game's cars. World Tour, Multiplayer and
+online play are not affected. A replay made with custom cars plays back only with the same cars in the folder.
+
+**Car packs.** A pack made to replace the game's cars (files like `PVEH/COMP/CAR7.BGV`, as a .zip or a folder) can be
+added with **Import car pack...** in the same place: the cars it changes become cars of their own, never in place of
+the game's. Before anything is written the launcher shows what the pack has, by group (cut cars, new models, early
+versions of the game's cars, new paint), each group switched on or off; files your disc already has, cut cars you
+already have in the BETA series and cars imported before are left out, and the launcher says so. Cut cars of the BETA
+series go into BETA. A pack's handling and camera changes are not used. Packs are listed one line each, with
+**Remove**. CUSTOM shows 19 cars a page (CUSTOM, CUSTOM 2, ...: press Right for the next page), up to 200 cars (11 pages).
+
+### Prototype cars (the BETA series)
+
+Some cars were cut from the game before it came out. Two early versions have them on their disc: the **June 8, 2004
+PS2 prototype** ("Pre-Alpha") and the **June 21, 2004 PS2 demo**. If you have your own disc image of either (an `.iso`,
+a raw `.bin` or a `.chd`), the launcher can add their cars to your game:
+
+1. Choose your game's own data first (the **Game Data** page).
+2. On the same page, under **Beta / Prototype cars**:
+   - **Import from disc...**: choose the prototype's disc image;
+   - **Import from folder...**: a folder holding its car files (`.BGV`, `.BTV`; its folders are searched too, e.g. a copy
+     of the disc's `VEHICLES` folder);
+   - **Import files...**: one or more of those car files.
+   The cars are converted on your computer in a few seconds, into your data folder (`cars/beta`, one folder per car).
+   Nothing is downloaded or shared, and your files are not changed.
+
+A car file of the two discs' cut cars is known by its contents, whatever its name. Another prototype car file takes the
+engine and handling of the game car its folder and name point to (`HEVY/CAR4.BGV`: Heavyweight car 4) and is named
+"Heavy 4 (prototype)"; when its name does not say (a renamed file), the launcher asks which car it is. A car file of
+the game's own layout is a normal mod car: it belongs in the CUSTOM series (`cars/custom`), and the import says so.
+
+From the next start, the cars are the **BETA** series on SELECT CAR in SINGLE EVENT. The June 21 demo gives nine: an
+SUV, a van, a garbage truck, an early fire truck, a delivery van and four race cars. The June 8 prototype gives two
+race cars; one of them is also on the June 21 disc, and the later version is kept. The discs only have placeholder
+names for these cars, so the port names them by what they are.
+
+Each car keeps its own body, wheels and collision shape. It takes the engine sound, the handling and the Crashbreaker
+of the game car that had the same place in the car list (the delivery van takes the B-Team Van's). Races with them keep
+their results apart from your records, as other races that change the game do. **Remove** on the same page deletes
+the converted cars.
+
+Other discs are refused with the reason: the July 2004 prototypes and the final game have only the game's own cars,
+the April and May 2004 demos have three of the game's cars, and the Xbox discs' cars are Xbox models that the PS2
+game cannot use.
+
+### Watching a race again (RACE REPLAY)
+
+With SETTINGS > EXTRAS > REPLAYS > **RACE REPLAY** on, the results page of a race shows one more prompt, **Replay** (F6 on
+the keyboard, Square on a PlayStation controller, X on an Xbox or Nintendo one). Press it to watch the race you have
+just driven again: the game's own replay, which runs the whole race once more from its start, your car driven exactly
+as you drove it and the other cars as they raced you. Slow motion for takedowns and Aftertouch comes back as it
+happened. Press the same button again to go back to the results page, or let the replay run: three seconds after the
+race ends it goes back by itself. A replay watched to the end can be watched again as often as you like; after leaving a replay
+early, it can't be watched again. Time spent watching a replay isn't counted as play time, as with the pause menu.
+
+It works for every offline race with a results page: Single Event and World Tour races, Road Rage, Eliminator and
+Time Attack (after END SESSION), on any of its results pages until you choose Continue or Retry there. Two-player split-screen races don't offer it.
+Crash mode has its own replay and keeps it. Watching a replay changes nothing: your results, records, progress and
+unlocks stay as the race left them, and your ghosts and best times ignore it. A race in which you used PARTY MODES'
+buttons (MOON JUMP, CRASH, AI DRIVER) offers no replay, because those buttons are not part of the game's recording.
+A race with START Standing replays its start too, BOOST START included.
+The setting applies from the next start of the game. With it off, the results pages and the game are exactly as
+before.
+
+**Cameras in the replay.** While a replay plays you can pick your own camera and the car it watches:
+
+| Action | Keyboard | Controller |
+|---|---|---|
+| Next / previous camera | `]` / `[` | D-pad up / down |
+| Next / previous car | `.` / `,` | D-pad right / left |
+| Free camera (and back) | `I` | Start |
+
+On your car the cameras are **Game** (the game's own replay camera, as the replay starts), **Chase**, **Far chase**,
+**Bumper**, **Orbit** (a slow turn round the car) and **TV** (trackside, watching the car go by). On a rival's car:
+Chase, TV and Bumper. A small line at the top right shows the camera and the driver for a few seconds after each change.
+The free camera is photo mode's (its controls move it: see Photo mode), with the replay running on; press the same key
+or button again to leave it (photo mode's own ways out work too). When a car crashes, the game's crash camera still cuts in, as in the original; set
+SETTINGS > DISPLAY > CAMERA > **REPLAY CAMERA CUTS** to Stay to keep your camera instead. The keys are in SETTINGS >
+CONTROLS and can be changed; they do something only while a replay plays (the game takes no input then), so they
+never get in the way of driving.
 
 ### Opt-in features (off by default)
 
 | Setting | What it does |
 |---|---|
-| **RUMBLE** (CONTROLS > FEEDBACK) | The game's own vibration on your gamepads, for both players, with **RUMBLE STRENGTH** and **TRIGGER RUMBLE** (the trigger motors of Xbox One and Series pads). The game's VIBRATION option in Driver Details still applies. |
-| **GHOST: Best lap** (GAME > MODES) | In Time Attack, your best lap on the track races with you as a see-through car. It is only drawn: the other cars and the game never know it is there. |
-| **INSTANT RESTART** (CONTROLS > DRIVING) | F5, or Select + Start on a gamepad, restarts the event while you drive. It goes through the game's own pause menu (RESTART, YES), so the game gets menu presses you did not make. |
-| **BOOST Toggle** (CONTROLS > DRIVING) | See Accessibility above. |
-| **DEVELOPER MODS** (MODS > DEVELOPER) | A tuning console for the game's own values (a DEVELOPER tab and F9 in a race). Edits change gameplay. Meant for mod makers. Its CHANGED tab lists what you changed; R (Square) puts a value back, Ctrl+R (Select) puts back everything after asking. What each value does: [tuning options](modding/tuning-options.md). |
+| **RUMBLE** (SETTINGS > CONTROLS > FEEDBACK) | The game's own vibration on your gamepads, for both players, with **RUMBLE STRENGTH** and **TRIGGER RUMBLE** (the trigger motors of Xbox One and Series pads). On Windows, TRIGGER RUMBLE applies at the next start: it makes the game read controllers through Windows' raw input (with XInput alongside), the way that reaches an Xbox pad's trigger motors. With it off, controllers are read as before. The game's VIBRATION option in Driver Details still applies. |
+| **GHOST: Best lap** (SETTINGS > GAME > MODES) | In Time Attack, your best lap on the track races with you as a see-through car. It is only drawn: the other cars and the game never know it is there. |
+| **MIRROR MODE** (SETTINGS > EXTRAS > GAMEPLAY) | Single Event and two-player races on mirrored tracks: the world is drawn reversed left to right and the steering follows, so left still steers left on the screen. The HUD is not mirrored; the writing on signs is. These races keep their results apart (no records, profile totals or unlocks; ghosts and best times in an `options-mirror` folder). Applies from the next race. |
+| **DEFORMATION** (SETTINGS > EXTRAS > GAMEPLAY) | How much the cars' bodies crumple when they hit something, in Single Event and two-player races (World Tour and online stay as the game): None, 50%, 100% (the game's), 150% or 200%. Any other amount changes the race after the first hard hit, so these races keep their results apart (an `options-deformation-…` folder). Applies from the next race. |
+| **CRASHBREAKER IN EVERY MODE** (SETTINGS > EXTRAS > GAMEPLAY) | After a crash in a Single Event or two-player Race, Time Attack or Road Rage, the Crashbreaker button blows your wreck up as in Crash mode, wrecking the traffic around it (with Traffic only, rivals are not taken down by it). These races keep their results apart (an `options-crashbreaker` folder). Applies from the next race. **CRASHBREAKER AFTER** (shown under it) sets how many vehicles your crash must hit first: 0 ready at once, 1 (the default) as soon as your crash involves a vehicle (the one you crash into counts), up to 3. **Full** also wrecks the rivals and the other player caught in the blast, each counted as your Aftertouch Takedown. While your crash has the Crashbreaker ready, the race HUD shows Crash mode's CRASHBREAKER prompt. |
+| **PARTY MODES** (SETTINGS > EXTRAS > PARTY MODES) | For fun, in Single Event and two-player races. **CRAZY AI PHYSICS**: the rivals' physics go haywire (Basic, Local Wildlife: they tumble without crashing, Mayhem: a rival that flips over blows up). **MOON JUMP**: hold the 4 key to lift your car into the air. **CRASH ON DEMAND**: the 5 key crashes your car. **AI DRIVER BUTTON**: the 6 key hands your car to the game's AI driver and back. **KAMIKAZE TRAFFIC**: traffic throws itself at the race cars (lots of wrecks). **TUK-TUKS**: in Single Event (Crash events too) you and every rival drive the tuk-tuk from the city traffic (its races go with the traffic vehicles' results, `options-trafficcars`). A controller button for each (or other keys) is set in SETTINGS > CONTROLS > BINDINGS (PLAYER: Shortcuts). Races with these keep their results apart (an `options-party` folder). Applies from the next race. |
+| **INSTANT RESTART** (SETTINGS > CONTROLS > DRIVING) | F5, or Select + Start on a gamepad, restarts the event while you drive. It goes through the game's own pause menu (RESTART, YES), so the game gets menu presses you did not make. |
+| **BOOST Toggle** (SETTINGS > CONTROLS > DRIVING) | See Accessibility above. |
+| **DEVELOPER MODS** (SETTINGS > MODS > DEVELOPER) | A tuning console for the game's own values (a DEVELOPER tab and F9 in a race). Edits change gameplay. Meant for mod makers. Its CHANGED tab lists what you changed; R (Square) puts a value back, Ctrl+R (Select) puts back everything after asking. What each value does: [tuning options](modding/tuning-options.md). |
 
-These are off by default too, but they do not change the game:
+These do not change the game (all off by default but CRASH CAMERA, which is on as in the game):
 
-- **SPEEDRUN TIMER** shows the event's time in game time, with your bests and lap splits.
+- **SPEEDRUN TIMER** shows the event's time in game time, with your bests and lap splits (a lap timer in Race and
+  Road Rage too).
+- **DRIVER LABELS** (SETTINGS > GAME > INTERFACE) shows each rival driver's name, the distance to them, or both, over their cars
+  in a race.
+- **CRASH CAMERA** (SETTINGS > DISPLAY > CAMERA) is on, as the game; turned off, the view stays behind your car when you crash
+  instead of cutting to the crash camera. The crash itself is the game's.
 - **RECORD REPLAYS** keeps each session as a small replay file that plays back exactly (the launcher's Replays page).
   Watching a replay never changes your own ghosts or best times.
   The newest 20 are kept.
+- **RPM METER** (SETTINGS > DISPLAY > RACE HUD) draws a thin bar of the engine revs under the speedometer, red near the rev limit.
+- **BOOST BAR SHAKE** (SETTINGS > DISPLAY > RACE HUD) makes the boost bar shake while you boost, as in the game's 2004 preview.
+- **TAKEDOWN STREAK PITCH** (SETTINGS > AUDIO > RACE SOUNDS): outside World Tour, each takedown after your 10th since your last
+  crash sounds higher, as World Tour's takedown targets do. A crash starts the count again.
+- **START AT** (SETTINGS > GAME > STARTING AND LOADING): skip the intro films and start on the title screen, or go straight to the
+  main menu with profile 1, 2 or 3 loaded.
+
+The speedometer's units (mph or km/h) are GAME > LANGUAGE AND UNITS > SPEED UNITS.
+
+These are off by default (the game keeps its own limits); turning them on changes the game a little:
+
+- **NO IDLE PAUSE** (SETTINGS > EXTRAS > GAMEPLAY): a race never pauses itself after 5 minutes without input.
+- **NO EVENT TIME LIMIT** (SETTINGS > EXTRAS > GAMEPLAY): an event still running after 25 to 40 minutes is not ended for
+  every car; an event kept going past that limit keeps no records.
 
 ## 8. Mods
 
@@ -869,7 +1280,7 @@ is ever sent anywhere by itself: you send the report yourself.
 | Problem | What to do |
 |---|---|
 | **The game window closes at once, or there is no picture.** | Most often, the graphics driver has no Vulkan. **Windows:** install the newest driver from your graphics card maker's own website. **Linux:** check with `vulkaninfo --summary` (from the `vulkan-tools` package). To install the loader and the open drivers, use `sudo apt install libvulkan1 mesa-vulkan-drivers` (Ubuntu, Debian, Mint), `sudo dnf install vulkan-loader mesa-vulkan-drivers` (Fedora), or `sudo pacman -S vulkan-icd-loader vulkan-radeon` (Arch; `vulkan-intel` for Intel, `nvidia-utils` for NVIDIA). NVIDIA cards need NVIDIA's own driver: the open "nouveau" driver is too slow or has no Vulkan. Then make a bug report from the launcher. |
-| **"SLUS_210.50 is not the US Burnout 3: Takedown program"** | Your disc is another region or version (or the copy is damaged). The port runs only the US disc, SLUS-21050. |
+| **"SLUS_210.50 is not the US Burnout 3: Takedown program"** | Your disc is another region or version (or the copy is damaged). The port runs only the US disc, SLUS-21050. A copy of its program patched for a community online server is accepted too: the port runs the same game with it (online play is not in the port). |
 | **"Not the game's folder: no ..." or "Not a disc image"** | The launcher did not find the game's files where you pointed it. Choose the folder that directly holds `SLUS_210.50`, `DATA`, `TRACKS` and the rest, or the `.iso` file itself. If the game is one folder further down, the launcher says where. |
 | **"The disc image is incomplete"** | The image was cut short. Make it again (section 2). |
 | **Windows: "The renderer ... b3render.dll was found, but Windows could not start it (error 1114)"** | Another program's DLL failed to start inside the game: most often an overlay, recorder, performance monitor or security tool that puts itself into games, or a `.dll` file added to the game folder. Close such programs (or exclude `native_play.exe` from them), keep only the files from the download in the game folder, and try again. The run log (Logs, above) lists the DLLs involved: attach the bug report. |
@@ -880,12 +1291,16 @@ is ever sent anywhere by itself: you send the report yourself.
 | **Linux: no file picker opens** | Install `xdg-desktop-portal` (with your desktop's portal) or `zenity`. You can also use **Type a path...** in the launcher. |
 | **The game closes and the log or crash report says "guest memory overrun"** | The game tried to read or write past the end of the console's memory, and the port stopped it there before it could do any harm. Please send a bug report from the launcher (Make a bug report on the Play page): it has what we need to fix it. Until a fix is out, **START IN SAFE MODE** runs without this check (so does the safe mode the game picks by itself after such a crash), or set the environment variable `B3_GUEST_GUARDS=0` to turn it off with your own settings. The game may then still crash or misbehave at that point. |
 | **The race falls behind or the sound stutters** | Lower the QUALITY PRESET, set a FRAME RATE LIMIT, or try safe mode. If that helps, please send a bug report: it tells us what your PC needed. |
+| **Races run in slow motion although the frame rate is high** | The game itself needs more of the processor than it gets (an older processor, 4 threads or fewer). Set FRAME RATE LIMIT to 60 (Auto does on such a processor), turn ANTI-ALIASING off, use Windows' High performance power plan and close other programs. To show us where the time goes, start the game once with the environment variable `B3_SAMPLE` set to a file (e.g. `%USERPROFILE%\b3sample.txt`), race a lap, quit, and attach that file to a bug report. |
 
 ## 10. Known issues
 
 These are the problems we know about in the current build. Please report them anyway when you run into them, with a
 bug report.
 
+- **Night and rain (SETTINGS > EXTRAS > EXPERIMENTAL) are experimental:** still being finished. Tell us what you
+  think.
+- **The Signature Takedown's flash** (issue #17) is still being looked into.
 - **Online play does not work yet.** Picking ONLINE on the main menu shows a message box that reads "Online play is
   coming soon."; OK takes you back. The original servers are long gone, and online play is coming in a future release.
 - **Distant traffic** can still visibly appear on the road ahead (it now fades in over a short moment).

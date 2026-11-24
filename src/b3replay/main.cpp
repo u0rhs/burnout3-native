@@ -49,12 +49,15 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <thread>   // slowcpu: FRAME RATE LIMIT Auto
 
 #include "b3asset/car.h"
 #include "b3asset/carshade.h"
 #include "b3asset/export.h"
+#include "b3asset/hdcache.h"   // hdcache
 #include "b3asset/hdpack.h"
 #include "b3port/fileio.h"   // xboximport: the user data folder as UTF-8
+#include "b3settings/settings_path.h"   // extrastart: where the PC settings are read
 #include "b3port/user_dir.h"   // portable mode: the user data folder
 #include "b3asset/png.h"
 #include "b3asset/postfx.h"
@@ -64,6 +67,7 @@
 #include "photomode.h"   // photo2: --dof aims the autofocus as photo mode does
 #include "carlook.h"
 #include "view.h"
+#include "../../tools/native/extra_series.h"   // extras: ExtraCar (the extra cars of an older install)
 #include "pcsettings.h"
 #include "b3settings/safemode.h"   // mac5: safe mode
 #include "b3asset/discfs.h"
@@ -415,6 +419,7 @@ struct Replay {
         const std::size_t i = std::size_t(std::floor(x));
         auto f = b3replay::frame_at(timeline, s.first + i, x - double(i), interpolate);
         if (!fe) view.apply_fov(f.cam, f.vehicles);   // settings1 (drawn-only FOV)
+        if (!fe) view.frame_lights(timeline, s.first + i, f.alpha, f);   // taillights
         return f;
     }
 
@@ -997,7 +1002,7 @@ void info_effects(Replay& r) {
                 if (geo_seen.insert(v.data).second && v.model >= 0) {
                     const int f = r.view.car_file(cap.heads[std::size_t(v.model)]);
                     if (f < 0) continue;
-                    const auto& b = r.view.cars[std::size_t(f)].bytes;
+                    const auto& b = r.view.cars[std::size_t(f)].full();
                     auto ff = [&](std::size_t o) { float x = 0; if (o + 4 <= b.size()) std::memcpy(&x, b.data() + o, 4); return x; };
                     const auto& h = v.shadow;
                     const int nw = cap.heads[std::size_t(v.model)][0x0D];
@@ -1410,7 +1415,8 @@ int run_info(Replay& r) {
         for (const auto& [k, n] : census) {
             const auto [kind, file, paint] = k;
             if (file < 0) continue;
-            const auto& bytes = r.view.cars[std::size_t(file)].bytes;
+            const auto& bytes = r.view.cars[std::size_t(file)].full();
+            if (bytes.size() < 0x1700) continue;   // (an extra car's file that cannot be read now)
             const b3asset::Bytes f{bytes.data(), bytes.size()};
             const std::uint32_t tex = f.u32(0x60);
             const int npal = tex ? std::max<int>(1, f.p[tex + 0xA0]) : 1;
@@ -1527,9 +1533,9 @@ int run_info(Replay& r) {
                     b3asset::GsMemory gs;
                     b3asset::CarOptions co;
                     co.bake_frames = false;
-                    const auto& cf = r.view.cars[std::size_t(file)];
+                    const auto& cfb = r.view.cars[std::size_t(file)].full();
                     it = models.emplace(file, b3asset::Model{}).first;
-                    if (!b3asset::read_car({cf.bytes.data(), cf.bytes.size()}, co, gs, it->second)) continue;
+                    if (!b3asset::read_car({cfb.data(), cfb.size()}, co, gs, it->second)) continue;
                 }
                 float W[4][4];
                 b3asset::car_irradiance_matrix(v.sh, W);
@@ -1602,7 +1608,8 @@ int run_info(Replay& r) {
                     std::memcpy(ax, v.spin_axis, 12); std::memcpy(ax + 3, v.steer_axis, 12);
                     const int file = v.model >= 0 ? r.view.car_file(cap.heads[std::size_t(v.model)]) : -1;
                     float rad = 0;
-                    if (file >= 0) std::memcpy(&rad, r.view.cars[std::size_t(file)].bytes.data() + 0x18, 4);
+                    if (file >= 0 && r.view.cars[std::size_t(file)].full().size() >= 0x1C)
+                        std::memcpy(&rad, r.view.cars[std::size_t(file)].full().data() + 0x18, 4);
                     const float ws = rad != 0 ? std::fabs(v.speed / rad) : 0;
                     if (v.cull == b3replay::Vehicle::kDrawn) ++blur[ws > 50 ? 2 : ws > 25 ? 1 : 0];
                 }
@@ -1911,6 +1918,7 @@ int run_offscreen(Replay& r) {
     const std::string out_png = sweep ? r.args.offscreen + "/native_" + std::to_string(poll) + ".png" : r.args.offscreen;
     auto f = b3replay::frame_at(r.timeline, i, r.args.alpha, true);
     if (!r.fe) r.view.apply_fov(f.cam, f.vehicles);   // settings1
+    if (!r.fe) r.view.frame_lights(r.timeline, i, f.alpha, f);   // taillights
     const auto& c = f.cam;
     int w = r.args.w, h = r.args.h;
     if (!r.args.size_set) { w = 640; h = 448; }
@@ -2030,6 +2038,7 @@ int run_offscreen(Replay& r) {
     b3replay::HudProjection hp;
     std::memcpy(hp.view_proj, fp.view_proj, sizeof hp.view_proj);
     hp.vehicles = &f.vehicles;
+    r.view.hud_carousel = f.carousel; r.view.hud_tick = f.tick;   // paint3
     r.view.hud_list(*dev, f.hud, r.cap.hud.textures, r.args.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w, &hp);
     if (f.hud && std::getenv("B3HUD_MARKER_TRACE") && r.view.hud_marker_place.size() == f.hud->markers.size()) {
         // hud4: each marker's captured place, where this frame draws it, and its anchor's place in this frame's 3D (the
@@ -2101,7 +2110,7 @@ int run_offscreen(Replay& r) {
         std::printf("  %-7s %08x at (%.1f %.1f %.1f) up.y %+.2f %.1f m: game LOD %d -> block %d, glass %d, SH %d (L00 %.3f)%s\n",
                     v.kind == b3replay::VehicleKind::kRaceCar ? "car" : v.kind == b3replay::VehicleKind::kTraffic ? "traffic" : "crashed",
                     v.id, v.main.r[3][0], v.main.r[3][1], v.main.r[3][2], v.main.r[1][1], near[k].first, b3replay::game_lod(c, v),
-                    f2 < 0 ? -1 : b3view::car_lod_block(r.view.cars[std::size_t(f2)].bytes, r.args.car_lod >= 0 ? r.args.car_lod : b3replay::game_lod(c, v)),
+                    f2 < 0 ? -1 : b3view::car_lod_block(r.view.cars[std::size_t(f2)].full(), r.args.car_lod >= 0 ? r.args.car_lod : b3replay::game_lod(c, v)),
                     v.glass, v.sh_count, v.sh[0], f2 < 0 ? " (no file)" : "");
         if (v.sh_count == 9 && k == 0)
             std::printf("          SH %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n", v.sh[0], v.sh[1], v.sh[2], v.sh[3], v.sh[4],
@@ -2167,6 +2176,7 @@ int run_profile(Replay& r) {
             const std::uint64_t t0 = b3live::now_ns();
             auto f = b3replay::frame_at(r.timeline, i, alpha, true);
             if (!f.cam.valid) continue;
+            r.view.frame_lights(r.timeline, i, f.alpha, f);   // taillights
             const std::uint64_t ta = b3live::now_ns();
             r.view.prof_ns.fill(0);
             r.view.apply_fov(f.cam, f.vehicles);
@@ -2183,6 +2193,7 @@ int run_profile(Replay& r) {
             b3replay::HudProjection hp;
             std::memcpy(hp.view_proj, fp.view_proj, sizeof hp.view_proj);
             hp.vehicles = &f.vehicles;
+            r.view.hud_carousel = f.carousel; r.view.hud_tick = f.tick;   // paint3
             r.view.hud_list(*dev, f.hud, r.cap.hud.textures, aspect, items, h, w, &hp);
             const std::uint64_t t1 = b3live::now_ns();
             if (!nodraw && !dev->draw_offscreen_wait(w, h, fp, items)) { std::fprintf(stderr, "offscreen draw failed: %s\n", SDL_GetError()); return 1; }
@@ -2522,7 +2533,7 @@ int run_window(Replay& r) {
         std::memcpy(hp.view_proj, fp.view_proj, sizeof hp.view_proj);
         hp.vehicles = &f.vehicles;
         if (r.fe) r.view.frontend_frame(*dev, f, r.cap.heads, r.cap.hud.textures, aspect, w, h, fp, items);
-        else r.view.hud_list(*dev, f.hud, r.cap.hud.textures, aspect, items, h, w, &hp);
+        else { r.view.hud_carousel = f.carousel; r.view.hud_tick = f.tick; r.view.hud_list(*dev, f.hud, r.cap.hud.textures, aspect, items, h, w, &hp); }
         if (!r.fe && attached && f.split) {   // gsoff1 (§29): the 2-player split screen, two views (the free camera keeps one)
             items.clear();
             r.view.split_frame(*dev, f, r.cap.heads, r.cap.hud.textures, game_cull, fog, specular, w, h, 2.0f * aspect, aspect, split_views, split_fp, items);
@@ -2642,11 +2653,9 @@ int b3replay_main(int argc, char** argv) {
     }
     // mac5: the native game's window keeps its PC SETTINGS in the user's prefs (the page saves there); offscreen runs
     // (tests) never read a user's file
-    if (r.args.settings_path.empty() && r.args.native_pad && r.args.live_out.empty() && !std::getenv("B3_NO_USER_SETTINGS")) {
-        if (const std::string pref = b3io::user_dir_slash(); !pref.empty()) {   // portable mode: b3port/user_dir.h
-            r.args.settings_path = pref + "pc_settings.ini";
-        }
-    }
+    // (extrastart: the rule in b3settings/settings_path.h, shared with the b3r_ getters asked before this has run)
+    r.args.settings_path = b3settings::settings_path_for(r.args.settings_path, r.args.native_pad, !r.args.live_out.empty(),
+                                                         std::getenv("B3_NO_USER_SETTINGS") != nullptr, b3io::user_dir_slash());
     // remap1: the control bindings likewise (offscreen runs: only with --controls; else the defaults)
     if (r.args.controls_path.empty() && r.args.native_pad && r.args.live_out.empty() && !std::getenv("B3_NO_USER_SETTINGS")) {
         if (const std::string pref = b3io::user_dir_slash(); !pref.empty()) {   // portable mode: b3port/user_dir.h
@@ -2692,11 +2701,24 @@ int b3replay_main(int argc, char** argv) {
             else if (d.now.unclean) std::printf("[b3settings] the last run did not end cleanly (%d in a row)\n", d.now.unclean);
         }
         Args& a = r.args;
+        if (s.extra_custom_cars < 0 || s.extra_beta_cars < 0) {   // extras: an older install's CUSTOM / BETA series, by their folders
+            bool custom = false, beta = false;
+            for (const b3native::ExtraCar& c : b3replay::extra_cars_now().cars) (c.series == b3native::kBetaSeries ? beta : custom) = true;
+            b3settings::resolve_extra_cars(s, custom, beta);
+            std::printf("[b3settings] extras: CUSTOM CARS %s, BETA CARS %s (an install from before EXTRAS: on where the folder has cars)\n",
+                        s.extra_custom_cars ? "on" : "off", s.extra_beta_cars ? "on" : "off");
+        }
         a.pc = s;
         a.msaa = s.msaa;
         a.vsync = a.vsync || s.vsync;
         a.fullscreen = a.fullscreen || s.fullscreen;
-        if (s.frame_cap > 0) a.max_fps = s.frame_cap;
+        if (const int cap = b3settings::effective_frame_cap(s.frame_cap, int(std::thread::hardware_concurrency())); cap > 0) a.max_fps = cap;   // slowcpu: Auto
+        {   // fifauto (diagnostics, nothing saved): $B3_MSAA=1|2|4|8 (another number: the next lower of them), $B3_VSYNC=0|1, $B3_FRAME_CAP=<fps> win over the settings for
+            // this run, so one Terminal line can compare them (B3_PERF_BISECT)
+            if (const char* e = std::getenv("B3_MSAA"); e && *e) { const int n = std::atoi(e); a.msaa = n >= 8 ? 8 : n >= 4 ? 4 : n >= 2 ? 2 : 1; std::printf("[b3settings] MSAA %d for this run ($B3_MSAA)\n", a.msaa); }
+            if (const char* e = std::getenv("B3_VSYNC"); e && (e[0] == '0' || e[0] == '1') && !e[1]) { a.vsync = e[0] == '1'; std::printf("[b3settings] VSYNC %s for this run ($B3_VSYNC)\n", a.vsync ? "on" : "off"); }
+            if (const char* e = std::getenv("B3_FRAME_CAP"); e && *e) { a.max_fps = std::max(0.0, std::atof(e)); std::printf("[b3settings] FRAME RATE LIMIT %.0f for this run ($B3_FRAME_CAP)\n", a.max_fps); }
+        }
         a.specular = a.specular && s.specular;
         if (!s.hd_textures) a.no_hd = true;
         xbox_on = s.xbox_textures;   // xboximport
@@ -2728,7 +2750,15 @@ int b3replay_main(int argc, char** argv) {
             if (fs::is_regular_file(d / "import.ini", ec)) xbox = b3io::u8string(d);
         }
         b3asset::set_hd_xbox_folder(xbox);
-        b3asset::hd_enable(r.args.hd_pack, r.args.no_hd, r.args.mod_textures, xbox_on ? xbox : std::string());   // patches3: the mods' packs first
+        if (b3asset::hd_enable(r.args.hd_pack, r.args.no_hd, r.args.mod_textures, xbox_on ? xbox : std::string())) {   // patches3: the mods' packs first
+            // hdcache (b3asset/hdcache.h): the converted replacements kept in the user data folder (the settings file's,
+            // else b3io::user_dir(): portable mode honoured); $B3_HD_CACHE_DIR names another, $B3_HD_CACHE=0 none
+            fs::path user = r.args.settings_path.empty() ? b3io::user_dir() : b3io::u8path(r.args.settings_path).parent_path();
+            const std::optional<std::string> cd = b3io::getenv("B3_HD_CACHE_DIR");
+            const fs::path cache = cd && !cd->empty() ? b3io::u8path(*cd) : user.empty() ? fs::path() : b3asset::hdcache::folder(user);
+            b3asset::set_hd_cache_dir(cache.empty() ? std::string() : b3io::u8string(cache));
+            if (!cache.empty() && !b3asset::hd_cache_dir().empty()) std::printf("[b3hd] HD texture cache %s\n", b3io::u8string(cache).c_str());
+        }
     }
     if (!r.args.live.empty()) {
         b3replay::LiveOptions o;

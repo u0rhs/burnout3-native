@@ -145,6 +145,10 @@ std::array<std::uint8_t, 32> gamepad_sample(const GamepadState& g, const Gamepad
 // Two reports combined (KeyPad::compose's rule): a button pressed on either, the larger pressure, each stick axis the
 // one further from centre; bytes 18-31 from `b`.
 std::array<std::uint8_t, 32> merge_samples(const std::uint8_t* a, const std::uint8_t* b);
+// paintsel (src/b3replay/nativepad.h panel_feed): the car paint panel's input for the page's `player`. Player 1's panel:
+// `player1`, player 1's report (the keyboard with player 1's pads). Player 2's panel: player 2's pad `pad2` (null: none
+// seated) with the keyboard's keys alone (`keys`: the keys composed with no pad) -- never player 1's pads.
+std::array<std::uint8_t, 32> panel_report(int player, const std::uint8_t* player1, const std::uint8_t* keys, const std::uint8_t* pad2);
 
 // Boost toggle (accessibility, PC SETTINGS > CONTROLS > DRIVING > BOOST: Toggle; b3settings boost_mode 1). OPT-IN
 // and INPUT-CHANGING: off (Hold, the default) apply() leaves the report as it is, byte for byte. On, while driving, a
@@ -190,7 +194,7 @@ private:
 };
 
 // Car series on the shoulders (carsel1; PC SETTINGS > CAR > GARAGE > CAR SERIES ON L1 / R1: On; b3settings
-// series_shoulders 1). OPT-IN and INPUT-CHANGING. The car select page changes the series (the car class: its carousel's
+// series_shoulders 1, the default since 2026-11-23). INPUT-CHANGING. The car select page changes the series (the car class: its carousel's
 // column) with Left / Right and the car with Up / Down; it reads no shoulder button [C: CB3CarSelectPage::Update
 // 0x318A80 reads Back, Confirm, Up, Down, Left, Right and Buddies (Square: the paint) only]. On, while that page is the
 // menu's current page, a press of L1 is given to the game as Left and a press of R1 as Right (the D-pad's digital bit

@@ -1,6 +1,9 @@
 // HD texture packs (b3asset/hdpack.h, docs/native-renderer.md §18): XXH3-64, PCSX2 replacement keys, names, DDS and
 // the replacement hook on synthetic data only (no pack or game data).
 #include <algorithm>
+#include <cmath>
+#include <memory>
+#include <optional>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -8,7 +11,9 @@
 
 #include "b3asset/bc.h"
 #include "b3asset/gs_memory.h"
+#include "b3asset/hdcache.h"
 #include "b3asset/hdpack.h"
+#include "b3asset/png.h"
 #include "b3asset/raster.h"
 #include "test.h"
 
@@ -637,7 +642,892 @@ TEST(hook_bc_alpha_rule_and_fallbacks) {
         CHECK(*full.levels[1].blocks == std::vector<std::uint8_t>(d.begin() + 128 + std::ptrdiff_t(l0), d.begin() + 128 + std::ptrdiff_t(l0 + l1)));
         fs::remove_all(d4);
     }
+    {   // hdmips: stored mips that are black (zeroed BC1 blocks: a pack's DDS with empty levels) are not used: the walls
+        // that turned black at the distance that mip is drawn. Levels 1 and 2 built from level 0 instead, as bright as it
+        DecodedRaster full = lim;
+        full.hdr = header(PSMT8, 6, 5, 0, 2, 64, 64, 32);
+        full.levels[0] = Image{64, 32, std::vector<std::uint8_t>(64 * 32 * 4, 0xFF)};
+        auto d = bc_dds(picture(256, 128, false), kBC1, 3);
+        const std::size_t l0 = bc_level_bytes(kBC1, 256, 128);
+        std::fill(d.begin() + 128 + std::ptrdiff_t(l0), d.end(), std::uint8_t(0));   // levels 1 and 2: black
+        const fs::path d5 = one_file_pack("test_hdpack.bcdarkmips", gs, full, d);
+        const std::size_t before = HdTextures::mips_rebuilt();
+        HdTextures hd;
+        CHECK(hd.open(d5.string()));
+        CHECK(hd.apply(gs, full, 0) && full.levels.size() == 9 && full.levels[0].w == 256);
+        CHECK(HdTextures::mips_rebuilt() == before + 1);
+        const auto mean = [](const Image& im) {
+            double s = 0;
+            for (std::size_t i = 0; i < im.rgba.size(); i += 4) s += im.rgba[i] + im.rgba[i + 1] + im.rgba[i + 2];
+            return s / double(im.rgba.size() / 4 * 3);
+        };
+        const double m0 = mean(decoded(full.levels[0])), m1 = mean(decoded(full.levels[1])), m2 = mean(decoded(full.levels[2]));
+        CHECK(m0 > 60 && std::fabs(m1 - m0) < 12 && std::fabs(m2 - m0) < 12);
+        fs::remove_all(d5);
+    }
     fs::remove_all(dir);
+}
+
+// ---- texpack: PNG replacements (community packs ship PCSX2's PNG) ----
+namespace {
+// A PNG of any colour type / depth from its rows of samples as stored (filters cycled 0..4 per row, or Adam7 passes),
+// deflate as stored blocks: enough to drive every branch of the reader
+std::uint32_t t_crc(const std::uint8_t* p, std::size_t n, std::uint32_t c = 0) {
+    c = ~c;
+    for (std::size_t i = 0; i < n; ++i) {
+        c ^= p[i];
+        for (int k = 0; k < 8; ++k) c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+    }
+    return ~c;
+}
+void t_be32(std::vector<std::uint8_t>& o, std::uint32_t v) { for (int s = 24; s >= 0; s -= 8) o.push_back(std::uint8_t(v >> s)); }
+void t_chunk(std::vector<std::uint8_t>& o, const char* type, const std::vector<std::uint8_t>& d) {
+    t_be32(o, std::uint32_t(d.size()));
+    const std::size_t at = o.size();
+    o.insert(o.end(), type, type + 4);
+    o.insert(o.end(), d.begin(), d.end());
+    t_be32(o, t_crc(&o[at], o.size() - at));
+}
+int t_paeth(int a, int b, int c) {
+    const int p = a + b - c, pa = std::abs(p - a), pb = std::abs(p - b), pc = std::abs(p - c);
+    return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+}
+// rows: each the packed samples of one row (no filter byte); filtered here, filter = row index % 5
+void t_filter_rows(const std::vector<std::vector<std::uint8_t>>& rows, std::size_t bpp, std::vector<std::uint8_t>& out) {
+    std::vector<std::uint8_t> prev;
+    for (std::size_t y = 0; y < rows.size(); ++y) {
+        const std::vector<std::uint8_t>& r = rows[y];
+        if (prev.size() != r.size()) prev.assign(r.size(), 0);
+        const int f = int(y % 5);
+        out.push_back(std::uint8_t(f));
+        for (std::size_t i = 0; i < r.size(); ++i) {
+            const int a = i >= bpp ? r[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
+            const int pr = f == 1 ? a : f == 2 ? b : f == 3 ? (a + b) / 2 : f == 4 ? t_paeth(a, b, c) : 0;
+            out.push_back(std::uint8_t(r[i] - pr));
+        }
+        prev = r;
+    }
+}
+std::vector<std::uint8_t> t_png(int w, int h, int depth, int ctype, bool interlace, const std::vector<std::uint8_t>& raw_idat,
+                                const std::vector<std::uint8_t>& plte = {}, const std::vector<std::uint8_t>& trns = {}) {
+    std::vector<std::uint8_t> o = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'}, ih;
+    t_be32(ih, std::uint32_t(w));
+    t_be32(ih, std::uint32_t(h));
+    ih.insert(ih.end(), {std::uint8_t(depth), std::uint8_t(ctype), 0, 0, std::uint8_t(interlace ? 1 : 0)});
+    t_chunk(o, "IHDR", ih);
+    if (!plte.empty()) t_chunk(o, "PLTE", plte);
+    if (!trns.empty()) t_chunk(o, "tRNS", trns);
+    std::vector<std::uint8_t> z = {0x78, 0x01};   // zlib, stored blocks
+    std::uint32_t s1 = 1, s2 = 0;
+    for (std::uint8_t b : raw_idat) { s1 = (s1 + b) % 65521; s2 = (s2 + s1) % 65521; }
+    for (std::size_t at = 0; at < raw_idat.size() || at == 0;) {
+        const std::size_t n = std::min<std::size_t>(65535, raw_idat.size() - at);
+        z.push_back(at + n >= raw_idat.size() ? 1 : 0);
+        z.push_back(std::uint8_t(n)); z.push_back(std::uint8_t(n >> 8));
+        z.push_back(std::uint8_t(~n)); z.push_back(std::uint8_t(~n >> 8));
+        z.insert(z.end(), raw_idat.begin() + std::ptrdiff_t(at), raw_idat.begin() + std::ptrdiff_t(at + n));
+        at += n;
+        if (n == 0) break;
+    }
+    t_be32(z, s2 << 16 | s1);
+    t_chunk(o, "IDAT", z);
+    t_chunk(o, "IEND", {});
+    return o;
+}
+// the reference picture: RGBA8, distinct per texel
+std::uint8_t t_c(int x, int y, int k) { return std::uint8_t(k == 3 ? 40 + 7 * x + 3 * y : x * 37 + y * 11 + k * 85); }
+}  // namespace
+
+TEST(png_reader_every_colour_type_and_depth) {
+    const int w = 13, h = 7;   // odd sizes: partial bytes for the low depths, short Adam7 passes
+    auto check = [&](const char* what, const std::vector<std::uint8_t>& png, auto expect) {
+        int ow = 0, oh = 0;
+        std::vector<std::uint8_t> rgba;
+        std::string why;
+        const bool ok = decode_png(png.data(), png.size(), ow, oh, rgba, &why);
+        CHECK(ok && ow == w && oh == h);
+        if (!ok) { std::printf("  %s: %s\n", what, why.c_str()); return; }
+        int bad = 0;
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x)
+                for (int k = 0; k < 4; ++k) bad += rgba[(std::size_t(y) * w + x) * 4 + std::size_t(k)] != expect(x, y, k);
+        if (bad) std::printf("  %s: %d samples differ\n", what, bad);
+        CHECK(bad == 0);
+    };
+    auto rows_of = [&](int bpp_bytes, auto sample) {   // 8-bit samples per texel, packed
+        std::vector<std::vector<std::uint8_t>> rows(h);
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x)
+                for (int k = 0; k < bpp_bytes; ++k) rows[std::size_t(y)].push_back(sample(x, y, k));
+        return rows;
+    };
+    std::vector<std::uint8_t> idat;
+    // RGB8 (the rework pack's): opaque
+    t_filter_rows(rows_of(3, [](int x, int y, int k) { return t_c(x, y, k); }), 3, idat);
+    check("RGB8", t_png(w, h, 8, 2, false, idat), [](int x, int y, int k) { return k == 3 ? 255 : t_c(x, y, k); });
+    // RGBA8
+    idat.clear();
+    t_filter_rows(rows_of(4, [](int x, int y, int k) { return t_c(x, y, k); }), 4, idat);
+    const std::vector<std::uint8_t> rgba8 = t_png(w, h, 8, 6, false, idat);
+    check("RGBA8", rgba8, [](int x, int y, int k) { return t_c(x, y, k); });
+    // RGB16 (high bytes taken) with tRNS on one colour
+    idat.clear();
+    t_filter_rows(rows_of(6, [](int x, int y, int k) { return k % 2 ? std::uint8_t(0x5A) : t_c(x, y, k / 2); }), 6, idat);
+    std::vector<std::uint8_t> trns16 = {t_c(2, 1, 0), 0x5A, t_c(2, 1, 1), 0x5A, t_c(2, 1, 2), 0x5A};
+    check("RGB16+tRNS", t_png(w, h, 16, 2, false, idat, {}, trns16),
+          [](int x, int y, int k) { return k == 3 ? (x == 2 && y == 1 ? 0 : 255) : t_c(x, y, k); });
+    // grey + alpha 8
+    idat.clear();
+    t_filter_rows(rows_of(2, [](int x, int y, int k) { return t_c(x, y, k ? 3 : 0); }), 2, idat);
+    check("GA8", t_png(w, h, 8, 4, false, idat), [](int x, int y, int k) { return t_c(x, y, k == 3 ? 3 : 0); });
+    // grey 1-bit (scaled to 0 / 255)
+    {
+        std::vector<std::vector<std::uint8_t>> rows(h);
+        for (int y = 0; y < h; ++y) {
+            rows[std::size_t(y)].assign((w + 7) / 8, 0);
+            for (int x = 0; x < w; ++x) if ((x + y) & 1) rows[std::size_t(y)][std::size_t(x / 8)] |= std::uint8_t(0x80 >> (x % 8));
+        }
+        idat.clear();
+        t_filter_rows(rows, 1, idat);
+        check("G1", t_png(w, h, 1, 0, false, idat), [](int x, int y, int k) { return k == 3 ? 255 : ((x + y) & 1 ? 255 : 0); });
+    }
+    // palette 4-bit with tRNS (entry 3 half transparent)
+    {
+        std::vector<std::uint8_t> plte, trns = {255, 255, 255, 128};
+        for (int i = 0; i < 16; ++i) plte.insert(plte.end(), {std::uint8_t(i * 16), std::uint8_t(255 - i * 9), std::uint8_t(i * 5)});
+        std::vector<std::vector<std::uint8_t>> rows(h);
+        for (int y = 0; y < h; ++y) {
+            rows[std::size_t(y)].assign((w + 1) / 2, 0);
+            for (int x = 0; x < w; ++x) rows[std::size_t(y)][std::size_t(x / 2)] |= std::uint8_t(((x + 2 * y) % 16) << (x % 2 ? 0 : 4));
+        }
+        idat.clear();
+        t_filter_rows(rows, 1, idat);
+        check("P4+tRNS", t_png(w, h, 4, 3, false, idat, plte, trns), [&](int x, int y, int k) -> std::uint8_t {
+            const int i = (x + 2 * y) % 16;
+            return k == 3 ? (i < 4 ? trns[std::size_t(i)] : 255) : plte[std::size_t(i * 3 + k)];
+        });
+    }
+    // Adam7 RGBA8: the seven passes, each filtered on its own
+    {
+        static const int px[7] = {0, 4, 0, 2, 0, 1, 0}, py[7] = {0, 0, 4, 0, 2, 0, 1}, dx[7] = {8, 8, 4, 4, 2, 2, 1}, dy[7] = {8, 8, 8, 4, 4, 2, 2};
+        idat.clear();
+        for (int p = 0; p < 7; ++p) {
+            std::vector<std::vector<std::uint8_t>> rows;
+            for (int y = py[p]; y < h; y += dy[p]) {
+                std::vector<std::uint8_t> r;
+                for (int x = px[p]; x < w; x += dx[p])
+                    for (int k = 0; k < 4; ++k) r.push_back(t_c(x, y, k));
+                if (!r.empty()) rows.push_back(r);
+            }
+            t_filter_rows(rows, 4, idat);
+        }
+        check("RGBA8 Adam7", t_png(w, h, 8, 6, true, idat), [](int x, int y, int k) { return t_c(x, y, k); });
+    }
+    // damaged files: refused with a reason
+    int ow, oh;
+    std::vector<std::uint8_t> out;
+    std::string why;
+    std::vector<std::uint8_t> bad = rgba8;
+    bad[bad.size() - 20] ^= 1;   // in the IDAT data: its CRC fails
+    CHECK(!decode_png(bad.data(), bad.size(), ow, oh, out, &why) && why.find("CRC") != std::string::npos);
+    CHECK(!decode_png(rgba8.data(), 40, ow, oh, out, &why) && why.find("cut off") != std::string::npos);
+    // a tiny file claiming 16384 x 16384 (a few bytes of IDAT): refused before anything of that size is allocated
+    {
+        const std::vector<std::uint8_t> bomb = t_png(16384, 16384, 8, 6, false, std::vector<std::uint8_t>(100, 0));
+        CHECK(bomb.size() < 400);
+        CHECK(!decode_png(bomb.data(), bomb.size(), ow, oh, out, &why) && why.find("too short for its size") != std::string::npos);
+        CHECK(out.empty());
+    }
+    // the writer's output reads back
+    const std::vector<std::uint8_t> sevens(std::size_t(w) * h * 4, 7);
+    const std::vector<std::uint8_t> mine = encode_png_rgba(w, h, sevens.data());
+    CHECK(decode_png(mine.data(), mine.size(), ow, oh, out) && ow == w && out[0] == 7);
+}
+
+TEST(png_replacements_load_and_index) {
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 3 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster base;
+    base.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    base.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0xFF)});
+    base.max_alpha = 0x80;
+    HdKey k;
+    CHECK(hd_key(gs, base.hdr, 0, 1, k));
+    const std::string name = hd_key_name(k);
+    // an RGB PNG at 4x (the rework pack's kind): opaque, its colours as they are
+    std::vector<std::vector<std::uint8_t>> rows(128);
+    for (int y = 0; y < 128; ++y)
+        for (int x = 0; x < 256; ++x) rows[std::size_t(y)].insert(rows[std::size_t(y)].end(), {std::uint8_t(x), std::uint8_t(y), 9});
+    std::vector<std::uint8_t> idat;
+    t_filter_rows(rows, 3, idat);
+    const std::vector<std::uint8_t> png = t_png(256, 128, 8, 2, false, idat);
+    const fs::path root = fs::path("build") / "test_hdpack.png";
+    fs::remove_all(root);
+    fs::create_directories(root / "All Original Colors");
+    fs::create_directories(root / "Custom" / "Original Colors");
+    auto put = [](const fs::path& p, const std::vector<std::uint8_t>& d) {
+        std::ofstream(p, std::ios::binary).write(reinterpret_cast<const char*>(d.data()), std::streamsize(d.size()));
+    };
+    put(root / "All Original Colors" / (name + ".png"), png);
+    // a colour variant of the same name, in a later folder: not used
+    put(root / "Custom" / "Original Colors" / (name + ".png"), t_png(4, 4, 8, 2, false, std::vector<std::uint8_t>(4 * 13, 0)));
+    put(root / "guide.pdf", {1, 2, 3});
+    HdTextures hd;
+    std::string why;
+    CHECK(hd.open(std::vector<std::string>{root.string()}, &why));
+    CHECK(hd.pack.files.size() == 1 && hd.pack.png_files == 1 && hd.pack.dds_files == 0 && hd.pack.skipped == 1);
+    CHECK(hd.pack.repeats_ == 1 && why.find("found more than once") != std::string::npos);
+    CHECK(*hd.pack.find(k) == (root / "All Original Colors" / (name + ".png")).string());   // path order: "All ..." first
+    DecodedRaster r = base;
+    CHECK(hd.apply(gs, r, 0) && r.hd);
+    CHECK(r.levels.size() == 1 && r.levels[0].w == 192 && r.levels[0].h == 128);
+    const std::uint8_t* t = &r.levels[0].rgba[(5 * 192 + 191) * 4];
+    CHECK(t[0] == 191 && t[1] == 5 && t[2] == 9 && t[3] == 0xFF);   // opaque (the original's maximum 0x80, mapped)
+    // an RGB PNG says nothing about alpha: over an original with a reflection-mask-like alpha (left 100, right 200,
+    // mapped units) it takes the original's (bilinear, so the middle blends); an RGBA PNG keeps its own, clamped as before
+    {
+        DecodedRaster m = base;
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 48; ++x) m.levels[0].rgba[(std::size_t(y) * 48 + x) * 4 + 3] = x < 24 ? 100 : 200;
+        HdTextures h2;
+        CHECK(h2.open(root.string()));
+        CHECK(h2.apply(gs, m, 0) && m.hd);
+        const auto alpha = [&](int x, int y) { return int(m.levels[0].rgba[(std::size_t(y) * 192 + std::size_t(x)) * 4 + 3]); };
+        CHECK(alpha(10, 60) == 100 && alpha(180, 60) == 200);
+        CHECK(alpha(96, 60) > 100 && alpha(96, 60) < 200);   // between the halves
+        std::vector<std::vector<std::uint8_t>> rgba_rows(128);
+        for (int y = 0; y < 128; ++y)
+            for (int x = 0; x < 256; ++x) rgba_rows[std::size_t(y)].insert(rgba_rows[std::size_t(y)].end(), {std::uint8_t(x), std::uint8_t(y), 9, 255});
+        std::vector<std::uint8_t> idat4;
+        t_filter_rows(rgba_rows, 4, idat4);
+        const fs::path solo = root / "solo";
+        fs::create_directories(solo);
+        put(solo / (name + ".png"), t_png(256, 128, 8, 6, false, idat4));
+        HdTextures h3;
+        CHECK(h3.open(solo.string()));
+        DecodedRaster m2 = base;
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 48; ++x) m2.levels[0].rgba[(std::size_t(y) * 48 + x) * 4 + 3] = x < 24 ? 100 : 200;
+        m2.max_alpha = 0x80;
+        CHECK(h3.apply(gs, m2, 0) && m2.levels[0].rgba[(60 * 192 + 10) * 4 + 3] == 255);   // its own alpha (opaque)
+        fs::remove_all(solo);
+    }
+    // a .dds and a .png of one name in one folder: one replacement (the .dds, first in path order)
+    put(root / "All Original Colors" / (name + ".dds"), [] {
+        auto d = dds_header(4, 4, nullptr);
+        d.resize(d.size() + 64, 0x80);
+        return d;
+    }());
+    HdTextures both;
+    CHECK(both.open(root.string()));
+    CHECK(both.pack.files.size() == 1 && both.pack.dds_files == 1 && both.pack.find(k)->size() > 4 &&
+          both.pack.find(k)->substr(both.pack.find(k)->size() - 4) == ".dds");
+    // a damaged PNG: a failure, the original kept
+    put(root / "All Original Colors" / (name + ".dds"), {});
+    fs::remove(root / "All Original Colors" / (name + ".dds"));
+    std::vector<std::uint8_t> broken = png;
+    broken[60] ^= 0xFF;
+    put(root / "All Original Colors" / (name + ".png"), broken);
+    HdTextures dmg;
+    CHECK(dmg.open(root.string()));
+    DecodedRaster r2 = base;
+    CHECK(!dmg.apply(gs, r2, 0) && !r2.hd && r2.levels[0].w == 48);
+    fs::remove_all(root);
+}
+
+// ---- texpack: BC7 (DX10 DDS, decoded on the CPU) ----
+namespace {
+struct BitW {   // a 128-bit block written lowest bit first
+    std::uint8_t b[16] = {};
+    int at = 0;
+    void put(unsigned v, int n) { for (int i = 0; i < n; ++i, ++at) b[at >> 3] |= std::uint8_t(((v >> i) & 1) << (at & 7)); }
+};
+int t_expand(int v, int bits, int p, bool has_p) {   // the spec's endpoint expansion
+    int n = bits;
+    if (has_p) { v = v << 1 | p; ++n; }
+    v <<= 8 - n;
+    return v | (v >> n);
+}
+int t_lerp(int e0, int e1, int w) { return ((64 - w) * e0 + w * e1 + 32) >> 6; }
+}  // namespace
+
+TEST(bc7_tables_are_consistent) {
+    CHECK(bc7_tables_check());
+    // every partition's texel 0 is in subset 0 and the anchors sit in their own subsets (catches a mistyped table entry):
+    // checked through the decoder: a block whose subset 1 / 2 endpoints differ shows each texel's subset
+    for (int part = 0; part < 64; ++part) {
+        for (int mode : {1, 2}) {   // mode 1: 2 subsets, mode 2: 3 subsets (64 partitions each)
+            BitW w;
+            w.put(1u << mode, mode + 1);
+            w.put(unsigned(part), 6);
+            const int ns = mode == 1 ? 2 : 3, cb = mode == 1 ? 6 : 5;
+            for (int c = 0; c < 3; ++c)
+                for (int sub = 0; sub < ns; ++sub)
+                    for (int e = 0; e < 2; ++e) w.put(c == 0 ? unsigned(sub * 20) : 0u, cb);   // red = the subset
+            if (mode == 1) w.put(0, 2);   // shared P-bits
+            // indices all 0 (anchors one bit shorter: the decoder must read the right count, or the block runs short)
+            std::uint8_t px[16][4];
+            bc7_decode_block(w.b, px);
+            CHECK(px[0][0] == 0);   // texel 0: subset 0
+            int seen[3] = {};
+            for (int i = 0; i < 16; ++i) {
+                const int sub = mode == 1 ? (px[i][0] == 0 ? 0 : 1) : (px[i][0] == 0 ? 0 : px[i][0] < 0x80 ? 1 : 2);
+                ++seen[sub];
+            }
+            CHECK(seen[0] > 0 && seen[1] > 0 && (ns == 2 || seen[2] > 0));
+        }
+    }
+}
+
+TEST(bc7_modes_decode_by_the_spec) {
+    // mode 6: 1 subset, RGBA 7.7.7.7 + per-endpoint P-bit, 4-bit indices (anchor 0: 3 bits)
+    {
+        BitW w;
+        w.put(1u << 6, 7);
+        const int r0 = 10, r1 = 100, g0 = 120, g1 = 5, b0 = 64, b1 = 64, a0 = 127, a1 = 30;
+        for (int v : {r0, r1, g0, g1, b0, b1, a0, a1}) w.put(unsigned(v), 7);
+        w.put(1, 1); w.put(0, 1);   // P-bits
+        for (int i = 0; i < 16; ++i) w.put(unsigned(i), i == 0 ? 3 : 4);
+        std::uint8_t px[16][4];
+        bc7_decode_block(w.b, px);
+        int bad = 0;
+        for (int i = 0; i < 16; ++i) {
+            const int wt = std::vector<int>{0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64}[std::size_t(i)];
+            const int e[4][2] = {{t_expand(r0, 7, 1, true), t_expand(r1, 7, 0, true)}, {t_expand(g0, 7, 1, true), t_expand(g1, 7, 0, true)},
+                                 {t_expand(b0, 7, 1, true), t_expand(b1, 7, 0, true)}, {t_expand(a0, 7, 1, true), t_expand(a1, 7, 0, true)}};
+            for (int c = 0; c < 4; ++c) bad += px[i][c] != t_lerp(e[c][0], e[c][1], wt);
+        }
+        CHECK(bad == 0);
+        CHECK(px[0][3] == 255 && px[0][0] == 21);   // 127 <<1 | 1 = 255; 10 <<1 | 1 = 21
+    }
+    // mode 5: 1 subset, RGB 7.7.7 + alpha 8, rotation, 2-bit colour and alpha indices (anchor 1 bit each)
+    {
+        BitW w;
+        w.put(1u << 5, 6);
+        w.put(2, 2);   // rotation: swap alpha and green
+        const int c0[3] = {127, 0, 64}, c1[3] = {0, 127, 64};
+        for (int c = 0; c < 3; ++c) { w.put(unsigned(c0[c]), 7); w.put(unsigned(c1[c]), 7); }
+        w.put(200, 8); w.put(40, 8);
+        for (int i = 0; i < 16; ++i) w.put(unsigned(i & 3), i == 0 ? 1 : 2);        // colour indices
+        for (int i = 0; i < 16; ++i) w.put(unsigned((i >> 2) & 3), i == 0 ? 1 : 2); // alpha indices
+        std::uint8_t px[16][4];
+        bc7_decode_block(w.b, px);
+        const int w2[4] = {0, 21, 43, 64};
+        int bad = 0;
+        for (int i = 0; i < 16; ++i) {
+            int o[4];
+            for (int c = 0; c < 3; ++c) o[c] = t_lerp(t_expand(c0[c], 7, 0, false), t_expand(c1[c], 7, 0, false), w2[i & 3]);
+            o[3] = t_lerp(200, 40, w2[(i >> 2) & 3]);
+            std::swap(o[3], o[1]);
+            for (int c = 0; c < 4; ++c) bad += px[i][c] != o[c];
+        }
+        CHECK(bad == 0);
+    }
+    // mode 4 with the index selection bit: colour from the 3-bit indices, alpha from the 2-bit ones
+    {
+        BitW w;
+        w.put(1u << 4, 5);
+        w.put(0, 2);   // no rotation
+        w.put(1, 1);   // index selection
+        const int c0 = 31, c1 = 0;
+        for (int c = 0; c < 3; ++c) { w.put(unsigned(c0), 5); w.put(unsigned(c1), 5); }
+        w.put(63, 6); w.put(0, 6);
+        for (int i = 0; i < 16; ++i) w.put(unsigned(i & 3), i == 0 ? 1 : 2);   // primary (2-bit): alpha here
+        for (int i = 0; i < 16; ++i) w.put(unsigned(i & 7), i == 0 ? 2 : 3);   // secondary (3-bit): colour here
+        std::uint8_t px[16][4];
+        bc7_decode_block(w.b, px);
+        const int w2[4] = {0, 21, 43, 64}, w3[8] = {0, 9, 18, 27, 37, 46, 55, 64};
+        int bad = 0;
+        for (int i = 0; i < 16; ++i) {
+            bad += px[i][0] != t_lerp(255, 0, w3[i & 7]);
+            bad += px[i][3] != t_lerp(255, 0, w2[i & 3]);
+        }
+        CHECK(bad == 0);
+    }
+    // mode 0: 3 subsets, partition from the first 16, RGB 4.4.4 + per-endpoint P-bit, 3-bit indices, two anchors
+    {
+        const int part = 13;
+        BitW w;
+        w.put(1, 1);
+        w.put(unsigned(part), 4);
+        for (int c = 0; c < 3; ++c)
+            for (int sub = 0; sub < 3; ++sub)
+                for (int e = 0; e < 2; ++e) w.put(unsigned(c == 0 ? sub * 5 + e * 3 : 15 - sub), 4);
+        for (int k = 0; k < 6; ++k) w.put(unsigned(k & 1), 1);
+        const int a1 = 13, a2 = 15;   // Table.A3a / A3b, partition 13 (anchors 5? check below by reading the result)
+        (void)a1; (void)a2;
+        for (int i = 0; i < 16; ++i) w.put(0, 3);   // all index 0 (the anchors' short fields read as part of the zeros)
+        std::uint8_t px[16][4];
+        bc7_decode_block(w.b, px);
+        // index 0 everywhere: each texel is its subset's endpoint 0, expanded with its P-bit
+        const int part13[16] = {0,1,2,2,0,1,2,2,0,1,2,2,0,1,2,2};
+        int bad = 0;
+        for (int i = 0; i < 16; ++i) {
+            const int sub = part13[i];
+            bad += px[i][0] != t_expand(sub * 5, 4, 0, true);
+            bad += px[i][1] != t_expand(15 - sub, 4, 0, true);
+            bad += px[i][3] != 255;
+        }
+        CHECK(bad == 0);
+    }
+    // the reserved mode: transparent black
+    {
+        std::uint8_t blk[16] = {}, px[16][4];
+        blk[5] = 0xFF;
+        bc7_decode_block(blk, px);
+        CHECK(px[3][0] == 0 && px[3][3] == 0);
+    }
+}
+
+TEST(bc7_dds_replacements_load) {
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 3 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster base;
+    base.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    base.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0xFF)});
+    base.max_alpha = 0x80;
+    // a 256x128 BC7 file (DX10 header, DXGI 98): every block mode 6 with one solid colour per block
+    std::vector<std::uint8_t> d = dds_header(256, 128, "DX10");
+    d.resize(148, 0);
+    put32(d, 128, 98);   // DXGI_FORMAT_BC7_UNORM
+    put32(d, 132, 3);    // TEXTURE2D
+    for (int by = 0; by < 32; ++by)
+        for (int bx = 0; bx < 64; ++bx) {
+            BitW w;
+            w.put(1u << 6, 7);
+            for (int v : {bx * 2, bx * 2, by * 4, by * 4, 9, 9, 64, 64}) w.put(unsigned(v), 7);   // alpha 0x80 opaque in PS2 units
+            w.put(0, 2);
+            w.put(0, 63);
+            d.insert(d.end(), w.b, w.b + 16);
+        }
+    DdsInfo info;
+    std::string why;
+    CHECK(parse_dds(d.data(), d.size(), info, &why) && info.fmt == kBC7 && info.w == 256);
+    const fs::path dir = one_file_pack("test_hdpack.bc7", gs, base, d);
+    HdTextures hd;
+    CHECK(hd.open(dir.string()));
+    DecodedRaster r = base;
+    CHECK(hd.apply(gs, r, 0) && r.hd && r.levels[0].w == 192 && r.levels[0].bc == 0);   // RGBA8
+    const std::uint8_t* t = &r.levels[0].rgba[(std::size_t(8 * 4 + 1) * 192 + 20 * 4 + 2) * 4];   // block (20, 8)
+    CHECK(t[0] == t_expand(40, 7, 0, true) && t[1] == t_expand(32, 7, 0, true) && t[2] == t_expand(9, 7, 0, true) && t[3] == 0xFF);
+    // texpack (with hdmips): a BC7 file with stored mips: the mips are not used (reported, counted with the rebuilt
+    // chains); the replacement is its level 0 as before
+    {
+        auto withmips = d;
+        put32(withmips, 8, 0x20000 | 0x1007);   // DDSD_MIPMAPCOUNT
+        put32(withmips, 28, 2);
+        for (int i = 0; i < 32 * 16; ++i) withmips.insert(withmips.end(), {0x40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});   // a black / clear level 1
+        CHECK(parse_dds(withmips.data(), withmips.size(), info, &why) && info.levels == 2);
+        const fs::path d2 = one_file_pack("test_hdpack.bc7mips", gs, base, withmips);
+        const std::size_t before = HdTextures::bc7_mips_unused(), rebuilt = HdTextures::mips_rebuilt();
+        HdTextures hd2;
+        CHECK(hd2.open(d2.string()));
+        DecodedRaster r2 = base;
+        CHECK(hd2.apply(gs, r2, 0) && r2.hd && r2.levels.size() == 1 && r2.levels[0].bc == 0);   // level 0 only (RGBA8)
+        CHECK(HdTextures::bc7_mips_unused() == before + 1 && HdTextures::mips_rebuilt() == rebuilt);   // its own count
+        const std::uint8_t* t2 = &r2.levels[0].rgba[(std::size_t(8 * 4 + 1) * 192 + 20 * 4 + 2) * 4];
+        CHECK(t2[0] == t[0] && t2[1] == t[1] && t2[2] == t[2]);   // the file's level 0, as without mips
+        fs::remove_all(d2);
+    }
+    // BC4 / BC5 / BC6H: refused with a reason (no crash, the original kept)
+    for (std::uint32_t dxgi : {80u, 83u, 95u}) {
+        auto bad = d;
+        put32(bad, 128, dxgi);
+        CHECK(!parse_dds(bad.data(), bad.size(), info, &why) && !why.empty());
+    }
+    fs::remove_all(dir);
+}
+
+TEST(png_encoded_to_bc_when_asked) {
+    // HD TEXTURE MEMORY Compressed: a PNG becomes BC at load (opaque: BC1, with alpha: BC3) and takes the BC path; an
+    // alpha-less PNG still takes the original's alpha there (the rule, re-encoded)
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 3 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster base;
+    base.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    base.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0xFF)});
+    base.max_alpha = 0x80;
+    HdKey k;
+    CHECK(hd_key(gs, base.hdr, 0, 1, k));
+    for (int with_alpha = 0; with_alpha < 2; ++with_alpha) {
+        std::vector<std::vector<std::uint8_t>> rows(128);
+        for (int y = 0; y < 128; ++y)
+            for (int x = 0; x < 256; ++x) {
+                rows[std::size_t(y)].insert(rows[std::size_t(y)].end(), {std::uint8_t(x), std::uint8_t(y), 9});
+                if (with_alpha) rows[std::size_t(y)].push_back(x < 128 ? 0x80 : 0x40);
+            }
+        std::vector<std::uint8_t> idat;
+        t_filter_rows(rows, with_alpha ? 4 : 3, idat);
+        const fs::path dir = fs::path("build") / "test_hdpack.pngbc";
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        const std::vector<std::uint8_t> png = t_png(256, 128, 8, with_alpha ? 6 : 2, false, idat);
+        std::ofstream(dir / (hd_key_name(k) + ".png"), std::ios::binary).write(reinterpret_cast<const char*>(png.data()), std::streamsize(png.size()));
+        set_hd_compressed(true);
+        set_hd_encode(true);
+        {
+            HdTextures hd;
+            CHECK(hd.open(dir.string()));
+            const HdCompressScope scope;
+            DecodedRaster r = base;
+            if (!with_alpha)   // an alpha-less file over an original with alpha 100 / 200: the rule's chain (BC3)
+                for (int y = 0; y < 32; ++y)
+                    for (int x = 0; x < 48; ++x) r.levels[0].rgba[(std::size_t(y) * 48 + x) * 4 + 3] = x < 24 ? 100 : 200;
+            CHECK(hd.apply(gs, r, 0) && r.hd);
+            CHECK(!r.levels.empty() && r.levels[0].bc != 0 && r.levels[0].w == 192 && r.levels[0].h == 128);
+            const Image d0 = decoded(r.levels[0]);
+            const std::uint8_t* t = &d0.rgba[(std::size_t(60) * 192 + 10) * 4];
+            CHECK(std::abs(int(t[0]) - 10) <= 8 && std::abs(int(t[1]) - 60) <= 8);   // the colour (BC: close)
+            if (with_alpha) CHECK(r.levels[0].bc == kBC3 && t[3] >= 0xF0);           // 0x80 PS2: opaque
+            else CHECK(r.levels[0].bc == kBC3 && std::abs(int(t[3]) - 100) <= 8);   // the original's alpha
+        }
+        set_hd_encode(false);
+        set_hd_compressed(false);
+        fs::remove_all(dir);
+    }
+}
+
+// hdmips (bc.h bc_consistent_levels): a chain whose levels keep their parent's mean is whole; a black or transparent level
+// ends it there (at least level 0 stays)
+TEST(bc_consistent_levels_cut_at_a_wrong_level) {
+    const auto level = [](const Image& im, int fmt) {
+        Image l;
+        l.w = im.w;
+        l.h = im.h;
+        l.bc = fmt;
+        auto b = std::make_shared<std::vector<std::uint8_t>>();
+        bc_encode(fmt, im.rgba.data(), im.w, im.h, *b);
+        l.blocks = b;
+        return l;
+    };
+    for (int fmt : {kBC1, kBC3}) {
+        std::vector<Image> good;
+        Image cur = picture(128, 64, fmt == kBC3);
+        for (int k = 0; k < 5; ++k) {
+            good.push_back(level(cur, fmt));
+            Image n;
+            mip_down(cur, n);
+            cur = std::move(n);
+        }
+        CHECK(bc_consistent_levels(good, fmt == kBC3) == good.size());
+        std::vector<Image> dark = good;
+        Image black = picture(dark[2].w, dark[2].h, false);
+        std::fill(black.rgba.begin(), black.rgba.end(), std::uint8_t(0));
+        for (std::size_t i = 3; i < black.rgba.size(); i += 4) black.rgba[i] = 0xFF;
+        dark[2] = level(black, fmt);
+        CHECK(bc_consistent_levels(dark, fmt == kBC3) == 2);
+        if (fmt == kBC3) {   // a level gone transparent: cut when alpha counts, kept when it does not (TCC 0: opaque)
+            std::vector<Image> clear = good;
+            Image t = picture(clear[1].w, clear[1].h, true);
+            for (std::size_t i = 3; i < t.rgba.size(); i += 4) t.rgba[i] = 0;
+            Image ref = picture(128, 64, true);
+            Image h1;
+            mip_down(ref, h1);
+            for (std::size_t i = 0; i < t.rgba.size(); i += 4) for (int c = 0; c < 3; ++c) t.rgba[i + std::size_t(c)] = h1.rgba[i + std::size_t(c)];
+            clear[1] = level(t, fmt);
+            CHECK(bc_consistent_levels(clear, true) == 1);
+            CHECK(bc_consistent_levels(clear, false) == clear.size());
+        }
+        CHECK(bc_consistent_levels(std::vector<Image>(good.begin(), good.begin() + 1), true) == 1);
+        std::vector<Image> odd = good;   // a level this check cannot read: nothing to judge, the chain kept
+        odd[1].bc = 0;
+        CHECK(bc_consistent_levels(odd, fmt == kBC3) == odd.size());
+        odd[1] = good[1];
+        odd[1].blocks.reset();
+        CHECK(bc_consistent_levels(odd, fmt == kBC3) == odd.size());
+    }
+    {   // vertical stripes on a 2048 x 2048 level (512 blocks a row): a sampling stride dividing the row saw only the black
+        // block columns (every 64th); every column is sampled, so the level and its true mip agree
+        Image big;
+        big.w = big.h = 2048;
+        big.rgba.resize(std::size_t(2048) * 2048 * 4);
+        for (int y = 0; y < 2048; ++y)
+            for (int x = 0; x < 2048; ++x) {
+                const std::uint8_t v = (x / 4) % 64 == 0 ? 0 : 230;
+                std::uint8_t* p = &big.rgba[(std::size_t(y) * 2048 + std::size_t(x)) * 4];
+                p[0] = p[1] = p[2] = v;
+                p[3] = 0xFF;
+            }
+        Image half;
+        mip_down(big, half);
+        std::vector<Image> c = {level(big, kBC1), level(half, kBC1)};
+        CHECK(bc_consistent_levels(c, false) == 2);
+    }
+    {   // 2 x 2 and 1 x 1 levels: only the texels inside count (the block's padding here black, the picture white)
+        const auto padded = [](int w, int h) {
+            std::uint8_t px[16][4];
+            for (int t = 0; t < 16; ++t) {
+                const std::uint8_t v = (t & 3) < w && (t >> 2) < h ? 240 : 0;
+                px[t][0] = px[t][1] = px[t][2] = v;
+                px[t][3] = 0xFF;
+            }
+            Image l;
+            l.w = w;
+            l.h = h;
+            l.bc = kBC1;
+            auto b = std::make_shared<std::vector<std::uint8_t>>(8);
+            bc_encode_color(px, b->data(), false);
+            l.blocks = b;
+            return l;
+        };
+        std::vector<Image> c = {padded(4, 4), padded(2, 2), padded(1, 1)};
+        CHECK(bc_consistent_levels(c, false) == 3);
+    }
+}
+
+
+// ---- hdcache: the converted replacements on disk (include/b3asset/hdcache.h) ----
+
+namespace {
+bool same_levels(const std::vector<Image>& a, const std::vector<Image>& b) {
+    if (a.size() != b.size()) return false;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        const Image &x = a[i], &y = b[i];
+        if (x.w != y.w || x.h != y.h || x.bc != y.bc || x.rgba != y.rgba) return false;
+        if (bool(x.blocks) != bool(y.blocks) || (x.blocks && *x.blocks != *y.blocks)) return false;
+    }
+    return true;
+}
+struct CacheDir {   // a fresh cache folder for the test; the cache off again after it
+    std::filesystem::path dir;
+    explicit CacheDir(const char* name, std::uint64_t cap_mb = 0) : dir(std::filesystem::path("build") / name) {
+        std::filesystem::remove_all(dir);
+        set_hd_cache_dir(dir.string(), cap_mb);
+    }
+    ~CacheDir() {
+        hd_cache_flush();
+        set_hd_cache_dir("");
+        std::filesystem::remove_all(dir);
+    }
+};
+// One apply of `base` by a fresh HdTextures on the pack `pack` (the counters it ended with in `hd_out`)
+DecodedRaster apply_once(const std::filesystem::path& pack, const GsMemory& gs, const DecodedRaster& base, bool& hit,
+                         std::size_t* masked = nullptr, std::size_t* files = nullptr, std::size_t* compressed = nullptr, std::size_t* encoded = nullptr) {
+    HdTextures hd;
+    hd.open(pack.string());
+    DecodedRaster r = base;
+    hit = hd.apply(gs, r, 0);
+    if (masked) *masked = hd.masked;
+    if (files) *files = hd.files_loaded;
+    if (compressed) *compressed = hd.compressed;
+    if (encoded) *encoded = hd.encoded;
+    return r;
+}
+struct Case { const char* name; bool compressed, scope; int fmt; bool rule; };
+}  // namespace
+
+TEST(disk_cache_entries_equal_a_fresh_apply) {
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 3 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster plain;   // opaque original: the rule changes nothing
+    plain.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    plain.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0xFF)});
+    plain.max_alpha = 0x80;
+    DecodedRaster lim = plain;   // transparent left half: the rule cuts the replacement there (BC3 re-encoded on the BC path)
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 24; ++x) lim.levels[0].rgba[(std::size_t(y) * 48 + x) * 4 + 3] = 0;
+    const Case cases[] = {
+        {"rgba8 (no BC device)", false, false, kBC3, false},
+        {"rgba8 alpha rule", false, false, kBC3, true},
+        {"BC chain (BC1)", true, true, kBC1, false},
+        {"BC chain (BC3)", true, true, kBC3, false},
+        {"BC alpha rule (BC3 re-encoded)", true, true, kBC3, true},
+        {"BC device, no compress scope (RGBA8)", true, false, kBC1, false},
+        {"TCC 0", true, true, kBC3, false},
+    };
+    for (const Case& c : cases) {
+        const DecodedRaster& base0 = c.rule ? lim : plain;
+        DecodedRaster base = base0;
+        if (std::string(c.name) == "TCC 0") base.hdr.tex0 &= ~(1ull << 34);
+        const fs::path pack = one_file_pack("test_hdpack.cachepack", gs, base, bc_dds(picture(256, 128, c.fmt != kBC1), c.fmt));
+        if (c.compressed) set_hd_compressed(true);
+        std::optional<HdCompressScope> scope;
+        if (c.scope) scope.emplace();
+        bool hit0 = false, hit1 = false, hit2 = false;
+        std::size_t m0 = 0, m1 = 0, m2 = 0, f2 = 9, c0 = 0, c2 = 0, e0 = 0, e2 = 0;
+        const DecodedRaster fresh = apply_once(pack, gs, base, hit0, &m0, nullptr, &c0, &e0);   // no cache
+        DecodedRaster cold, warm;
+        HdCacheStats s0, s1, s2;
+        {
+            const CacheDir cache("test_hdpack.cache");
+            s0 = hd_cache_stats();
+            cold = apply_once(pack, gs, base, hit1, &m1);   // converted, then written
+            CHECK(hd_cache_flush());
+            s1 = hd_cache_stats();
+            warm = apply_once(pack, gs, base, hit2, &m2, &f2, &c2, &e2);   // read back: the file not read at all
+            s2 = hd_cache_stats();
+            CHECK(hdcache::usage(cache.dir).entries == 1);
+        }
+        if (c.compressed) set_hd_compressed(false);
+        std::printf("  %s: %zu level(s), bc %d, masked %zu\n", c.name, fresh.levels.size(), fresh.levels.empty() ? -1 : fresh.levels[0].bc, m0);
+        CHECK(hit0 && hit1 && hit2 && fresh.hd && cold.hd && warm.hd);
+        CHECK(s1.written == s0.written + 1 && s2.hits == s1.hits + 1);
+        CHECK(f2 == 0);   // a hit reads no replacement file
+        CHECK(same_levels(fresh.levels, cold.levels));
+        CHECK(same_levels(fresh.levels, warm.levels));   // byte-identical to a fresh conversion
+        CHECK(m0 == m1 && m0 == m2 && c0 == c2 && e0 == e2);
+        CHECK(fresh.max_alpha == warm.max_alpha && fresh.translucent == warm.translucent);
+        if (c.rule) CHECK(m0 == 1);
+        fs::remove_all(pack);
+    }
+}
+
+TEST(disk_cache_damaged_entry_is_rebuilt_and_a_changed_file_gets_new_keys) {
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 7 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster base;
+    base.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    base.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0xFF)});
+    base.max_alpha = 0x80;
+    const fs::path pack = one_file_pack("test_hdpack.cachedmg", gs, base, bc_dds(picture(256, 128, true), kBC3));
+    bool hit = false;
+    const DecodedRaster fresh = apply_once(pack, gs, base, hit);
+    const CacheDir cache("test_hdpack.cache2");
+    apply_once(pack, gs, base, hit);
+    CHECK(hd_cache_flush());
+    fs::path entry;
+    for (const auto& e : fs::recursive_directory_iterator(cache.dir))
+        if (e.path().extension() == hdcache::kExtension) entry = e.path();
+    CHECK(!entry.empty());
+    const std::uintmax_t full = fs::file_size(entry);
+    for (int damage = 0; damage < 3; ++damage) {
+        if (damage == 0) fs::resize_file(entry, full / 2);   // a half entry (a crash mid-write without the rename)
+        if (damage == 1) {                                   // a byte flipped in the middle
+            std::fstream f(entry, std::ios::in | std::ios::out | std::ios::binary);
+            f.seekp(std::streamoff(full / 2));
+            f.put('\x5A');
+        }
+        if (damage == 2) { std::ofstream(entry, std::ios::binary) << "junk"; }   // not an entry at all
+        const HdCacheStats s0 = hd_cache_stats();
+        const DecodedRaster r = apply_once(pack, gs, base, hit);   // converted again
+        CHECK(hd_cache_flush());
+        const HdCacheStats s1 = hd_cache_stats();
+        CHECK(hit && s1.corrupt == s0.corrupt + 1 && s1.written == s0.written + 1);
+        CHECK(same_levels(fresh.levels, r.levels));
+        CHECK(fs::file_size(entry) == full);   // written whole again
+        const DecodedRaster again = apply_once(pack, gs, base, hit);
+        CHECK(hit && hd_cache_stats().hits == s1.hits + 1 && same_levels(fresh.levels, again.levels));
+    }
+    // the pack's file changed (other picture, other size): a new key, the new file's result
+    {
+        HdKey k;
+        CHECK(hd_key(gs, base.hdr, 0, 1, k));
+        const auto d = bc_dds(picture(128, 64, true), kBC3);
+        std::ofstream(pack / (hd_key_name(k) + ".dds"), std::ios::binary).write(reinterpret_cast<const char*>(d.data()), std::streamsize(d.size()));
+    }
+    hd_cache_flush();
+    set_hd_cache_dir("");
+    const DecodedRaster fresh2 = apply_once(pack, gs, base, hit);
+    set_hd_cache_dir(cache.dir.string());
+    const DecodedRaster r2 = apply_once(pack, gs, base, hit);
+    CHECK(hit && fresh2.levels[0].w == 96 && same_levels(fresh2.levels, r2.levels));
+    CHECK(hd_cache_flush());
+    CHECK(hdcache::usage(cache.dir).entries == 2);
+    std::string why;
+    CHECK(hdcache::clear(cache.dir, &why) && hdcache::usage(cache.dir).entries == 0);
+    fs::remove_all(pack);
+}
+
+TEST(disk_cache_holds_its_cap_oldest_first) {
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 3 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster base;
+    base.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    base.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0xFF)});
+    base.max_alpha = 0x80;
+    // RGBA8 entries of 768 x 512 x 4 = 1.5 MB (a 1024 x 512 picture): a 2 MB cap holds one
+    const fs::path pack = one_file_pack("test_hdpack.cachecap", gs, base, bc_dds(picture(1024, 512, true), kBC3));
+    const CacheDir cache("test_hdpack.cache3", 2);
+    const HdCacheStats s0 = hd_cache_stats();
+    bool hit = false;
+    for (int v = 0; v < 3; ++v) {   // three keys: the original's alpha differs (the alpha rule's input)
+        DecodedRaster r = base;
+        r.levels[0].rgba[3] = std::uint8_t(0xFF - v);
+        apply_once(pack, gs, r, hit);
+        CHECK(hit && hd_cache_flush());
+    }
+    const HdCacheStats s1 = hd_cache_stats();
+    const hdcache::Usage u = hdcache::usage(cache.dir);
+    CHECK(s1.written == s0.written + 3 && s1.evicted >= s0.evicted + 2);
+    CHECK(u.entries == 1 && u.bytes <= (std::uint64_t(2) << 20));
+    DecodedRaster newest = base;   // the newest stays
+    newest.levels[0].rgba[3] = 0xFD;
+    const HdCacheStats s2 = hd_cache_stats();
+    apply_once(pack, gs, newest, hit);
+    CHECK(hit && hd_cache_stats().hits == s2.hits + 1);
+    fs::remove_all(pack);
+}
+
+TEST(disk_cache_same_size_and_time_other_bytes_is_another_file) {
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 3 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster base;
+    base.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    base.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0xFF)});
+    base.max_alpha = 0x80;
+    Image a = picture(256, 128, true), b = a;
+    for (std::size_t i = 0; i < b.rgba.size(); i += 4) b.rgba[i] ^= 0x3C;   // other colours, the same size of file
+    const fs::path pack = one_file_pack("test_hdpack.cachesame", gs, base, bc_dds(a, kBC3));
+    HdKey k;
+    CHECK(hd_key(gs, base.hdr, 0, 1, k));
+    const fs::path file = pack / (hd_key_name(k) + ".dds");
+    const auto when = fs::last_write_time(file);
+    const CacheDir cache("test_hdpack.cache4");
+    bool hit = false;
+    const DecodedRaster first = apply_once(pack, gs, base, hit);
+    CHECK(hit && hd_cache_flush());
+    const auto d = bc_dds(b, kBC3);
+    CHECK(d.size() == fs::file_size(file));
+    std::ofstream(file, std::ios::binary).write(reinterpret_cast<const char*>(d.data()), std::streamsize(d.size()));
+    fs::last_write_time(file, when);   // the same size and the same time
+    set_hd_cache_dir("");
+    const DecodedRaster fresh = apply_once(pack, gs, base, hit);
+    set_hd_cache_dir(cache.dir.string());
+    const HdCacheStats s0 = hd_cache_stats();
+    const DecodedRaster r = apply_once(pack, gs, base, hit);
+    CHECK(hit && hd_cache_stats().hits == s0.hits && !same_levels(first.levels, r.levels) && same_levels(fresh.levels, r.levels));
+    fs::remove_all(pack);
+}
+
+TEST(prefetch_takes_no_raster_once_told_to_stop) {
+    namespace fs = std::filesystem;
+    GsMemory gs;
+    for (std::uint32_t y = 0; y < 32; ++y)
+        for (std::uint32_t x = 0; x < 64; ++x) gs.write(PSMT8, 0, 2, x, y, (x * 3 + y) & 0xFF);
+    write_clut(gs, 64, palette(256));
+    DecodedRaster base;
+    base.hdr = header(PSMT8, 6, 5, 0, 2, 64, 48, 32);
+    base.levels.push_back(Image{48, 32, std::vector<std::uint8_t>(48 * 32 * 4, 0xFF)});
+    base.max_alpha = 0x80;
+    const fs::path pack = one_file_pack("test_hdpack.prefetchstop", gs, base, bc_dds(picture(256, 128, true), kBC3));
+    HdTextures hd;
+    CHECK(hd.open(pack.string()));
+    const std::vector<std::uint8_t> none(64, 0);   // (no raster in it: the stop is checked before any)
+    bool stopped = false;
+    CHECK(hd.prefetch_data({{"x", Bytes{none.data(), none.size()}}}, 4, [] { return false; }, 0, &stopped) == 0 && stopped);
+    CHECK(hd.prefetch_data({{"x", Bytes{none.data(), none.size()}}}, 4, [] { return true; }, 0, &stopped) == 0 && !stopped);
+    fs::remove_all(pack);
 }
 
 TEST_MAIN("hdpack")

@@ -44,6 +44,7 @@ struct Config {
     // saveflow: the profile-N-unsaved-<stamp>.sav files the player chose "Leave it" (or "Use it") for on the Saves page
     // (file names; one unsaved_left line each)
     std::vector<std::string> unsaved_left;
+    int showroom_series = -1;   // showroom2: the SHOWROOM's last series (showroom.h's ids; -1: none yet, the first)
     bool operator==(const Config&) const = default;
 };
 std::string config_to_ini(const Config& c);
@@ -142,6 +143,7 @@ std::vector<b3settings::Row> music_rows(const b3settings::Settings& s, const std
 // The PLAYLIST row of music_rows (the same values, words and description as in the game).
 b3settings::Row playlist_row(const b3settings::Settings& s);
 b3settings::Row custom_music_volume_row(const b3settings::Settings& s);   // musicvol1: CUSTOM MUSIC VOLUME
+b3settings::Row custom_music_loudness_row(const b3settings::Settings& s);   // musicloud: CUSTOM MUSIC LOUDNESS
 // nowplaying1: the OTHER MUSIC APPS row of music_rows, `now` what is detected (the row's "Now:" text)
 b3settings::Row other_music_apps_row(const b3settings::Settings& s, const std::string& now = {});
 // The Music page's "Detected" line for OTHER MUSIC APPS: on (the setting), `available` (this system has a reader),

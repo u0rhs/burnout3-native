@@ -769,4 +769,23 @@ TEST(pedal_stick_makes_the_throttle_follow_the_pedal) {
     CHECK(game(pedal_stick(0.04f)) == 0.0f);   // the game's own 5 % floor
 }
 
+TEST(panel_report_player2_ignores_player1_pads) {
+    // paintsel: the car paint panel's input. Player 1's panel: player 1's report as it is. Player 2's: player 2's pad
+    // with the keyboard only -- player 1's stick or Back on player 1's pad never moves or closes player 2's panel
+    const auto n = neutral_sample();
+    auto p1 = n;   // player 1's report: their pad's left stick hard right and Triangle (Back) held
+    p1[4] = 0xFF;
+    p1[1] &= std::uint8_t(~0x10u);   // Triangle: button 12, byte 1 bit 4 (active low)
+    auto keys = n;   // the keyboard alone: Down held (button 6, byte 0 bit 6)
+    keys[0] &= std::uint8_t(~0x40u);
+    auto pad2 = n;   // player 2's pad: Right held (button 5, byte 0 bit 5)
+    pad2[0] &= std::uint8_t(~0x20u);
+    CHECK(panel_report(0, p1.data(), keys.data(), pad2.data()) == p1);
+    const auto r2 = panel_report(1, p1.data(), keys.data(), pad2.data());
+    CHECK(r2[4] == 0x80 && (r2[1] & 0x10) != 0);                // not player 1's stick nor Back
+    CHECK((r2[0] & 0x40) == 0 && (r2[0] & 0x20) == 0);          // the keyboard's Down and player 2's Right
+    const auto r3 = panel_report(1, p1.data(), keys.data(), nullptr);   // no pad seated for player 2: the keyboard
+    CHECK(r3 == keys);
+}
+
 TEST_MAIN("keyboard -> DS2 report (src/native/input_keys)")

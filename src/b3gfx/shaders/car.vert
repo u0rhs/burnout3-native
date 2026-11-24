@@ -29,6 +29,8 @@ layout(location = 2) out vec3 v_refl;     // reflected eye ray, world
 layout(location = 3) out float v_w;
 layout(location = 4) out vec3 v_nrm;      // world normal (not normalised), enhanced reflections (car.frag)
 layout(location = 5) out vec3 v_view;     // world eye -> point, enhanced reflections
+layout(location = 6) out vec3 v_part;     // weather (§38): the point in part space (the rain's beads stay on the body)
+layout(location = 7) out vec3 v_pnrm;     // weather: the part-space normal (which plane the beads lie in)
 
 // FTOI0 (truncation), then the low 8 bits: the program does not clamp, the GIF RGBAQ fields keep 8 bits [C §4.2].
 float gs_byte(float x) { return float(int(clamp(x, -2147483648.0, 2147483520.0)) & 0xFF); }
@@ -70,4 +72,6 @@ void main() {
     v_refl = d - 2.0 * dot(n, d) * n;
     v_nrm = n;
     v_view = d;
+    v_part = pos;
+    v_pnrm = nrm;
 }

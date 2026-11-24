@@ -4,6 +4,7 @@
 #include "test.h"
 
 #include "showroom.h"
+#include "../tools/native/extra_series.h"   // (showpages: the pages' size and codes)
 
 #include <cstdlib>
 #include <filesystem>
@@ -121,6 +122,7 @@ TEST(car_list_of_a_folder) {
     CHECK(cars.size() == 4);
     CHECK(!note.empty());   // no string table: class and number
     if (cars.size() == 4) {
+        CHECK(car_series(cars[0]) == 0 && car_series(cars[2]) == kSeriesSpecial && car_series(cars[3]) == kSeriesHeavy);   // showroom2
         CHECK(cars[0].folder == "COMP" && cars[0].number == 1);
         CHECK(cars[0].name == "Compact 1");
         CHECK(cars[1].number == 2);
@@ -138,9 +140,65 @@ TEST(car_list_of_a_folder) {
     cars = list_cars(root, &note);
     CHECK(note.empty());
     CHECK(cars.size() == 4 && cars[0].name == "Compact Type 1" && cars[2].name == "Other E" && cars[3].name == "Other H");
+    // showroom2: the series with cars, in SELECT CAR's order; the extra cars' by their kind (customseries' list_more_cars)
+    CarEntry t, cu;
+    t.kind = "Traffic", t.folder = "COMP", t.number = 18;
+    cu.kind = "Custom", cu.folder = "COMP", cu.number = 7;
+    cars.push_back(cu);
+    cars.push_back(t);
+    const auto series = group_series(cars, {});
+    CHECK(series.size() == 5);
+    if (series.size() == 5) {
+        CHECK(series[0].id == 0 && series[0].name == "COMPACT SERIES" && series[0].cars.size() == 2);
+        CHECK(series[1].id == kSeriesSpecial && series[2].id == kSeriesHeavy);
+        CHECK(series[3].id == kSeriesTraffic && series[3].name == "TRAFFIC" && series[3].cars == std::vector<std::size_t>{5});   // (before CUSTOM)
+        CHECK(series[4].id == kSeriesCustom && series[4].name == "CUSTOM" && series[4].cars == std::vector<std::size_t>{4});
+    }
     CHECK(list_cars(root / "nothing", &note).empty());
     CHECK(!note.empty());
     fs::remove_all(root, ec);
+}
+
+// showpages: CUSTOM and BETA in SELECT CAR's pages of 19 (carpacks), each a series of its own, named as the game names
+// them (extra_words in the launcher's language, " 2" on from the second page); CUSTOM's pages before BETA's
+TEST(custom_and_beta_pages) {
+    std::vector<CarEntry> cars;
+    for (int k = 0; k < 40; ++k) {   // a pack of 40: pages of 19, 19 and 2 (as extra_assign_slots gives them)
+        CarEntry c;
+        c.kind = "Custom", c.folder = "COMP", c.number = k + 1, c.page = k / b3native::kExtraPageCars;
+        cars.push_back(c);
+    }
+    CarEntry b;
+    b.kind = "Beta", b.folder = "SPRT", b.number = 1;
+    cars.push_back(b);
+    const auto series = group_series(cars, {});
+    CHECK(series.size() == 4);
+    if (series.size() == 4) {
+        CHECK(series[0].id == kSeriesCustom && series[0].name == "CUSTOM" && series[0].cars.size() == 19 && series[0].cars.front() == 0);
+        CHECK(series[1].id == b3native::extra_page_series(b3native::kCustomSeries, 1) && series[1].name == "CUSTOM 2" && series[1].cars.size() == 19 &&
+              series[1].cars.front() == 19);
+        CHECK(series[2].name == "CUSTOM 3" && series[2].cars == (std::vector<std::size_t>{38, 39}));
+        CHECK(series[3].id == kSeriesBeta && series[3].name == "BETA" && series[3].cars == std::vector<std::size_t>{40});
+    }
+    const auto fr = group_series(cars, {}, "FR");   // (UTF-8, as extra_words gives it)
+    CHECK(fr.size() == 4 && fr[0].name == "PERSONNALIS\xC3\x89" "ES" && fr[2].name == "PERSONNALIS\xC3\x89" "ES 3" && fr[3].name == "B\xC3\x8ATA");
+    CHECK(car_series(cars[0]) == kSeriesCustom && car_series(cars[39]) == b3native::extra_page_series(b3native::kCustomSeries, 2) &&
+          car_series(b) == kSeriesBeta);
+    CHECK(series_name(b3native::extra_page_series(b3native::kBetaSeries, 1), {}) == "BETA 2");
+}
+
+// showroom2: the series' names (the game's strings, else the fallback)
+TEST(series_names) {
+    std::vector<std::string> strings(0xC00);
+    strings[0xBEF] = "Compact Series";
+    strings[0xBF4] = "HEAVYWEIGHTS";
+    strings[0xBF5] = "SPECIAL SERIES ";
+    strings[380] = "TRAFFIC";
+    CHECK(series_name(0, strings) == "COMPACT SERIES");
+    CHECK(series_name(kSeriesSpecial, strings) == "SPECIAL SERIES" && series_name(kSeriesHeavy, strings) == "HEAVYWEIGHTS");
+    CHECK(series_name(1, strings) == "MUSCLE SERIES");   // (none in the table: the fallback)
+    CHECK(series_name(kSeriesTrafficSpecial, {}) == "TRAFFIC SPECIAL" && series_name(kSeriesCustom, {}) == "CUSTOM" &&
+          series_name(kSeriesBeta, {}) == "BETA");
 }
 
 TEST(turntable) {
@@ -189,6 +247,24 @@ TEST(the_real_disc) {
     if (cars.size() != 67) return;
     CHECK(cars[0].name == "Compact Type 1");
     for (const auto& c : cars) CHECK(!c.name.empty() && c.name.find("Heavyweight ") != 0);
+    // showroom2: the game's series names (the disc's seven; TRAFFIC and the player's cars come with customseries' list)
+    std::vector<std::string> strings;
+    (void)list_cars(g, &note, &strings);
+    const auto series = group_series(cars, strings);
+    CHECK(series.size() == 7);
+    if (series.size() == 7) CHECK(series[0].name == "COMPACT SERIES" && series[5].name == "SPECIAL SERIES" && series[6].name == "HEAVYWEIGHTS");
+    std::printf("  series:");
+    for (const auto& se : series) std::printf(" %s (%zu)", se.name.c_str(), se.cars.size());
+    std::printf("\n");
+    CHECK(series_name(kSeriesTraffic, strings) == "TRAFFIC" && series_name(kSeriesTrafficSpecial, strings) == "TRAFFIC SPECIAL");
+    // with customseries' extra cars (no custom or beta folder: the traffic vehicles), grouped by their kinds
+    auto all = cars;
+    for (auto& c : list_more_cars(g, fs::path("build") / "test_showroom_no_custom", fs::path("build") / "test_showroom_no_beta")) all.push_back(c);
+    const auto more = group_series(all, strings);
+    CHECK(more.size() == 9);
+    if (more.size() == 9)
+        CHECK(more[7].id == kSeriesTraffic && more[7].name == "TRAFFIC" && more[7].cars.size() == 20 && more[8].id == kSeriesTrafficSpecial &&
+              more[8].name == "TRAFFIC SPECIAL" && more[8].cars.size() == 7);
     std::printf("  first %s, last %s\n", cars.front().name.c_str(), cars.back().name.c_str());
 }
 

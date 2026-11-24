@@ -1,7 +1,9 @@
 // The native game's sound out of b3render (play1): src/b3replay/nativeaudio.h.
 #include "nativeaudio.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 // audio1's device without its executor pump (that needs the IOP executor, which lives in the game, not in b3render)
 #define B3_AUDIO_DEVICE_ONLY
@@ -58,9 +60,13 @@ void NativeAudio::event(const void* p) {
 void NativeAudio::close() {
     std::lock_guard<std::mutex> l(mu_);
     if (!tried_) return;
-    std::printf("[b3audio] %llu frames pushed (%llu before the device was open), %llu dropped / %llu padded by the drift guard\n",
+    std::printf("[b3audio] %llu frames pushed (%llu before the device was open); output queue: %llu late (the game's sound late: faded out and "
+                "in, %llu frames of silence), %llu through fast loads (the game silent on purpose, %llu frames), %llu bursts dropped (%llu "
+                "frames, crossfaded); the rate %.4f %% off the game's at the end\n",
                 static_cast<unsigned long long>(pushed_), static_cast<unsigned long long>(dropped_closed_),
-                static_cast<unsigned long long>(dev_.dropped()), static_cast<unsigned long long>(dev_.padded()));
+                static_cast<unsigned long long>(dev_.underruns()), static_cast<unsigned long long>(dev_.padded()),
+                static_cast<unsigned long long>(dev_.quiet_underruns()), static_cast<unsigned long long>(dev_.quiet_padded()),
+                static_cast<unsigned long long>(dev_.drops()), static_cast<unsigned long long>(dev_.dropped()), (dev_.ratio() - 1.0) * 100.0);
     std::fflush(stdout);
     dev_.close();
 }
@@ -68,9 +74,30 @@ void NativeAudio::close() {
 void NativeAudio::push(const std::int16_t* lr, std::size_t frames) {
     std::lock_guard<std::mutex> l(mu_);
     pushed_ += frames;
+    // weather (checks only): $B3_RAIN_AUDIO_DUMP=<file> writes the frames with the rain mixed in (raw s16 stereo 48 kHz),
+    // with or without a device, so the hook and the renderer's state can be checked offscreen
+    static std::FILE* dump = [] { const char* e = std::getenv("B3_RAIN_AUDIO_DUMP"); return e && *e ? std::fopen(e, "wb") : nullptr; }();
+    if (!dev_.is_open() && !dump) { dropped_closed_ += frames; return; }
+    // weather (§38, rain_audio.h): the rain's sound mixed into these frames (never more frames: the count is the
+    // queue's clock), from the renderer's state; silent and untouched when there is no rain
+    RainAudioState rs;
+    // rainfe: on only while the renderer's race frames keep setting it (RainAudio::state_live)
+    rs.on = rain_on_.load(std::memory_order_relaxed) && RainAudio::state_live(now_ns(), rain_set_ns_.load(std::memory_order_relaxed));
+    rs.speed = rain_speed_.load(std::memory_order_relaxed);
+    rs.enclosed = rain_enclosed_.load(std::memory_order_relaxed);
+    rs.volume = rain_volume_.load(std::memory_order_relaxed) * effects_volume_.load(std::memory_order_relaxed);
+    if (rs.on || rain_.bed_gain() > 0.0f) {
+        if (mix_.size() < 2 * frames) mix_.resize(2 * frames);   // (grows once to the largest push, then kept)
+        std::copy(lr, lr + 2 * frames, mix_.begin());
+        rain_.mix(mix_.data(), frames, rs);
+        if (dump) std::fwrite(mix_.data(), sizeof(std::int16_t), 2 * frames, dump);
+        if (dev_.is_open()) dev_.push(mix_.data(), frames);
+        else dropped_closed_ += frames;
+        return;
+    }
+    if (dump) std::fwrite(lr, sizeof(std::int16_t), 2 * frames, dump);
     if (!dev_.is_open()) { dropped_closed_ += frames; return; }
-    dev_.push(lr, frames);
-    dev_.regulate();   // 60 ms target, +-100 ms band (audio_device.h): the wall clock's drift against virtual time
+    dev_.push(lr, frames);   // audioq: the output queue keeps the rate, fades a stall, crossfades a burst (audio_queue.h)
 }
 
 }  // namespace b3replay

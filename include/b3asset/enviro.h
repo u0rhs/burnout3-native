@@ -77,6 +77,7 @@ struct SkyLayer {
     std::uint8_t rgba[4] = {};   // vertex colour as sent (0x80 = 1.0): sky 0x80,0x80,0x80 (alpha 0x20 below / 0 above),
                                  //   clouds 0x40 (half: the frame buffer holds half intensity, docs) with alpha 0x80
     bool blend = false;          // clouds: ALPHA (Cs-Cd)*As+Cd with the texel alpha, FBMSK keeps the frame alpha [C]
+    std::uint32_t fbmsk = 0;     // whitesky: the GS FRAME's write mask Construct sets (0xFF000000 = the frame alpha kept)
     bool clouds_texture = false; // true: Enviro::clouds; false: the 64x32 backdrop texture (build_backdrop)
 };
 // `cloud_u_offset`: u start of the clouds (component 2), see cloud_u_offset().

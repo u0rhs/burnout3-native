@@ -56,6 +56,10 @@ struct Vehicle {
     std::int8_t player = -1;     // carpaint: a local player's race car (CB3PlayerCar::Construct: +0x1914 = 0, +0x27C0 = the
                                  // player, 0 / 1), else -1 (AI, network cars, traffic)
     std::uint8_t lit = 0;        // +0x58 & 0xFC (light bits)
+    // options3 (DRIVER LABELS, driverlabels.h): a race car's driver name, +0x1974 (UTF-16, 16 units: the world's
+    // Prepare copies the profile's, the AI's from the string table 0x311 + its index, a network player's [C B3World
+    // 0x19A950]; the capture's race car grab [+0x18E0, +0x19A0) holds it); empty for others
+    std::u16string name;
     Mat34 main;                  // EssentialParams +0x00 (wheels and payload use it)
     Mat34 body;                  // the body / panels' matrix: tilt rotations (+0x44..+0x50) x main
     bool parts = false;          // VehicleParams captured (race cars, crashed vehicles)
@@ -81,6 +85,18 @@ struct Vehicle {
     bool exploded = false;       // VehicleParams +0x1015 bit 0x10 [C RenderVehicle]
     float explode_time = 0;      // gWorld timer +0x20 - VehicleParams +0x100C (the W lane of +0x1000) [C RenderVehicle]
     float wheel_speed[6] = {};   // VehicleParams +0x4E8: |v| > 25 / > 50 picks the wheel list B1 / B2 [C RenderVehicle]
+    // payloads1: the payload objects (a truck's boat, logs, cars) RenderVehicle draws while vehicle data +0x16C0 is set
+    // [C draft 0x21E6F0]: on board, the vehicle's variant (VehicleParams +0x1024; traffic: data +0x16C0 + 0xC x +0x171)
+    // items, C list +0xC at +0x10 x the main matrix; released (+0x1023 == 1 or +0x1022), each type-2 body part of this
+    // vehicle at its physics matrix, C list from its part index's item. On board, pay[] holds the items' own matrices (the
+    // vehicle's space: the renderer multiplies them by the interpolated main matrix); released, world matrices
+    // (interpolated like the wheels).
+    static constexpr int kMaxPayload = 32;   // (the flatbed, PVEH/HEVY/CAR27.BTV: 8 variants of up to 19)
+    int npay = 0;
+    int pay_variant = -1;        // traffic: the variant drawn (diagnostics)
+    bool pay_released = false;   // the pieces are body parts (thrown off a crashed vehicle)
+    std::int8_t pay_list[kMaxPayload] = {};
+    Mat34 pay[kMaxPayload];
     // Traffic (CB3TrafficVehicle, render6): CB3TrafficSystem::Draw 0x3078F0 builds its VehicleParams per frame [L draft,
     // field offsets C from the asm]: wheels (spin x steer) x file frame, wheel speeds = speed / the file's wheel radius
     float speed = 0;             // +0xC4 (EssentialParams +0x54): Draw's +0x4E8[w] = this / vehicle data +0x18
@@ -114,6 +130,7 @@ struct Vehicle {
     // traffic-popin (view.h traffic_since): renderer only, set by frame_at -- the world clock (Tick::now) of the tick from
     // which this traffic car has been within the 275 m draw radius without a break; -1 = since before the timeline (or not traffic)
     float since = -1.0f;
+    float brake = 0;   // taillights: the brake light's level, 0..1 (View::frame_lights, night / rain only: its brake bit over the last ticks)
     float gone = -1.0f;          // traffic-popin: a removed traffic car's last tick's clock (frame_at adds it fading out), else -1
     // split2 (§29.6): since / gone for player 2's view of a split screen (its own 275 m radius, Vehicle::cull2); a
     // fading-out copy removed within one view's radius only has the other view's gone at -1 (hidden there)
@@ -150,6 +167,7 @@ struct Vehicle {
         bool valid = false;      // the capture holds the corona inputs (corona1 captures)
         bool submit = false;
         std::uint8_t lights = 0; // EssentialParams +0x58, every bit (RenderLightCoronas runs when nonzero)
+        float tail = -1.0f, brake = 0;   // taillights (night, rain): the rear lights' levels (tail < 0: the game's bits)
         bool rear_red = false;   // race car +0x18F0: lbRearIndicatorsAreRed (Prepare: car id +0x1960 one of the 2 at 0x4B6170)
         bool red_boost = false;  // race car +0x18F1: car id one of the 5 at 0x4B6180 -> "coronaboostred" (array 2); retail_data_names
                                  // labels 0x4B6180 kaRedIndicatorCarIDs, but its E-map size (2 ids) fits 0x4B6170 [L, §16.1]
@@ -321,6 +339,9 @@ struct Camera {
     // tick's game camera takes: 1 on the game's chase cameras, 0 on its takedown, crash and other cameras, in between
     // while the game blends one into the other (chase_share, capture.cpp); 1 when the camera manager is not captured
     float chase = 1.0f;
+    // options3 (crashhold.h): the share of the player's own crash cameras (the camera manager's slots 6 / 7) this tick,
+    // in step with the game's blends as `chase`; 0 when the camera manager is not captured
+    float crash = 0.0f;
 };
 
 // A prop off its placement: an entry of the prop manager's dynamic list (0x64A854 +0x1C, CB3Prop {u16 placement, u8
@@ -521,6 +542,7 @@ struct ScoreState {
 // research/retail_data_names.csv, C: the vtable seen in the SINGLE EVENT > TIME ATTACK runs, ghost1]
 constexpr std::uint32_t kPlayerRaceCar = 0x522660u + 0x12AD50u;
 constexpr std::uint32_t kBurningLapLogicVtable = 0x4DEBC0u;
+constexpr std::uint32_t kFinishCameraState = 0x4E01F0u;   // finishcam1 (symbol_addrs: __vt__26CB3PlayerCameraStateInGame)
 
 struct Tick {
     std::uint32_t poll = 0, vblank = 0;
@@ -579,6 +601,10 @@ struct Tick {
     bool shadows_on = false;     // D_00665F27: RenderShadows returns when 0
     bool effects_on = false;     // D_00665F2C: RenderPreFogEffects (skid marks) returns when 0
     bool player_visible = true;  // CB3PlayerCameraManager::IsPlayerVisible 0x2E7340 of view 0, from its captured inputs
+    // finishcam1 (finishcam.h): the vtable of view 0's player camera manager's current state (its CGtFSM's +0x4 state,
+    // vtable at the state's +0xC [L CGtFSM layout, include/b3/classes/CGtFSM.h]); 0 when not captured.
+    // kFinishCameraState: the state the game enters at the finish (the trackside "tripod" shot; its Action func_00437DC0)
+    std::uint32_t cam_state = 0;
     float shadow_k = 3.3333333f; // krShadowDarkness D_004E0FC0
     float now = 0;               // gWorld+0x20 (the VU program's time, CB3TrailRenderer::BeginRender); every version
     std::uint32_t trail_vu[5][12] = {};  // D_01E865E0: the per-type VU1 parameter rows (VU 0x3F0..0x3F2)
@@ -597,15 +623,37 @@ struct Tick {
     bool host_hold = false;                              // autosave1: the display holds the previous tick's picture (hud.h kHostHoldBase)
     std::uint8_t skip_hint = 0;                          // mac5: the video skip hint's opacity (hud.h kHostSkipBase; 0 hidden)
     HostRaceTime race_time;                              // todrace: the race's DAY / NIGHT and the track page's label (hud.h)
+    HostPaintSel paint_sel;                              // paintsel: the PAINT prompt on SELECT CAR (hud.h)
+    std::shared_ptr<const HostCarousel> carousel;        // paint3: the carousel slots whose model is not their picture's (hud.h)
+    std::uint8_t replay = 0;                             // replayview: the race replay's state (hud.h host_replay_decode)
+    HostElimTimer elim_timer;                            // elim1: TIMED ELIMINATION's countdown (hud.h)
+    HostGear gear;                                       // gearbox: the manual gearbox's gear (hud.h)
     std::shared_ptr<const b3live::MenuRecord> menu;      // mac5: the game's menus on screen, for the mouse (null: none captured)
     std::shared_ptr<const b3mod::OverlayList> mod_overlay;   // sdk2b: the code mods' 2D (codemod.h 'HMO1'; null: none captured)
     // menu1 (§22): the front end's car (CB3World::RenderFrontEnd's, FECAR events): its guest address, 0 none; the
     // vehicle itself is in `vehicles` (a race car; drawn with the camera above, viewport 1)
     std::uint32_t fe_car = 0;
     std::int8_t fe_player = -1;  // padpaint: whose car it is on the car select page (0 / 1; -1 another page: player 1's)
+    // gamemods1: the car is the CAR VIEWER's (its FECAR index 0x100 + the background colour 0..14), -1 not
+    std::int8_t fe_viewer = -1;
     // garagecam1 (garagecam.h): the live view's turn of the car page's camera round the car at this tick (yaw, pitch;
     // radians), 0 0 without the player's input (the game's camera as it is)
     float fe_orbit[2] = {0.0f, 0.0f};
+    // orbitcam1 (orbitcam.h): each player's look offsets of the race chase camera at this tick (yaw, pitch; radians;
+    // [0] view 0, [1] view 2), 0 0 without the player's input (the game's camera as it is)
+    float race_orbit[2][2] = {{0.0f, 0.0f}, {0.0f, 0.0f}};
+    // orbitcam2 (orbitcam.h): each view's eased distance the walls leave the eye (m from 1 m above the car; -1 none)
+    float race_wall[2] = {-1.0f, -1.0f};
+    // finishcam1 (finishcam.h): view 0's finish camera at this tick (on: the frame drawn from eye towards look, the view
+    // window `zoom` times the game's; shot: the set-piece shot, a cut when it changes)
+    struct FinishCamTick { bool on = false; int shot = -1; float eye[3] = {}, look[3] = {}; float zoom = 1.0f; } finish_cam;
+    // replaycams (replaycams.h): the replay viewer's camera for view 0 (on: an angle of ours this tick; cut: changes where
+    // the view jumps, a TV point placed again, another car or angle, so a frame never blends across it)
+    // half_w / half_h: the view window to zoom from: the game's chase camera's last (not its crash camera's narrower one)
+    struct ReplayCamTick { bool on = false; std::uint32_t cut = 0; float eye[3] = {}, look[3] = {}; float zoom = 1.0f, half_w = 0, half_h = 0; } replay_cam;
+    // camroll1 (orbitcam.h ChaseRoll): each view's chase camera roll at this tick (degrees, the chase share applied;
+    // 0 with CAMERA ROLL off)
+    float race_roll[2] = {0.0f, 0.0f};
     LapState lap;                // ghost1: view 0's lap (Time Attack ghosts)
     ScoreState score;            // speedrun1: view 0's event timing (the speedrun timer)
     Tick() { for (int i = 0; i < 17; ++i) slot_unit[i] = slot_kind[i] = env_unit[i] = -1; for (auto& b : backdrops) b = -1; }
@@ -685,6 +733,7 @@ struct Capture {
     std::shared_ptr<const HostSettings> host_settings_last;   // settings1
     std::shared_ptr<const HostFonts> host_fonts_last;         // mac5
     std::shared_ptr<const b3live::MenuRecord> menu_last;      // mac5
+    std::shared_ptr<const HostCarousel> carousel_last;        // paint3
     std::shared_ptr<const b3mod::OverlayList> mod_overlay_last;   // sdk2b
     // fill_gaps = false keeps every tick as decoded (no segment gap filling; for comparing with the live feed).
     // poll_from / poll_to (live2): only the ticks of polls in [poll_from, poll_to] are decoded and kept (the runs before

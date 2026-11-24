@@ -205,6 +205,14 @@ TEST(compatibility) {
     h.program_fnv = kFnv;
     h.program_size = 1;
     CHECK(compatible(r, h).verdict == Compat::kRefuse);
+    {   // rcprep: a release candidate's replays: another candidate commit plays with a warning, the release refuses them
+        Replay rc = r;
+        rc.version = "1.4.0-rc.1+1a2b3c4d";
+        CHECK(compatible(rc, Host{kSize, kFnv, "1.4.0-rc.1+1a2b3c4d"}).verdict == Compat::kExact);
+        CHECK(compatible(rc, Host{kSize, kFnv, "1.4.0-rc.1+99999999"}).verdict == Compat::kWarn);
+        const Compat rel = compatible(rc, Host{kSize, kFnv, "1.4.0+5e6f7a8b"});
+        CHECK(rel.verdict == Compat::kRefuse && rel.text.find("version 1.4.0-rc.1+1a2b3c4d") != std::string::npos);
+    }
     Replay dirty = r;
     dirty.version = "0.1.0-test+1a2b3c4d-dirty";
     CHECK(compatible(dirty, Host{kSize, kFnv, dirty.version}).verdict == Compat::kWarn);

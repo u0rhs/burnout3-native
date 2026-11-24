@@ -6,6 +6,7 @@ namespace b3native::vu0aot {
 namespace {
 constexpr std::uint64_t kMaxPairs = 4096u * 64u;   // Vu0Unit::call's limit
 [[noreturn]] void cycle_limit() { b3host::fatal("vu0 aot: cycle limit"); }
+// 004787D0: 452 pairs, 248 flag pushes (48 kept), flag-slot commits at 55 pairs, VI history at 97 pairs
 bool run_004787D0(Core& c, std::uint32_t* data, std::uint32_t entry) {
     Rt rt(c, data);
     const std::uint64_t fb = rt.flag_commits; (void)fb;
@@ -467,7 +468,7 @@ bool run_004787D0(Core& c, std::uint32_t* data, std::uint32_t entry) {
     default: return false;
     }
 P0: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[6][0], 0);
     const std::uint32_t u1 = itof(c.vf[6][1], 0);
     const std::uint32_t u2 = itof(c.vf[6][2], 0);
@@ -477,39 +478,41 @@ P0: {
     ++rt.now;
 }
 P1: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P2: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P3: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = true;
 }
 P4: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[6][0], c.vf[1][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[6][1], c.vf[1][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[6][2], c.vf[1][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[6], c.vf[1][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P12; }
 }
 P5: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[4][0], 0);
     const std::uint32_t u1 = itof(c.vf[4][1], 0);
     const std::uint32_t u2 = itof(c.vf[4][2], 0);
@@ -519,7 +522,7 @@ P5: {
     ++rt.now;
 }
 P6: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[5][0], 0);
     const std::uint32_t u1 = itof(c.vf[5][1], 0);
     const std::uint32_t u2 = itof(c.vf[5][2], 0);
@@ -529,7 +532,7 @@ P6: {
     ++rt.now;
 }
 P7: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[6][0], 0);
     const std::uint32_t u1 = itof(c.vf[6][1], 0);
     const std::uint32_t u2 = itof(c.vf[6][2], 0);
@@ -539,277 +542,284 @@ P7: {
     ++rt.now;
 }
 P8: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P9: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[1][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[1][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[1][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[1][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P10: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[1][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[1][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[1][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[1][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P11: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[6][0], c.vf[1][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[6][1], c.vf[1][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[6][2], c.vf[1][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[6], c.vf[1][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P12: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[5][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[5][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[5][2], c.vf[4][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[5], c.vf[4], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     c.vf[20][0] = u0;
     c.vf[20][1] = u1;
     c.vf[20][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P13: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[6][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[6][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[6][2], c.vf[4][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[6], c.vf[4], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 136u);
-        rt.write_vi(10, lv, true);
+        rt.set_vi(10, lv, true);
     }
     c.vf[21][0] = u0;
     c.vf[21][1] = u1;
     c.vf[21][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P14: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[4][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[4][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[4][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[4], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 68u);
-        rt.write_vi(11, lv, true);
+        rt.set_vi(11, lv, true);
     }
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P15: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[5][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[5][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[5][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[5], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 34u);
-        rt.write_vi(12, lv, true);
+        rt.set_vi(12, lv, true);
     }
     c.vf[11][0] = u0;
     c.vf[11][1] = u1;
     c.vf[11][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P16: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[6][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[6][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[6][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[6], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 238u);
-        rt.write_vi(13, lv, true);
+        rt.set_vi(13, lv, true);
     }
     c.vf[12][0] = u0;
     c.vf[12][1] = u1;
     c.vf[12][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P17: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[20][1], c.vf[21][2]);
     const std::uint32_t u1 = fr::mul(c.vf[20][2], c.vf[21][0]);
     const std::uint32_t u2 = fr::mul(c.vf[20][0], c.vf[21][1]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 8u);
-        rt.write_vi(14, lv, true);
+        rt.set_vi(14, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P18: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[21][1], c.vf[20][2]);
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[21][2], c.vf[20][0]);
     const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[21][0], c.vf[20][1]);
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P19: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[10][0], c.vf[10][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[10][1], c.vf[10][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[10][2], c.vf[10][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[10], c.vf[10], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[22][0] = u0;
     c.vf[22][1] = u1;
     c.vf[22][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P20: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[11][0], c.vf[11][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[11][1], c.vf[11][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[11][2], c.vf[11][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[11], c.vf[11], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[23][0] = u0;
     c.vf[23][1] = u1;
     c.vf[23][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P21: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[12][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[12][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[12][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[12], c.vf[12], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P22: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[8][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[8][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[8][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[8], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[25][0] = u0;
     c.vf[25][1] = u1;
     c.vf[25][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P23: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[22][0], c.vf[22][1]);
     c.vf[22][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P24: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[23][1], c.vf[23][0]);
     c.vf[23][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P25: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[24][2], c.vf[24][0]);
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P26: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[25][0], c.vf[25][1]);
     c.vf[25][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P27: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[22][0], c.vf[22][2]);
     c.vf[13][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P28: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[23][1], c.vf[23][2]);
     c.vf[13][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P29: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[24][2], c.vf[24][1]);
     c.vf[13][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P30: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[25][0], c.vf[25][2]);
     c.vf[7][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P31: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[10][0], c.vf[11][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[10][1], c.vf[11][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[10][2], c.vf[11][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[10], c.vf[11], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[22][0] = u0;
     c.vf[22][1] = u1;
     c.vf[22][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P32: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[11][0], c.vf[12][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[11][1], c.vf[12][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[11][2], c.vf[12][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[11], c.vf[12], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[23][0] = u0;
     c.vf[23][1] = u1;
     c.vf[23][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P33: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[10][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[10][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[10][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[12], c.vf[10], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t l0 = c.vf[13][1];
         const std::uint32_t l1 = c.vf[13][2];
@@ -819,11 +829,10 @@ P33: {
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P34: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[13][0]);
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[7][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
@@ -831,78 +840,74 @@ P34: {
           rt.qs = st; rt.qp = true; rt.qr = rt.now + 13; }
     }
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P35: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[22][0], c.vf[22][1]);
     c.vf[22][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P36: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[23][1], c.vf[23][0]);
     c.vf[23][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P37: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[24][2], c.vf[24][0]);
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P38: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[13][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[13][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[13][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[13], c.vf[3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P39: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[22][0], c.vf[22][2]);
     c.vf[14][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P40: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[23][1], c.vf[23][2]);
     c.vf[14][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P41: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[24][2], c.vf[24][1]);
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P42: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[13]);
-        rt.write_vi(4, lv, false);
+        rt.set_vi(4, lv, false);
     }
     ++rt.now;
 }
 P43: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P44: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P45: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l0 = c.vf[14][1];
         const std::uint32_t l1 = c.vf[14][2];
@@ -912,40 +917,44 @@ P45: {
     ++rt.now;
 }
 P46: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[14][0]);
     {
         if (rt.qp) rt.commit_q();
     }
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P47: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[8][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[8][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[8][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[8], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P48: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[13][0], c.vf[15][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[13][1], c.vf[15][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[13][2], c.vf[15][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[13], c.vf[15], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P49: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[13][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[13][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[13][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[13], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[22][0] = u0;
     c.vf[22][1] = u1;
     c.vf[22][2] = u2;
@@ -953,21 +962,24 @@ P49: {
     ++rt.now;
 }
 P50: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[15][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[15][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[15][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[15], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[23][0] = u0;
     c.vf[23][1] = u1;
     c.vf[23][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P51: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[10][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[10][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[10][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[10], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t l0 = c.vf[16][1];
         const std::uint32_t l1 = c.vf[16][2];
@@ -977,178 +989,185 @@ P51: {
     c.vf[20][0] = u0;
     c.vf[20][1] = u1;
     c.vf[20][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P52: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[16][0]);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[13]);
-        rt.write_vi(5, lv, false);
+        rt.set_vi(5, lv, false);
     }
     c.vf[17][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P53: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[13][0], c.vf[15][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[13][1], c.vf[15][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[13][2], c.vf[15][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[13], c.vf[15], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[13]);
-        rt.write_vi(6, lv, false);
+        rt.set_vi(6, lv, false);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P54: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[14][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[14][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[14][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vv(uv, c.acc, c.vf[14], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P55: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[20][0], c.vf[20][1]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] & c.vi[10]);
-        rt.write_vi(8, lv, true);
+        rt.set_vi(8, lv, true);
     }
     c.vf[20][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P56: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[16][0], c.vf[22][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[16][1], c.vf[22][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[16][2], c.vf[22][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[16], c.vf[22], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] & c.vi[11]);
-        rt.write_vi(9, lv, true);
+        rt.set_vi(9, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P57: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[23][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[23][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[23][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vv(uv, c.acc, c.vf[17], c.vf[23], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] & c.vi[12]);
-        rt.write_vi(14, lv, true);
+        rt.set_vi(14, lv, true);
     }
     c.vf[25][0] = u0;
     c.vf[25][1] = u1;
     c.vf[25][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P58: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[13][0], c.vf[17][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[13][1], c.vf[17][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[13][2], c.vf[17][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[13], c.vf[17], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P59: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[20][0], c.vf[20][2]);
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P60: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[22][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[22][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[22][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[22], c.vf[3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P61: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[23][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[23][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[23][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vv(uv, c.acc, c.vf[23], c.vf[3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[20][0] = u0;
     c.vf[20][1] = u1;
     c.vf[20][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P62: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[13]);
-        rt.write_vi(7, lv, false);
+        rt.set_vi(7, lv, false);
     }
     ++rt.now;
 }
 P63: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[21][0], c.vf[21][0]);
     {
         const std::uint32_t l3 = c.vf[21][0];
         c.vf[8][3] = l3;
     }
     c.vf[18][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P64: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P65: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P66: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P67: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[3][0], c.vf[18][0]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P68: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P69: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P70: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P71: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[10]);
@@ -1157,7 +1176,7 @@ P71: {
     ++rt.now;
 }
 P72: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(3, bp) == rt.branch_vi(0, bp)) == false;
@@ -1166,12 +1185,12 @@ P72: {
     bp = taken;
 }
 P73: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P111; }
 }
 P74: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(4, bp) == rt.branch_vi(0, bp)) == false;
@@ -1180,12 +1199,12 @@ P74: {
     bp = taken;
 }
 P75: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P109; }
 }
 P76: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(8, bp) == rt.branch_vi(0, bp)) == false;
@@ -1194,12 +1213,12 @@ P76: {
     bp = taken;
 }
 P77: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P87; }
 }
 P78: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(9, bp) == rt.branch_vi(0, bp)) == false;
@@ -1208,12 +1227,12 @@ P78: {
     bp = taken;
 }
 P79: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P96; }
 }
 P80: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] & c.vi[12]);
         rt.write_vi(8, lv, true);
@@ -1221,7 +1240,7 @@ P80: {
     ++rt.now;
 }
 P81: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[7] & c.vi[8]);
         rt.write_vi(8, lv, true);
@@ -1229,11 +1248,11 @@ P81: {
     ++rt.now;
 }
 P82: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P83: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(8, bp) == rt.branch_vi(0, bp)) == false;
@@ -1242,22 +1261,22 @@ P83: {
     bp = taken;
 }
 P84: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P111; }
 }
 P85: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     bp = true;
 }
 P86: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P101; }
 }
 P87: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(14, bp) == rt.branch_vi(0, bp)) == false;
@@ -1266,12 +1285,12 @@ P87: {
     bp = taken;
 }
 P88: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P80; }
 }
 P89: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] & c.vi[10]);
         rt.write_vi(8, lv, true);
@@ -1279,7 +1298,7 @@ P89: {
     ++rt.now;
 }
 P90: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[7] & c.vi[8]);
         rt.write_vi(8, lv, true);
@@ -1287,11 +1306,11 @@ P90: {
     ++rt.now;
 }
 P91: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P92: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(8, bp) == rt.branch_vi(0, bp)) == false;
@@ -1300,22 +1319,22 @@ P92: {
     bp = taken;
 }
 P93: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P111; }
 }
 P94: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     bp = true;
 }
 P95: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P101; }
 }
 P96: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] & c.vi[11]);
         rt.write_vi(8, lv, true);
@@ -1323,7 +1342,7 @@ P96: {
     ++rt.now;
 }
 P97: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[7] & c.vi[8]);
         rt.write_vi(8, lv, true);
@@ -1331,11 +1350,11 @@ P97: {
     ++rt.now;
 }
 P98: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P99: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(8, bp) == rt.branch_vi(0, bp)) == false;
@@ -1344,36 +1363,41 @@ P99: {
     bp = taken;
 }
 P100: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P111; }
 }
 P101: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[20][0], c.vf[24][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[20][1], c.vf[24][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[20][2], c.vf[24][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[20], c.vf[24], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P102: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[24][0], c.vf[25][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[24][1], c.vf[25][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[24][2], c.vf[25][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[24], c.vf[25], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P103: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P104: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P105: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[13]);
@@ -1382,7 +1406,8 @@ P105: {
     ++rt.now;
 }
 P106: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[8]);
@@ -1391,7 +1416,7 @@ P106: {
     ++rt.now;
 }
 P107: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(9, bp) == rt.branch_vi(0, bp)) == false;
@@ -1400,45 +1425,46 @@ P107: {
     bp = taken;
 }
 P108: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P111; }
 }
 P109: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 1u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
 }
 P110: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P111: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P112: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 113u; rt.finish(); return true; }
 }
 P113: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[4][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[4][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[4][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[4], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P114: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[5][0], 0);
     const std::uint32_t u1 = itof(c.vf[5][1], 0);
     const std::uint32_t u2 = itof(c.vf[5][2], 0);
@@ -1448,7 +1474,7 @@ P114: {
     ++rt.now;
 }
 P115: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[7][0], 0);
     const std::uint32_t u1 = itof(c.vf[7][1], 0);
     const std::uint32_t u2 = itof(c.vf[7][2], 0);
@@ -1458,7 +1484,7 @@ P115: {
     ++rt.now;
 }
 P116: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[6][0], 0);
     const std::uint32_t u1 = itof(c.vf[6][1], 0);
     const std::uint32_t u2 = itof(c.vf[6][2], 0);
@@ -1468,155 +1494,160 @@ P116: {
     ++rt.now;
 }
 P117: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[23][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[23][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[23][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[23], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P118: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P119: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[7][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[7][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[7][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[7], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P120: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[6][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[6][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[6][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[6], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P121: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     bp = true;
 }
 P122: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P124; }
 }
 P123: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[4][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[4][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[4][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[4], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P124: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[7][0], c.vf[5][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[7][1], c.vf[5][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[7][2], c.vf[5][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[7], c.vf[5], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     c.vf[12][0] = u0;
     c.vf[12][1] = u1;
     c.vf[12][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P125: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[2][0], c.vf[5][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[2][1], c.vf[5][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[2][2], c.vf[5][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[2], c.vf[5], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 136u);
-        rt.write_vi(3, lv, true);
+        rt.set_vi(3, lv, true);
     }
     c.vf[15][0] = u0;
     c.vf[15][1] = u1;
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P126: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[6][0], c.vf[5][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[6][1], c.vf[5][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[6][2], c.vf[5][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[6], c.vf[5], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         c.I = 0x3F800054u;
     }
     c.vf[11][0] = u0;
     c.vf[11][1] = u1;
     c.vf[11][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P127: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::max(c.vf[0][0], c.I);
     c.vf[1][0] = u0;
     ++rt.now;
 }
 P128: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[4][1], c.vf[12][2]);
     const std::uint32_t u1 = fr::mul(c.vf[4][2], c.vf[12][0]);
     const std::uint32_t u2 = fr::mul(c.vf[4][0], c.vf[12][1]);
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P129: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[12][1], c.vf[4][2]);
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[12][2], c.vf[4][0]);
     const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[12][0], c.vf[4][1]);
     c.vf[13][0] = u0;
     c.vf[13][1] = u1;
     c.vf[13][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P130: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[15][1], c.vf[11][2]);
     const std::uint32_t u1 = fr::mul(c.vf[15][2], c.vf[11][0]);
     const std::uint32_t u2 = fr::mul(c.vf[15][0], c.vf[11][1]);
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P131: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][1], c.vf[15][2]);
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][2], c.vf[15][0]);
     const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][0], c.vf[15][1]);
@@ -1626,126 +1657,121 @@ P131: {
     c.vf[14][0] = u0;
     c.vf[14][1] = u1;
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P132: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::min(c.vf[0][1], c.I);
     c.vf[1][1] = u1;
     ++rt.now;
 }
 P133: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[11][0], c.vf[13][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[11][1], c.vf[13][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[11][2], c.vf[13][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[11], c.vf[13], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[20][0] = u0;
     c.vf[20][1] = u1;
     c.vf[20][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P134: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[13][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[13][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[13][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[15], c.vf[13], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[21][0] = u0;
     c.vf[21][1] = u1;
     c.vf[21][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P135: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[12], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[22][0] = u0;
     c.vf[22][1] = u1;
     c.vf[22][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P136: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[4][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[4][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[4][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[4], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[3][0] = u0;
     c.vf[3][1] = u1;
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P137: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[20][0], c.vf[20][1]);
     c.vf[20][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P138: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[21][0], c.vf[21][1]);
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P139: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[22][0], c.vf[22][1]);
     c.vf[22][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P140: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[3][0], c.vf[3][1]);
     c.vf[3][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P141: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[20][0], c.vf[20][2]);
     c.vf[16][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P142: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[21][0], c.vf[21][2]);
     c.vf[18][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P143: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[22][0], c.vf[22][2]);
     c.vf[17][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P144: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[3][0], c.vf[3][2]);
     {
         c.I = 0x322BCC77u;
     }
     c.vf[19][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P145: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[16][0], c.I);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P146: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[16][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_div(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = (fr::clamp(n) & 0x7FFFFFFFu) ? 0x20u : 0x10u;
@@ -1754,23 +1780,25 @@ P146: {
     ++rt.now;
 }
 P147: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[1][0], c.vf[16][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[1][1], c.vf[16][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[1], c.vf[16][0], 3u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
     c.vf[20][0] = u0;
     c.vf[20][1] = u1;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1));
     ++rt.now;
 }
 P148: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[18][0], c.vf[19][0]);
     c.vf[21][0] = u0;
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P149: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[3]);
@@ -1779,7 +1807,7 @@ P149: {
     ++rt.now;
 }
 P150: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(8, bp) == rt.branch_vi(0, bp)) == false;
@@ -1788,84 +1816,88 @@ P150: {
     bp = taken;
 }
 P151: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P168; }
 }
 P152: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[18][0], c.vf[20][1]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P153: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[20][0], c.vf[18][0]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P154: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[19][0], c.vf[20][1]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P155: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[20][0], c.vf[21][0]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P156: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[17][0], c.vf[20][1]);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[0]);
-        rt.write_vi(8, lv, false);
+        rt.set_vi(8, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P157: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[20][0], c.vf[17][0]);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[8]);
-        rt.write_vi(8, lv, false);
+        rt.set_vi(8, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P158: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u0 = fr::mul(c.vf[17][0], us);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[8]);
-        rt.write_vi(8, lv, false);
+        rt.set_vi(8, lv, false);
     }
     c.vf[24][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P159: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u0 = fr::mul(c.vf[18][0], us);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[8]);
-        rt.write_vi(8, lv, false);
+        rt.set_vi(8, lv, false);
     }
     c.vf[22][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P160: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u0 = fr::mul(c.vf[19][0], us);
     {
@@ -1874,14 +1906,16 @@ P160: {
         rt.write_vi(8, lv, false);
     }
     c.vf[3][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P161: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[2][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[2][1], c.vf[0][1]);
-    const std::uint32_t u2 = fr::add(c.vf[2][2], c.vf[0][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[2], c.vf[0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[8]);
@@ -1890,14 +1924,15 @@ P161: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P162: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[24][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[24][0]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[24][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[24][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[8] & c.vi[3]);
         rt.write_vi(9, lv, true);
@@ -1905,18 +1940,16 @@ P162: {
     c.vf[25][0] = u0;
     c.vf[25][1] = u1;
     c.vf[25][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P163: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[22][0]);
     c.vf[24][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P164: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[3][0]);
     {
@@ -1928,34 +1961,35 @@ P164: {
     bp = taken;
 }
 P165: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P168; }
 }
 P166: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 1u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
 }
 P167: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P168: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P169: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 170u; rt.finish(); return true; }
 }
 P170: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[8][0], 0);
     const std::uint32_t u1 = itof(c.vf[8][1], 0);
     const std::uint32_t u2 = itof(c.vf[8][2], 0);
@@ -1965,7 +1999,7 @@ P170: {
     ++rt.now;
 }
 P171: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[10][0], 0);
     const std::uint32_t u1 = itof(c.vf[10][1], 0);
     const std::uint32_t u2 = itof(c.vf[10][2], 0);
@@ -1975,7 +2009,7 @@ P171: {
     ++rt.now;
 }
 P172: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = itof(c.vf[9][0], 0);
     const std::uint32_t u1 = itof(c.vf[9][1], 0);
     const std::uint32_t u2 = itof(c.vf[9][2], 0);
@@ -1985,142 +2019,146 @@ P172: {
     ++rt.now;
 }
 P173: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[23][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[23][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[23][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[23], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P174: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[8][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[8][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[8][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[8], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P175: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[10][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[10][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[10][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[10], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P176: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[9][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[9][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[9][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[9], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P177: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P178: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P179: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[10][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[10][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[10][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[10], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     c.vf[12][0] = u0;
     c.vf[12][1] = u1;
     c.vf[12][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P180: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[2][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[2][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[2][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[2], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 136u);
-        rt.write_vi(3, lv, true);
+        rt.set_vi(3, lv, true);
     }
     c.vf[15][0] = u0;
     c.vf[15][1] = u1;
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P181: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[9][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[9][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[9][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[9], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         c.I = 0x3F800054u;
     }
     c.vf[11][0] = u0;
     c.vf[11][1] = u1;
     c.vf[11][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P182: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::max(c.vf[0][0], c.I);
     c.vf[1][0] = u0;
     ++rt.now;
 }
 P183: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[4][1], c.vf[12][2]);
     const std::uint32_t u1 = fr::mul(c.vf[4][2], c.vf[12][0]);
     const std::uint32_t u2 = fr::mul(c.vf[4][0], c.vf[12][1]);
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P184: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[12][1], c.vf[4][2]);
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[12][2], c.vf[4][0]);
     const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[12][0], c.vf[4][1]);
     c.vf[13][0] = u0;
     c.vf[13][1] = u1;
     c.vf[13][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P185: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[15][1], c.vf[11][2]);
     const std::uint32_t u1 = fr::mul(c.vf[15][2], c.vf[11][0]);
     const std::uint32_t u2 = fr::mul(c.vf[15][0], c.vf[11][1]);
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P186: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][1], c.vf[15][2]);
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][2], c.vf[15][0]);
     const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][0], c.vf[15][1]);
@@ -2130,126 +2168,121 @@ P186: {
     c.vf[14][0] = u0;
     c.vf[14][1] = u1;
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P187: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::min(c.vf[0][1], c.I);
     c.vf[1][1] = u1;
     ++rt.now;
 }
 P188: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[11][0], c.vf[13][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[11][1], c.vf[13][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[11][2], c.vf[13][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[11], c.vf[13], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[20][0] = u0;
     c.vf[20][1] = u1;
     c.vf[20][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P189: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[13][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[13][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[13][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[15], c.vf[13], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[21][0] = u0;
     c.vf[21][1] = u1;
     c.vf[21][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P190: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[12], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[22][0] = u0;
     c.vf[22][1] = u1;
     c.vf[22][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P191: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[4][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[4][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[4][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[4], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[3][0] = u0;
     c.vf[3][1] = u1;
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P192: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[20][0], c.vf[20][1]);
     c.vf[20][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P193: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[21][0], c.vf[21][1]);
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P194: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[22][0], c.vf[22][1]);
     c.vf[22][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P195: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[3][0], c.vf[3][1]);
     c.vf[3][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P196: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[20][0], c.vf[20][2]);
     c.vf[16][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P197: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[21][0], c.vf[21][2]);
     c.vf[18][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P198: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[22][0], c.vf[22][2]);
     c.vf[17][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P199: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[3][0], c.vf[3][2]);
     {
         c.I = 0x322BCC77u;
     }
     c.vf[19][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P200: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[16][0], c.I);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P201: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[16][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_div(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = (fr::clamp(n) & 0x7FFFFFFFu) ? 0x20u : 0x10u;
@@ -2258,23 +2291,25 @@ P201: {
     ++rt.now;
 }
 P202: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[1][0], c.vf[16][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[1][1], c.vf[16][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[1], c.vf[16][0], 3u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
     c.vf[20][0] = u0;
     c.vf[20][1] = u1;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1));
     ++rt.now;
 }
 P203: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[18][0], c.vf[19][0]);
     c.vf[21][0] = u0;
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P204: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[3]);
@@ -2283,7 +2318,7 @@ P204: {
     ++rt.now;
 }
 P205: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(8, bp) == rt.branch_vi(0, bp)) == false;
@@ -2292,84 +2327,88 @@ P205: {
     bp = taken;
 }
 P206: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P223; }
 }
 P207: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[18][0], c.vf[20][1]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P208: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[20][0], c.vf[18][0]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P209: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[19][0], c.vf[20][1]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P210: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[20][0], c.vf[21][0]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P211: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[17][0], c.vf[20][1]);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[0]);
-        rt.write_vi(8, lv, false);
+        rt.set_vi(8, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P212: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[20][0], c.vf[17][0]);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[8]);
-        rt.write_vi(8, lv, false);
+        rt.set_vi(8, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P213: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u0 = fr::mul(c.vf[17][0], us);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[8]);
-        rt.write_vi(8, lv, false);
+        rt.set_vi(8, lv, false);
     }
     c.vf[8][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P214: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u0 = fr::mul(c.vf[18][0], us);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[8]);
-        rt.write_vi(8, lv, false);
+        rt.set_vi(8, lv, false);
     }
     c.vf[22][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P215: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u0 = fr::mul(c.vf[19][0], us);
     {
@@ -2378,14 +2417,16 @@ P215: {
         rt.write_vi(8, lv, false);
     }
     c.vf[3][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P216: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[2][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[2][1], c.vf[0][1]);
-    const std::uint32_t u2 = fr::add(c.vf[2][2], c.vf[0][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[2], c.vf[0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac | c.vi[8]);
@@ -2394,14 +2435,15 @@ P216: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P217: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[8][0]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[8][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[8][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[8] & c.vi[3]);
         rt.write_vi(9, lv, true);
@@ -2409,18 +2451,16 @@ P217: {
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P218: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[22][0]);
     c.vf[8][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P219: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[3][0]);
     {
@@ -2432,124 +2472,127 @@ P219: {
     bp = taken;
 }
 P220: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P223; }
 }
 P221: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 1u);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     ++rt.now;
 }
 P222: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P223: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P224: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 225u; rt.finish(); return true; }
 }
 P225: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[4][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[4][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[4][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[4], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 128u);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P226: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[5][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[5][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[5][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[5], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 64u);
-        rt.write_vi(3, lv, true);
+        rt.set_vi(3, lv, true);
     }
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P227: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[0][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 32u);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.vf[6][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P228: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[0][3]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 4u);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.vf[6][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P229: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[3][0], c.vf[9][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[3][1], c.vf[9][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[3][2], c.vf[9][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[3], c.vf[9], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 8u);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P230: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[3][0], c.vf[10][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[3][1], c.vf[10][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[3][2], c.vf[10][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[3], c.vf[10], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P231: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P232: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P233: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P234: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::min(c.vf[9][0], c.vf[10][0]);
     const std::uint32_t u1 = fr::min(c.vf[9][1], c.vf[10][1]);
     const std::uint32_t u2 = fr::min(c.vf[9][2], c.vf[10][2]);
@@ -2559,7 +2602,7 @@ P234: {
     ++rt.now;
 }
 P235: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::max(c.vf[9][0], c.vf[10][0]);
     const std::uint32_t u1 = fr::max(c.vf[9][1], c.vf[10][1]);
     const std::uint32_t u2 = fr::max(c.vf[9][2], c.vf[10][2]);
@@ -2569,43 +2612,44 @@ P235: {
     ++rt.now;
 }
 P236: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P237: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P238: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P239: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[8][0], c.vf[6][0]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P240: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::sub(c.vf[6][1], c.vf[7][0]);
     rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P241: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::max(c.vf[6][0], c.vf[7][0]);
     c.vf[6][0] = u0;
     ++rt.now;
 }
 P242: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::min(c.vf[6][1], c.vf[8][0]);
     c.vf[6][1] = u1;
     ++rt.now;
 }
 P243: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[2]);
@@ -2614,7 +2658,8 @@ P243: {
     ++rt.now;
 }
 P244: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[3]);
@@ -2623,7 +2668,7 @@ P244: {
     ++rt.now;
 }
 P245: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::sub(c.vf[8][1], c.vf[6][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[10] | c.vi[11]);
@@ -2633,13 +2678,13 @@ P245: {
     ++rt.now;
 }
 P246: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::sub(c.vf[6][1], c.vf[7][1]);
     rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P247: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u0 = fr::max(c.vf[6][0], c.vf[7][1]);
     {
@@ -2650,18 +2695,19 @@ P247: {
     bp = taken;
 }
 P248: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::min(c.vf[6][1], c.vf[8][1]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     c.vf[6][1] = u1;
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P269; }
 }
 P249: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[3]);
@@ -2670,7 +2716,8 @@ P249: {
     ++rt.now;
 }
 P250: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[3]);
@@ -2679,7 +2726,7 @@ P250: {
     ++rt.now;
 }
 P251: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[8][2], c.vf[6][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[10] | c.vi[11]);
@@ -2689,13 +2736,13 @@ P251: {
     ++rt.now;
 }
 P252: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::sub(c.vf[6][1], c.vf[7][2]);
     rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P253: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u0 = fr::max(c.vf[6][0], c.vf[7][2]);
     {
@@ -2706,18 +2753,19 @@ P253: {
     bp = taken;
 }
 P254: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::min(c.vf[6][1], c.vf[8][2]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     c.vf[6][1] = u1;
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P269; }
 }
 P255: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[4]);
@@ -2726,7 +2774,8 @@ P255: {
     ++rt.now;
 }
 P256: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[3]);
@@ -2735,7 +2784,7 @@ P256: {
     ++rt.now;
 }
 P257: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[10] | c.vi[11]);
         rt.write_vi(10, lv, true);
@@ -2743,13 +2792,13 @@ P257: {
     ++rt.now;
 }
 P258: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::sub(c.vf[6][1], c.vf[0][3]);
     rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P259: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(10, bp) == rt.branch_vi(0, bp)) == false;
@@ -2758,22 +2807,23 @@ P259: {
     bp = taken;
 }
 P260: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P269; }
 }
 P261: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[6][0], c.vf[0][0]);
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P262: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[5]);
@@ -2782,7 +2832,7 @@ P262: {
     ++rt.now;
 }
 P263: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[10] + 4u);
         rt.write_vi(10, lv, true);
@@ -2790,7 +2840,7 @@ P263: {
     ++rt.now;
 }
 P264: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[10] & c.vi[6]);
         rt.write_vi(10, lv, true);
@@ -2798,7 +2848,8 @@ P264: {
     ++rt.now;
 }
 P265: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[10]);
@@ -2807,7 +2858,7 @@ P265: {
     ++rt.now;
 }
 P266: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(10, bp) == rt.branch_vi(0, bp)) == true;
@@ -2816,566 +2867,614 @@ P266: {
     bp = taken;
 }
 P267: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 1u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P269; }
 }
 P268: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 2u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
 }
 P269: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
 }
 P270: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P271: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 272u; rt.finish(); return true; }
 }
 P272: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 240u);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     ++rt.now;
 }
 P273: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 2u);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     ++rt.now;
 }
 P274: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + c.vi[0]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     ++rt.now;
 }
 P275: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[2] + c.vi[0]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P276: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[1][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[1][0]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[1][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] - 1u);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P277: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[1][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[1][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[1][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[1][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P278: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[1][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[1][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[1][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[1][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P279: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P280: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[2][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[2][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[2][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[2][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P281: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[2][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[2][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[2][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[2][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P282: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[2][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[2][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[2][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[2][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[2][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[2]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P283: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P284: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[3][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[3][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[3][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[3][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P285: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[3][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[3][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[3][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[3][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P286: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[3][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[3][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[3][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[3][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[3][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[2]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P287: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P288: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[4][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[4][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[4][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[4][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P289: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[4][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[4][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[4][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[4][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P290: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[4][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[4][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[4][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[4][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[4][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[2]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P291: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P292: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[5][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[5][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[5][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[5][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[5][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P293: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[5][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[5][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[5][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[5][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[5][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P294: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[5][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[5][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[5][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[5][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[5][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[2]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P295: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P296: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[6][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[6][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[6][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[6][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[6][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P297: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[6][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[6][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[6][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[6][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P298: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[6][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[6][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[6][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[6][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[6][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[2]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P299: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P300: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[7][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[7][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[7][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[7][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[7][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P301: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[7][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[7][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[7][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[7][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[7][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P302: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[7][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[7][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[7][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[7][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[7][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[2]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P303: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P304: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[8][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[8][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[8][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[8][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P305: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[8][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[8][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[8][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[8][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P306: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[8][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[8][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[8][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[8][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[8][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[2]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P307: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[13][3]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.vf[12][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P308: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[13][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P309: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[13][1]);
     c.vf[10][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P310: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[13][2]);
     {
         rt.flag_read(fb);
@@ -3383,45 +3482,41 @@ P310: {
         rt.write_vi(3, lv, false);
     }
     c.vf[11][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P311: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[14][3]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
         rt.write_vi(4, lv, true);
     }
     c.vf[12][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P312: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[14][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
         rt.write_vi(5, lv, true);
     }
     c.vf[9][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P313: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[14][1]);
     {
         taken = (rt.branch_vi(4, bp) == rt.branch_vi(0, bp)) == false;
     }
     c.vf[10][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
     bp = taken;
 }
 P314: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[14][2]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
@@ -3433,7 +3528,7 @@ P314: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P320; }
 }
 P315: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(6, bp) == rt.branch_vi(0, bp)) == false;
@@ -3442,7 +3537,7 @@ P315: {
     bp = taken;
 }
 P316: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 192u);
         rt.write_vi(2, lv, true);
@@ -3451,7 +3546,7 @@ P316: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P275; }
 }
 P317: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(5, bp) == rt.branch_vi(0, bp)) == true;
@@ -3460,209 +3555,219 @@ P317: {
     bp = taken;
 }
 P318: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 2u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P320; }
 }
 P319: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 1u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
 }
 P320: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P321: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P322: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 323u; rt.finish(); return true; }
 }
 P323: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[1][0], c.vf[6][0]);
-    const std::uint32_t u1 = fr::add(c.vf[1][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::add(c.vf[1][2], c.vf[6][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[1], c.vf[6], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[2][0] = u0;
     c.vf[2][1] = u1;
     c.vf[2][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P324: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[1][0], c.vf[7][0]);
-    const std::uint32_t u1 = fr::add(c.vf[1][1], c.vf[7][1]);
-    const std::uint32_t u2 = fr::add(c.vf[1][2], c.vf[7][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[1], c.vf[7], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P325: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[1][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::add(c.vf[1][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::add(c.vf[1][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[1], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P326: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[2][0], c.vf[7][0]);
-    const std::uint32_t u1 = fr::add(c.vf[2][1], c.vf[7][1]);
-    const std::uint32_t u2 = fr::add(c.vf[2][2], c.vf[7][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[2], c.vf[7], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[3][0] = u0;
     c.vf[3][1] = u1;
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P327: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[2][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::add(c.vf[2][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::add(c.vf[2][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[2], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P328: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[3][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::add(c.vf[3][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::add(c.vf[3][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[3], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = true;
 }
 P329: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[4][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::add(c.vf[4][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::add(c.vf[4][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[4], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P272; }
 }
 P330: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P331: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P332: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P333: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[4][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[4], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P334: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[5][1], c.vf[1][3]);
     c.vf[5][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P335: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[6][1], c.vf[1][3]);
     c.vf[6][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P336: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[7][1], c.vf[1][3]);
     c.vf[7][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
     bp = true;
 }
 P337: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[8][1], c.vf[1][3]);
     c.vf[8][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P272; }
 }
 P338: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (0))); m[0] = c.vf[1][0]; m[1] = c.vf[1][1]; m[2] = c.vf[1][2]; m[3] = c.vf[1][3]; }
     }
     ++rt.now;
 }
 P339: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (1))); m[0] = c.vf[2][0]; m[1] = c.vf[2][1]; m[2] = c.vf[2][2]; m[3] = c.vf[2][3]; }
     }
     ++rt.now;
 }
 P340: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[2][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[2][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[2][2], c.vf[2][2]);
-    const std::uint32_t u3 = fr::sub(c.vf[2][3], c.vf[2][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[2], c.vf[2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (2))); m[0] = c.vf[3][0]; m[1] = c.vf[3][1]; m[2] = c.vf[3][2]; m[3] = c.vf[3][3]; }
     }
@@ -3674,64 +3779,67 @@ P340: {
     ++rt.now;
 }
 P341: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 3u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
 }
 P342: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(13, lv, true);
+        rt.set_vi(13, lv, true);
     }
     ++rt.now;
 }
 P343: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 128u);
-        rt.write_vi(14, lv, true);
+        rt.set_vi(14, lv, true);
     }
     ++rt.now;
 }
 P344: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
 }
 P345: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P346: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 347u; rt.finish(); return true; }
 }
 P347: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[1] - 1u);
-        rt.write_vi(7, lv, true);
+        rt.set_vi(7, lv, true);
     }
     ++rt.now;
 }
 P348: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[7] + c.vi[13]);
-        rt.write_vi(12, lv, true);
+        rt.set_vi(12, lv, true);
     }
     ++rt.now;
 }
 P349: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[2][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::add(c.vf[2][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::add(c.vf[2][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[2], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[12] + (0)));
         const std::uint32_t l0 = m[0];
@@ -3746,50 +3854,50 @@ P349: {
     c.vf[2][0] = u0;
     c.vf[2][1] = u1;
     c.vf[2][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P350: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 128u);
-        rt.write_vi(15, lv, true);
+        rt.set_vi(15, lv, true);
     }
     ++rt.now;
 }
 P351: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + c.vi[14]);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     ++rt.now;
 }
 P352: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(8, lv, true);
+        rt.set_vi(8, lv, true);
     }
     ++rt.now;
 }
 P353: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[1][0], c.vf[18][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[1][1], c.vf[18][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[1][2], c.vf[18][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[1], c.vf[18], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[8] + c.vi[13]);
-        rt.write_vi(12, lv, true);
+        rt.set_vi(12, lv, true);
     }
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P354: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[0][3]);
     {
         const std::uint32_t l0 = c.vf[18][0];
@@ -3802,14 +3910,15 @@ P354: {
         c.vf[4][3] = l3;
     }
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P355: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[2], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[12] + (0)));
         const std::uint32_t l0 = m[0];
@@ -3824,148 +3933,141 @@ P355: {
     c.vf[19][0] = u0;
     c.vf[19][1] = u1;
     c.vf[19][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P356: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P357: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[5][0], c.vf[5][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P358: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[21][0], c.vf[5][2]);
     c.vf[5][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P359: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[19][0], c.vf[19][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P360: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[21][0], c.vf[19][2]);
     c.vf[19][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P361: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[1][0], c.vf[6][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[1][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[1][2], c.vf[6][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[1], c.vf[6], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P362: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[5][0], c.vf[1][3]);
     c.vf[20][0] = u0;
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P363: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[5][0], c.vf[0][0]);
     c.vf[3][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P364: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P365: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[7][0], c.vf[7][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P366: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[21][0], c.vf[7][2]);
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[15]);
-        rt.write_vi(5, lv, false);
+        rt.set_vi(5, lv, false);
     }
     c.vf[7][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P367: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[21][0], c.vf[7][2]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] + c.vi[0]);
-        rt.write_vi(3, lv, true);
+        rt.set_vi(3, lv, true);
     }
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P368: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[6][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[6][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[6], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P369: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[1][3], c.vf[3][0]);
     c.vf[24][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P370: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[7][0], c.vf[1][3]);
     c.vf[20][0] = u0;
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P371: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[7][0], c.vf[3][0]);
     c.vf[25][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P372: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[9][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[8] + 1u);
         rt.write_vi(8, lv, true);
     }
     c.vf[7][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P373: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[8] + c.vi[13]);
         rt.write_vi(12, lv, true);
@@ -3973,11 +4075,11 @@ P373: {
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P374: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[15]);
@@ -3986,7 +4088,7 @@ P374: {
     ++rt.now;
 }
 P375: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[25][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_div(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = (fr::clamp(n) & 0x7FFFFFFFu) ? 0x20u : 0x10u;
@@ -3995,19 +4097,18 @@ P375: {
     ++rt.now;
 }
 P376: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[7][0]);
     {
         taken = (rt.branch_vi(4, bp) == rt.branch_vi(3, bp)) == true;
     }
     c.vf[3][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
     bp = taken;
 }
 P377: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[12] + (0)));
         const std::uint32_t l0 = m[0];
@@ -4023,101 +4124,104 @@ P377: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P392; }
 }
 P378: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P379: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P380: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P381: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[1][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[1][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[1][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[1], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P382: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u3 = fr::mul(c.vf[24][3], us);
     c.vf[23][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P383: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P384: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P385: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[4][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[4][1], c.vf[0][0]);
-    const std::uint32_t u2 = fr::add(c.vf[4][2], c.vf[0][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[4], c.vf[0][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P386: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[4][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[4][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[4][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[4], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P387: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[6][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[6][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[6][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[6], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[22][0] = u0;
     c.vf[22][1] = u1;
     c.vf[22][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P388: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[9][0], c.vf[9][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P389: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[21][0], c.vf[9][2]);
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P390: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     bp = true;
 }
 P391: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[6][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[6][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[6], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(c.vi[6]); m[0] = c.vf[22][0]; m[1] = c.vf[22][1]; m[2] = c.vf[22][2]; m[3] = c.vf[22][3]; }
         const std::uint16_t lv2 = static_cast<std::uint16_t>(c.vi[6] + 1);
@@ -4126,78 +4230,77 @@ P391: {
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P402; }
 }
 P392: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[6][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[6][2]);
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[6], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         taken = (rt.branch_vi(8, bp) == rt.branch_vi(7, bp)) == true;
     }
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = taken;
 }
 P393: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P402; }
 }
 P394: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P395: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[1][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[1][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[1][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[1], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P396: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P397: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P398: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P399: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[9][0], c.vf[9][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P400: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[21][0], c.vf[9][2]);
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P401: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P402: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(4, bp) == rt.branch_vi(0, bp)) == true;
@@ -4206,15 +4309,14 @@ P402: {
     bp = taken;
 }
 P403: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[1][3], c.vf[3][0]);
     c.vf[24][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P405; }
 }
 P404: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(c.vi[6]); m[0] = c.vf[6][0]; m[1] = c.vf[6][1]; m[2] = c.vf[6][2]; m[3] = c.vf[6][3]; }
         const std::uint16_t lv2 = static_cast<std::uint16_t>(c.vi[6] + 1);
@@ -4223,7 +4325,7 @@ P404: {
     ++rt.now;
 }
 P405: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u0 = fr::sub(c.vf[9][0], c.vf[1][3]);
     {
@@ -4235,31 +4337,29 @@ P405: {
     bp = taken;
 }
 P406: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[9][0], c.vf[3][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] + c.vi[0]);
         rt.write_vi(3, lv, true);
     }
     c.vf[25][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P372; }
 }
 P407: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u0 = fr::sub(c.vf[5][0], c.vf[7][0]);
     {
         taken = (rt.branch_vi(5, bp) == rt.branch_vi(4, bp)) == true;
     }
     c.vf[23][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
     bp = taken;
 }
 P408: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[1][3], c.vf[7][0]);
     c.vf[24][3] = u3;
     rt.push_flags(lane_mac(u3, 3));
@@ -4267,15 +4367,16 @@ P408: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P428; }
 }
 P409: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
 }
 P410: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P411: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[23][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_div(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = (fr::clamp(n) & 0x7FFFFFFFu) ? 0x20u : 0x10u;
@@ -4284,72 +4385,76 @@ P411: {
     ++rt.now;
 }
 P412: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
 }
 P413: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P414: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P415: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P416: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P417: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P418: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u3 = fr::mul(c.vf[24][3], us);
     c.vf[23][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P419: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P420: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P421: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[4][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[4][1], c.vf[0][0]);
-    const std::uint32_t u2 = fr::add(c.vf[4][2], c.vf[0][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[4], c.vf[0][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P422: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[4][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[4][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[4][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[4], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P423: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[23][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[23][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[23][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[23][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[22][0] = u0;
     c.vf[22][1] = u1;
     c.vf[22][2] = u2;
@@ -4357,19 +4462,20 @@ P423: {
     ++rt.now;
 }
 P424: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P425: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P426: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P427: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(c.vi[6]); m[0] = c.vf[22][0]; m[1] = c.vf[22][1]; m[2] = c.vf[22][2]; m[3] = c.vf[22][3]; }
         const std::uint16_t lv2 = static_cast<std::uint16_t>(c.vi[6] + 1);
@@ -4378,7 +4484,8 @@ P427: {
     ++rt.now;
 }
 P428: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(5, bp) == rt.branch_vi(0, bp)) == true;
@@ -4387,25 +4494,26 @@ P428: {
     bp = taken;
 }
 P429: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[13] + c.vi[0]);
-        rt.write_vi(7, lv, true);
+        rt.set_vi(7, lv, true);
     }
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P431; }
 }
 P430: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(c.vi[6]); m[0] = c.vf[18][0]; m[1] = c.vf[18][1]; m[2] = c.vf[18][2]; m[3] = c.vf[18][3]; }
         const std::uint16_t lv2 = static_cast<std::uint16_t>(c.vi[6] + 1);
-        rt.write_vi(6, lv2, true);
+        rt.set_vi(6, lv2, true);
     }
     ++rt.now;
 }
 P431: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[19][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -4414,45 +4522,46 @@ P431: {
     ++rt.now;
 }
 P432: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] - c.vi[14]);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     ++rt.now;
 }
 P433: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] + c.vi[0]);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
 }
 P434: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[14] + c.vi[0]);
-        rt.write_vi(13, lv, true);
+        rt.set_vi(13, lv, true);
     }
     ++rt.now;
 }
 P435: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[7] + c.vi[0]);
-        rt.write_vi(14, lv, true);
+        rt.set_vi(14, lv, true);
     }
     ++rt.now;
     ending = true;
 }
 P436: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 437u; rt.finish(); return true; }
 }
 P437: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[13] + (0)));
         const std::uint32_t l0 = m[0];
@@ -4467,7 +4576,7 @@ P437: {
     ++rt.now;
 }
 P438: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[13] + (1)));
         const std::uint32_t l0 = m[0];
@@ -4482,7 +4591,7 @@ P438: {
     ++rt.now;
 }
 P439: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[13] + (2)));
         const std::uint32_t l0 = m[0];
@@ -4497,25 +4606,25 @@ P439: {
     ++rt.now;
 }
 P440: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[13] + c.vi[0]);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     ++rt.now;
     ending = true;
 }
 P441: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] + 3u);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     ++rt.now;
     if (ending) { c.tpc = 442u; rt.finish(); return true; }
 }
 P442: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[6] + (0)));
         const std::uint32_t l0 = m[0];
@@ -4530,7 +4639,7 @@ P442: {
     ++rt.now;
 }
 P443: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[6] + (1)));
         const std::uint32_t l0 = m[0];
@@ -4545,7 +4654,7 @@ P443: {
     ++rt.now;
 }
 P444: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[6] + (2)));
         const std::uint32_t l0 = m[0];
@@ -4560,21 +4669,21 @@ P444: {
     ++rt.now;
 }
 P445: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] + 3u);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     ++rt.now;
     ending = true;
 }
 P446: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 447u; rt.finish(); return true; }
 }
 P447: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[6] + (0)));
         const std::uint32_t l0 = m[0];
@@ -4589,29 +4698,30 @@ P447: {
     ++rt.now;
 }
 P448: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] + 1u);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     ++rt.now;
 }
 P449: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P450: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P451: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 452u; rt.finish(); return true; }
     b3host::fatal("vu0 aot: 004787D0 ran past its last pair");
 }
 }
+// 00479610: 327 pairs, 197 flag pushes (17 kept), flag-slot commits at 21 pairs, VI history at 51 pairs
 bool run_00479610(Core& c, std::uint32_t* data, std::uint32_t entry) {
     Rt rt(c, data);
     const std::uint64_t fb = rt.flag_commits; (void)fb;
@@ -4948,197 +5058,207 @@ bool run_00479610(Core& c, std::uint32_t* data, std::uint32_t entry) {
     default: return false;
     }
 P0: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[2][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[2][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[2][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[2], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[11][0] = u0;
     c.vf[11][1] = u1;
     c.vf[11][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P1: {
-    rt.commit();
-    const std::uint32_t u1 = fr::sub(c.vf[0][1], c.vf[0][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[0][2], c.vf[0][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[0], c.vf[0], 6u);
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P2: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[0][0], c.vf[0][0]);
-    const std::uint32_t u2 = fr::sub(c.vf[0][2], c.vf[0][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[0], c.vf[0], 5u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (0))); m[0] = c.vi[0]; m[1] = c.vi[0]; }
     }
     c.vf[12][0] = u0;
     c.vf[12][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u2, 2));
     ++rt.now;
 }
 P3: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[0][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[0][1], c.vf[0][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[0], c.vf[0], 3u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (71))); m[0] = c.vi[0]; m[1] = c.vi[0]; }
     }
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1));
     ++rt.now;
 }
 P4: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[11][0]);
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (142))); m[0] = c.vi[0]; m[1] = c.vi[0]; }
     }
     c.vf[7][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P5: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[11][1]);
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (247))); m[0] = c.vf[3][0]; m[1] = c.vf[3][1]; m[2] = c.vf[3][2]; m[3] = c.vf[3][3]; }
     }
     c.vf[12][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P6: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[11][2]);
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (248))); m[0] = c.vf[4][0]; m[1] = c.vf[4][1]; m[2] = c.vf[4][2]; m[3] = c.vf[4][3]; }
     }
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P7: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (249))); m[0] = c.vf[13][0]; m[1] = c.vf[13][1]; m[2] = c.vf[13][2]; m[3] = c.vf[13][3]; }
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P8: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[7][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[7][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[7][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[7], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (250))); m[0] = c.vf[14][0]; m[1] = c.vf[14][1]; m[2] = c.vf[14][2]; m[3] = c.vf[14][3]; }
     }
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P9: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[9][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[9][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[9][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[9], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (251))); m[0] = c.vf[15][0]; m[1] = c.vf[15][1]; m[2] = c.vf[15][2]; m[3] = c.vf[15][3]; }
     }
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P10: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[12][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[12], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (252))); m[0] = c.vf[16][0]; m[1] = c.vf[16][1]; m[2] = c.vf[16][2]; m[3] = c.vf[16][3]; }
     }
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P11: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (213))); m[0] = c.vf[1][0]; m[1] = c.vf[1][1]; m[2] = c.vf[1][2]; m[3] = c.vf[1][3]; }
     }
     ++rt.now;
 }
 P12: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[4][0], c.vf[9][0]);
-    const std::uint32_t u1 = fr::add(c.vf[4][1], c.vf[9][1]);
-    const std::uint32_t u2 = fr::add(c.vf[4][2], c.vf[9][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[4], c.vf[9], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (214))); m[0] = c.vf[4][0]; m[1] = c.vf[4][1]; m[2] = c.vf[4][2]; m[3] = c.vf[4][3]; }
     }
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P13: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[4][0], c.vf[12][0]);
-    const std::uint32_t u1 = fr::add(c.vf[4][1], c.vf[12][1]);
-    const std::uint32_t u2 = fr::add(c.vf[4][2], c.vf[12][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[4], c.vf[12], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (215))); m[0] = c.vf[5][0]; m[1] = c.vf[5][1]; m[2] = c.vf[5][2]; m[3] = c.vf[5][3]; }
     }
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P14: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[5][0], c.vf[12][0]);
-    const std::uint32_t u1 = fr::add(c.vf[5][1], c.vf[12][1]);
-    const std::uint32_t u2 = fr::add(c.vf[5][2], c.vf[12][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[5], c.vf[12], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (217))); m[0] = c.vf[7][0]; m[1] = c.vf[7][1]; m[2] = c.vf[7][2]; m[3] = c.vf[7][3]; }
     }
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P15: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P16: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[6][0], c.vf[12][0]);
-    const std::uint32_t u1 = fr::add(c.vf[6][1], c.vf[12][1]);
-    const std::uint32_t u2 = fr::add(c.vf[6][2], c.vf[12][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[6], c.vf[12], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (216))); m[0] = c.vf[6][0]; m[1] = c.vf[6][1]; m[2] = c.vf[6][2]; m[3] = c.vf[6][3]; }
     }
@@ -5149,46 +5269,47 @@ P16: {
     ++rt.now;
 }
 P17: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (218))); m[0] = c.vf[8][0]; m[1] = c.vf[8][1]; m[2] = c.vf[8][2]; m[3] = c.vf[8][3]; }
     }
     ++rt.now;
 }
 P18: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (219))); m[0] = c.vf[9][0]; m[1] = c.vf[9][1]; m[2] = c.vf[9][2]; m[3] = c.vf[9][3]; }
     }
     ++rt.now;
 }
 P19: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P20: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (220))); m[0] = c.vf[10][0]; m[1] = c.vf[10][1]; m[2] = c.vf[10][2]; m[3] = c.vf[10][3]; }
     }
     ++rt.now;
 }
 P21: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P22: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P23: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 24u; rt.finish(); return true; }
 }
 P24: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[1] + 0u);
         rt.write_vi(3, lv, true);
@@ -5196,7 +5317,7 @@ P24: {
     ++rt.now;
 }
 P25: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 229u);
         rt.write_vi(2, lv, true);
@@ -5204,7 +5325,7 @@ P25: {
     ++rt.now;
 }
 P26: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = static_cast<std::int16_t>(rt.branch_vi(3, bp)) <= 0;
@@ -5213,7 +5334,7 @@ P26: {
     bp = taken;
 }
 P27: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[3] - 1u);
         rt.write_vi(3, lv, true);
@@ -5222,12 +5343,12 @@ P27: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P30; }
 }
 P28: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     bp = true;
 }
 P29: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[2] + 6u);
         rt.write_vi(2, lv, true);
@@ -5236,67 +5357,67 @@ P29: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P26; }
 }
 P30: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (0))); m[0] = c.vf[1][0]; m[1] = c.vf[1][1]; m[2] = c.vf[1][2]; m[3] = c.vf[1][3]; }
     }
     ++rt.now;
 }
 P31: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (1))); m[0] = c.vf[2][0]; m[1] = c.vf[2][1]; m[2] = c.vf[2][2]; m[3] = c.vf[2][3]; }
     }
     ++rt.now;
 }
 P32: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (2))); m[0] = c.vf[3][0]; m[1] = c.vf[3][1]; m[2] = c.vf[3][2]; m[3] = c.vf[3][3]; }
     }
     ++rt.now;
 }
 P33: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (3))); m[0] = c.vf[4][0]; m[1] = c.vf[4][1]; m[2] = c.vf[4][2]; m[3] = c.vf[4][3]; }
     }
     ++rt.now;
 }
 P34: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (4))); m[0] = c.vf[5][0]; m[1] = c.vf[5][1]; m[2] = c.vf[5][2]; m[3] = c.vf[5][3]; }
     }
     ++rt.now;
 }
 P35: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (5))); m[0] = c.vf[6][0]; m[1] = c.vf[6][1]; m[2] = c.vf[6][2]; m[3] = c.vf[6][3]; }
     }
     ++rt.now;
 }
 P36: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[1] + 1u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     ++rt.now;
 }
 P37: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P38: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 39u; rt.finish(); return true; }
 }
 P39: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(4, bp) == rt.branch_vi(0, bp)) == true;
@@ -5305,15 +5426,17 @@ P39: {
     bp = taken;
 }
 P40: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P58; }
 }
 P41: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[15][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[15][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[15][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[15], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (249)));
         const std::uint32_t l0 = m[0];
@@ -5328,14 +5451,15 @@ P41: {
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P42: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[16][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[16][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[16][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[16], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (250)));
         const std::uint32_t l0 = m[0];
@@ -5350,14 +5474,15 @@ P42: {
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P43: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[17][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[17][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[17][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[17], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (251)));
         const std::uint32_t l0 = m[0];
@@ -5372,14 +5497,15 @@ P43: {
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P44: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[18][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[18][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[18][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[18], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (252)));
         const std::uint32_t l0 = m[0];
@@ -5394,154 +5520,166 @@ P44: {
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P45: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[5][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[5][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[5][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[5], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P46: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[6][0], c.vf[1][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[6][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[6][2], c.vf[1][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[6], c.vf[1][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P47: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[7][0], c.vf[1][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[7][1], c.vf[1][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[7][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[7], c.vf[1][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[15][0] = u0;
     c.vf[15][1] = u1;
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P48: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[5][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[5][1], c.vf[2][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[5][2], c.vf[2][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[5], c.vf[2][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P49: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[6][0], c.vf[2][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[6][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[6][2], c.vf[2][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[6], c.vf[2][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P50: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[7][0], c.vf[2][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[7][1], c.vf[2][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[7][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[7], c.vf[2][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[16][0] = u0;
     c.vf[16][1] = u1;
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P51: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[5][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[5][1], c.vf[3][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[5][2], c.vf[3][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[5], c.vf[3][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P52: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[6][0], c.vf[3][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[6][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[6][2], c.vf[3][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[6], c.vf[3][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P53: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[7][0], c.vf[3][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[7][1], c.vf[3][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[7][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[7], c.vf[3][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[17][0] = u0;
     c.vf[17][1] = u1;
     c.vf[17][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P54: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[5][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[5][1], c.vf[4][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[5][2], c.vf[4][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[5], c.vf[4][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P55: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[6][0], c.vf[4][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[6][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[6][2], c.vf[4][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[6], c.vf[4][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P56: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[7][0], c.vf[4][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[7][1], c.vf[4][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[7][2], c.vf[4][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[7], c.vf[4][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P57: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[8][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[8][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[8][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[8], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[18][0] = u0;
     c.vf[18][1] = u1;
     c.vf[18][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P58: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u0 = fr::max(c.vf[0][0], c.vf[0][3]);
     {
@@ -5552,7 +5690,7 @@ P58: {
     bp = taken;
 }
 P59: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (248)));
         const std::uint32_t l0 = m[0];
@@ -5568,7 +5706,7 @@ P59: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P109; }
 }
 P60: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (213)));
         const std::uint32_t l0 = m[0];
@@ -5583,7 +5721,7 @@ P60: {
     ++rt.now;
 }
 P61: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (214)));
         const std::uint32_t l0 = m[0];
@@ -5598,7 +5736,7 @@ P61: {
     ++rt.now;
 }
 P62: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (215)));
         const std::uint32_t l0 = m[0];
@@ -5613,10 +5751,12 @@ P62: {
     ++rt.now;
 }
 P63: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[14][0], c.vf[18][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[14][1], c.vf[18][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[14][2], c.vf[18][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[14], c.vf[18], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (216)));
         const std::uint32_t l0 = m[0];
@@ -5631,14 +5771,15 @@ P63: {
     c.vf[14][0] = u0;
     c.vf[14][1] = u1;
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P64: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (217)));
         const std::uint32_t l0 = m[0];
@@ -5653,14 +5794,15 @@ P64: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P65: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[1][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[1][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[1][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (218)));
         const std::uint32_t l0 = m[0];
@@ -5675,14 +5817,15 @@ P65: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P66: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[1][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[1][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[1][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (219)));
         const std::uint32_t l0 = m[0];
@@ -5697,14 +5840,15 @@ P66: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P67: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (220)));
         const std::uint32_t l0 = m[0];
@@ -5719,170 +5863,181 @@ P67: {
     c.vf[1][0] = u0;
     c.vf[1][1] = u1;
     c.vf[1][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P68: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[14][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[14][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[14][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[14], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 1u);
-        rt.write_vi(13, lv, true);
+        rt.set_vi(13, lv, true);
     }
     c.vf[14][0] = u0;
     c.vf[14][1] = u1;
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P69: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[2][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[2][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[2][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P70: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[2][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[2][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[2][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P71: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[2][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[2][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[2][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P72: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[2][0] = u0;
     c.vf[2][1] = u1;
     c.vf[2][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P73: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[13][0], c.vf[14][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P74: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[13][0], c.vf[14][2]);
     c.vf[14][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P75: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[3][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[3][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[3][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P76: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[3][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[3][1]);
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[3][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         taken = (rt.branch_vi(13, bp) == rt.branch_vi(15, bp)) == false;
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = taken;
 }
 P77: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[3][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[3][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[3][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P87; }
 }
 P78: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[14][3], c.vf[14][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 16u);
-        rt.write_vi(14, lv, true);
+        rt.set_vi(14, lv, true);
     }
     c.vf[14][3] = u3;
     rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P79: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[3][0] = u0;
     c.vf[3][1] = u1;
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P80: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[4][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[4][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[4][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P81: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[4][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[4][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[4][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P82: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[4][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[4][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[4][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[4][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[14]);
@@ -5891,30 +6046,32 @@ P82: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P83: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         taken = (rt.branch_vi(14, bp) == rt.branch_vi(0, bp)) == false;
     }
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = taken;
 }
 P84: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[5][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[5][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[5][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[5][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
@@ -5923,78 +6080,87 @@ P84: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P290; }
 }
 P85: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[5][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[5][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[5][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[5][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = true;
 }
 P86: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[5][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[5][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[5][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[5][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P96; }
 }
 P87: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[14][0], c.vf[14][3]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 128u);
-        rt.write_vi(14, lv, true);
+        rt.set_vi(14, lv, true);
     }
     c.vf[14][0] = u0;
     rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P88: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[3][0] = u0;
     c.vf[3][1] = u1;
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P89: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[4][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[4][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[4][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P90: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[4][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[4][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[4][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P91: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[4][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[4][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[4][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[4][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[14]);
@@ -6003,30 +6169,32 @@ P91: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P92: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         taken = (rt.branch_vi(14, bp) == rt.branch_vi(0, bp)) == false;
     }
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = taken;
 }
 P93: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[5][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[5][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[5][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[5][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
@@ -6035,192 +6203,208 @@ P93: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P290; }
 }
 P94: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[5][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[5][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[5][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[5][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = true;
 }
 P95: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[5][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[5][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[5][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[5][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P96; }
 }
 P96: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P97: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[6][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[6][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[6][0]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[6][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P98: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[6][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[6][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[6][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P99: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[6][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[6][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[6][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[6][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P100: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P101: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[7][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[7][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[7][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[7][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P102: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[7][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[7][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[7][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[7][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P103: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[7][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[7][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[7][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[7][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P104: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(9, lv, true);
+        rt.set_vi(9, lv, true);
     }
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P105: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[8][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[8][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[8][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 229u);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P106: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[8][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[8][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[8][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(10, lv, true);
+        rt.set_vi(10, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P107: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[8][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[8][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[8][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = true;
 }
 P108: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[1] - 1u);
-        rt.write_vi(13, lv, true);
+        rt.set_vi(13, lv, true);
     }
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P145; }
 }
 P109: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (213)));
         const std::uint32_t l0 = m[0];
@@ -6235,7 +6419,7 @@ P109: {
     ++rt.now;
 }
 P110: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (214)));
         const std::uint32_t l0 = m[0];
@@ -6250,7 +6434,7 @@ P110: {
     ++rt.now;
 }
 P111: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (215)));
         const std::uint32_t l0 = m[0];
@@ -6265,7 +6449,7 @@ P111: {
     ++rt.now;
 }
 P112: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (216)));
         const std::uint32_t l0 = m[0];
@@ -6280,10 +6464,12 @@ P112: {
     ++rt.now;
 }
 P113: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (217)));
         const std::uint32_t l0 = m[0];
@@ -6298,14 +6484,15 @@ P113: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P114: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[1][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[1][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[1][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (218)));
         const std::uint32_t l0 = m[0];
@@ -6320,14 +6507,15 @@ P114: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P115: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[1][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[1][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[1][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (219)));
         const std::uint32_t l0 = m[0];
@@ -6342,14 +6530,15 @@ P115: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P116: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (220)));
         const std::uint32_t l0 = m[0];
@@ -6364,335 +6553,362 @@ P116: {
     c.vf[1][0] = u0;
     c.vf[1][1] = u1;
     c.vf[1][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P117: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[2][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[2][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[2][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P118: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[2][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[2][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[2][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P119: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[2][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[2][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[2][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P120: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[2][0] = u0;
     c.vf[2][1] = u1;
     c.vf[2][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P121: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[3][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[3][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[3][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P122: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[3][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[3][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[3][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P123: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[3][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[3][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[3][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P124: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[3][0] = u0;
     c.vf[3][1] = u1;
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P125: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[4][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[4][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[4][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P126: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[4][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[4][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[4][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P127: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[4][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[4][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[4][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[4][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P128: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P129: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[5][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[5][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[5][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[5][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P130: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[5][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[5][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[5][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[5][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P131: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[5][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[5][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[5][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[5][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P132: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P133: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[6][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[6][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[6][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[6][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P134: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[6][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[6][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[6][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P135: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[6][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[6][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[6][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[6][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P136: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P137: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[7][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[7][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[7][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[7][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P138: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[7][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[7][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[7][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[7][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P139: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[7][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[7][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[7][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[7][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P140: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P141: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[8][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[8][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[8][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(9, lv, true);
+        rt.set_vi(9, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P142: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[8][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[8][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[8][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 229u);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P143: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[8][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[8][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[8][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
-        rt.write_vi(10, lv, true);
+        rt.set_vi(10, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P144: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[1] - 1u);
-        rt.write_vi(13, lv, true);
+        rt.set_vi(13, lv, true);
     }
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P145: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (0)));
         const std::uint32_t l0 = m[0];
@@ -6707,7 +6923,7 @@ P145: {
     ++rt.now;
 }
 P146: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (1)));
         const std::uint32_t l0 = m[0];
@@ -6722,7 +6938,7 @@ P146: {
     ++rt.now;
 }
 P147: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (2)));
         const std::uint32_t l0 = m[0];
@@ -6737,7 +6953,7 @@ P147: {
     ++rt.now;
 }
 P148: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (3)));
         const std::uint32_t l0 = m[0];
@@ -6752,7 +6968,7 @@ P148: {
     ++rt.now;
 }
 P149: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (4)));
         const std::uint32_t l0 = m[0];
@@ -6767,7 +6983,7 @@ P149: {
     ++rt.now;
 }
 P150: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (5)));
         const std::uint32_t l0 = m[0];
@@ -6782,540 +6998,586 @@ P150: {
     ++rt.now;
 }
 P151: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 240u);
-        rt.write_vi(14, lv, true);
+        rt.set_vi(14, lv, true);
     }
     ++rt.now;
 }
 P152: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 2u);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     ++rt.now;
 }
 P153: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + c.vi[0]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     ++rt.now;
 }
 P154: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[14] + c.vi[0]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P155: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[1][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[1][0]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[1][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[6] - 1u);
-        rt.write_vi(6, lv, true);
+        rt.set_vi(6, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P156: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[1][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[1][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[1][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[1][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P157: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[1][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[1][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[1][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[1][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P158: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P159: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[2][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[2][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[2][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[2][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P160: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[2][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[2][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[2][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[2][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P161: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[2][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[2][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[2][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[2][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[2][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[14]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P162: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P163: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[3][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[3][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[3][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[3][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P164: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[3][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[3][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[3][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[3][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[10] + (0)));
         const std::uint16_t lv = static_cast<std::uint16_t>(m[0]);
-        rt.write_vi(11, lv, true);
+        rt.set_vi(11, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P165: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[3][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[3][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[3][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[3][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[3][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[14]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P166: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P167: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[4][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[4][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[4][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[4][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P168: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[4][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[4][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[4][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[4][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P169: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[4][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[4][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[4][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[4][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[4][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[14]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P170: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P171: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[5][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[5][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[5][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[5][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[5][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P172: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[5][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[5][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[5][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[5][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[5][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P173: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[5][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[5][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[5][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[5][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[5][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[14]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P174: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P175: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[6][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[6][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[6][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[6][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[6][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P176: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[6][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[6][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[6][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[6][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P177: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[6][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[6][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[6][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[6][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[6][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[14]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P178: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P179: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[7][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[7][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[7][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[7][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[7][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P180: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[7][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[7][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[7][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[7][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[7][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P181: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[7][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[7][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[7][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[7][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[7][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[14]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P182: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[0][3]);
-    const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[12], c.vf[0][3], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P183: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[9][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[9][1], c.vf[8][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[9][2], c.vf[8][0]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[9][3], c.vf[8][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[9], c.vf[8][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P184: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[8][1]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[8][1]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[10][3], c.vf[8][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[8][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P185: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[11][0], c.vf[8][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[11][1], c.vf[8][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[11][2], c.vf[8][2]);
-    const std::uint32_t u3 = fr::msub(c.acc[3], c.vf[11][3], c.vf[8][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[11], c.vf[8][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[14]);
-        rt.write_vi(3, lv, false);
+        rt.set_vi(3, lv, false);
     }
     rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P186: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[13][3]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
-        rt.write_vi(4, lv, true);
+        rt.set_vi(4, lv, true);
     }
     c.vf[12][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P187: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[13][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
-        rt.write_vi(5, lv, true);
+        rt.set_vi(5, lv, true);
     }
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P188: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[13][1]);
     c.vf[10][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P189: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[13][2]);
     {
         rt.flag_read(fb);
@@ -7323,45 +7585,41 @@ P189: {
         rt.write_vi(3, lv, false);
     }
     c.vf[11][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P190: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[14][3]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[3]);
         rt.write_vi(4, lv, true);
     }
     c.vf[12][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P191: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[14][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[5] | c.vi[3]);
         rt.write_vi(5, lv, true);
     }
     c.vf[9][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P192: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[14][1]);
     {
         taken = (rt.branch_vi(4, bp) == rt.branch_vi(0, bp)) == false;
     }
     c.vf[10][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
     bp = taken;
 }
 P193: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[14][2]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 42u);
@@ -7373,7 +7631,7 @@ P193: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P286; }
 }
 P194: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(6, bp) == rt.branch_vi(0, bp)) == false;
@@ -7382,7 +7640,7 @@ P194: {
     bp = taken;
 }
 P195: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 192u);
         rt.write_vi(14, lv, true);
@@ -7391,7 +7649,7 @@ P195: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P154; }
 }
 P196: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(5, bp) == rt.branch_vi(0, bp)) == true;
@@ -7400,7 +7658,8 @@ P196: {
     bp = taken;
 }
 P197: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
         rt.write_vi(7, lv, true);
@@ -7409,7 +7668,7 @@ P197: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P199; }
 }
 P198: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 1u);
         rt.write_vi(7, lv, true);
@@ -7417,12 +7676,14 @@ P198: {
     ++rt.now;
 }
 P199: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
-    const std::uint32_t u0 = fr::sub(c.vf[0][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[0][1], c.vf[0][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[0][2], c.vf[0][2]);
-    const std::uint32_t u3 = fr::sub(c.vf[0][3], c.vf[0][3]);
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[0], c.vf[0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         taken = (rt.branch_vi(9, bp) == rt.branch_vi(0, bp)) == false;
     }
@@ -7435,7 +7696,7 @@ P199: {
     bp = taken;
 }
 P200: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[10] + c.vi[11]);
         rt.write_vi(12, lv, true);
@@ -7444,7 +7705,7 @@ P200: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P278; }
 }
 P201: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(8, bp) == rt.branch_vi(0, bp)) == false;
@@ -7453,7 +7714,7 @@ P201: {
     bp = taken;
 }
 P202: {
-    rt.commit();
+    rt.commit_q_due();
     {
         c.I = 0x43008000u;
     }
@@ -7461,18 +7722,20 @@ P202: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P215; }
 }
 P203: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.I);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[19][0] = u0;
     c.vf[19][1] = u1;
     c.vf[19][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P204: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (247)));
         const std::uint32_t l3 = m[3];
@@ -7481,61 +7744,55 @@ P204: {
     ++rt.now;
 }
 P205: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P206: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P207: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[19][0], c.vf[15][3]);
     c.vf[19][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P208: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[19][1], c.vf[16][3]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 1u);
-        rt.write_vi(9, lv, true);
+        rt.set_vi(9, lv, true);
     }
     c.vf[19][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P209: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[19][2], c.vf[17][3]);
     c.vf[19][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P210: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[20][3], c.vf[15][2]);
     c.vf[15][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P211: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[20][3], c.vf[16][2]);
     c.vf[16][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P212: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[20][3], c.vf[17][2]);
     c.vf[17][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P213: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[20][3], c.vf[18][2]);
     c.vf[18][3] = u3;
     rt.push_flags(lane_mac(u3, 3));
@@ -7543,7 +7800,7 @@ P213: {
     bp = true;
 }
 P214: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = ftoi(c.vf[19][0], 0);
     const std::uint32_t u1 = ftoi(c.vf[19][1], 0);
     const std::uint32_t u2 = ftoi(c.vf[19][2], 0);
@@ -7556,7 +7813,8 @@ P214: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P278; }
 }
 P215: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (247)));
         const std::uint32_t l0 = m[0];
@@ -7571,116 +7829,111 @@ P215: {
     ++rt.now;
 }
 P216: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[15][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[15][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[15][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[15], c.vf[15], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P217: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[16][0], c.vf[16][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[16][1], c.vf[16][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[16][2], c.vf[16][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[16], c.vf[16], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         c.I = 0x3C000000u;
     }
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P218: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[17][0], c.vf[17][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[17][1], c.vf[17][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[17][2], c.vf[17][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[17], c.vf[17], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 1u);
-        rt.write_vi(9, lv, true);
+        rt.set_vi(9, lv, true);
     }
     c.vf[11][0] = u0;
     c.vf[11][1] = u1;
     c.vf[11][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P219: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[19][3], c.I);
     c.vf[19][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P220: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[9][0], c.vf[9][1]);
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P221: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[10][0], c.vf[10][1]);
     c.vf[10][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P222: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[11][0], c.vf[11][1]);
     {
         c.I = 0x47800000u;
     }
     c.vf[11][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P223: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[19][3], c.I);
     c.vf[19][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P224: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[9][0], c.vf[9][2]);
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P225: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[10][0], c.vf[10][2]);
     c.vf[10][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P226: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[11][0], c.vf[11][2]);
     {
         c.I = 0x3EAAAAABu;
     }
     c.vf[11][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P227: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[15][3], c.I);
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P228: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[16][3], c.I);
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[9][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
@@ -7688,93 +7941,86 @@ P228: {
           rt.qs = st; rt.qp = true; rt.qr = rt.now + 13; }
     }
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P229: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[17][3], c.I);
     c.vf[22][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P230: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[20][3], c.vf[15][2]);
     c.vf[15][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P231: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[20][3], c.vf[16][2]);
     c.vf[16][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P232: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[20][3], c.vf[17][2]);
     c.vf[17][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P233: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[22][3]);
     {
         c.I = 0x3F000000u;
     }
     c.vf[22][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P234: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[22][3], c.I);
     c.vf[22][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P235: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[20][3], c.vf[18][2]);
     c.vf[18][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P236: {
-    rt.commit();
+    rt.commit_q_due();
     {
         c.I = 0x47800000u;
     }
     ++rt.now;
 }
 P237: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[22][0], c.I);
     c.vf[22][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P238: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P239: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P240: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P241: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[10][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -7783,72 +8029,70 @@ P241: {
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P242: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P243: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P244: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P245: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[9][0]);
     c.vf[12][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P246: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[9][1]);
     c.vf[13][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P247: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[9][2]);
     c.vf[14][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P248: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P249: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P250: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P251: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P252: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P253: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P254: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[16][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[16][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[16][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[16], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[11][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -7857,149 +8101,145 @@ P254: {
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P255: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P256: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P257: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P258: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[10][0]);
     c.vf[12][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P259: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[10][1]);
     c.vf[13][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P260: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[10][2]);
     c.vf[14][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P261: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P262: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P263: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P264: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P265: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P266: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P267: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[17][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[17][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[17][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[17], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[11][0] = u0;
     c.vf[11][1] = u1;
     c.vf[11][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P268: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[22][0]);
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P269: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[22][3]);
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P270: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P271: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[11][0]);
     c.vf[12][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P272: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[11][1]);
     c.vf[13][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P273: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[11][2]);
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P274: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P275: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[19][0], c.vf[12][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[19][1], c.vf[12][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[19][2], c.vf[12][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[19], c.vf[12], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P276: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[19][0], c.vf[13][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[19][1], c.vf[13][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[19][2], c.vf[13][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vv(uv, c.acc, c.vf[19], c.vf[13], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     bp = true;
 }
 P277: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[19][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[19][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[19][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vv(uv, c.acc, c.vf[19], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[19][0] = u0;
     c.vf[19][1] = u1;
     c.vf[19][2] = u2;
@@ -8008,7 +8248,7 @@ P277: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P278; }
 }
 P278: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l2 = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(c.vi[7])));
         c.vf[18][2] = l2;
@@ -8016,42 +8256,44 @@ P278: {
     ++rt.now;
 }
 P279: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[12] + (1))); m[0] = c.vf[15][0]; m[1] = c.vf[15][1]; m[2] = c.vf[15][2]; m[3] = c.vf[15][3]; }
     }
     ++rt.now;
 }
 P280: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[12] + (2))); m[0] = c.vf[16][0]; m[1] = c.vf[16][1]; m[2] = c.vf[16][2]; m[3] = c.vf[16][3]; }
     }
     ++rt.now;
 }
 P281: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[12] + (3))); m[0] = c.vf[17][0]; m[1] = c.vf[17][1]; m[2] = c.vf[17][2]; m[3] = c.vf[17][3]; }
     }
     ++rt.now;
 }
 P282: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[12] + (4))); m[0] = c.vf[18][0]; m[1] = c.vf[18][1]; m[2] = c.vf[18][2]; m[3] = c.vf[18][3]; }
     }
     ++rt.now;
 }
 P283: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[12] + (5))); m[0] = c.vf[19][0]; m[1] = c.vf[19][1]; m[2] = c.vf[19][2]; m[3] = c.vf[19][3]; }
     }
     ++rt.now;
 }
 P284: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[11] + 5u);
         rt.write_vi(11, lv, true);
@@ -8059,14 +8301,14 @@ P284: {
     ++rt.now;
 }
 P285: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[10] + (0))); m[0] = c.vi[11]; }
     }
     ++rt.now;
 }
 P286: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[10] + 71u);
         rt.write_vi(10, lv, true);
@@ -8074,7 +8316,7 @@ P286: {
     ++rt.now;
 }
 P287: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[2] + 6u);
         rt.write_vi(2, lv, true);
@@ -8082,7 +8324,7 @@ P287: {
     ++rt.now;
 }
 P288: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = static_cast<std::int16_t>(rt.branch_vi(13, bp)) > 0;
@@ -8091,26 +8333,27 @@ P288: {
     bp = taken;
 }
 P289: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[13] - 1u);
-        rt.write_vi(13, lv, true);
+        rt.set_vi(13, lv, true);
     }
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P145; }
 }
 P290: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P291: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 292u; rt.finish(); return true; }
 }
 P292: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
         rt.write_vi(2, lv, true);
@@ -8118,7 +8361,7 @@ P292: {
     ++rt.now;
 }
 P293: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = static_cast<std::int16_t>(rt.branch_vi(3, bp)) <= 0;
@@ -8127,7 +8370,7 @@ P293: {
     bp = taken;
 }
 P294: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[3] - 1u);
         rt.write_vi(3, lv, true);
@@ -8136,12 +8379,12 @@ P294: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P297; }
 }
 P295: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     bp = true;
 }
 P296: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[2] + 71u);
         rt.write_vi(2, lv, true);
@@ -8150,30 +8393,30 @@ P296: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P293; }
 }
 P297: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (0)));
         const std::uint16_t lv = static_cast<std::uint16_t>(m[0]);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     ++rt.now;
 }
 P298: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P299: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P300: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 301u; rt.finish(); return true; }
 }
 P301: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
         rt.write_vi(2, lv, true);
@@ -8181,7 +8424,7 @@ P301: {
     ++rt.now;
 }
 P302: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = static_cast<std::int16_t>(rt.branch_vi(3, bp)) <= 0;
@@ -8190,7 +8433,7 @@ P302: {
     bp = taken;
 }
 P303: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[3] - 1u);
         rt.write_vi(3, lv, true);
@@ -8199,12 +8442,12 @@ P303: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P306; }
 }
 P304: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     bp = true;
 }
 P305: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[2] + 71u);
         rt.write_vi(2, lv, true);
@@ -8213,15 +8456,15 @@ P305: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P302; }
 }
 P306: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[2] + 0u);
-        rt.write_vi(3, lv, true);
+        rt.set_vi(3, lv, true);
     }
     ++rt.now;
 }
 P307: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (1)));
         const std::uint32_t l0 = m[0];
@@ -8236,7 +8479,7 @@ P307: {
     ++rt.now;
 }
 P308: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (2)));
         const std::uint32_t l0 = m[0];
@@ -8251,7 +8494,7 @@ P308: {
     ++rt.now;
 }
 P309: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (3)));
         const std::uint32_t l0 = m[0];
@@ -8266,7 +8509,7 @@ P309: {
     ++rt.now;
 }
 P310: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (4)));
         const std::uint32_t l0 = m[0];
@@ -8281,7 +8524,7 @@ P310: {
     ++rt.now;
 }
 P311: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (5)));
         const std::uint32_t l0 = m[0];
@@ -8296,25 +8539,25 @@ P311: {
     ++rt.now;
 }
 P312: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[2] + 5u);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     ++rt.now;
 }
 P313: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P314: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 315u; rt.finish(); return true; }
 }
 P315: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (1)));
         const std::uint32_t l0 = m[0];
@@ -8329,7 +8572,7 @@ P315: {
     ++rt.now;
 }
 P316: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (2)));
         const std::uint32_t l0 = m[0];
@@ -8344,7 +8587,7 @@ P316: {
     ++rt.now;
 }
 P317: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (3)));
         const std::uint32_t l0 = m[0];
@@ -8359,7 +8602,7 @@ P317: {
     ++rt.now;
 }
 P318: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (4)));
         const std::uint32_t l0 = m[0];
@@ -8374,7 +8617,7 @@ P318: {
     ++rt.now;
 }
 P319: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[2] + (5)));
         const std::uint32_t l0 = m[0];
@@ -8389,46 +8632,47 @@ P319: {
     ++rt.now;
 }
 P320: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[2] + 5u);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     ++rt.now;
 }
 P321: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P322: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 323u; rt.finish(); return true; }
 }
 P323: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[3] + (0))); m[0] = c.vi[0]; m[1] = c.vi[0]; m[2] = c.vi[0]; m[3] = c.vi[0]; }
     }
     ++rt.now;
 }
 P324: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P325: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P326: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 327u; rt.finish(); return true; }
     b3host::fatal("vu0 aot: 00479610 ran past its last pair");
 }
 }
+// 0047F6D0: 417 pairs, 286 flag pushes (8 kept), flag-slot commits at 13 pairs, VI history at 36 pairs
 bool run_0047F6D0(Core& c, std::uint32_t* data, std::uint32_t entry) {
     Rt rt(c, data);
     const std::uint64_t fb = rt.flag_commits; (void)fb;
@@ -8855,97 +9099,99 @@ bool run_0047F6D0(Core& c, std::uint32_t* data, std::uint32_t entry) {
     default: return false;
     }
 P0: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[3][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[3][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[3][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[3], c.vf[3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 32u);
-        rt.write_vi(2, lv, true);
+        rt.set_vi(2, lv, true);
     }
     c.vf[25][0] = u0;
     c.vf[25][1] = u1;
     c.vf[25][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P1: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[1][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[1][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[1][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[1], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[23][0] = u0;
     c.vf[23][1] = u1;
     c.vf[23][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P2: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[2], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         c.I = 0x3EDBAB86u;
     }
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P3: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.I);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[15][0] = u0;
     c.vf[15][1] = u1;
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P4: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[25][1], c.vf[25][0]);
     {
         c.I = 0x3F02FC69u;
     }
     c.vf[19][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P5: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.I);
     {
         c.I = 0x3EDBAB86u;
     }
     c.vf[15][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P6: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 5u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u2 = uv[2];
     c.vf[16][0] = u0;
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u2, 2));
     ++rt.now;
 }
 P7: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::sub(c.vf[0][1], c.I);
     {
         c.I = 0x3F02FC69u;
     }
     c.vf[16][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P8: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.I);
     {
         { const std::uint32_t n = c.vf[0][0], d = c.vf[19][1]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
@@ -8953,67 +9199,66 @@ P8: {
           rt.qs = st; rt.qp = true; rt.qr = rt.now + 7; }
     }
     c.vf[16][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P9: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (4))); m[0] = c.vf[15][0]; m[1] = c.vf[15][1]; m[2] = c.vf[15][2]; m[3] = c.vf[15][3]; }
     }
     ++rt.now;
 }
 P10: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::sub(c.vf[0][1], c.vf[0][1]);
     {
         c.I = 0x35FFFFB4u;
     }
     c.vf[19][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P11: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[0][2], c.I);
     {
         c.I = 0x3EDBAB86u;
     }
     c.vf[19][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P12: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.I);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 3u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (5))); m[0] = c.vf[16][0]; m[1] = c.vf[16][1]; m[2] = c.vf[16][2]; m[3] = c.vf[16][3]; }
     }
     c.vf[15][0] = u0;
     c.vf[15][1] = u1;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1));
     ++rt.now;
 }
 P13: {
-    rt.commit();
+    rt.commit_q_due();
     {
         c.I = 0x3F3E3D71u;
     }
     ++rt.now;
 }
 P14: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P15: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u1 = fr::add(c.vf[19][1], us);
-    const std::uint32_t u2 = fr::add(c.vf[19][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[19], us, 6u);
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         c.I = 0x3F02FC69u;
     }
@@ -9023,22 +9268,22 @@ P15: {
     ++rt.now;
 }
 P16: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.I);
     c.vf[15][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P17: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P18: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P19: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         rt.flag_read(fb);
         const std::uint16_t lv = static_cast<std::uint16_t>(c.mac & c.vi[2]);
@@ -9047,7 +9292,7 @@ P19: {
     ++rt.now;
 }
 P20: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(1, bp) == rt.branch_vi(0, bp)) == false;
@@ -9056,7 +9301,7 @@ P20: {
     bp = taken;
 }
 P21: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (6))); m[0] = c.vf[15][0]; m[1] = c.vf[15][1]; m[2] = c.vf[15][2]; m[3] = c.vf[15][3]; }
     }
@@ -9064,29 +9309,27 @@ P21: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P54; }
 }
 P22: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[24][2], c.vf[23][2]);
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P23: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[0][3], c.vf[0][3]);
     c.vf[8][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P24: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P25: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P26: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[8][2]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -9095,67 +9338,63 @@ P26: {
     ++rt.now;
 }
 P27: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[8][3], c.vf[25][1]);
     c.vf[8][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P28: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P29: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P30: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P31: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[8][3], c.vf[25][0]);
     c.vf[8][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P32: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P33: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P34: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P35: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[0][0], c.vf[2][2]);
     c.vf[8][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P36: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[0][0], c.vf[1][2]);
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P37: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P38: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P39: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u0 = fr::mul(c.vf[8][0], us);
     {
@@ -9164,118 +9403,107 @@ P39: {
           rt.qs = st; rt.qp = true; rt.qr = rt.now + 13; }
     }
     c.vf[8][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P40: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u0 = fr::mul(c.vf[9][0], us);
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P41: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P42: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[19][1], c.vf[19][1]);
     c.vf[8][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P43: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P44: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P45: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P46: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[8][1], c.vf[25][2]);
     c.vf[8][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P47: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P48: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[0][2], c.vf[3][1]);
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P49: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[3][0]);
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P50: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P51: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P52: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u2 = fr::mul(c.vf[8][2], us);
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
     bp = true;
 }
 P53: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u2 = fr::mul(c.vf[9][2], us);
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P73; }
 }
 P54: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[24][1], c.vf[24][0]);
     c.vf[8][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P55: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[0][0]);
     c.vf[8][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P56: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[0][3]);
     c.vf[9][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P57: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P58: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[8][1]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -9284,83 +9512,77 @@ P58: {
     ++rt.now;
 }
 P59: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[19][1], c.vf[19][1]);
     c.vf[8][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P60: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P61: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P62: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P63: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[8][1], c.vf[25][2]);
     c.vf[8][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P64: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P65: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P66: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P67: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[2][0]);
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P68: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[2][1]);
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P69: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P70: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P71: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u2 = fr::mul(c.vf[8][2], us);
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P72: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u2 = fr::mul(c.vf[9][2], us);
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P73: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[8][1]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -9369,294 +9591,279 @@ P73: {
     ++rt.now;
 }
 P74: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P75: {
-    rt.commit();
+    rt.commit_q_due();
     {
         c.I = 0x3F02FC69u;
     }
     ++rt.now;
 }
 P76: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.I);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         c.I = 0x3F62DFC6u;
     }
     c.vf[16][0] = u0;
     c.vf[16][1] = u1;
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P77: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.I);
     c.vf[16][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P78: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P79: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P80: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P81: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (7))); m[0] = c.vf[16][0]; m[1] = c.vf[16][1]; m[2] = c.vf[16][2]; m[3] = c.vf[16][3]; }
     }
     ++rt.now;
 }
 P82: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::sub(c.vf[0][1], c.vf[19][1]);
     c.vf[8][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P83: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[3][2]);
     c.vf[9][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P84: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P85: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P86: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u1 = fr::mul(c.vf[8][1], us);
     c.vf[8][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P87: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
     const std::uint32_t u1 = fr::mul(c.vf[9][1], us);
     c.vf[9][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P88: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P89: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P90: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P91: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[8][0], c.vf[9][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[8][1], c.vf[9][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[8][2], c.vf[9][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[8], c.vf[9], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P92: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[9][0], c.vf[9][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[9][1], c.vf[9][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[9][2], c.vf[9][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[9], c.vf[9], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P93: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[8][0], c.vf[8][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[8][1], c.vf[8][1]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[8][2], c.vf[8][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vv(uv, c.acc, c.vf[8], c.vf[8], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[11][0] = u0;
     c.vf[11][1] = u1;
     c.vf[11][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P94: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P95: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[10][0], c.vf[10][0]);
-    const std::uint32_t u1 = fr::add(c.vf[10][1], c.vf[10][1]);
-    const std::uint32_t u2 = fr::add(c.vf[10][2], c.vf[10][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[10], c.vf[10], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P96: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[8][0]);
     {
         const std::uint32_t l3 = c.vf[9][0];
         c.vf[1][3] = l3;
     }
     c.vf[20][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P97: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[11][1]);
     {
         c.I = 0x3E800000u;
     }
     c.vf[20][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P98: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[11][1], c.I);
     {
         const std::uint32_t l3 = c.vf[10][0];
         c.vf[21][3] = l3;
     }
     c.vf[20][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P99: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[8][0], c.vf[10][1]);
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P100: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[20][2], c.vf[8][1]);
     {
         c.I = 0x3F800000u;
     }
     c.vf[20][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P101: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[20][0], c.I);
     {
         c.I = 0x3F400000u;
     }
     c.vf[20][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P102: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[20][1], c.I);
     c.vf[20][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P103: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[1][3], c.vf[8][1]);
     c.vf[20][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P104: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[8][1], c.vf[11][0]);
     {
         const std::uint32_t l1 = c.vf[8][2];
         c.vf[2][1] = l1;
     }
     c.vf[21][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P105: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[11][2], c.vf[11][0]);
     c.vf[21][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P106: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[21][3], c.vf[11][2]);
     {
         const std::uint32_t l3 = c.vf[9][0];
         c.vf[22][3] = l3;
     }
     c.vf[21][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P107: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[10][0], c.vf[10][2]);
     c.vf[22][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P108: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[10][1], c.vf[10][0]);
     {
         const std::uint32_t l0 = c.vf[2][1];
         c.vf[2][0] = l0;
     }
     c.vf[22][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P109: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[8][0], c.vf[9][1]);
     c.vf[1][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P110: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[9][1], c.vf[9][0]);
     {
         const std::uint32_t l1 = c.vf[8][2];
         c.vf[23][1] = l1;
     }
     c.vf[1][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P111: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[10][2], c.vf[11][0]);
     {
         const std::uint32_t l0 = c.vf[8][1];
@@ -9665,978 +9872,870 @@ P111: {
         c.vf[24][1] = l1;
     }
     c.vf[22][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P112: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[22][3], c.vf[9][2]);
     {
         const std::uint32_t l3 = c.vf[2][0];
         c.vf[2][3] = l3;
     }
     c.vf[22][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P113: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[1][0], c.vf[9][2]);
     c.vf[23][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P114: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[23][1], c.vf[1][0]);
     c.vf[23][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P115: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[9][2], c.vf[1][1]);
     c.vf[23][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P116: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[2][3], c.vf[1][1]);
     {
         const std::uint32_t l3 = c.vf[24][0];
         c.vf[24][3] = l3;
     }
     c.vf[23][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P117: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[9][0], c.vf[8][2]);
     {
         const std::uint32_t l0 = c.vf[8][1];
         c.vf[25][0] = l0;
     }
     c.vf[24][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P118: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[24][1], c.vf[8][0]);
     c.vf[24][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P119: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[9][2], c.vf[8][0]);
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P120: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[24][3], c.vf[9][2]);
     c.vf[24][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P121: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[22][2], c.vf[9][1]);
     c.vf[1][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P122: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[25][0], c.vf[8][2]);
     c.vf[25][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P123: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[10][1], c.vf[8][2]);
     c.vf[25][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P124: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[9][2], c.vf[10][1]);
     c.vf[25][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P125: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[1][2]);
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P126: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[21][3], c.vf[20][1]);
     c.vf[25][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P127: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[22][3]);
     c.vf[12][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P128: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[24][0]);
     c.vf[12][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P129: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[0][2], c.vf[24][2]);
     c.vf[12][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P130: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[23][2]);
     c.vf[12][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P131: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[12][0], c.vf[23][1]);
     {
         const std::uint32_t l0 = c.vf[21][1];
         c.vf[3][0] = l0;
     }
     c.vf[12][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P132: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[12][1], c.vf[23][0]);
     c.vf[12][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P133: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[8][2], c.vf[22][1]);
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P134: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[22][1], c.vf[9][2]);
     c.vf[3][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P135: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[12][2], c.vf[23][3]);
     c.vf[12][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P136: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[12][3], c.vf[24][1]);
     {
         const std::uint32_t l3 = c.vf[3][0];
         c.vf[3][3] = l3;
     }
     c.vf[12][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P137: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[9][2], c.vf[21][1]);
     {
         c.I = 0x3E800000u;
     }
     c.vf[13][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P138: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[3][2], c.I);
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P139: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[10][0], c.vf[20][0]);
     c.vf[13][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P140: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[9][1], c.vf[21][2]);
     c.acc[1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P141: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[3][1], c.I);
     c.vf[3][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P142: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[3][3], c.vf[8][2]);
     c.vf[13][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P143: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[20][1], c.vf[22][0]);
     c.vf[13][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P144: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[13][2], c.vf[3][2]);
     {
         c.I = 0xBEDDB3D7u;
     }
     c.vf[13][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P145: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[13][0], c.I);
     c.vf[13][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P146: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::add(c.vf[13][3], c.vf[3][1]);
     c.vf[13][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P147: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[21][3], c.vf[9][1]);
     c.vf[14][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P148: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[10][2], c.vf[10][1]);
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P149: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[20][1], c.vf[22][2]);
     c.vf[1][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P150: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[21][0], c.vf[10][2]);
     {
         c.I = 0xBF800000u;
     }
     c.vf[14][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P151: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[14][3], c.I);
     {
         const std::uint32_t l1 = c.vf[10][2];
         c.vf[4][1] = l1;
     }
     c.vf[14][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P152: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[4][2], c.vf[9][0]);
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P153: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[20][3], c.vf[11][2]);
     {
         c.I = 0x3E800000u;
     }
     c.vf[4][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P154: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[14][0], c.I);
     c.vf[14][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P155: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[4][1], c.vf[20][0]);
     c.vf[14][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P156: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[20][2], c.vf[11][2]);
     {
         c.I = 0x3F000000u;
     }
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P157: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[4][2], c.I);
     {
         const std::uint32_t l3 = c.vf[11][0];
         c.vf[15][3] = l3;
     }
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P158: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[14][0], c.vf[4][3]);
     {
         c.I = 0x3EDDB3D7u;
     }
     c.vf[14][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P159: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[14][1], c.I);
     c.vf[14][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P160: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[14][3], c.vf[1][1]);
     c.vf[14][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P161: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[14][2], c.vf[4][2]);
     {
         c.I = 0xBF000000u;
     }
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P162: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[15][3], c.I);
     c.vf[15][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P163: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[0][2], c.vf[23][0]);
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P164: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[24][0], c.vf[11][1]);
     {
         const std::uint32_t l3 = c.vf[9][0];
         c.vf[1][3] = l3;
     }
     c.vf[4][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P165: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[23][2]);
     c.vf[15][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P166: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[24][1], c.vf[11][1]);
     {
         c.I = 0x3F5DB3D7u;
     }
     c.vf[4][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P167: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[25][1], c.I);
     c.vf[15][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P168: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[15][2], c.vf[4][0]);
     {
         const std::uint32_t l2 = c.vf[1][3];
         c.vf[16][2] = l2;
     }
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P169: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[24][3], c.vf[10][0]);
     {
         const std::uint32_t l3 = c.vf[11][0];
         c.vf[16][3] = l3;
     }
     c.vf[4][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P170: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[15][3], c.vf[25][1]);
     c.vf[15][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P171: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[15][0], c.vf[4][1]);
     {
         c.I = 0x3EDDB3D7u;
     }
     c.vf[15][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P172: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[16][2], c.vf[10][1]);
     {
         const std::uint32_t l3 = c.vf[11][0];
         c.vf[17][3] = l3;
     }
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P173: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[21][0], c.I);
     {
         c.I = 0x3F400000u;
     }
     c.vf[16][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P174: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[16][3], c.vf[20][0]);
     {
         const std::uint32_t l2 = c.vf[22][3];
         c.vf[17][2] = l2;
     }
     c.vf[16][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P175: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[11][1], c.I);
     {
         const std::uint32_t l1 = c.vf[25][2];
         c.vf[17][1] = l1;
     }
     c.vf[16][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P176: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[15][3], c.vf[4][3]);
     {
         c.I = 0x3F5DB3D7u;
     }
     c.vf[15][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P177: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[16][2], c.I);
     {
         c.I = 0xBEDDB3D7u;
     }
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P178: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[16][3], c.I);
     {
         c.I = 0x3E800000u;
     }
     c.vf[16][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P179: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[16][1], c.I);
     c.vf[16][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P180: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[11][1], c.vf[24][2]);
     c.vf[2][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P181: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[23][3]);
     c.vf[17][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P182: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[17][3], c.vf[25][2]);
     c.vf[17][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P183: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[17][2], c.vf[11][1]);
     {
         c.I = 0xBF5DB3D7u;
     }
     c.vf[17][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P184: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[17][1], c.I);
     c.vf[17][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P185: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[17][0], c.vf[2][1]);
     c.vf[17][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P186: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[10][0], c.vf[25][0]);
     {
         c.I = 0x3F000000u;
     }
     c.vf[2][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P187: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[21][0], c.vf[11][2]);
     c.vf[3][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P188: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[11][2], c.vf[10][1]);
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P189: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[17][3], c.I);
     {
         const std::uint32_t l0 = c.vf[20][1];
         c.vf[4][0] = l0;
     }
     c.vf[17][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P190: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[17][2], c.vf[23][1]);
     {
         const std::uint32_t l1 = c.vf[11][2];
         c.vf[18][1] = l1;
     }
     c.vf[17][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P191: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[20][3], c.vf[10][2]);
     c.vf[3][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P192: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[3][2], c.vf[9][0]);
     {
         c.I = 0xBE800000u;
     }
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P193: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[17][3], c.vf[2][0]);
     c.vf[17][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P194: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[3][0], c.I);
     {
         const std::uint32_t l3 = c.vf[4][0];
         c.vf[18][3] = l3;
     }
     c.vf[3][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P195: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[18][1], c.vf[20][0]);
     c.vf[18][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P196: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[20][2], c.vf[10][2]);
     {
         c.I = 0x3F000000u;
     }
     c.vf[18][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P197: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[3][2], c.I);
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P198: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[18][3], c.vf[21][2]);
     c.vf[18][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P199: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[9][1], c.vf[22][0]);
     c.vf[3][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P200: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::sub(c.vf[3][0], c.vf[3][3]);
     {
         c.I = 0xBEDDB3D7u;
     }
     c.vf[18][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P201: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[18][1], c.I);
     c.vf[18][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P202: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::sub(c.vf[18][2], c.vf[3][2]);
     c.vf[18][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P203: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[18][3], c.vf[3][1]);
     c.vf[18][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P204: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[14][0], c.vf[6][1]);
-    const std::uint32_t u1 = fr::mul(c.vf[14][1], c.vf[6][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[14][2], c.vf[6][1]);
-    const std::uint32_t u3 = fr::mul(c.vf[14][3], c.vf[6][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[14], c.vf[6][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P205: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[15][0], c.vf[6][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[15][1], c.vf[6][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[15][2], c.vf[6][2]);
-    const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[15][3], c.vf[6][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[15], c.vf[6][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P206: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[7][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[7][0]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[7][0]);
-    const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[16][3], c.vf[7][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[7][0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P207: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[7][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[7][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[7][1]);
-    const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[17][3], c.vf[7][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[7][1], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P208: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[7][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[7][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[7][2]);
-    const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[18][3], c.vf[7][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[7][2], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     c.vf[11][0] = u0;
     c.vf[11][1] = u1;
     c.vf[11][2] = u2;
     c.vf[11][3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P209: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[12][0], c.vf[5][1]);
     c.vf[10][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P210: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[20][2], c.vf[5][2]);
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P211: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[12][1], c.vf[6][0]);
     c.vf[14][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P212: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[5][1], c.vf[25][0]);
     c.vf[10][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P213: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[9][1], c.vf[5][2]);
     c.vf[15][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P214: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[10][0], c.vf[14][2]);
     c.vf[10][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P215: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[6][0], c.vf[24][3]);
     c.vf[14][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P216: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[12][2], c.vf[5][1]);
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P217: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[20][3], c.vf[5][2]);
     c.vf[14][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P218: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[10][0], c.vf[14][1]);
     c.vf[10][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P219: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[10][1], c.vf[15][1]);
     c.vf[10][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P220: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[12][3], c.vf[6][0]);
     c.vf[15][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P221: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[25][3], c.vf[7][2]);
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P222: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[13][1], c.vf[6][1]);
     c.vf[16][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P223: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::sub(c.vf[10][1], c.vf[14][0]);
     c.vf[10][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P224: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[10][2], c.vf[14][3]);
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P225: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[13][2], c.vf[6][2]);
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P226: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[13][0], c.vf[7][0]);
     c.vf[16][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P227: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[13][3], c.vf[7][1]);
     c.vf[16][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P228: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[10][2], c.vf[15][3]);
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P229: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[0][3], c.vf[16][1]);
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (4)));
@@ -10650,11 +10749,10 @@ P229: {
         c.vf[1][3] = l3;
     }
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P230: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[0][3], c.vf[16][2]);
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (5)));
@@ -10668,11 +10766,10 @@ P230: {
         c.vf[2][3] = l3;
     }
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P231: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[0][3], c.vf[16][0]);
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (6)));
@@ -10686,11 +10783,10 @@ P231: {
         c.vf[3][3] = l3;
     }
     c.acc[3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P232: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::madd(c.acc[3], c.vf[0][3], c.vf[16][3]);
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (7)));
@@ -10704,134 +10800,116 @@ P232: {
         c.vf[4][3] = l3;
     }
     c.vf[10][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P233: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[1][0], c.vf[11][3]);
     c.vf[1][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P234: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[1][1], c.vf[10][3]);
     c.vf[1][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P235: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[1][2], c.vf[11][2]);
     c.vf[1][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P236: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[4][3], c.vf[5][0]);
     c.vf[4][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P237: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[1][3], c.vf[10][2]);
     c.vf[1][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P238: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[10][3]);
     c.vf[2][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P239: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[11][3]);
     c.vf[2][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P240: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[11][0]);
     c.vf[2][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P241: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[2][3], c.vf[10][0]);
     c.vf[2][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P242: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[3][0], c.vf[11][2]);
     c.vf[3][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P243: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[3][1], c.vf[11][0]);
     c.vf[3][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P244: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[3][2], c.vf[11][1]);
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P245: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[3][3], c.vf[10][1]);
     {
         c.I = 0x3E7DA72Au;
     }
     c.vf[3][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P246: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[11][1], c.I);
     c.vf[5][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P247: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[4][0], c.vf[10][2]);
     c.vf[4][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P248: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[4][1], c.vf[10][0]);
     c.vf[4][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P249: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::mul(c.vf[4][2], c.vf[10][1]);
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
     bp = true;
 }
 P250: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::sub(c.vf[4][3], c.vf[5][1]);
     c.vf[4][3] = u3;
     rt.push_flags(lane_mac(u3, 3));
@@ -10839,147 +10917,148 @@ P250: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P352; }
 }
 P251: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[0][0]);
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (0))); m[0] = c.vf[1][0]; m[1] = c.vf[1][1]; m[2] = c.vf[1][2]; m[3] = c.vf[1][3]; }
     }
     c.vf[4][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P252: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[13][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[13][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[13][2], c.vf[4][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[13], c.vf[4], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (1))); m[0] = c.vf[2][0]; m[1] = c.vf[2][1]; m[2] = c.vf[2][2]; m[3] = c.vf[2][3]; }
     }
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P253: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (2))); m[0] = c.vf[3][0]; m[1] = c.vf[3][1]; m[2] = c.vf[3][2]; m[3] = c.vf[3][3]; }
     }
     c.vf[15][0] = u0;
     c.vf[15][1] = u1;
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P254: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[2][2]);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (4))); m[0] = c.vf[8][0]; m[1] = c.vf[8][1]; m[2] = c.vf[8][2]; m[3] = c.vf[8][3]; }
     }
     c.vf[16][0] = u0;
     c.vf[16][1] = u1;
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P255: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vv(uv, c.vf[0], c.vf[3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (3))); m[0] = c.vf[4][0]; m[1] = c.vf[4][1]; m[2] = c.vf[4][2]; m[3] = c.vf[4][3]; }
     }
     c.vf[17][0] = u0;
     c.vf[17][1] = u1;
     c.vf[17][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P256: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[24][0], c.vf[24][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[24][1], c.vf[24][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[24][2], c.vf[24][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[24], c.vf[24], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (5))); m[0] = c.vf[9][0]; m[1] = c.vf[9][1]; m[2] = c.vf[9][2]; m[3] = c.vf[9][3]; }
     }
     c.vf[25][0] = u0;
     c.vf[25][1] = u1;
     c.vf[25][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P257: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[0][3]);
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (6))); m[0] = c.vf[10][0]; m[1] = c.vf[10][1]; m[2] = c.vf[10][2]; m[3] = c.vf[10][3]; }
     }
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P258: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[0][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[0][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[0][2], c.vf[4][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[0], c.vf[4], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (7))); m[0] = c.vf[11][0]; m[1] = c.vf[11][1]; m[2] = c.vf[11][2]; m[3] = c.vf[11][3]; }
     }
     c.vf[18][0] = u0;
     c.vf[18][1] = u1;
     c.vf[18][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P259: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P260: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[25][0], c.vf[25][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P261: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[21][0], c.vf[25][2]);
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P262: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P263: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[2][0]);
     c.vf[15][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P264: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[3][0]);
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P265: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[1][1]);
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[21][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
@@ -10987,161 +11066,161 @@ P265: {
           rt.qs = st; rt.qp = true; rt.qr = rt.now + 13; }
     }
     c.vf[16][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P266: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[3][1]);
     c.vf[16][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P267: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[1][2]);
     c.vf[17][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P268: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[2][2]);
     c.vf[17][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P269: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P270: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[18][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[18][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[18][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[18][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P271: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[18][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[18][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[18][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[18][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P272: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[18][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[18][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[18][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[18][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[18][0] = u0;
     c.vf[18][1] = u1;
     c.vf[18][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P273: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[13][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[13][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[13][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[13][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P274: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[13][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[13][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[13][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[13][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P275: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[13][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[13][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[13][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[13][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P276: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[18][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[18][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[18][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[18], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[13][0] = u0;
     c.vf[13][1] = u1;
     c.vf[13][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P277: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P278: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[24][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[24][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[24][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[24], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P279: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[13][0]);
     c.vf[15][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P280: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[13][1]);
     c.vf[16][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P281: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[13][2]);
     c.vf[17][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P282: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[12][1], c.vf[24][2]);
     const std::uint32_t u1 = fr::mul(c.vf[12][2], c.vf[24][0]);
     const std::uint32_t u2 = fr::mul(c.vf[12][0], c.vf[24][1]);
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P283: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[24][1], c.vf[12][2]);
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[24][2], c.vf[12][0]);
     const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[24][0], c.vf[12][1]);
@@ -11151,102 +11230,102 @@ P283: {
     c.vf[22][0] = u0;
     c.vf[22][1] = u1;
     c.vf[22][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P284: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[15][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[15][1], c.vf[14][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[15][2], c.vf[14][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[15], c.vf[14][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (9))); m[3] = c.vf[16][3]; }
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P285: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[16][0], c.vf[14][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[16][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[16][2], c.vf[14][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[16], c.vf[14][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (10))); m[3] = c.vf[17][3]; }
     }
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P286: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[17][0], c.vf[14][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[17][1], c.vf[14][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[17][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[17], c.vf[14][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[14][0] = u0;
     c.vf[14][1] = u1;
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P287: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[22][0], c.vf[22][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[22][1], c.vf[22][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[22][2], c.vf[22][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[22], c.vf[22], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[25][0] = u0;
     c.vf[25][1] = u1;
     c.vf[25][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P288: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[0][3]);
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P289: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P290: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P291: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[25][0], c.vf[25][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P292: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[21][0], c.vf[25][2]);
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P293: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P294: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P295: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P296: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[21][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -11255,75 +11334,75 @@ P296: {
     ++rt.now;
 }
 P297: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[14][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[14][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[14][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[14], c.vf[14], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[15][0] = u0;
     c.vf[15][1] = u1;
     c.vf[15][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P298: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[0][3]);
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P299: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P300: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P301: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[15][0], c.vf[15][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P302: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[21][0], c.vf[15][2]);
     c.vf[21][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P303: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P304: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P305: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P306: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P307: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P308: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P309: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[22][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[22][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[22][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[22], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[21][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -11332,60 +11411,58 @@ P309: {
     c.vf[22][0] = u0;
     c.vf[22][1] = u1;
     c.vf[22][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P310: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P311: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P312: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P313: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[24][1], c.vf[22][2]);
     const std::uint32_t u1 = fr::mul(c.vf[24][2], c.vf[22][0]);
     const std::uint32_t u2 = fr::mul(c.vf[24][0], c.vf[22][1]);
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P314: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[22][1], c.vf[24][2]);
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[22][2], c.vf[24][0]);
     const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[22][0], c.vf[24][1]);
     c.vf[23][0] = u0;
     c.vf[23][1] = u1;
     c.vf[23][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P315: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[0][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[0][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[0][2], c.vf[4][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[0], c.vf[4], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[21][0] = u0;
     c.vf[21][1] = u1;
     c.vf[21][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P316: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P317: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l0 = c.vf[22][0];
         const std::uint32_t l1 = c.vf[22][1];
@@ -11399,7 +11476,7 @@ P317: {
     ++rt.now;
 }
 P318: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l0 = c.vf[23][0];
         const std::uint32_t l1 = c.vf[23][1];
@@ -11413,7 +11490,7 @@ P318: {
     ++rt.now;
 }
 P319: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l0 = c.vf[24][0];
         const std::uint32_t l1 = c.vf[24][1];
@@ -11427,213 +11504,222 @@ P319: {
     ++rt.now;
 }
 P320: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P321: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P322: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[14][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[14][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[14][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[14], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[14][0] = u0;
     c.vf[14][1] = u1;
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P323: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P324: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[9][0]);
     c.vf[22][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P325: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[10][0]);
     c.vf[22][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P326: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[8][1]);
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (16))); m[0] = c.vf[14][0]; m[1] = c.vf[14][1]; m[2] = c.vf[14][2]; m[3] = c.vf[14][3]; }
     }
     c.vf[23][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P327: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u2 = fr::add(c.vf[0][2], c.vf[10][1]);
     c.vf[23][2] = u2;
-    rt.push_flags(lane_mac(u2, 2));
     ++rt.now;
 }
 P328: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[8][2]);
     c.vf[24][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P329: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::add(c.vf[0][1], c.vf[9][2]);
     {
         const std::uint32_t l2 = c.vf[0][3];
         c.vf[20][2] = l2;
     }
     c.vf[24][1] = u1;
-    rt.push_flags(lane_mac(u1, 1));
     ++rt.now;
 }
 P330: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[0][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::sub(c.vf[0][1], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vs(uv, c.vf[0], c.vf[0][3], 3u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
     c.vf[20][0] = u0;
     c.vf[20][1] = u1;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1));
     ++rt.now;
 }
 P331: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[22][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[22][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[22][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[22], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P332: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[23][0], c.vf[1][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[23][1], c.vf[1][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[23][2], c.vf[1][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[23], c.vf[1][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P333: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[24][0], c.vf[1][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[24][1], c.vf[1][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[24][2], c.vf[1][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[24], c.vf[1][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P334: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[22][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[22][1], c.vf[2][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[22][2], c.vf[2][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[22], c.vf[2][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P335: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[23][0], c.vf[2][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[23][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[23][2], c.vf[2][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[23], c.vf[2][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P336: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[24][0], c.vf[2][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[24][1], c.vf[2][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[24][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[24], c.vf[2][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P337: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[22][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[22][1], c.vf[3][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[22][2], c.vf[3][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[22], c.vf[3][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P338: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[23][0], c.vf[3][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[23][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[23][2], c.vf[3][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[23], c.vf[3][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P339: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[24][0], c.vf[3][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[24][1], c.vf[3][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[24][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[24], c.vf[3][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P340: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[8][0], c.vf[20][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[8][1], c.vf[20][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[8][2], c.vf[20][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[8], c.vf[20], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P341: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[9][0], c.vf[20][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[9][1], c.vf[20][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[9][2], c.vf[20][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[9], c.vf[20], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P342: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[10][0], c.vf[20][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[10][1], c.vf[20][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[10][2], c.vf[20][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[10], c.vf[20], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
@@ -11641,25 +11727,26 @@ P342: {
     ++rt.now;
 }
 P343: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P344: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (8))); m[0] = c.vf[8][0]; m[1] = c.vf[8][1]; m[2] = c.vf[8][2]; }
     }
     ++rt.now;
 }
 P345: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (9))); m[0] = c.vf[9][0]; m[1] = c.vf[9][1]; m[2] = c.vf[9][2]; }
     }
     ++rt.now;
 }
 P346: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(3, bp) == rt.branch_vi(0, bp)) == false;
@@ -11668,7 +11755,7 @@ P346: {
     bp = taken;
 }
 P347: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (10))); m[0] = c.vf[10][0]; m[1] = c.vf[10][1]; m[2] = c.vf[10][2]; }
     }
@@ -11676,7 +11763,7 @@ P347: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P0; }
 }
 P348: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (4)));
         const std::uint32_t l0 = m[0];
@@ -11691,7 +11778,7 @@ P348: {
     ++rt.now;
 }
 P349: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (5)));
         const std::uint32_t l0 = m[0];
@@ -11706,7 +11793,7 @@ P349: {
     ++rt.now;
 }
 P350: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (6)));
         const std::uint32_t l0 = m[0];
@@ -11721,7 +11808,7 @@ P350: {
     ++rt.now;
 }
 P351: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (7)));
         const std::uint32_t l0 = m[0];
@@ -11736,7 +11823,7 @@ P351: {
     ++rt.now;
 }
 P352: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (0)));
         const std::uint32_t l0 = m[0];
@@ -11751,7 +11838,7 @@ P352: {
     ++rt.now;
 }
 P353: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (1)));
         const std::uint32_t l0 = m[0];
@@ -11766,7 +11853,7 @@ P353: {
     ++rt.now;
 }
 P354: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (2)));
         const std::uint32_t l0 = m[0];
@@ -11781,7 +11868,8 @@ P354: {
     ++rt.now;
 }
 P355: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (3)));
         const std::uint32_t l0 = m[0];
@@ -11796,7 +11884,7 @@ P355: {
     ++rt.now;
 }
 P356: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (8)));
         const std::uint32_t l0 = m[0];
@@ -11811,7 +11899,7 @@ P356: {
     ++rt.now;
 }
 P357: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (9)));
         const std::uint32_t l0 = m[0];
@@ -11826,7 +11914,7 @@ P357: {
     ++rt.now;
 }
 P358: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (10)));
         const std::uint32_t l0 = m[0];
@@ -11841,7 +11929,7 @@ P358: {
     ++rt.now;
 }
 P359: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t* m = rt.qw(static_cast<std::uint32_t>(c.vi[0] + (16)));
         const std::uint32_t l0 = m[0];
@@ -11856,54 +11944,56 @@ P359: {
     ++rt.now;
 }
 P360: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P361: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 362u; rt.finish(); return true; }
 }
 P362: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vf[4][2]);
-        rt.write_vi(3, lv, true);
+        rt.set_vi(3, lv, true);
     }
     ++rt.now;
 }
 P363: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[4][0], c.vf[4][1]);
     {
         c.I = 0x43000000u;
     }
     c.vf[5][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P364: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.I);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[3] & c.vi[4]);
-        rt.write_vi(15, lv, true);
+        rt.set_vi(15, lv, true);
     }
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P365: {
-    rt.commit();
-    const std::uint32_t u0 = fr::sub(c.vf[0][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::sub(c.vf[0][1], c.vf[0][1]);
-    const std::uint32_t u2 = fr::sub(c.vf[0][2], c.vf[0][2]);
-    const std::uint32_t u3 = fr::sub(c.vf[0][3], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::sub_vv(uv, c.vf[0], c.vf[0], 15u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
+    const std::uint32_t u3 = uv[3];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 252u);
         rt.write_vi(2, lv, true);
@@ -11912,11 +12002,10 @@ P365: {
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
     c.vf[9][3] = u3;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2) | lane_mac(u3, 3));
     ++rt.now;
 }
 P366: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l1 = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(c.vi[6])));
         c.vf[5][1] = l1;
@@ -11924,7 +12013,7 @@ P366: {
     ++rt.now;
 }
 P367: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[15] & c.vi[2]);
         rt.write_vi(15, lv, true);
@@ -11932,7 +12021,7 @@ P367: {
     ++rt.now;
 }
 P368: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 0u);
         rt.write_vi(7, lv, true);
@@ -11940,19 +12029,18 @@ P368: {
     ++rt.now;
 }
 P369: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[5][0]);
     {
         taken = (rt.branch_vi(15, bp) == rt.branch_vi(0, bp)) == true;
     }
     c.vf[8][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
     bp = taken;
 }
 P370: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u1 = itof(c.vf[5][1], 0);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 768u);
@@ -11963,20 +12051,21 @@ P370: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P375; }
 }
 P371: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[0][0]);
     {
         c.I = 0x43400000u;
     }
     c.vf[6][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P372: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.I);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint32_t l3 = c.vf[0][0];
         c.vf[8][3] = l3;
@@ -11984,22 +12073,22 @@ P372: {
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P373: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[0][0]);
     c.vf[7][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
     bp = true;
 }
 P374: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.I);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 2u);
         rt.write_vi(7, lv, true);
@@ -12007,12 +12096,11 @@ P374: {
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P381; }
 }
 P375: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[2]);
         rt.write_vi(15, lv, true);
@@ -12020,7 +12108,7 @@ P375: {
     ++rt.now;
 }
 P376: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l0 = c.vf[3][0];
         const std::uint32_t l1 = c.vf[3][1];
@@ -12034,7 +12122,7 @@ P376: {
     ++rt.now;
 }
 P377: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(15, bp) == rt.branch_vi(0, bp)) == true;
@@ -12043,7 +12131,7 @@ P377: {
     bp = taken;
 }
 P378: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l0 = c.vf[2][0];
         const std::uint32_t l1 = c.vf[2][1];
@@ -12058,12 +12146,12 @@ P378: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P381; }
 }
 P379: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     bp = true;
 }
 P380: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l0 = c.vf[1][0];
         const std::uint32_t l1 = c.vf[1][1];
@@ -12078,7 +12166,7 @@ P380: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P381; }
 }
 P381: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 4u);
         rt.write_vi(2, lv, true);
@@ -12086,7 +12174,7 @@ P381: {
     ++rt.now;
 }
 P382: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 66u);
         rt.write_vi(1, lv, true);
@@ -12094,7 +12182,7 @@ P382: {
     ++rt.now;
 }
 P383: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(5, bp) == rt.branch_vi(2, bp)) == false;
@@ -12103,7 +12191,7 @@ P383: {
     bp = taken;
 }
 P384: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l2 = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(c.vi[1])));
         c.vf[9][2] = l2;
@@ -12112,34 +12200,34 @@ P384: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P391; }
 }
 P385: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[5][1]);
     {
         const std::uint32_t l3 = c.vf[0][0];
         c.vf[8][3] = l3;
     }
     c.vf[6][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P386: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[5][1]);
     {
         c.I = 0x41A00000u;
     }
     c.vf[7][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
 }
 P387: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.I);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 68u);
-        rt.write_vi(1, lv, true);
+        rt.set_vi(1, lv, true);
     }
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
@@ -12148,7 +12236,7 @@ P387: {
     ++rt.now;
 }
 P388: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l0 = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(c.vi[1])));
         c.vf[9][0] = l0;
@@ -12156,21 +12244,22 @@ P388: {
     ++rt.now;
 }
 P389: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     bp = true;
 }
 P390: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 88u);
-        rt.write_vi(8, lv, true);
+        rt.set_vi(8, lv, true);
     }
     ++rt.now;
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P412; }
 }
 P391: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u1 = fr::mul(c.vf[5][1], c.vf[4][1]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 2u);
@@ -12181,7 +12270,7 @@ P391: {
     ++rt.now;
 }
 P392: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[4] & c.vi[2]);
         rt.write_vi(15, lv, true);
@@ -12189,7 +12278,7 @@ P392: {
     ++rt.now;
 }
 P393: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l0 = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(c.vi[9])));
         c.vf[9][0] = l0;
@@ -12197,7 +12286,7 @@ P393: {
     ++rt.now;
 }
 P394: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 48u);
         rt.write_vi(14, lv, true);
@@ -12205,7 +12294,8 @@ P394: {
     ++rt.now;
 }
 P395: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     bool taken = false;
     const std::uint32_t u1 = ftoi(c.vf[9][1], 0);
     {
@@ -12216,7 +12306,7 @@ P395: {
     bp = taken;
 }
 P396: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[9] & c.vi[14]);
         rt.write_vi(14, lv, true);
@@ -12225,7 +12315,7 @@ P396: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P405; }
 }
 P397: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 106u);
         rt.write_vi(8, lv, true);
@@ -12233,7 +12323,7 @@ P397: {
     ++rt.now;
 }
 P398: {
-    rt.commit();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(14, bp) == rt.branch_vi(0, bp)) == false;
@@ -12242,7 +12332,7 @@ P398: {
     bp = taken;
 }
 P399: {
-    rt.commit();
+    rt.commit_q_due();
     {
         const std::uint32_t l3 = c.vf[0][0];
         c.vf[8][3] = l3;
@@ -12251,22 +12341,21 @@ P399: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P403; }
 }
 P400: {
-    rt.commit();
+    rt.commit_q_due();
     {
         c.I = 0x43000000u;
     }
     ++rt.now;
 }
 P401: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.I);
     c.vf[6][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
     bp = true;
 }
 P402: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.I);
     c.vf[7][3] = u3;
     rt.push_flags(lane_mac(u3, 3));
@@ -12274,15 +12363,14 @@ P402: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P412; }
 }
 P403: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[0][0]);
     c.vf[6][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
     bp = true;
 }
 P404: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.vf[0][0]);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 2u);
@@ -12294,11 +12382,12 @@ P404: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P412; }
 }
 P405: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P406: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     bool taken = false;
     {
         taken = (rt.branch_vi(14, bp) == rt.branch_vi(0, bp)) == false;
@@ -12307,7 +12396,7 @@ P406: {
     bp = taken;
 }
 P407: {
-    rt.commit();
+    rt.commit_q_due();
     {
         c.I = 0x41A00000u;
     }
@@ -12315,33 +12404,34 @@ P407: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P411; }
 }
 P408: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[0][0], c.I);
-    const std::uint32_t u1 = fr::add(c.vf[0][1], c.I);
-    const std::uint32_t u2 = fr::add(c.vf[0][2], c.I);
+    rt.commit_flags();
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[0], c.I, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         c.I = 0x43000000u;
     }
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P409: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.I);
     c.vf[6][3] = u3;
-    rt.push_flags(lane_mac(u3, 3));
     ++rt.now;
     bp = true;
 }
 P410: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u3 = fr::mul(c.vf[0][3], c.I);
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 88u);
-        rt.write_vi(8, lv, true);
+        rt.set_vi(8, lv, true);
     }
     c.vf[7][3] = u3;
     rt.push_flags(lane_mac(u3, 3));
@@ -12349,19 +12439,22 @@ P410: {
     if (bp) { bp = false; if (rt.now > kMaxPairs) cycle_limit(); goto P412; }
 }
 P411: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     {
         const std::uint16_t lv = static_cast<std::uint16_t>(c.vi[0] + 84u);
-        rt.write_vi(8, lv, true);
+        rt.set_vi(8, lv, true);
     }
     ++rt.now;
 }
 P412: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
 }
 P413: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     const std::uint32_t u0 = ftoi(c.vf[8][0], 0);
     const std::uint32_t u1 = ftoi(c.vf[8][1], 0);
     const std::uint32_t u2 = ftoi(c.vf[8][2], 0);
@@ -12373,21 +12466,24 @@ P413: {
     ++rt.now;
 }
 P414: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
 }
 P415: {
-    rt.commit();
+    rt.commit_flags();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P416: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 417u; rt.finish(); return true; }
     b3host::fatal("vu0 aot: 0047F6D0 ran past its last pair");
 }
 }
+// 004839E0: 150 pairs, 80 flag pushes (1 kept), flag-slot commits at 0 pairs, VI history at 0 pairs
 bool run_004839E0(Core& c, std::uint32_t* data, std::uint32_t entry) {
     Rt rt(c, data);
     const std::uint64_t fb = rt.flag_commits; (void)fb;
@@ -12547,218 +12643,234 @@ bool run_004839E0(Core& c, std::uint32_t* data, std::uint32_t entry) {
     default: return false;
     }
 P0: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[5][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[5][1], c.vf[0][0]);
-    const std::uint32_t u2 = fr::add(c.vf[5][2], c.vf[0][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[5], c.vf[0][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P1: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[5][0], c.vf[19][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[5][1], c.vf[19][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[5][2], c.vf[19][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[5], c.vf[19][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P2: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[7][0], c.vf[19][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[7][1], c.vf[19][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[7][2], c.vf[19][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[7], c.vf[19][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P3: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[4][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[4][1], c.vf[0][0]);
-    const std::uint32_t u2 = fr::add(c.vf[4][2], c.vf[0][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[4], c.vf[0][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P4: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[4][0], c.vf[19][2]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[4][1], c.vf[19][2]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[4][2], c.vf[19][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[4], c.vf[19][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P5: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[6][0], c.vf[19][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[6][1], c.vf[19][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[6][2], c.vf[19][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[6], c.vf[19][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P6: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][0], c.vf[0][3]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][1], c.vf[0][3]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][2], c.vf[0][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[10], c.vf[0][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P7: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[2][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[2][1], c.vf[0][0]);
-    const std::uint32_t u2 = fr::add(c.vf[2][2], c.vf[0][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[2], c.vf[0][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P8: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[2][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[2][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[2][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[2], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P9: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[3][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[3][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[3][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[3], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[2][0] = u0;
     c.vf[2][1] = u1;
     c.vf[2][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P10: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[10][0], c.vf[10][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[10][1], c.vf[10][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[10][2], c.vf[10][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[10], c.vf[10], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P11: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[0][0], c.vf[0][3]);
     c.vf[25][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P12: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[4][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[4][1], c.vf[0][0]);
-    const std::uint32_t u2 = fr::add(c.vf[4][2], c.vf[0][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[4], c.vf[0][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P13: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[4][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[4][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[4][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[4], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P14: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[3][0] = u0;
     c.vf[3][1] = u1;
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P15: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[24][0], c.vf[24][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P16: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[25][0], c.vf[24][2]);
     c.vf[24][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P17: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[6][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[6][1], c.vf[0][0]);
-    const std::uint32_t u2 = fr::add(c.vf[6][2], c.vf[0][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[6], c.vf[0][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P18: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[6][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[6][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[6][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[6], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P19: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[7][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[7][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[7][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[7], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P20: {
-    rt.commit();
-    const std::uint32_t u0 = fr::add(c.vf[8][0], c.vf[0][0]);
-    const std::uint32_t u1 = fr::add(c.vf[8][1], c.vf[0][0]);
-    const std::uint32_t u2 = fr::add(c.vf[8][2], c.vf[0][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::add_vs(uv, c.vf[8], c.vf[0][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[24][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -12767,502 +12879,539 @@ P20: {
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P21: {
-    rt.commit();
-    const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[8][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[8][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[8][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::msub_vs(uv, c.acc, c.vf[8], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P22: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[9][0], c.vf[1][0]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[9][1], c.vf[1][0]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[9][2], c.vf[1][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[9], c.vf[1][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P23: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[11][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[11][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[11][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[2], c.vf[11][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P24: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[3][0], c.vf[11][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[3][1], c.vf[11][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[3][2], c.vf[11][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[3], c.vf[11][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P25: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[11][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[11][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[11][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[11][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P26: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[11][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[11][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[11][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[11][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[6][0] = u0;
     c.vf[6][1] = u1;
     c.vf[6][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P27: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[12][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[12][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[12][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[2], c.vf[12][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P28: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[3][0], c.vf[12][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[3][1], c.vf[12][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[3][2], c.vf[12][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[3], c.vf[12][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P29: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[12][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[12][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[12][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[12][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P30: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[12][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[12][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[12][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[12][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[7][0] = u0;
     c.vf[7][1] = u1;
     c.vf[7][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P31: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[13][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[13][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[13][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[2], c.vf[13][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P32: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[3][0], c.vf[13][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[3][1], c.vf[13][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[3][2], c.vf[13][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[3], c.vf[13][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P33: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[13][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[13][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[13][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[13][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P34: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[13][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[13][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[13][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[13][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[8][0] = u0;
     c.vf[8][1] = u1;
     c.vf[8][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P35: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[10][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[10][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[10][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[10], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[10][0] = u0;
     c.vf[10][1] = u1;
     c.vf[10][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P36: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[14][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[14][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[14][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[2], c.vf[14][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P37: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[3][0], c.vf[14][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[3][1], c.vf[14][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[3][2], c.vf[14][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[3], c.vf[14][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P38: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[14][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[14][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[14][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[14][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P39: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[14][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[14][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[14][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[14][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[9][0] = u0;
     c.vf[9][1] = u1;
     c.vf[9][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P40: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[15][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[15][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[15][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[2], c.vf[15][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P41: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[3][0], c.vf[15][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[3][1], c.vf[15][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[3][2], c.vf[15][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[3], c.vf[15][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P42: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[15][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[15][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[15][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[15][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P43: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[15][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[15][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[15][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[15][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[11][0] = u0;
     c.vf[11][1] = u1;
     c.vf[11][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P44: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[16][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[16][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[16][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[2], c.vf[16][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P45: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[3][0], c.vf[16][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[3][1], c.vf[16][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[3][2], c.vf[16][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[3], c.vf[16][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P46: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[16][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[16][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[16][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[16][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P47: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[16][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[16][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[16][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[16][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[12][0] = u0;
     c.vf[12][1] = u1;
     c.vf[12][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P48: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[17][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[17][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[17][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[2], c.vf[17][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P49: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[3][0], c.vf[17][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[3][1], c.vf[17][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[3][2], c.vf[17][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[3], c.vf[17][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P50: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[17][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[17][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[17][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[17][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P51: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[17][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[17][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[17][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[17][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[13][0] = u0;
     c.vf[13][1] = u1;
     c.vf[13][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P52: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[18][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[18][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[18][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[2], c.vf[18][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P53: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[3][0], c.vf[18][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[3][1], c.vf[18][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[3][2], c.vf[18][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[3], c.vf[18][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P54: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[4][0], c.vf[18][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[4][1], c.vf[18][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[4][2], c.vf[18][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[4], c.vf[18][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P55: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[5][0], c.vf[18][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[5][1], c.vf[18][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[5][2], c.vf[18][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[5], c.vf[18][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[14][0] = u0;
     c.vf[14][1] = u1;
     c.vf[14][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P56: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[11][0], c.vf[19][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[11][1], c.vf[19][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[11][2], c.vf[19][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[11], c.vf[19][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P57: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[12][0], c.vf[19][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[12][1], c.vf[19][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[12][2], c.vf[19][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[12], c.vf[19][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P58: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[13][0], c.vf[19][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[13][1], c.vf[19][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[13][2], c.vf[19][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[13], c.vf[19][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P59: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[14][0], c.vf[19][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[14][1], c.vf[19][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[14][2], c.vf[19][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[14], c.vf[19][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P60: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P61: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P62: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P63: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[4][0], c.vf[4][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[4][1], c.vf[4][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[4][2], c.vf[4][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[4], c.vf[4], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P64: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P65: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P66: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P67: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[24][0], c.vf[24][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P68: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[25][0], c.vf[24][2]);
     c.vf[24][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P69: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P70: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P71: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P72: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[24][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -13271,162 +13420,160 @@ P72: {
     ++rt.now;
 }
 P73: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P74: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P75: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P76: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P77: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P78: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P79: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P80: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P81: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P82: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P83: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P84: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P85: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[4][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[4][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[4][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[4], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[4][0] = u0;
     c.vf[4][1] = u1;
     c.vf[4][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P86: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P87: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P88: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P89: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[4][1], c.vf[10][2]);
     const std::uint32_t u1 = fr::mul(c.vf[4][2], c.vf[10][0]);
     const std::uint32_t u2 = fr::mul(c.vf[4][0], c.vf[10][1]);
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P90: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[10][1], c.vf[4][2]);
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[10][2], c.vf[4][0]);
     const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[10][0], c.vf[4][1]);
     c.vf[3][0] = u0;
     c.vf[3][1] = u1;
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P91: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P92: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P93: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P94: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[3][0], c.vf[3][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[3][1], c.vf[3][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[3][2], c.vf[3][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[3], c.vf[3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P95: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P96: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P97: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P98: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[24][0], c.vf[24][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P99: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[25][0], c.vf[24][2]);
     c.vf[24][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P100: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P101: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P102: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P103: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[24][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -13435,162 +13582,160 @@ P103: {
     ++rt.now;
 }
 P104: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P105: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P106: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P107: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P108: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P109: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P110: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P111: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P112: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P113: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P114: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P115: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P116: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[3][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[3][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[3][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[3], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[3][0] = u0;
     c.vf[3][1] = u1;
     c.vf[3][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P117: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P118: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P119: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P120: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::mul(c.vf[3][1], c.vf[4][2]);
     const std::uint32_t u1 = fr::mul(c.vf[3][2], c.vf[4][0]);
     const std::uint32_t u2 = fr::mul(c.vf[3][0], c.vf[4][1]);
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P121: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::msub(c.acc[0], c.vf[4][1], c.vf[3][2]);
     const std::uint32_t u1 = fr::msub(c.acc[1], c.vf[4][2], c.vf[3][0]);
     const std::uint32_t u2 = fr::msub(c.acc[2], c.vf[4][0], c.vf[3][1]);
     c.vf[2][0] = u0;
     c.vf[2][1] = u1;
     c.vf[2][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P122: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P123: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P124: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P125: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], c.vf[2][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], c.vf[2][1]);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], c.vf[2][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vv(uv, c.vf[2], c.vf[2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[24][0] = u0;
     c.vf[24][1] = u1;
     c.vf[24][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P126: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P127: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P128: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P129: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::add(c.vf[24][0], c.vf[24][1]);
     c.acc[0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P130: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[25][0], c.vf[24][2]);
     c.vf[24][0] = u0;
-    rt.push_flags(lane_mac(u0, 0));
     ++rt.now;
 }
 P131: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P132: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P133: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P134: {
-    rt.commit();
+    rt.commit_q_due();
     {
         { const std::uint32_t n = c.vf[0][3], d = c.vf[24][0]; std::uint32_t st = 0; if (rt.qp) rt.commit_q();
           rt.qn = fr::vu_rsqrt(n, d); if ((fr::clamp(d) & 0x7FFFFFFFu) == 0) st = 0x20u; else if (d & 0x80000000u) st = 0x10u;
@@ -13599,87 +13744,93 @@ P134: {
     ++rt.now;
 }
 P135: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P136: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P137: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P138: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P139: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P140: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P141: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P142: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
 }
 P143: {
-    rt.commit();
-    const std::uint32_t u0 = fr::mul(c.vf[6][0], c.vf[19][0]);
-    const std::uint32_t u1 = fr::mul(c.vf[6][1], c.vf[19][0]);
-    const std::uint32_t u2 = fr::mul(c.vf[6][2], c.vf[19][0]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[6], c.vf[19][0], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P144: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[7][0], c.vf[19][1]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[7][1], c.vf[19][1]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[7][2], c.vf[19][1]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[7], c.vf[19][1], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P145: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[8][0], c.vf[19][2]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[8][1], c.vf[19][2]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[8][2], c.vf[19][2]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[8], c.vf[19][2], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.acc[0] = u0;
     c.acc[1] = u1;
     c.acc[2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P146: {
-    rt.commit();
-    const std::uint32_t u0 = fr::madd(c.acc[0], c.vf[9][0], c.vf[19][3]);
-    const std::uint32_t u1 = fr::madd(c.acc[1], c.vf[9][1], c.vf[19][3]);
-    const std::uint32_t u2 = fr::madd(c.acc[2], c.vf[9][2], c.vf[19][3]);
+    rt.commit_q_due();
+    alignas(16) std::uint32_t uv[4];
+    fr4::madd_vs(uv, c.acc, c.vf[9], c.vf[19][3], 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[5][0] = u0;
     c.vf[5][1] = u1;
     c.vf[5][2] = u2;
-    rt.push_flags(lane_mac(u0, 0) | lane_mac(u1, 1) | lane_mac(u2, 2));
     ++rt.now;
 }
 P147: {
-    rt.commit();
+    rt.commit_q_due();
     const std::uint32_t us = rt.qread();
-    const std::uint32_t u0 = fr::mul(c.vf[2][0], us);
-    const std::uint32_t u1 = fr::mul(c.vf[2][1], us);
-    const std::uint32_t u2 = fr::mul(c.vf[2][2], us);
+    alignas(16) std::uint32_t uv[4];
+    fr4::mul_vs(uv, c.vf[2], us, 7u);
+    const std::uint32_t u0 = uv[0];
+    const std::uint32_t u1 = uv[1];
+    const std::uint32_t u2 = uv[2];
     c.vf[2][0] = u0;
     c.vf[2][1] = u1;
     c.vf[2][2] = u2;
@@ -13687,12 +13838,12 @@ P147: {
     ++rt.now;
 }
 P148: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     ending = true;
 }
 P149: {
-    rt.commit();
+    rt.commit_q_due();
     ++rt.now;
     if (ending) { c.tpc = 150u; rt.finish(); return true; }
     b3host::fatal("vu0 aot: 004839E0 ran past its last pair");

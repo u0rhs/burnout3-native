@@ -303,10 +303,62 @@ back NAX and ENVX from the mixer at the write-back step, which keeps the two hal
 - `b3audio::pump(iop, mixer, device, samples)`: one virtual frame. It advances the executor by the frame's samples
   (from virtual EE time) and pushes everything the mixer rendered. Content is deterministic; only the device's
   consumption is host-timed.
-- **Pacing (proposed to boot2): the platform loop's frame pacer stays the master.** `regulate()` keeps the queue near
-  60 ms by dropping or padding whole 800-frame frames when it leaves a +-100 ms band, and counts both. Audio as the
-  master clock would couple frame timing to the device and fight docs/frame-rate.md's uncapped
-  rendering; it can be an option.
+- **Pacing: the platform loop's frame pacer stays the master.** Audio as the master clock would couple frame timing
+  to the device and fight docs/frame-rate.md's uncapped rendering.
+- **The output queue (audioq, 2026-11-22; src/native/audio_queue.h).** The game mixes 800 frames a virtual VBlank,
+  so 47952 frames a second at the paced 59.94 Hz, while the device plays 48000 on its own clock: a steady 0.1 % gap,
+  plus what the host's pacing adds (a catch-up after a hitch) or misses (a stall, the window's focus hold). Until
+  1.3.0 `regulate()` kept SDL's queue near 60 ms by dropping or padding whole 800-frame frames: the 0.1 % gap alone
+  ran the queue dry about once a minute, and each drop or pad was a cut in the sound or a 17-50 ms hole with hard
+  edges (a player's Windows log, 284 s: 12 drops and 13 pads). Now the device's stream pulls from our own queue (an
+  SDL get callback) and:
+  - **rate**: the stream reads the queue a fraction of a percent slower or faster (`SDL_SetAudioStreamFrequencyRatio`,
+    SDL's resampler, at most 0.5 % off: under 9 cents), from a P + I control of the queue's smoothed level against
+    the target (the integral only near it, so a burst does not wind it up). It settles at 47952 / 48000;
+  - **late**: when the queue holds less than the device asks for (the game thread late), the frames it has fade out
+    (the last 128 at most, 2.7 ms), then silence until the queue holds the target again, which comes in with a
+    128-frame fade in (no click either way). A device pulling large blocks may leave the queue low between pulls:
+    that is not a starve. audioq2: when the game is late (no push for 25 ms of output) and a block would leave fewer
+    than 128 frames, the starve begins at that block's end, its last 128 frames faded (the few left over, which would
+    play after the gap, are dropped), so the fade is never a few frames' cut;
+  - **burst**: above target + 150 ms the oldest frames are dropped down to the target with a 128-frame crossfade.
+  The target is 60 ms, at least the device's block plus 128 frames and two VBlanks (WASAPI's shared period is 480
+  frames, 10 ms; a device pulling 2048 / 4096 / 8192 frames gets 3776 / 5824 / 9920, and never starves while the game
+  is on time, one late VBlank included: `queue_large_device_blocks`). The rate's reach is 0.5 % on purpose: a game
+  running slower than that for long (a PC that cannot hold 59.94 VBlanks a second, so the game itself is slow) still
+  empties the queue now and then, each time a fade out and in (where the old guard padded hard-edged silences); a
+  wider reach (3 %) would be half a semitone of pitch drift in the music, to hide a game already running slow. The
+  content is not changed and the game sees nothing of it (offscreen runs have no device). Measured with
+  `tools/native/audio_sim.cpp` (a captured race mix through both on the same timeline: 59.94 Hz pushes with 4 ms of
+  jitter, a 120 ms and a 300 ms stall, a 10 ms 480-frame device): the old guard's sound/silence edges cut the sound
+  at up to 9129 (of 32767), the queue's at 37; 19200 frames dropped in 800-frame cuts against 7520 crossfaded.
+  Tests: `test_audio_device` (`queue_rate_follows_the_game`: 3 minutes at 59.94 Hz, no underrun, the ratio within
+  0.03 % of 47952 / 48000; `queue_stall_fades_out_and_in`, `queue_burst_is_crossfaded`: no step larger than the
+  tone's own; `queue_pull_at_the_edge`: pulls at n + 1 and n + 127 queued, nothing written past the block, also clean
+  under ASan / UBSan; `queue_large_device_blocks`). The device's callback fills a buffer sized at the open, in pieces
+  (no allocation on the device's thread).
+- **The output's clipping (audioq).** The SPU2 clamps every sum to 16 bits (the mixer does as the hardware): a race's
+  loud moments (a crash over the engines and the music) sum far past full scale and the clamp holds the wave at 32767
+  for up to a millisecond (a captured race: 341 runs in 38 s, 0.05 % of the samples at full scale, RMS -11.8 dBFS),
+  heard as crackle. A static soft knee does not help (the sums overshoot so far that it flattens too): the host's
+  output (core 1's final output, which nothing game-visible reads: no SPU RAM ring, no register) is now made from the
+  same sums without the dry and output clamps and goes through a peak limiter (`Spu2MixerImpl::Limiter`): it runs 1 ms
+  (49 frames) behind the mix, the two channels' gain ramps down within that millisecond to keep the louder at 29000
+  when its peak comes, and comes back over 80 ms; the last safety is a soft knee (the identity up to 29000, tanh above).
+  Where the mix stays in range it is the hardware's values, 1 ms later; the SPU RAM rings, the reverb's input and
+  every reply to the game are the hardware's as before (the golden's audio logs are RW Audio's commands and replies).
+  PC SETTINGS > AUDIO > OUTPUT > SOUND OUTPUT chooses: Clean (the default, the limiter) or Original (the hardware's
+  clamped output with no delay, the old sound; ini `sound_output` 0 / 1, row id 93; native_play passes it to the
+  mixer each VBlank: `b3r_sound_output`, `platform::set_sound_output_original`). `B3_AUDIO_HARD_CLIP=1` forces
+  Original (the exact-timing tests use it). audioq2: switching it starts the limiter's 1 ms of look-ahead afresh (no
+  frames from before the switch are played after it). Tests: `test_spu2_mixer` (`output_limiter`: 2x over full scale comes out at most 29055 with no repeated crest
+  samples, released in quiet to the identity; `soft_limit_curve`; `memin_through_both_cores` both ways).
+- **The voices' resampling (checked, audioq).** The SPU2's Gaussian 4-tap from psx-spx's table (as PCSX2), checked
+  as THD+N of a tone played from its own rate at 48 kHz (`test_spu2_mixer voice_resampling_quality`): 1 kHz from 22050,
+  32000 or 44100 Hz sources -68 to -72 dB (linear interpolation -50 to -62, nearest -22 to -28); high tones near the
+  source's Nyquist -29 to -36 dB (the Gaussian's own roll-off and images, the hardware's). The music is the game's
+  32 kHz PS-ADPCM (4 bits a sample): its noise floor is the disc's, not the port's (CUSTOM MUSIC plays the player's
+  own files).
 - Start-up: `b3audio::load_libsd_reverb_presets(<disc>/IOP/LIBSD.IRX)`.
 - Test: `make test_audio_device` (SDL3's dummy driver; not in `make test`, like `make render`).
   - Linux note: the SDL3 package's libpulse has its own RUNPATH (/usr/lib/x86_64-linux-gnu/pulseaudio), which hides

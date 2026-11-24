@@ -1,5 +1,7 @@
 // The live window as the native game's pad (play1): src/b3replay/nativepad.h.
 #include "nativepad.h"
+#include "photomode.h"
+#include "replaycams.h"   // replaycams: the replay viewer's actions
 
 #include <algorithm>
 #include <cmath>
@@ -9,6 +11,7 @@
 
 #include "../native/input_keys_sdl.h"
 #include "garagecam.h"   // garagecam1
+#include "orbitcam.h"    // orbitcam1
 #include "menumouse.h"
 #include "photomode.h"
 
@@ -194,6 +197,7 @@ bool NativePad::handle(const SDL_Event& e) {
             page_key(std::uint16_t(e.key.scancode), e.type == SDL_EVENT_KEY_DOWN);   // devnav1 (and on to the key map)
         if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) page_keys_ = 0;
         if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) focused_ = false;
+        if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) MenuMouse::instance().focus_lost();   // orbitcam1: no stuck right-button drag
         if (e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) focused_ = true;
         std::lock_guard<std::mutex> l(mu_);
         if (capture_ && e.type == SDL_EVENT_KEY_DOWN) {   // remap1: a rebind takes the key (ups still reach the pad)
@@ -217,11 +221,43 @@ bool NativePad::handle(const SDL_Event& e) {
             !(text_mode_ && typing_key(e.key.scancode)) &&   // settingsui: not while a name is typed
             (b3native::input::port_actions_of_key(controls_.port, std::uint16_t(e.key.scancode)) >> int(b3native::input::PortAction::Restart) & 1))
             ask_restart("INSTANT RESTART key");   // speedrun1: INSTANT RESTART (when on); rebind2: whatever key it is on
+        // gearbox: SHIFT UP / SHIFT DOWN (counted; native_play applies them in a manual race only); the key goes on
+        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && !shortcut_mods_locked(e.key.mod) && !(text_mode_ && typing_key(e.key.scancode))) {
+            const std::uint64_t m = b3native::input::port_actions_of_key(controls_.port, std::uint16_t(e.key.scancode));
+            if (m >> int(b3native::input::PortAction::ShiftUp) & 1) shift_press(true, "key");
+            if (m >> int(b3native::input::PortAction::ShiftDown) & 1) shift_press(false, "key");
+            if (m >> int(b3native::input::PortAction::Replay) & 1) replay_presses_.fetch_add(1);   // replayview
+        }
+        if ((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && !e.key.repeat && !shortcut_mods_locked(e.key.mod) &&
+            !(text_mode_ && typing_key(e.key.scancode)))
+            party_key(std::uint16_t(e.key.scancode), e.type == SDL_EVENT_KEY_DOWN);   // party1 (the key goes on as before)
+        // replaycams: the replay viewer's keys (while the game's replay plays; the game reads no input then)
+        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && !shortcut_mods_locked(e.key.mod) && !(text_mode_ && typing_key(e.key.scancode))) {
+            const std::uint64_t m = b3native::input::port_actions_of_key(controls_.port, std::uint16_t(e.key.scancode));
+            const b3native::input::PortAction acts[5] = {b3native::input::PortAction::ReplayCameraPrev, b3native::input::PortAction::ReplayCameraNext,
+                                                         b3native::input::PortAction::ReplayCarPrev, b3native::input::PortAction::ReplayCarNext,
+                                                         b3native::input::PortAction::ReplayFreeCamera};
+            bool mine = false;
+            for (int k = 0; k < 5; ++k)
+                if (m >> int(acts[k]) & 1) { replay_action(k, "key"); mine = true; }
+            if (mine && replay_showing_.load()) return true;   // (while the game's replay is watched the key is the viewer's alone)
+        }
         // todrace: the TIME OF DAY key on a track page (race_time.h) is the port's alone (its downs never reach the game)
         if (e.type == SDL_EVENT_KEY_DOWN && race_page_.load() && race_keys_safe_ && !shortcut_mods_locked(e.key.mod) && !(text_mode_ && typing_key(e.key.scancode)) &&
             (b3native::input::port_actions_of_key(controls_.port, std::uint16_t(e.key.scancode)) >> int(b3native::input::PortAction::RaceTime) & 1)) {
             if (!e.key.repeat) {
                 race_time_press("key");
+                tracker_.press(PromptDevice::kKeyboard, now_s());
+                keyboard_used_ = true;
+            }
+            return true;
+        }
+        // paintsel: the CAR PAINT PANEL key on SELECT CAR (paint_select.h) is the port's alone
+        if (e.type == SDL_EVENT_KEY_DOWN && paint_page_.load() >= 0 && paint_keys_safe_ && !shortcut_mods_locked(e.key.mod) &&
+            !(text_mode_ && typing_key(e.key.scancode)) &&
+            (b3native::input::port_actions_of_key(controls_.port, std::uint16_t(e.key.scancode)) >> int(b3native::input::PortAction::PaintPanel) & 1)) {
+            if (!e.key.repeat) {
+                paint_press("key");
                 tracker_.press(PromptDevice::kKeyboard, now_s());
                 keyboard_used_ = true;
             }
@@ -273,8 +309,10 @@ void NativePad::poll_gamepads() {
     const double t = now_s();
     std::vector<std::pair<SDL_Gamepad*, int>> ports;   // rumble1: each pad's port (0 player 1's, 1 player 2's)
     float garage_x = 0, garage_y = 0;                  // garagecam1: player 1's right stick (the pad pushed furthest)
+    float orbit_x[2] = {}, orbit_y[2] = {};            // orbitcam1: each player's free right stick (the pad pushed furthest)
     int section = 0;                                   // settingsui: player 1's right stick up / down (the page's sections)
     bool race_held = false, race_any = false, race_taken = false;   // todrace: the TIME OF DAY chord held on the track page / at all / withheld
+    float replay_amt[5] = {};   // replaycams: the replay viewer's actions on player 1's pads (read before they are taken)
     for (SDL_Gamepad* g : open_) {
         const SDL_JoystickID id = SDL_GetGamepadID(g);
         const bool p1 = seats_.role(id) != b3native::input::PadSeats::Role::Player2;   // pad2: player 2's is its own report
@@ -354,12 +392,26 @@ void NativePad::poll_gamepads() {
                 race_held = race_held || race_page_.load();
             }
             race_any = race_any || held;
+            // replaycams: while the game's replay is watched, the viewer's five bindings are read here and taken out of the
+            // game's report (whatever context the game's input is in: the D-pad and Start never reach a menu under it)
+            replay_take(s, replay_amt);
         }
         b3native::input::GamepadTuning tuning;   // 1.0.1: ANALOG TRIGGERS
         tuning.analog_pedals = analog_pedals_.load();
         const auto one = b3native::input::gamepad_sample(s, controls_.player[p1 ? 0 : 1], tuning,
                                                          keys_.driving() ? b3native::input::KeyCtx::Drive : b3native::input::KeyCtx::Menu,
                                                          b3native::input::pad_family(int(SDL_GetGamepadType(g))));
+        {   // orbitcam1 (orbitcam.h): the physical right stick, of a pad whose bindings leave it free while driving
+            const int pl = p1 ? 0 : 1;
+            const float rx = std::clamp(float(s.right_x) / 32767.0f, -1.0f, 1.0f), ry = std::clamp(float(s.right_y) / 32767.0f, -1.0f, 1.0f);
+            const bool bound = b3native::input::right_stick_bound(
+                b3native::input::pad_bindings(controls_.player[std::size_t(pl)], b3native::input::pad_family(int(SDL_GetGamepadType(g)))),
+                b3native::input::KeyCtx::Drive, pl == 0 ? &controls_.port : nullptr);   // (the shortcuts are player 1's pads')
+            if (capture_ == 0 && !bound && rx * rx + ry * ry > orbit_x[pl] * orbit_x[pl] + orbit_y[pl] * orbit_y[pl]) {
+                orbit_x[pl] = rx;
+                orbit_y[pl] = ry;
+            }
+        }
         if (!p1) {   // pad2: player 2's pad (port 2); not photo mode's (player 1's camera)
             two = one;
             continue;
@@ -383,6 +435,7 @@ void NativePad::poll_gamepads() {
     pads_ = all;
     if (race_chord_.end_poll(race_taken, race_any, race_held)) race_time_press("gamepad");   // todrace: a press begun on the page
     GarageCam::instance().set_window_stick(garage_x, garage_y);   // garagecam1
+    for (int pl = 0; pl < 2; ++pl) OrbitCam::instance().set_window_stick(pl, orbit_x[pl], orbit_y[pl]);   // orbitcam1
     section_stick_.store(section == 3 ? 0 : section);   // settingsui
     {   // padlayout: each player's pad (the last used; else the first open one) and the layout it gets, logged on a change
         for (int p = 0; p < 2; ++p) {
@@ -443,11 +496,32 @@ void NativePad::poll_gamepads() {
         const bool combo = btn(PA::Restart);
         if (combo && !combo_prev_) ask_restart("INSTANT RESTART buttons");
         combo_prev_ = combo;
+        // gearbox: SHIFT UP / SHIFT DOWN on player 1's pads (edges)
+        const bool su = btn(PA::ShiftUp), sd = btn(PA::ShiftDown);
+        if (su && !shift_up_prev_) shift_press(true, "gamepad");
+        if (sd && !shift_down_prev_) shift_press(false, "gamepad");
+        shift_up_prev_ = su;
+        shift_down_prev_ = sd;
+        const bool rv = btn(PA::Replay);   // replayview: REPLAY on player 1's pads (edges)
+        if (rv && !replay_prev_) replay_presses_.fetch_add(1);
+        replay_prev_ = rv;
         std::uint64_t held = 0;
         for (PA a : {PA::Fullscreen, PA::Screenshot, PA::BugReport, PA::HdTextures})
             if (btn(a)) held |= std::uint64_t(1) << int(a);
         port_pad_edges_ |= held & ~port_pad_prev_;
         port_pad_prev_ = held;
+        {   // replaycams: the replay viewer's actions on player 1's pads (edges), while the game's replay plays only
+            replay_edges(replay_amt, replay_pad_prev_, "gamepad");   // (read before the bindings were taken)
+        }
+        {   // party1: PARTY MODES' buttons on player 1's pads (chords as bound; none by default)
+            const bool moon = btn(PA::PartyMoonJump), crash = btn(PA::PartyCrash), ai = btn(PA::PartyAiDriver);
+            party_moon_pad_.store(moon);
+            if (crash && !party_pad_prev_[1]) party_crash_.fetch_add(1);
+            if (ai && !party_pad_prev_[2]) party_ai_.fetch_add(1);
+            party_pad_prev_[0] = moon;
+            party_pad_prev_[1] = crash;
+            party_pad_prev_[2] = ai;
+        }
     }
     have_pad2_ = seats_.port2_connected();
     pad2_ = two;
@@ -603,12 +677,19 @@ std::array<std::uint8_t, 32> NativePad::sample(float dt) {
     keys2_.step(dt);   // remap1: player 2's keys (none by default: neutral)
     ++taken_;
     if (test_pad_type_ >= 0) {   // padlayout: the scripted pad, merged as a window pad of player 1
-        const auto t = test_report();
+        b3native::input::GamepadState tp = test_pad_;   // replaycams: its viewer presses as a window pad's (read, then taken)
+        float amt[5] = {};
+        replay_take(tp, amt);
+        replay_edges(amt, test_replay_prev_, "test pad");
+        const auto t = test_report(tp);
         const auto both = have_pads_ ? b3native::input::merge_samples(pads_.data(), t.data()) : t;
         last_ = keys_.compose(both.data());
+        paint_circle(0, last_, both.data());   // paintsel
     } else {
         last_ = keys_.compose(have_pads_ ? pads_.data() : nullptr);
+        paint_circle(0, last_, have_pads_ ? pads_.data() : nullptr);   // paintsel
     }
+    panel_queue();   // paintsel: the paint panel's input, on the VBlank grid
     if (restart_pending_) {   // speedrun1: INSTANT RESTART, at this VBlank (the pad's grid)
         restart_pending_ = false;
         const bool go = restart_on_.load() && keys_.driving() && restart_.trigger();
@@ -643,6 +724,7 @@ bool NativePad::sample2(std::array<std::uint8_t, 32>& out) {
     }
     // remap1: player 2's keys, when they have any, with player 2's pad (else the pad's report as before)
     out = keys2_on_ ? keys2_.compose(have_pad2_ ? pad2_.data() : nullptr) : pad2_;
+    paint_circle(1, out, have_pad2_ ? pad2_.data() : nullptr);   // paintsel
     boost2_.apply(out, boost_toggle_.load(), keys_.driving());   // accessibility: BOOST Toggle for player 2 too (off: untouched)
     return true;
 }
@@ -650,6 +732,50 @@ bool NativePad::sample2(std::array<std::uint8_t, 32>& out) {
 std::array<std::uint8_t, 32> NativePad::last() const {
     std::lock_guard<std::mutex> l(mu_);
     return last_;
+}
+
+void NativePad::panel_feed(bool on, int player) {   // paintsel
+    std::lock_guard<std::mutex> l(mu_);
+    panel_q_.clear();
+    panel_player_ = player;
+    panel_prev_.fill(0);   // (no report is all zeros: the first one is queued)
+    panel_feed_.store(on);
+}
+
+std::vector<std::array<std::uint8_t, 32>> NativePad::take_panel_reports() {
+    std::lock_guard<std::mutex> l(mu_);
+    std::vector<std::array<std::uint8_t, 32>> o;
+    o.swap(panel_q_);
+    return o;
+}
+
+void NativePad::panel_queue() {
+    if (!panel_feed_.load()) return;
+    // player 2's panel: player 2's pad and the keyboard, not player 1's pads (input_keys.h panel_report)
+    const std::array<std::uint8_t, 32> keys = panel_player_ == 1 ? keys_.compose(nullptr) : last_;
+    std::array<std::uint8_t, 32> r = b3native::input::panel_report(panel_player_, last_.data(), keys.data(), have_pad2_ ? pad2_.data() : nullptr);
+    if (paint_page_.load() >= 0) r[1] |= 0x20;   // (no Circle: it is the panel's button, as in the game's report)
+    if (r == panel_prev_) return;
+    panel_prev_ = r;
+    if (panel_q_.size() < 1024) panel_q_.push_back(r);
+}
+
+// paintsel: on SELECT CAR (paint_page_), the page player's controller Circle (its pads' report `pad`, after the player's
+// layout: Circle, Y on Xbox / Nintendo pads; not the keyboard's X / H) is a CAR PAINT PANEL press on its going down, and
+// the port's report given to the game has no Circle (the page reads none). Off the page: nothing changes.
+void NativePad::paint_circle(int port, std::array<std::uint8_t, 32>& report, const std::uint8_t* pad) {
+    constexpr unsigned kCircleBit = 13;   // libpad2 order, active low (byte 1 bit 5)
+    const int page = paint_page_.load();
+    const bool down = pad && (pad[kCircleBit / 8] & (1u << (kCircleBit % 8))) == 0;
+    if (page == port && down && !circle_prev_[std::size_t(port)] && capture_ == 0) paint_press(port == 0 ? "player 1's controller" : "player 2's controller");
+    circle_prev_[std::size_t(port)] = down;
+    if (page >= 0) report[kCircleBit / 8] |= std::uint8_t(1u << (kCircleBit % 8));
+}
+
+void NativePad::paint_press(const char* by) {   // paintsel
+    paint_presses_.fetch_add(1);
+    std::printf("[b3pad] car paint panel: a press (%s) on SELECT CAR (player %d's)\n", by, paint_page_.load() + 1);
+    std::fflush(stdout);
 }
 
 PromptDevice NativePad::device() const {
@@ -687,6 +813,8 @@ void NativePad::set_controls(const b3native::input::Controls& c) {
     // todrace: a TIME OF DAY PER RACE bound (in controls.ini) to an input the track pages read is left to the game there
     race_keys_safe_ = b3native::input::port_page_safe(c, b3native::input::PortAction::RaceTime, b3native::input::Device::Keyboard);
     race_pad_safe_ = b3native::input::port_page_safe(c, b3native::input::PortAction::RaceTime, b3native::input::Device::Gamepad);
+    paint_keys_safe_ = b3native::input::port_page_safe(c, b3native::input::PortAction::PaintPanel, b3native::input::Device::Keyboard);   // paintsel
+    if (!paint_keys_safe_) std::printf("[b3controls] CAR PAINT PANEL: its key is one SELECT CAR reads: not taken there\n");
     if (!race_keys_safe_ || !race_pad_safe_)
         std::printf("[b3controls] TIME OF DAY PER RACE: its %s binding is one the track pages read: not taken there\n",
                     !race_keys_safe_ && !race_pad_safe_ ? "keyboard and controller" : !race_keys_safe_ ? "keyboard" : "controller");
@@ -734,10 +862,11 @@ void NativePad::pad_used(SDL_JoystickID id) {
     active_pad_[seats_.role(id) == b3native::input::PadSeats::Role::Player2 ? 1 : 0] = id;
 }
 
-void NativePad::set_driving(bool on) {
+void NativePad::set_driving(bool on, bool orbit) {
     std::lock_guard<std::mutex> l(mu_);
     keys_.set_driving(on);
     keys2_.set_driving(on);
+    OrbitCam::instance().set_driving(orbit);   // orbitcam1: the race's look counts only while driving (padskip: and in a replay)
 }
 
 void NativePad::mouse(int kind, float x, float y, int n) {
@@ -860,10 +989,31 @@ std::string NativePad::port_key_text(b3native::input::PortAction a) const {
     return k.empty() ? "-" : b3native::input::key_label(k.front());
 }
 
-std::array<std::uint8_t, 32> NativePad::test_report() const {
+std::array<std::uint8_t, 32> NativePad::test_report() const { return test_report(test_pad_); }
+
+void NativePad::replay_take(b3native::input::GamepadState& s, float amt[5]) {
+    using PA = b3native::input::PortAction;
+    static constexpr PA kActs[5] = {PA::ReplayCameraPrev, PA::ReplayCameraNext, PA::ReplayCarPrev, PA::ReplayCarNext, PA::ReplayFreeCamera};
+    const bool take = replay_showing_.load() && capture_ == 0;   // (the game's state, per VBlank: set_replay_showing)
+    for (int k = 0; k < 5; ++k) {
+        if (controls_.port.pad[std::size_t(kActs[k])].empty()) continue;
+        amt[k] = std::max(amt[k], b3native::input::port_pad_amount(s, controls_.port, kActs[k], 0.24f));
+        if (take) b3native::input::take_port_chord(s, controls_.port, kActs[k], 0.24f);
+    }
+}
+
+void NativePad::replay_edges(const float amt[5], bool prev[5], const char* how) {
+    for (int k = 0; k < 5; ++k) {
+        const bool b = amt[k] >= 0.5f && capture_ == 0;
+        if (b && !prev[k]) replay_action(k, how);
+        prev[k] = b;
+    }
+}
+
+std::array<std::uint8_t, 32> NativePad::test_report(const b3native::input::GamepadState& g) const {
     b3native::input::GamepadTuning tuning;
     tuning.analog_pedals = analog_pedals_.load();
-    return b3native::input::gamepad_sample(test_pad_, controls_.player[0], tuning,
+    return b3native::input::gamepad_sample(g, controls_.player[0], tuning,
                                            keys_.driving() ? b3native::input::KeyCtx::Drive : b3native::input::KeyCtx::Menu,
                                            b3native::input::pad_family(test_pad_type_));
 }
@@ -895,13 +1045,25 @@ void NativePad::key(std::uint16_t scancode, bool down) {
         case 35: g.right_x = down ? -32768 : 0; break;   // garagecam1: the right stick left
         case 36: g.right_x = down ? 32767 : 0; break;    // right
         case 37: g.right_y = down ? 32767 : 0; break;    // down
+        case 38: g.left_x = down ? -32768 : 0; break;    // gameopts: the left stick left (the steering alone)
+        case 39: g.left_x = down ? 32767 : 0; break;     // right
         default: return;
         }
         GarageCam::instance().set_test_stick(std::clamp(float(g.right_x) / 32767.0f, -1.0f, 1.0f),   // garagecam1
                                              std::clamp(float(g.right_y) / 32767.0f, -1.0f, 1.0f));
+        {   // orbitcam1: the scripted pad's right stick, where its layout leaves it free while driving (player 1's)
+            const bool bound = b3native::input::right_stick_bound(
+                b3native::input::pad_bindings(controls_.player[0], b3native::input::pad_family(test_pad_type_)), b3native::input::KeyCtx::Drive,
+                &controls_.port);
+            OrbitCam::instance().set_test_stick(bound ? 0.0f : std::clamp(float(g.right_x) / 32767.0f, -1.0f, 1.0f),
+                                                bound ? 0.0f : std::clamp(float(g.right_y) / 32767.0f, -1.0f, 1.0f));
+        }
         if (down) tracker_.press(prompt_device_for_pad(test_pad_type_, int(SDL_GetGamepadButtonLabelForType(SDL_GamepadType(test_pad_type_), SDL_GAMEPAD_BUTTON_SOUTH))), now_s());
         // the report's 16 buttons (active low) as this context gives them: the check reads the pad recording too
-        const auto r = test_report();
+        b3native::input::GamepadState tp = test_pad_;   // (replaycams: as the game gets it, the viewer's bindings taken)
+        float amt[5] = {};
+        replay_take(tp, amt);
+        const auto r = test_report(tp);
         const unsigned held = ~(unsigned(r[0]) | (unsigned(r[1]) << 8)) & 0xFFFFu;
         static const char* const kNames[16] = {"SELECT", "L3", "R3", "START", "UP", "RIGHT", "DOWN", "LEFT", "L2", "R2", "L1", "R1",
                                                "TRIANGLE", "CIRCLE", "CROSS", "SQUARE"};
@@ -924,6 +1086,17 @@ void NativePad::key(std::uint16_t scancode, bool down) {
         if (c.cancel || (capture_ == 1 && !b3native::input::key_reserved(scancode))) capture_got(c);
         return;
     }
+    if (down) {   // gearbox: a script's SHIFT UP / SHIFT DOWN key (the key goes on)
+        const std::uint64_t m = b3native::input::port_actions_of_key(controls_.port, scancode);
+        if (m >> int(b3native::input::PortAction::ShiftUp) & 1) shift_press(true, "key (script)");
+        if (m >> int(b3native::input::PortAction::ShiftDown) & 1) shift_press(false, "key (script)");
+        if (m >> int(b3native::input::PortAction::Replay) & 1) replay_presses_.fetch_add(1);   // replayview
+        const b3native::input::PortAction acts[5] = {b3native::input::PortAction::ReplayCameraPrev, b3native::input::PortAction::ReplayCameraNext,
+                                                     b3native::input::PortAction::ReplayCarPrev, b3native::input::PortAction::ReplayCarNext,
+                                                     b3native::input::PortAction::ReplayFreeCamera};
+        for (int k = 0; k < 5; ++k)   // replaycams: a script's replay viewer keys
+            if (m >> int(acts[k]) & 1) replay_action(k, "key (script)");
+    }
     if (b3native::input::port_actions_of_key(controls_.port, scancode) >> int(b3native::input::PortAction::Restart) & 1) {   // speedrun1: a script's restart key
         if (down) ask_restart("restart key (script)");
         return;
@@ -932,12 +1105,35 @@ void NativePad::key(std::uint16_t scancode, bool down) {
         if (down) hd_presses_.push_back(hd_poll);
         return;
     }
+    party_key(scancode, down);   // party1: a script's PARTY MODES key (it goes on to the pad as before)
     if (down && race_page_.load() && race_keys_safe_ && (b3native::input::port_actions_of_key(controls_.port, scancode) >> int(b3native::input::PortAction::RaceTime) & 1)) {
         race_time_press("key (script)");   // todrace: a script's TIME OF DAY key on the track page (never the game's)
         return;
     }
+    if (paint_page_.load() >= 0 && paint_keys_safe_ && (b3native::input::port_actions_of_key(controls_.port, scancode) >> int(b3native::input::PortAction::PaintPanel) & 1)) {
+        if (down) paint_press("key (script)");   // paintsel: a script's CAR PAINT PANEL key on SELECT CAR (never the game's)
+        return;
+    }
     keys_.key(scancode, down);
     keys2_.key(scancode, down);
+}
+
+void NativePad::shift_press(bool up, const char* by) {   // gearbox
+    (up ? shift_up_presses_ : shift_down_presses_).fetch_add(1);
+    std::printf("[b3pad] %s (%s)\n", up ? "shift up" : "shift down", by);
+    std::fflush(stdout);
+}
+
+// party1: a key of PARTY MODES' buttons (MOON JUMP held while down; CRASH / AI DRIVER on the down)
+void NativePad::party_key(std::uint16_t scancode, bool down) {
+    using PA = b3native::input::PortAction;
+    const std::uint64_t acts = b3native::input::port_actions_of_key(controls_.port, scancode);
+    if (acts >> int(PA::PartyMoonJump) & 1) {
+        if (down) party_moon_keys_.fetch_add(1);
+        else if (party_moon_keys_.load() > 0) party_moon_keys_.fetch_sub(1);
+    }
+    if (down && (acts >> int(PA::PartyCrash) & 1)) party_crash_.fetch_add(1);
+    if (down && (acts >> int(PA::PartyAiDriver) & 1)) party_ai_.fetch_add(1);
 }
 
 void NativePad::race_time_press(const char* by) {   // todrace
@@ -956,6 +1152,23 @@ void NativePad::ask_restart(const char* by) {
 bool NativePad::restarting() const {
     std::lock_guard<std::mutex> l(mu_);
     return restart_.active();
+}
+
+void NativePad::replay_action(int k, const char* how) {
+    ReplayCams& rc = ReplayCams::instance();
+    if (!replay_showing_.load() || !rc.playing()) return;   // (the game's state and the renderer's both: a press after a leave is the game's)
+    PhotoMode& pm = PhotoMode::instance();
+    if (k == 4) {
+        if (pm.toggle_live("REPLAY FREE CAMERA")) std::printf("[replaycams] free camera %s (%s)\n", pm.active() ? "on" : "off", how);
+        std::fflush(stdout);
+        return;
+    }
+    if (pm.active()) return;   // (the free camera takes the controls)
+    const std::uint32_t poll = pm.game_poll() + 1;   // (the first tick it applies to)
+    if (k < 2) rc.angle_step(k == 0 ? -1 : 1, poll);
+    else rc.car_step(k == 2 ? -1 : 1, poll);
+    std::printf("[replaycams] %s %s (%s)\n", k < 2 ? "camera" : "car", (k % 2) ? "next" : "previous", how);
+    std::fflush(stdout);
 }
 
 }  // namespace b3replay

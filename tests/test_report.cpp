@@ -5,6 +5,7 @@
 
 #include "b3report/bug_report.h"
 #include "b3report/run_logs.h"
+#include "b3report/uncaught.h"
 #include "b3report/version.h"
 #include "b3report/zip.h"
 
@@ -16,6 +17,7 @@
 #include <sys/wait.h>
 #endif
 #include <fstream>
+#include <thread>
 #include <iterator>
 #include <map>
 
@@ -395,8 +397,11 @@ TEST(bug_report_caps_big_files) {
 // ---- native_play's run log (tools/native/run_log.h), in child processes ----
 namespace {
 // A child: stdout / stderr pointed at `orig` (a file, or /dev/null), the run log started at `log`, lines written;
-// `crash`: then a fault whose handler drains the log as crash_report does (g_crash_flush) and _exits. Its exit code.
-int run_child(const fs::path& orig, const fs::path& log, bool crash) {
+// `crash`: then a fault whose handler drains the log as crash_report does (g_crash_flush) and _exits; `uncaught`
+// (musicexit): instead a std::system_error out of a noexcept function, under b3report/uncaught.h's handler. Its exit code.
+[[gnu::noinline]] void join_fails() { throw std::system_error(EINVAL, std::generic_category()); }   // as a failed join()
+void throws_through_noexcept() noexcept { join_fails(); }                                          // as in a destructor
+int run_child(const fs::path& orig, const fs::path& log, bool crash, bool uncaught = false) {
     std::fflush(stdout);
     std::fflush(stderr);
     const pid_t pid = fork();
@@ -410,6 +415,10 @@ int run_child(const fs::path& orig, const fs::path& log, bool crash) {
         std::printf("out line 1\n");
         std::fprintf(stderr, "err line\n");
         for (int i = 0; i < 2000; ++i) std::printf("bulk %d\n", i);   // more than a pipe's buffer
+        if (uncaught) {
+            b3port::install_uncaught_report("the test child");
+            throws_through_noexcept();
+        }
         if (crash) {
             std::signal(SIGSEGV, [](int) {
                 std::printf("crash: signal 11 (the report)\n");
@@ -458,6 +467,91 @@ TEST(run_log_keeps_a_crash_report) {
     CHECK(run_child("/dev/null", d / "run2.log", true) == 4);
     CHECK(slurp(d / "run2.log").find("crash: signal 11 (the report)\n") != std::string::npos);
 }
+
+// musicexit: two threads, one on stdout and one on stderr, 20000 lines each through the run log; every line whole in
+// the original (a file both streams were pointed at) and in the log
+TEST(run_log_two_threads_whole_lines) {
+    const fs::path d = fresh("lines");
+    const fs::path orig = d / "orig.txt", log = d / "run.log";
+    std::fflush(stdout);
+    std::fflush(stderr);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        const int fd = ::open(orig.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        dup2(fd, 1);
+        dup2(fd, 2);
+        ::close(fd);
+        if (!b3native::runlog::start(log)) _exit(9);
+        std::thread other([] {
+            for (int i = 0; i < 20000; ++i) std::fprintf(stderr, "[b3live] renderer line %d with some text after it\n", i);
+        });
+        for (int i = 0; i < 20000; ++i) std::printf("native_play: VBlank %d: game line\n", i);
+        other.join();
+        std::exit(0);
+    }
+    int st = 0;
+    waitpid(pid, &st, 0);
+    CHECK(WIFEXITED(st) && WEXITSTATUS(st) == 0);
+    for (const fs::path& f : {orig, log}) {
+        std::ifstream in(f);
+        std::string line;
+        int game = 0, render = 0, bad = 0;
+        while (std::getline(in, line)) {
+            const std::string g = "native_play: VBlank ", r = "[b3live] renderer line ";
+            if (line.rfind(g, 0) == 0 && line == g + std::to_string(std::atoi(line.c_str() + g.size())) + ": game line") ++game;
+            else if (line.rfind(r, 0) == 0 && line == r + std::to_string(std::atoi(line.c_str() + r.size())) + " with some text after it") ++render;
+            else ++bad;
+        }
+        CHECK(game == 20000);
+        CHECK(render == 20000);
+        CHECK(bad == 0);
+    }
+}
+
+TEST(uncaught_exception_reported) {   // musicexit: the exception, the thread, frames, exit 4 -- not a bare abort
+    const fs::path d = fresh("uncaught");
+    CHECK(run_child("/dev/null", d / "run.log", false, true) == 4);
+    const std::string log = slurp(d / "run.log");
+    CHECK(log.find("bulk 1999\n") != std::string::npos);
+    CHECK(log.find("crash: uncaught C++ exception in the test child: std::system_error: Invalid argument (generic 22)\n") !=
+          std::string::npos);
+    CHECK(log.find("crash: thread \"") != std::string::npos);
+    CHECK(log.find("test_report") != std::string::npos);   // a frame (backtrace_symbols: the program's name)
+    CHECK(log.find("the end") == std::string::npos);
+}
 #endif
+
+#ifndef _WIN32
+TEST(run_log_line_cut) {   // musicexit: what a reader passes on (whole lines; all at the end or past kLongLine)
+    using b3native::runlog::line_cut;
+    CHECK(line_cut("", false) == 0);
+    CHECK(line_cut("half a li", false) == 0);
+    CHECK(line_cut("half a li", true) == 9);
+    CHECK(line_cut("one\n", false) == 4);
+    CHECK(line_cut("one\ntwo\nthr", false) == 8);
+    CHECK(line_cut(std::string(b3native::runlog::kLongLine, 'x'), false) == b3native::runlog::kLongLine);
+}
+#endif
+
+TEST(uncaught_exception_text) {   // musicexit (include/b3report/uncaught.h)
+    CHECK(b3port::uncaught_exception_text().rfind("no active exception", 0) == 0);
+    try {
+        throw std::system_error(EINVAL, std::generic_category());
+    } catch (...) {
+        CHECK(b3port::uncaught_exception_text() == "std::system_error: Invalid argument (generic 22)");
+    }
+    try {
+        throw std::runtime_error("the reason");
+    } catch (...) {
+        CHECK(b3port::uncaught_exception_text() == "std::runtime_error: the reason");
+    }
+    struct NotStd {};
+    try {
+        throw NotStd{};
+    } catch (...) {
+        const std::string t = b3port::uncaught_exception_text();
+        CHECK(t.find("NotStd") != std::string::npos && t.find("(not a std::exception)") != std::string::npos);
+    }
+}
 
 TEST_MAIN("test_report: ZIP writer, run logs, version, bug report")

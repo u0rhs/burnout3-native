@@ -391,7 +391,10 @@ A deterministic simulation can be stored as its inputs. A **replay file** (`.b3r
 holds both pads, typed text, the card as it was at the boot, the game-side options and RAM checkpoints.
 [`tools/native/replay_check.sh`](../tools/native/replay_check.sh) records a scenario, plays the file back, compares
 the two runs with `compare.sh` (every item equal) and checks the playback's line `replay: N of N checkpoints
-matched`. Window runs also keep a **pad recording** beside their log, and `native_play --replay-pad` plays one
+matched`. The logs must match exactly. A screenshot may differ in up to 64 pixels by up to 8 levels, plus up to 4
+single pixels by more (`SHOT_TOL`, reported `within tolerance`): lavapipe, the software Vulkan driver of the WSL test
+machines, draws a crash's spark burst slightly differently from identical input (faint edge pixels and a few 1-pixel
+specks of about 50 levels); a dump of every frame's full draw input was equal in the runs that differed. Window runs also keep a **pad recording** beside their log, and `native_play --replay-pad` plays one
 back: that is how a bug report replays a player's session.
 
 ### Unit tests and CI

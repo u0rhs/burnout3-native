@@ -8,6 +8,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -22,7 +23,12 @@ bool AudioDevice::open() {
         return false;
     }
     const SDL_AudioSpec spec{SDL_AUDIO_S16LE, 2, 48000};
-    SDL_AudioStream* s = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+    queue_.reset();
+    ratio_set_ = 1.0;
+    pull_buf_.assign(2 * 16384, 0);   // the largest piece the callback fills at once (it loops for more)
+    // audioq: the device's stream pulls from the output queue (audio_queue.h) when it needs more
+    SDL_AudioStream* s = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec,
+                                                   [](void* u, SDL_AudioStream* st, int add, int total) { AudioDevice::pull(u, st, add, total); }, this);
     if (!s) {
         if (!told_) std::fprintf(stderr, "audio: no playback device (%s); running silent\n", SDL_GetError());
         told_ = true;
@@ -38,8 +44,21 @@ bool AudioDevice::open() {
         block_ = SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(s), &dspec, &frames) && frames > 0 && dspec.freq > 0
                      ? (size_t(frames) * 48000 + size_t(dspec.freq) - 1) / size_t(dspec.freq) : 0;
     }
-    before_push_ = 0;
+    queue_.set_target(OutputQueue::target_for(effective_target(2880, block_), block_));
     return true;
+}
+
+void AudioDevice::pull(void* self, void* stream, int additional, int) {
+    auto* d = static_cast<AudioDevice*>(self);
+    if (additional <= 0) return;
+    // in pieces of the buffer sized at the open (no allocation on the device's thread)
+    const size_t cap = d->pull_buf_.size() / 2;
+    for (size_t left = size_t(additional + 3) / 4; left > 0 && cap > 0;) {
+        const size_t n = std::min(left, cap);
+        d->queue_.pull(d->pull_buf_.data(), n);
+        SDL_PutAudioStreamData(static_cast<SDL_AudioStream*>(stream), d->pull_buf_.data(), int(n * 4));
+        left -= n;
+    }
 }
 
 uint32_t AudioDevice::device_id() const {
@@ -77,46 +96,35 @@ bool AudioDevice::still_playing_after_removal(uint32_t which) {
 
 void AudioDevice::close() {
     if (!stream_) return;
-    SDL_DestroyAudioStream(static_cast<SDL_AudioStream*>(stream_));
+    SDL_DestroyAudioStream(static_cast<SDL_AudioStream*>(stream_));   // (the callback is not called after this returns)
     stream_ = nullptr;
 }
 
 void AudioDevice::push(const int16_t* lr, size_t frames) {
     pushed_ += frames;
     if (!stream_ || frames == 0) return;
-    before_push_ = queued_frames();   // robust2: 0 = the device ran the queue dry before this push
-    SDL_PutAudioStreamData(static_cast<SDL_AudioStream*>(stream_), lr, static_cast<int>(frames * 4));
+    const uint64_t under = queue_.underruns();
+    queue_.push(lr, frames);
+    // the rate control's ratio to the stream: it reads the queue that much faster (> 1) or slower; set when it moved
+    // by more than a part in a million (SDL's resampler follows it smoothly)
+    const double r = queue_.ratio();
+    if (r != ratio_set_ && (r - ratio_set_ > 1e-6 || ratio_set_ - r > 1e-6)) {
+        SDL_SetAudioStreamFrequencyRatio(static_cast<SDL_AudioStream*>(stream_), float(r));
+        ratio_set_ = r;
+    }
+    if (!told_pad_ && under > 0) {
+        std::fprintf(stderr, "audio: the game's sound was late (the device ran the queue dry): faded out, then back in after a %zu-frame cushion "
+                     "(device block %zu; logged once)\n", queue_.target(), block_);
+        told_pad_ = true;
+    }
 }
 
 size_t AudioDevice::queued_frames() const {
-    if (!stream_) return 0;
-    const int q = SDL_GetAudioStreamQueued(static_cast<SDL_AudioStream*>(stream_));
-    return q > 0 ? static_cast<size_t>(q) / 4 : 0;
+    return stream_ ? queue_.level() : 0;
 }
 
-void AudioDevice::regulate(size_t target, size_t band) {
-    if (!stream_) return;
-    auto* s = static_cast<SDL_AudioStream*>(stream_);
-    const size_t q = queued_frames();
-    target = effective_target(target, block_);
-    if (q > target + band) {
-        // drop whole 800-frame frames from the front by draining the excess (SDL_GetAudioStreamData reads the queue)
-        std::vector<int16_t> sink(800 * 2);
-        for (size_t left = q - target; left >= 800; left -= 800) {
-            if (SDL_GetAudioStreamData(s, sink.data(), 800 * 4) <= 0) break;
-            dropped_ += 800;
-        }
-    } else if (const size_t pad = pad_frames(before_push_, q, target); pad > 0) {
-        static const std::vector<int16_t> silence(800 * 2, 0);
-        for (size_t k = 0; k < pad; k += 800) SDL_PutAudioStreamData(s, silence.data(), 800 * 4);
-        padded_ += pad;
-        before_push_ = q + pad;   // (regulate twice without a push: no second pad)
-        if (!told_pad_) {
-            std::fprintf(stderr, "audio: the queue ran dry: %zu frames of silence padded to a %zu-frame cushion (device block %zu; logged once)\n",
-                         pad, target, block_);
-            told_pad_ = true;
-        }
-    }
+void AudioDevice::regulate(size_t target, size_t) {
+    queue_.set_target(effective_target(target, block_));   // (the drift guard is the output queue's: audio_queue.h)
 }
 
 }  // namespace b3native

@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <utility>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -28,7 +29,7 @@ struct Key {
 const Key kKeys[] = {
     {"fullscreen", &Settings::fullscreen, nullptr, 0, 0},
     {"vsync", &Settings::vsync, nullptr, 0, 0},
-    {"frame_cap", nullptr, &Settings::frame_cap, 0, 1000},
+    {"frame_cap", nullptr, &Settings::frame_cap, -1, 1000},   // slowcpu: -1 Auto
     {"interpolation", &Settings::interpolation, nullptr, 0, 0},
     {"hud_wide", &Settings::hud_wide, nullptr, 0, 0},
     {"fe_layout", nullptr, &Settings::fe_layout, 0, 2},
@@ -46,8 +47,13 @@ const Key kKeys[] = {
     {"dither", &Settings::dither, nullptr, 0, 0},
     {"hd_textures", &Settings::hd_textures, nullptr, 0, 0},
     {"xbox_textures", &Settings::xbox_textures, nullptr, 0, 0},   // xboximport
+    {"hd_texture_memory", nullptr, &Settings::hd_texture_memory, 0, 2},   // texpack
     {"car_detail_highest", &Settings::car_detail_highest, nullptr, 0, 0},
     {"car_reflections", nullptr, &Settings::car_reflections, 0, 2},   // reflect1
+    {"reflect_distance", nullptr, &Settings::reflect_distance, 0, 2},   // reflect2 (drawn only)
+    {"reflect_detail", nullptr, &Settings::reflect_detail, 0, 2},
+    {"reflect_update", nullptr, &Settings::reflect_update, 0, 1},
+    {"reflect_resolution", nullptr, &Settings::reflect_resolution, 0, 1},
     {"shadows", &Settings::shadows, nullptr, 0, 0},
     {"skid_marks", &Settings::skid_marks, nullptr, 0, 0},
     {"specular", &Settings::specular, nullptr, 0, 0},
@@ -78,12 +84,40 @@ const Key kKeys[] = {
     {"p2_paint_green", nullptr, &Settings::p2_paint_green, 0, 255},
     {"p2_paint_blue", nullptr, &Settings::p2_paint_blue, 0, 255},
     {"p2_car_decals", &Settings::p2_car_decals, nullptr, 0, 0},
-    {"paint_finish", nullptr, &Settings::paint_finish, 0, 2},
+    {"paint_finish", nullptr, &Settings::paint_finish, 0, 3},   // options3: 3 chrome
+    {"decal_paint", nullptr, &Settings::decal_paint, 0, 1},   // paint2 (drawn only)
+    {"decal_red", nullptr, &Settings::decal_red, 0, 255},
+    {"decal_green", nullptr, &Settings::decal_green, 0, 255},
+    {"decal_blue", nullptr, &Settings::decal_blue, 0, 255},
+    {"wheel_paint", nullptr, &Settings::wheel_paint, 0, 1},
+    {"wheel_red", nullptr, &Settings::wheel_red, 0, 255},
+    {"wheel_green", nullptr, &Settings::wheel_green, 0, 255},
+    {"wheel_blue", nullptr, &Settings::wheel_blue, 0, 255},
+    {"flame_paint", nullptr, &Settings::flame_paint, 0, 1},
+    {"flame_red", nullptr, &Settings::flame_red, 0, 255},
+    {"flame_green", nullptr, &Settings::flame_green, 0, 255},
+    {"flame_blue", nullptr, &Settings::flame_blue, 0, 255},
+    {"p2_decal_paint", nullptr, &Settings::p2_decal_paint, 0, 1},
+    {"p2_decal_red", nullptr, &Settings::p2_decal_red, 0, 255},
+    {"p2_decal_green", nullptr, &Settings::p2_decal_green, 0, 255},
+    {"p2_decal_blue", nullptr, &Settings::p2_decal_blue, 0, 255},
+    {"p2_wheel_paint", nullptr, &Settings::p2_wheel_paint, 0, 1},
+    {"p2_wheel_red", nullptr, &Settings::p2_wheel_red, 0, 255},
+    {"p2_wheel_green", nullptr, &Settings::p2_wheel_green, 0, 255},
+    {"p2_wheel_blue", nullptr, &Settings::p2_wheel_blue, 0, 255},
+    {"p2_flame_paint", nullptr, &Settings::p2_flame_paint, 0, 1},
+    {"p2_flame_red", nullptr, &Settings::p2_flame_red, 0, 255},
+    {"p2_flame_green", nullptr, &Settings::p2_flame_green, 0, 255},
+    {"p2_flame_blue", nullptr, &Settings::p2_flame_blue, 0, 255},
     {"time_of_day", nullptr, &Settings::time_of_day, 0, 1},               // night (drawn only)
     {"moon", &Settings::moon, nullptr, 0, 0},
     {"surface_detail", &Settings::surface_detail, nullptr, 0, 0},
     {"ambient_occlusion", &Settings::ambient_occlusion, nullptr, 0, 0},
     {"sun_shadows", &Settings::sun_shadows, nullptr, 0, 0},                // sunshadow (drawn only)
+    {"prop_shadows", &Settings::prop_shadows, nullptr, 0, 0},              // propshadow1 (drawn only)
+    {"tunnel_lights", nullptr, &Settings::tunnel_lights, 0, 3},           // nightfix, xboxglow (drawn only; 3 read as 2)
+    {"weather", nullptr, &Settings::weather, 0, 1},                       // weather (drawn only)
+    {"rain_volume", nullptr, &Settings::rain_volume, 0, 200},              // weather (the rain's sound)
     {"fps_view", nullptr, &Settings::fps_view, 0, 3},                     // fpsoverlay2
     {"fps_corner", nullptr, &Settings::fps_corner, 0, 3},
     {"skip_hint", &Settings::skip_hint, nullptr, 0, 0},
@@ -91,10 +125,13 @@ const Key kKeys[] = {
     {"speed_units", nullptr, &Settings::speed_units, 0, 1},   // units1
     {"date_format", nullptr, &Settings::date_format, 0, 1},   // mac5
     {"photo_row", &Settings::photo_row, nullptr, 0, 0},   // photorow1 (PHOTO MODE in the pause menu)
+    {"settings_back_keeps", &Settings::settings_back_keeps, nullptr, 0, 0},   // settingsback (SETTINGS BACK BUTTON)
     {"battery_saver", &Settings::battery_saver, nullptr, 0, 0},   // effects2 (BATTERY SAVER)
     {"launcher_at_start", &Settings::launcher_at_start, nullptr, 0, 0},   // launchskip1 (the launcher's own start)
     {"playlist_mode", nullptr, &Settings::playlist_mode, 0, 2},   // custom soundtrack (remaster-features §6)
     {"custom_music_volume", nullptr, &Settings::custom_music_volume, 0, 200},   // musicvol1 (CUSTOM MUSIC VOLUME)
+    {"custom_music_loudness", nullptr, &Settings::custom_music_loudness, 0, 1},   // musicloud (CUSTOM MUSIC LOUDNESS)
+    {"sound_output", nullptr, &Settings::sound_output, 0, 1},                   // audioq (SOUND OUTPUT: 0 Clean, 1 Original)
     {"other_music_apps", nullptr, &Settings::other_music_apps, 0, 1},   // nowplaying1 (remaster-features §6.2)
     {"screen_flashes", nullptr, &Settings::screen_flashes, 0, 1},         // accessibility
     {"hud_colour_filter", nullptr, &Settings::hud_colour_filter, 0, 3},
@@ -102,7 +139,19 @@ const Key kKeys[] = {
     {"boost_mode", nullptr, &Settings::boost_mode, 0, 1},
     {"ghost", nullptr, &Settings::ghost, 0, 1},                           // ghost1 (Time Attack ghosts)
     {"speedrun_timer", nullptr, &Settings::speedrun_timer, 0, 2},         // speedrun1
+    {"replays", nullptr, &Settings::replays, 0, 1},                       // replayview
     {"instant_restart", nullptr, &Settings::instant_restart, 0, 1},
+    {"mirror_mode", &Settings::mirror_mode, nullptr, 0, 0},              // gameopts (MIRROR MODE)
+    {"crashbreaker_all_modes", &Settings::crashbreaker_all, nullptr, 0, 0},   // gameopts (CRASHBREAKER IN EVERY MODE)
+    {"crashbreaker_cars", nullptr, &Settings::crashbreaker_cars, 0, 3},   // gameopts (CRASHBREAKER AFTER)
+    {"crashbreaker_full", &Settings::crashbreaker_full, nullptr, 0, 0},   // gamemods1 (CRASHBREAKER IN EVERY MODE: Full)
+    {"party_crazy_ai", nullptr, &Settings::party_crazy_ai, 0, 3},        // party1 (GAME > PARTY MODES)
+    {"party_moon_jump", nullptr, &Settings::party_moon_jump, 0, 3},
+    {"party_crash_on_demand", &Settings::party_crash, nullptr, 0, 0},
+    {"party_ai_driver", &Settings::party_ai_driver, nullptr, 0, 0},
+    {"party_kamikaze_traffic", &Settings::party_kamikaze, nullptr, 0, 0},
+    {"party_tuk_tuks", &Settings::party_tuk_tuks, nullptr, 0, 0},
+    {"traffic_check", nullptr, &Settings::traffic_check, 0, 2},          // trafficcheck (TRAFFIC CHECKING: Off, Revenge, Extreme)
     {"rumble", nullptr, &Settings::rumble, 0, 1},                         // rumble1 (controller rumble)
     {"rumble_strength", nullptr, &Settings::rumble_strength, 10, 100},
     {"rumble_triggers", &Settings::rumble_triggers, nullptr, 0, 0},
@@ -110,10 +159,54 @@ const Key kKeys[] = {
     {"adaptive_triggers", nullptr, &Settings::adaptive_triggers, 0, 1},   // pad1 (DualSense adaptive triggers)
     {"adaptive_triggers_strength", nullptr, &Settings::adaptive_triggers_strength, 10, 100},
     {"series_shoulders", nullptr, &Settings::series_shoulders, 0, 1},     // carsel1 (car series on L1 / R1)
+    {"car_stats", nullptr, &Settings::car_stats, 0, 1},                   // carstats1 (GRIP / ACCELERATION on SELECT CAR)
+    {"turn_signals", nullptr, &Settings::turn_signals, 0, 1},             // blinkers1 (the racers' indicators)
+    {"road_rage_parts", nullptr, &Settings::road_rage_parts, 0, 1},       // rrparts1 (Road Rage loose parts; gameplay)
     {"garage_camera", &Settings::garage_camera, nullptr, 0, 0},           // garagecam1 (the car pages' view round the car)
+    {"orbit_camera", &Settings::orbit_camera, nullptr, 0, 0},             // orbitcam1 (the race chase camera round the car)
+    {"boot_to", nullptr, &Settings::boot_to, 0, 4},                       // gamemods1 (START AT)
+    {"idle_pause", &Settings::idle_pause, nullptr, 0, 0},                 // gamemods1 (IDLE PAUSE)
+    {"long_event_end", &Settings::long_event_end, nullptr, 0, 0},         // gamemods1 (END VERY LONG EVENTS)
+    // extras (PC SETTINGS > EXTRAS): the port's gameplay and content additions, off by default
+    {"extra_traffic", &Settings::extra_traffic, nullptr, 0, 0},
+    {"extra_laps", &Settings::extra_laps, nullptr, 0, 0},
+    {"extra_road_rage_rivals", &Settings::extra_road_rage_rivals, nullptr, 0, 0},
+    {"extra_timed_elimination", &Settings::extra_timed_elimination, nullptr, 0, 0},
+    {"extra_transmission", &Settings::extra_transmission, nullptr, 0, 0},
+    {"extra_start", &Settings::extra_start, nullptr, 0, 0},
+    {"extra_rival_style", &Settings::extra_rival_style, nullptr, 0, 0},
+    {"extra_burnout_points", &Settings::extra_burnout_points, nullptr, 0, 0},
+    {"extra_time_limit", &Settings::extra_time_limit, nullptr, 0, 0},
+    {"extra_traffic_pattern", &Settings::extra_traffic_pattern, nullptr, 0, 0},
+    {"extra_rivals_cars", &Settings::extra_rivals_cars, nullptr, 0, 0},
+    {"extra_traffic_check", &Settings::extra_traffic_check, nullptr, 0, 0},
+    {"extra_eliminator", &Settings::extra_eliminator, nullptr, 0, 0},
+    {"extra_more_rivals", &Settings::extra_more_rivals, nullptr, 0, 0},
+    {"extra_heavyweights", &Settings::extra_heavyweights, nullptr, 0, 0},
+    {"extra_traffic_series", &Settings::extra_traffic_series, nullptr, 0, 0},
+    {"extra_car_viewer", &Settings::extra_car_viewer, nullptr, 0, 0},
+    {"extra_custom_cars", nullptr, &Settings::extra_custom_cars, -1, 1},
+    {"extra_night", &Settings::extra_night, nullptr, 0, 0},   // EXPERIMENTAL
+    {"extra_rain", &Settings::extra_rain, nullptr, 0, 0},
+    {"night_world_tour", nullptr, &Settings::night_world_tour, 0, 2},
+    {"rain_world_tour", nullptr, &Settings::rain_world_tour, 0, 2},
+    {"extra_beta_cars", nullptr, &Settings::extra_beta_cars, -1, 1},
+    {"rpm_meter", &Settings::rpm_meter, nullptr, 0, 0},                   // hudmods (RPM METER, drawn only)
+    {"boost_shake", &Settings::boost_shake, nullptr, 0, 0},               // hudmods (BOOST BAR SHAKE, drawn only)
+    {"takedown_pitch", &Settings::takedown_pitch, nullptr, 0, 0},         // hudmods (TAKEDOWN STREAK PITCH, sound only)
+    {"orbit_style", nullptr, &Settings::orbit_style, 0, 1},               // orbitcam2 (0 Look, 1 Swing)
+    {"camera_roll", nullptr, &Settings::camera_roll, 0, 2},               // camroll1 (the chase camera leans into corners)
+    {"finish_camera", nullptr, &Settings::finish_camera, 0, 1},           // finishcam1 (the set pieces after the finish)
+    {"driver_labels", nullptr, &Settings::driver_labels, 0, 3},           // options3 (names / distance over the rival cars)
+    {"crash_camera", &Settings::crash_camera, nullptr, 0, 0},             // options3 (the game's crash camera when you crash; drawn only)
+    {"replay_camera_stay", &Settings::replay_camera_stay, nullptr, 0, 0}, // replaycams (drawn only)
+    {"deformation", nullptr, &Settings::deformation, 0, 4},               // options3 (the cars' crumple scale)
     {"record_replays", nullptr, &Settings::record_replays, 0, 1},         // replay1 (replay files)
     {"developer_mods", nullptr, &Settings::developer_mods, 0, 1},         // tune4 (the tuning console)
     {"voices", nullptr, &Settings::voices, 0, 1},                         // 1.3.0 VOICES (0 the language's, 1 English)
+    {"upload_batch", &Settings::upload_batch, nullptr, 0, 0},             // uploadbatch (ini only: the route's batched uploads)
+    {"graphics_api", nullptr, &Settings::graphics_api, 0, 2},             // d3d12 (GRAPHICS API: Auto / Vulkan / D3D12, Windows)
+    {"scene_depth", nullptr, &Settings::scene_depth, -1, 1},              // scenedepth (ini only: -1 the renderer's choice)
 };
 
 const char* const kFilterNames[] = {"point", "bilinear", "trilinear", "aniso2", "aniso4", "aniso8", "aniso16"};
@@ -149,7 +242,7 @@ const char* level_name(int level) {
 
 Settings on_battery(Settings s) {
     if (!s.battery_saver) return s;
-    if (s.frame_cap == 0 || s.frame_cap > 60) s.frame_cap = 60;
+    if (s.frame_cap <= 0 || s.frame_cap > 60) s.frame_cap = 60;   // (Auto and unlimited alike)
     s.sparks = std::min(s.sparks, int(kLevelMedium));
     s.popcorn = std::min(s.popcorn, int(kLevelMedium));
     return s;
@@ -172,6 +265,10 @@ Settings with_preset(Settings s, Preset p) {
     s.filter = d.filter;
     s.car_detail_highest = d.car_detail_highest;
     s.car_reflections = d.car_reflections;
+    s.reflect_distance = d.reflect_distance;   // reflect2: the game's map (ULTRA below)
+    s.reflect_detail = d.reflect_detail;
+    s.reflect_update = d.reflect_update;
+    s.reflect_resolution = d.reflect_resolution;
     s.shadows = s.skid_marks = s.specular = s.sun = s.coronas = true;
     s.whole_track = true;
     s.motion_blur = d.motion_blur;
@@ -192,6 +289,7 @@ Settings with_preset(Settings s, Preset p) {
         s.post_pc = false;
         s.whole_track = false;
         s.sun_shadows = false;   // sunshadow: a remaster feature (the other presets leave the row as it is)
+        s.tunnel_lights = 0;     // nightfix: TUNNEL LIGHTS Game, the PS2's look (the other presets leave it)
         break;
     case Preset::kLow:      // weak GPUs: no AA, no full-screen passes
         s.msaa = 1;
@@ -219,6 +317,9 @@ Settings with_preset(Settings s, Preset p) {
     case Preset::kUltra:
         s.msaa = 8;
         s.car_detail_highest = true;
+        s.reflect_distance = 1;   // reflect2: 200 m with the props and the cars
+        s.reflect_detail = 2;
+        s.reflect_resolution = 1;   // 256 px faces
         break;
     case Preset::kCustom:
         break;
@@ -234,7 +335,7 @@ Preset matching_preset(const Settings& s) {
 
 std::string to_ini(const Settings& s) {
     std::string out = "# Burnout 3 port: PC settings (settings1, docs/pc-settings.md). Drawn-only and host-only values.\n";
-    out += "version = 1\n";
+    out += "version = " + std::to_string(kIniVersion) + "\n";
     for (const Key& k : kKeys) {
         out += k.name;
         out += " = ";
@@ -259,9 +360,10 @@ std::string to_ini(const Settings& s) {
     return out;
 }
 
-Settings from_ini(std::string_view text, std::vector<std::string>* warnings) {
+Settings from_ini(std::string_view text, std::vector<std::string>* warnings, int* version_out) {
     Settings s;
     bool have_fps_view = false;   // fpsoverlay2: `fps_view` wins over the older `fps_counter`, whatever their order
+    int version = 0;              // the file's `version` (0: none)
     auto warn = [&](const std::string& w) { if (warnings) warnings->push_back(w); };
     while (!text.empty()) {
         const std::size_t nl = text.find('\n');
@@ -271,7 +373,10 @@ Settings from_ini(std::string_view text, std::vector<std::string>* warnings) {
         const std::size_t eq = line.find('=');
         if (eq == std::string_view::npos) { warn("no '=': " + std::string(line)); continue; }
         const std::string_view key = trim(line.substr(0, eq)), val = trim(line.substr(eq + 1));
-        if (key == "version") continue;
+        if (key == "version") {
+            version = std::atoi(std::string(val).c_str());
+            continue;
+        }
         if (key == "hd_pack_dir") {   // mac5: a path, not a number
             if (val.find_first_of("\r\n") != std::string_view::npos) warn("hd_pack_dir: not one line");
             else s.hd_pack_dir = std::string(val);
@@ -329,7 +434,44 @@ Settings from_ini(std::string_view text, std::vector<std::string>* warnings) {
     if (s.camera_distance % 10) { warn("camera_distance: 90..150 in steps of 10"); s.camera_distance = 100; }
     if (s.camera_height % 25) { warn("camera_height: 0..100 in steps of 25"); s.camera_height = 0; }
     if (s.frames_in_flight == 0) { warn("frames_in_flight: 1..3 or -1"); s.frames_in_flight = -1; }
+    // version 1 -> 2: series_shoulders was written 0 because 0 was its default (nobody chose Off: it was already off);
+    // the default is On now
+    if (version > 0 && version < 2 && s.series_shoulders == 0) s.series_shoulders = 1;
+    // version 1, 2 -> 3 (slowcpu, Fable): frame_cap was written 0 because Unlimited was the default; the default is Auto
+    // now (unlimited, or 60 on a CPU of 4 logical processors or fewer). An explicit limit (30, 60, 144 ...) is kept
+    if (version > 0 && version < 3 && s.frame_cap == 0) s.frame_cap = kFrameCapAuto;   // (a file without `version`: as written)
+    // version 1..3 -> 4 (extras): the CUSTOM / BETA series were there whenever their folder held cars: -1 until the folder
+    // is looked at (resolve_extra_cars)
+    if (version > 0 && version < 4) s.extra_custom_cars = s.extra_beta_cars = -1;
+    if (s.tunnel_lights == 3) s.tunnel_lights = 2;   // xboxglow: the withdrawn Xbox all lamps reads as Xbox
+    if (version_out) *version_out = version;
     return s;
+}
+
+std::uint32_t extras_bits(const Settings& s) {
+    std::uint32_t b = 0;
+    const std::pair<bool, std::uint32_t> on[] = {
+        {s.extra_traffic, kExtraTraffic}, {s.extra_laps, kExtraLaps}, {s.extra_road_rage_rivals, kExtraRoadRageRivals}, {s.extra_timed_elimination, kExtraTimedElimination},
+        {s.extra_transmission, kExtraTransmission}, {s.extra_start, kExtraStart}, {s.extra_rival_style, kExtraRivalStyle},
+        {s.extra_burnout_points, kExtraBurnoutPoints}, {s.extra_time_limit, kExtraTimeLimit},
+        {s.extra_traffic_pattern, kExtraTrafficPattern}, {s.extra_rivals_cars, kExtraRivalsCars},
+        {s.extra_traffic_check, kExtraTrafficCheck}, {s.extra_eliminator, kExtraEliminator},
+        {s.extra_more_rivals, kExtraMoreRivals}, {s.extra_heavyweights, kExtraHeavyweights},
+        {s.extra_traffic_series, kExtraTrafficSeries}, {s.extra_car_viewer, kExtraCarViewer},
+        {s.extra_custom_cars != 0, kExtraCustomCars}, {s.extra_beta_cars != 0, kExtraBetaCars},
+        {s.extra_night, kExtraNight}, {s.extra_rain, kExtraRain},
+    };
+    for (const auto& [o, bit] : on) if (o) b |= bit;
+    if (s.extra_night) b |= std::uint32_t(std::clamp(s.night_world_tour, 0, 2)) << 25;   // (World Tour's only with its row)
+    if (s.extra_rain) b |= std::uint32_t(std::clamp(s.rain_world_tour, 0, 2)) << 27;
+    return b;
+}
+
+bool resolve_extra_cars(Settings& s, bool custom_has_cars, bool beta_has_cars) {
+    bool changed = false;
+    if (s.extra_custom_cars < 0) { s.extra_custom_cars = custom_has_cars ? 1 : 0; changed = true; }
+    if (s.extra_beta_cars < 0) { s.extra_beta_cars = beta_has_cars ? 1 : 0; changed = true; }
+    return changed;
 }
 
 bool load_file(const std::string& path, Settings& s, std::string* why) {

@@ -1,15 +1,22 @@
 #include "live.h"
 #include "b3gfx/perf.h"   // perf3
 #include "b3gfx/frames_auto.h"   // perf4
+#include "perfbisect.h"           // fifauto: B3_PERF_BISECT
+#include "b3port/trigger_rumble.h"   // issue #16
 #include "b3port/app_icon.h"   // the built-in window icon
 #include "b3port/user_dir.h"   // portable mode: the user data folder
 #include "clock.h"
+#include "motion_stats.h"   // stutter: the window run's motion summary
 #include "fastforward.h"   // fastload1: FAST LOADING's display rule
+#include "game_behind.h"   // slowcpu: the frame limit while the game is behind real time
 #include "nativeaudio.h"   // play1
 #include "nativepad.h"   // play1
 #include "pcpage.h"     // mac5: PC SETTINGS
 #include "photomode.h"  // photo mode
 #include "garagecam.h"  // garagecam1: the car pages' view round the car
+#include "orbitcam.h"   // orbitcam1: the race chase camera round the car
+#include "finishcam.h"  // finishcam1: the set pieces after the finish
+#include "replaycams.h" // replaycams: the replay viewer's angles
 #include "ghost.h"      // ghost1: Time Attack ghosts
 #include "records.h"    // media1: where ghosts and best times go
 #include "speedrun.h"   // speedrun1: the speedrun timer
@@ -20,11 +27,14 @@
 #include "tuneconsole.h"   // tune4: the tuning console's F9 overlay
 #include "warmcache.h"     // perf4: the warm-up list
 #include "racetime.h"      // todrace: the track page's DAY / NIGHT label
+#include "paintsel.h"      // paintsel: the PAINT prompt on SELECT CAR
+#include "crashhold.h"     // options3: CRASH CAMERA Off (drawn only)
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <atomic>
+#include <functional>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -52,6 +62,61 @@
 #include "pcsettings.h"
 
 namespace b3replay {
+
+namespace {
+// slowcpu (b3settings::effective_frame_cap): FRAME RATE LIMIT with Auto resolved for this PC's logical processors; the
+// first time Auto holds to 60, the log says why
+int frame_cap_in_effect(int frame_cap) {
+    static const int cpus = int(std::thread::hardware_concurrency());
+    const int cap = b3settings::effective_frame_cap(frame_cap, cpus);
+    static bool told = false;
+    if (frame_cap == b3settings::kFrameCapAuto && cap > 0 && !told) {
+        told = true;
+        std::printf("[b3settings] FRAME RATE LIMIT Auto: %d (a processor of %d threads: the game's own work keeps the rest of it)\n", cap, cpus);
+    }
+    return cap;
+}
+}  // namespace
+namespace {
+// payloads1 (diagnostics, B3_PAYLOAD_SHOT=<metres>): a camera `dist` from the vehicle with payload objects nearest the
+// game's camera, beside and above it, looking at it (rows right = screen left, up, at, pos)
+// (B3_PAYLOAD_SHOT_MODEL=<text>: instead the nearest vehicle whose car file's path contains it, e.g. HEVY/CAR25)
+bool payload_camera(const Frame& f, float dist, Camera& out, int* variant = nullptr, int* pieces = nullptr,
+                    const std::function<bool(const Vehicle&)>& pick = nullptr, float* piece0 = nullptr) {
+    if (!(dist > 0)) dist = 14.0f;
+    const Vehicle* best = nullptr;
+    float bd = 1e30f;
+    for (const Vehicle& v : f.vehicles) {
+        if (pick ? !pick(v) : v.npay <= 0) continue;
+        float d = 0;
+        for (int k = 0; k < 3; ++k) d += (v.main.r[3][k] - f.cam.m.r[3][k]) * (v.main.r[3][k] - f.cam.m.r[3][k]);
+        if (d < bd) { bd = d; best = &v; }
+    }
+    if (!best) return false;
+    if (variant) *variant = best->pay_variant;
+    if (pieces) *pieces = best->npay;
+    if (piece0)   // the first 4 pieces' world positions (as View::vehicle_draws places them)
+        for (int i = 0; i < 4 && i < best->npay; ++i) {
+            const Mat34 w = best->pay_released ? best->pay[i] : mul(best->pay[i], best->main);
+            for (int k = 0; k < 3; ++k) piece0[3 * i + k] = w.r[3][k];
+        }
+    const Mat34& m = best->main;
+    float tgt[3], eye[3], at[3], right[3], up[3];
+    for (int k = 0; k < 3; ++k) {
+        tgt[k] = m.r[3][k] + m.r[1][k] * 1.5f;
+        eye[k] = tgt[k] + m.r[0][k] * 0.75f * dist + m.r[2][k] * 0.35f * dist + (k == 1 ? 0.45f * dist : 0.0f);
+        at[k] = tgt[k] - eye[k];
+    }
+    auto norm = [](float* v) { const float l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); if (l > 0) for (int k = 0; k < 3; ++k) v[k] /= l; };
+    norm(at);
+    right[0] = at[2], right[1] = 0, right[2] = -at[0];   // (0, 1, 0) x at
+    norm(right);
+    up[0] = at[1] * right[2] - at[2] * right[1], up[1] = at[2] * right[0] - at[0] * right[2], up[2] = at[0] * right[1] - at[1] * right[0];
+    out = f.cam;
+    for (int k = 0; k < 3; ++k) out.m.r[0][k] = right[k], out.m.r[1][k] = up[k], out.m.r[2][k] = at[k], out.m.r[3][k] = eye[k];
+    return true;
+}
+}  // namespace
 
 namespace {
 
@@ -85,10 +150,19 @@ struct LiveScene {
     double load_ms_total = 0;
     int loads = 0;
 
+    ~LiveScene() { OrbitCam::instance().set_rays_source(nullptr); ReplayCams::instance().set_rays_source(nullptr); ReplayCams::instance().set_on_playing(nullptr); }   // orbitcam2 (the source reads `view`)
     explicit LiveScene(const LiveOptions& opt) : o(opt), feed(opt.name) {
         feed.inproc = o.inproc;
         lead_max = o.latency == "low" ? 1.25 * std::clamp(o.lead, 0.0, 1.0) : 0.0;   // lat1 (clock.h step_sched's reach)
+        // orbitcam2: the route's walls for the orbit camera (B3_ORBITCAM_NO_COLLIDE=1, checks: none)
+        OrbitCam::instance().set_rays_source([this]() -> std::shared_ptr<const TrackRays> {
+            static const bool no_walls = [] { const char* e = std::getenv("B3_ORBITCAM_NO_COLLIDE"); return e && *e == '1'; }();
+            return no_walls ? nullptr : view.track_rays_shared();
+        });
+        ReplayCams::instance().set_rays_source([this]() -> std::shared_ptr<const TrackRays> { return view.track_rays_shared(); });   // replaycams
+        ReplayCams::instance().set_on_playing([](bool on) { PhotoMode::instance().set_live_ok(on); });
         view.game = o.game;
+        FinishCam::instance().load(o.game);   // finishcam1: the set pieces' offsets from the disc's VDB.XML
         view.car_lod = o.car_lod;
         view.show_effects = o.effects;
         view.show_coronas = o.coronas;
@@ -118,9 +192,14 @@ struct LiveScene {
     }
 
     bool ready() const {
+        if (shot_seg)   // an offscreen shot's earlier segment: drawn with the loaded route when it is that segment's
+            return !view.route.empty() && view.route_size == shot_seg->route_size && view.route_units == shot_seg->route_units;
         const auto& s = feed.segment();
         return s.active && !view.route.empty() && view.route_size == s.route_size && view.route_units == s.route_units && matched_seg == s.id;
     }
+    // An offscreen shot of a tick in an earlier segment than the feed's current one (the renderer reached its poll after
+    // the next segment began: a Crash junction's retry): ready() and frame() use that segment while the shot is drawn
+    std::optional<LiveFeed::Seg> shot_seg;
 
     // gsoff1 (§28.6): the race's route from the STATIC.DAT header in guest memory, loaded as soon as the game has it (during
     // its loading screen, 160..290 ticks before the first race tick in race2 / roadrage1 / gsoff1mp2), so the race draws
@@ -187,8 +266,10 @@ struct LiveScene {
         if (prep_job.valid() && prep_job.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {   // loadlag1
             TrackPrep p = prep_job.get();
             if (p.route == want_route && p.route != view.route) {
+                route_building().store(true, std::memory_order_release);   // scenewait: the GPU half on this thread
                 if (finish_route(dev, std::move(p), want_poll, prep_t0)) header_route = want_route;
                 else want_route.clear();   // (not again until the header changes, as before)
+                route_building().store(false, std::memory_order_release);
             }
         }
         if (!prep_job.valid() && !want_route.empty() && want_route != view.route && want_route != header_route) start_route();   // a newer header's
@@ -219,8 +300,20 @@ struct LiveScene {
     }
     void start_route() {
         prep_t0 = b3live::now_ns();
+        route_building().store(true, std::memory_order_release);   // scenewait (fastforward.h): until the worker returns
         prep_job = std::async(std::launch::async, [route = want_route, game = view.game] {
             SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_LOW);   // below the game's thread (as the render thread on Windows)
+            struct Done { ~Done() { route_building().store(false, std::memory_order_release); } } done;
+            // scenewait checks only: $B3_TEST_ROUTE_DELAY_MS a slow route, $B3_TEST_ROUTE_FAIL=1 one that fails (after the delay)
+            static const int delay = [] { const char* e = std::getenv("B3_TEST_ROUTE_DELAY_MS"); return e ? std::atoi(e) : 0; }();
+            static const bool fail = [] { const char* e = std::getenv("B3_TEST_ROUTE_FAIL"); return e && e[0] == '1'; }();
+            if (delay > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+            if (fail) {
+                TrackPrep p;
+                p.route = route;
+                p.why = "B3_TEST_ROUTE_FAIL";
+                return p;
+            }
             return View::prepare_track(route, game);
         });
     }
@@ -228,6 +321,37 @@ struct LiveScene {
     void update(b3gfx::Device& dev) {
         if (o.route_header) preload(dev);
         scene_busy().store(async_routes && route_pending(), std::memory_order_relaxed);   // loadlag1 (fastforward.h)
+        // vpreload (fastforward.h): a scene wait asked for the race's vehicles: loaded here, before the race is shown (the
+        // game is held until done or the wait's cap); only when asked (a scene wait: windowed, paced fast loading), so an
+        // unpaced shot run (the golden) loads them at their first draw as before
+        // (Fable) only while the wait waits: a request it gave up on (its cap, the quit) is never run with the race on screen;
+        // the latest tick's vehicles only (none: a load out of a race, the front end's: nothing to do); B3_PRELOAD=0: off
+        if (const std::uint32_t asked = vehicles_preload_asked().load(std::memory_order_acquire);
+            asked != vehicles_preload_done().load(std::memory_order_acquire) && !route_pending()) {
+            static const bool off = [] { const char* e = std::getenv("B3_PRELOAD"); return e && e[0] == '0'; }();
+            static const std::vector<Vehicle> none;
+            const std::vector<Vehicle>& vs = feed.empty() ? none : feed.at(feed.last()).vehicles;
+            if (!off && !vs.empty() && vehicles_preload_open().load(std::memory_order_acquire)) {
+                const std::uint64_t t0 = b3live::now_ns();
+                std::string stop;
+                vehicles_preload_running().store(true, std::memory_order_release);   // scenewait (fastforward.h)
+                const int n = view.preload_vehicles(dev, vs, feed.models().heads, 2000.0,
+                                                    [] { return vehicles_preload_open().load(std::memory_order_acquire); }, stop);
+                vehicles_preload_running().store(false, std::memory_order_release);
+                const b3asset::HdDecodedStats hs = b3asset::hd_decoded_stats();
+                const b3asset::HdCacheStats cs = b3asset::hd_cache_stats();   // hdcache
+                std::printf("[b3live] vehicles preloaded: %d models, %.0f ms (%zu vehicles)%s%s; HD decodes held %.0f of %.0f MB, %llu dropped so far; "
+                            "HD prepared for %d vehicle files in %.0f ms%s (process %.0f -> %.0f MB, private %.0f -> %.0f MB); HD cache %llu read, %llu converted so far\n",
+                            n, double(b3live::now_ns() - t0) / 1e6, vs.size(), stop.empty() ? "" : "; stopped: ", stop.c_str(),
+                            double(hs.bytes) / 1048576.0, double(hs.budget) / 1048576.0, static_cast<unsigned long long>(hs.evicted),
+                            view.hd_prefetched, view.hd_prefetch_ms, view.hd_prefetch_cut ? " (stopped: the wait or its budget)" : "",
+                            view.hd_prefetch_mem[0].resident_mb, view.hd_prefetch_mem[1].resident_mb, view.hd_prefetch_mem[0].private_mb,
+                            view.hd_prefetch_mem[1].private_mb, static_cast<unsigned long long>(cs.hits), static_cast<unsigned long long>(cs.misses));
+                std::fflush(stdout);
+            }
+            std::uint32_t done = vehicles_preload_done().load(std::memory_order_acquire);
+            while (done < asked && !vehicles_preload_done().compare_exchange_weak(done, asked, std::memory_order_acq_rel)) {}
+        }
         const auto& s = feed.segment();
         if (!s.active || feed.empty()) return;
         // gsoff1: the header's route is this segment's: drawn from its first tick, no sample matching or rescore
@@ -277,7 +401,8 @@ struct LiveScene {
     // `cap` (perf1's correction blend): the frame as it was computed with the ticks up to index `cap` only
     bool frame(double x, bool interpolate, Frame& f, std::size_t cap = ~std::size_t(0)) const {
         if (!ready()) return false;
-        const std::size_t lo = std::max(feed.segment().first, feed.first()), hi = std::min(feed.last(), cap);
+        const std::size_t lo = std::max(shot_seg ? shot_seg->first : feed.segment().first, feed.first());
+        const std::size_t hi = std::min(shot_seg ? std::min(feed.last(), shot_seg->last_race) : feed.last(), cap);
         if (hi < lo) return false;
         x = std::clamp(x, double(lo), double(hi) + (interpolate && hi > lo ? lead_max : 0.0));
         if (x > double(hi)) {   // lat1: past the newest tick (frac in (1, 1 + lead] from ticks hi - 1 and hi)
@@ -287,6 +412,7 @@ struct LiveScene {
             // ... with the motion extrapolated from the last two ticks: cameras, cars matched by id and model, dynamic
             // props by placement, the displayed time (fades, scrolls, the blur's clock: tick + alpha stays continuous)
             const Frame e = frame_at(seg, hi - 1, x - double(hi - 1), true, kCameraKeyReach, true);
+            view.frame_lights(seg, hi, 0.0, f);   // taillights (the newest tick's lights, as its state above)
             f.tick = e.tick;
             f.alpha = e.alpha;
             f.cam = e.cam;
@@ -317,13 +443,105 @@ struct LiveScene {
             f.time_attack = e.time_attack;   // ghost1: the lap's time at the displayed instant
             f.lap_index = e.lap_index;
             f.lap_time = e.lap_time;
+            crash_hold(f, hi, lo);               // options3: CRASH CAMERA Off (before the FOV, as a game camera)
+            view.chase_clock = double(feed.at(hi).poll) + (x - double(hi));   // camfixes2: the offsets' easing clock
             view.apply_fov(f.cam, f.vehicles);   // perf1: as interpolated frames (the drawn-only FOV and its dolly)
+            race_orbit(f, hi, 0.0, hi);          // orbitcam1: the newest tick's look
             return true;
         }
         const std::size_t i = std::size_t(std::floor(x));
-        f = frame_at(SegTicks(feed, lo, hi), i, x - double(i), interpolate, kCameraKeyReach, true);
+        const SegTicks seg(feed, lo, hi);
+        f = frame_at(seg, i, x - double(i), interpolate, kCameraKeyReach, true);
+        view.frame_lights(seg, i, f.alpha, f);   // taillights
+        crash_hold(f, i, lo);                // options3: CRASH CAMERA Off
+        view.chase_clock = double(feed.at(i).poll) + (x - double(i));   // camfixes2
         view.apply_fov(f.cam, f.vehicles);   // settings1 (drawn-only FOV)
+        race_orbit(f, i, interpolate ? x - double(i) : 0.0, hi);   // orbitcam1
         return true;
+    }
+
+    // options3 (crashhold.h): CRASH CAMERA Off -- while the game's own crash camera has a share of the view, the chase view
+    // of the last tick before it (at most kHoldReach ticks back, from `lo` on) held behind the player's car. Not in split
+    // screen. $B3_CRASH_CAMERA=0 / 1 wins over the setting (tests).
+    static constexpr std::size_t kHoldReach = 1800;
+    static bool crash_camera_on() {
+        if (const char* e = std::getenv("B3_CRASH_CAMERA"); e && (e[0] == '0' || e[0] == '1') && !e[1]) return e[0] == '1';
+        return PcPage::instance().settings().crash_camera;
+    }
+    void crash_hold(Frame& f, std::size_t i, std::size_t lo) const {
+        if (f.split || !(f.cam.crash > 0.0f) || crash_camera_on()) return;
+        const auto car_of = [](const std::vector<Vehicle>& vs) -> const Vehicle* {
+            for (const Vehicle& v : vs) if (v.id == kPlayerRaceCar) return &v;
+            return nullptr;
+        };
+        const Vehicle* now = car_of(f.vehicles);
+        if (!now) return;
+        for (std::size_t j = i + 1; j-- > lo && i - j <= kHoldReach;) {
+            const Tick& t = feed.at(j);
+            if (!t.cam.valid || t.cam.chase < 0.999f || t.cam.crash > 0.0f) continue;
+            const Vehicle* then = car_of(t.vehicles);
+            if (!then) return;
+            f.cam = crash_hold_camera(f.cam, t.cam, then->main.r[3], now->main.r[3], f.cam.crash);
+            return;
+        }
+    }
+
+    // orbitcam1 (orbitcam.h): each player's look round their car, between tick i's offsets and the next's (drawn only;
+    // none without the player's input)
+    void race_orbit(Frame& f, std::size_t i, double frac, std::size_t hi) const {
+        const Tick& a = feed.at(i);
+        const Tick& b = feed.at(std::min(i + 1, hi));
+        for (int p = 0; p < 2; ++p) {
+            if (p == 1 && !f.split) break;
+            Camera& cam = p == 0 ? f.cam : f.cam2;
+            float o[2];
+            orbit_lerp(a.race_orbit[p], b.race_orbit[p], float(frac), o);
+            // (not under the finish camera's set pieces: they replace view 0, from the game's view window)
+            if ((o[0] != 0.0f || o[1] != 0.0f) && !(p == 0 && (a.finish_cam.on || a.replay_cam.on))) {
+                // orbitcam2: the walls' eased distance between the ticks' (Tick::race_wall), LOOK's front zoom
+                const float wa = a.race_wall[p], wb = b.race_wall[p];
+                OrbitDraw draw;
+                draw.wall = wa >= 0.0f && wb >= 0.0f ? wa + (wb - wa) * float(frac) : std::max(wa, wb);
+                draw.front_zoom = OrbitCam::instance().style() == ChaseOrbit::kLook;
+                if (apply_chase_orbit(cam, f.vehicles, p == 0 ? kPlayerRaceCar : kPlayer2RaceCar, o, draw)) f.orbit_away[p] = orbit_marker_away(o);
+            }
+            // camroll1: the chase camera's lean, between this tick's and the next's (0 with CAMERA ROLL off)
+            // (orbitcam2: after the orbit, faded out as the view turns from the game's: orbit_roll_keep)
+            const float roll = (a.race_roll[p] + (b.race_roll[p] - a.race_roll[p]) * float(frac)) * orbit_roll_keep(f.orbit_away[p]);
+            roll_camera(cam, roll);
+            // the markers the game projected with its own camera: shrunk away while the view is rolled (where the renderer
+            // re-projects them, they follow the rolled view already)
+            if (roll != 0.0f) f.orbit_away[p] = std::max(f.orbit_away[p], roll_marker_away(roll));
+            // finishcam1: after the finish, the set pieces' camera (view 0; within a shot between this tick's and the
+            // next's, a cut at a new shot); the markers the game projected with its own camera are not drawn then
+            if (p == 0 && a.finish_cam.on) {
+                const auto& fa = a.finish_cam;
+                const auto& fb = b.finish_cam.on && b.finish_cam.shot == fa.shot ? b.finish_cam : fa;
+                const float u = float(frac);
+                float eye[3], look[3];
+                for (int k = 0; k < 3; ++k) {
+                    eye[k] = fa.eye[k] + (fb.eye[k] - fa.eye[k]) * u;
+                    look[k] = fa.look[k] + (fb.look[k] - fa.look[k]) * u;
+                }
+                finish_camera(f.cam, eye, look, fa.zoom + (fb.zoom - fa.zoom) * u);
+                f.orbit_away[0] = 1.0f;
+            }
+            // replaycams: while the game's replay plays, the viewer's angle (view 0; between this tick's and the next's
+            // within one cut); the markers the game projected with its own camera are not drawn then
+            if (p == 0 && a.replay_cam.on) {
+                const auto& ra = a.replay_cam;
+                const auto& rb = b.replay_cam.on && b.replay_cam.cut == ra.cut ? b.replay_cam : ra;
+                const float u = float(frac);
+                float eye[3], look[3];
+                for (int k = 0; k < 3; ++k) {
+                    eye[k] = ra.eye[k] + (rb.eye[k] - ra.eye[k]) * u;
+                    look[k] = ra.look[k] + (rb.look[k] - ra.look[k]) * u;
+                }
+                if (ra.half_w > 0) { f.cam.half_w = ra.half_w; f.cam.half_h = ra.half_h; }   // (the chase camera's view window)
+                finish_camera(f.cam, eye, look, ra.zoom + (rb.zoom - ra.zoom) * u);
+                f.orbit_away[0] = 1.0f;
+            }
+        }
     }
 
     // menu1 (§22): outside a race on screen (front end, loading screens, a race's first half second before its route is
@@ -353,6 +571,7 @@ struct LiveScene {
         f = Frame{};
         f.tick = i;
         f.hud = t.hud;
+        f.carousel = t.carousel;   // paint3
         return true;
     }
 
@@ -373,10 +592,13 @@ struct LiveScene {
         records::Run r;
         r.playback = o.replay_playback;
         if (o.gameplay_set) r.gameplay_set = o.gameplay_set();
+        r.race_options = race_options_word;   // raceopts: the race's SELECT OPTIONS (the latest tick's)
         return r;
     }
     std::string ghost_folder() const { return records::folder(o.ghost_dir, records_run()); }
     std::string speedrun_folder() const { return records::folder(o.speedrun_dir, records_run()); }
+    std::uint64_t race_options_word = 0;   // raceopts (records.h): the race's options, from the ticks as they are read
+    std::uint64_t ghost_options = 0;       // the options the loaded ghost's folder is for
     ghost::Recorder ghost_rec{[] { const char* e = std::getenv("B3_GHOST_TEST_LAP"); return e ? float(std::atof(e)) : 0.0f; }()};
     ghost::Lap ghost_best;
     std::string ghost_track;       // the route the loaded best lap is for ("" none)
@@ -443,6 +665,32 @@ struct LiveScene {
     }
 
     // after update(): the new ticks to the recorder, the route's best lap loaded when the route changes
+    // camfixes (checks: B3_CHASE_TRACE=1): each tick where the chase camera's old choice of the chased car (the nearest
+    // race car ahead) is not the player's: the poll, the car taken and its distance, the player's (the moments the
+    // drawn-only CAMERA DISTANCE / HEIGHT / FOV offsets jumped to another car)
+    std::size_t chase_trace_next = 0;
+    void chase_trace() {
+        static const int on = [] { const char* e = std::getenv("B3_CHASE_TRACE"); return e && *e ? std::atoi(e) : 0; }();
+        if (!on || feed.empty()) return;
+        static float prev_d = -1.0f;   // (2: the game camera's distance to the player's car, its jumps logged)
+        for (std::size_t i = std::max(chase_trace_next, feed.first()); i <= feed.last(); ++i) {
+            const Tick& t = feed.at(i);
+            chase_trace_next = i + 1;
+            if (!t.cam.valid || !(t.cam.chase > 0.0f) || t.fe_car != 0) continue;
+            float b0, r0, b1, r1;
+            const std::uint32_t any = chase_target(t.cam, t.vehicles, 0u, b0, r0), own = chase_target(t.cam, t.vehicles, kPlayerRaceCar, b1, r1);
+            if (on == 2) {
+                const float d = own ? b1 : -1.0f;
+                if (d >= 0.0f && prev_d >= 0.0f && std::fabs(d - prev_d) > 0.25f)
+                    std::printf("[chase] poll %u: the game camera's distance to the car %.2f -> %.2f m (chase %.2f)\n", t.poll, double(prev_d), double(d),
+                                double(t.cam.chase));
+                prev_d = d;
+            }
+            if (any != 0 && any != kPlayerRaceCar)
+                std::printf("[chase] poll %u: chase %.2f: the old choice took car %08X at %.1f m (the player's: %s %.1f m)\n", t.poll, double(t.cam.chase), any,
+                            double(b0), own ? "ahead at" : "not ahead,", double(own ? b1 : 0.0f));
+        }
+    }
     void ghosts() {
         const bool on = view.ghost_mode != 0 && !o.ghost_dir.empty();
         if (!on) {
@@ -452,11 +700,16 @@ struct LiveScene {
             return;
         }
         const std::string track = ready() ? ghost::last_two(view.route) : std::string();
-        if (!ghost_was_on || (!track.empty() && track != ghost_track)) ghost_load(track);
+        if (!feed.empty()) race_options_word = feed.at(feed.last()).race_time.options;   // raceopts (before a load)
+        if (!ghost_was_on || (!track.empty() && (track != ghost_track || race_options_word != ghost_options))) {
+            ghost_options = race_options_word;   // (another race's options: their own folder's ghost)
+            ghost_load(track);
+        }
         ghost_was_on = true;
         if (feed.empty()) return;
         for (std::size_t i = std::max(ghost_next, feed.first()); i <= feed.last(); ++i) {
             const Tick& t = feed.at(i);
+            race_options_word = t.race_time.options;   // raceopts
             if (ghost_debug) {   // B3GHOST_DEBUG=1: the lap state on change (the mode, the lap, the logic's vtable)
                 char b[160];
                 std::snprintf(b, sizeof b, "valid %d time attack %d lap %d of %d logic vtable %08X race %d route %s", int(t.lap.valid),
@@ -467,7 +720,7 @@ struct LiveScene {
                 }
             }
             ghost::TickInput in;
-            in.time_attack = !track.empty() && t.lap.valid && t.lap.time_attack && race_tick(t);
+            in.time_attack = !track.empty() && t.lap.valid && t.lap.time_attack && race_tick(t) && t.replay != 2;   // (replayview: not a replay)
             in.index = t.lap.index;
             in.time = t.lap.time;
             for (const Vehicle& v : t.vehicles) {
@@ -569,10 +822,11 @@ struct LiveScene {
         sr_was_on = true;
     }
     void sr_tick(const Tick& t) {
+        race_options_word = t.race_time.options;   // raceopts (records.h)
         const std::string track = !view.route.empty() ? ghost::last_two(view.route) : std::string();
         speedrun::TickIn in;
         in.poll = t.poll;
-        in.race = !track.empty() && race_tick(t);
+        in.race = !track.empty() && race_tick(t) && t.replay != 2;   // (replayview: the game's replay of a race is no race of the player's)
         in.s = t.score;
         in.track = track;
         in.car = player_car(t);
@@ -640,6 +894,25 @@ struct LiveScene {
     }
 };
 
+// options3 (racetime.h DriverLabels): DRIVER LABELS over the rival cars of a race frame, under the HUD (View::host_ui_list
+// slot 1): while the race runs (view 0's score state 2) on the game's chase cameras (not its crash or takedown shots), not in
+// split screen. $B3_DRIVER_LABELS=0..3 wins over the setting (tests).
+int driver_labels_mode() {
+    if (const char* e = std::getenv("B3_DRIVER_LABELS"); e && e[0] >= '0' && e[0] <= '3' && !e[1]) return e[0] - '0';
+    return std::clamp(PcPage::instance().settings().driver_labels, 0, 3);
+}
+void driver_labels_list(LiveScene& ls, DriverLabels& dl, b3gfx::Device& dev, const Frame& f, const float view_proj[16], float aspect,
+                        std::vector<b3gfx::DrawItem>& items, int h, int w) {
+    const int mode = driver_labels_mode();
+    if (mode == kDriverLabelsOff || f.split || ls.feed.empty() || !(f.cam.chase > 0.5f)) return;
+    if (ls.feed.at(std::min<std::size_t>(f.tick, ls.feed.last())).score.state != 2) return;
+    const std::vector<DriverLabel> labels = driver_labels_place(f.vehicles, view_proj, aspect);
+    ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+    ls.view.host_ui_list(dev, dl.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures, labels, mode,
+                                    PcPage::instance().settings().speed_units),
+                         aspect, items, h, w, 1);
+}
+
 // todrace (racetime.h): the track page's DAY / NIGHT label for the record `rt`: the device in use, the TIME OF DAY action's
 // first key and gamepad input, the PC SETTINGS language; what Default gives is the view's TIME OF DAY ($B3_NIGHT too)
 std::shared_ptr<const HostUi> race_time_ui(RaceTimeLabel& label, const LiveScene& ls, PcPage& page, const HostRaceTime& rt) {
@@ -650,6 +923,27 @@ std::shared_ptr<const HostUi> race_time_ui(RaceTimeLabel& label, const LiveScene
     const b3native::input::PadInput pad = c.port.pad[a].empty() ? b3native::input::PadInput::None : c.port.pad[a].front();
     return label.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures, rt.label_choice, rt.label_opacity,
                     ls.view.night.on, ls.view.prompt_device, key, pad, page.ui_language());
+}
+
+// paintsel (paintsel.h): the PAINT prompt on SELECT CAR for the record `ps`: the device in use (a pad: its glyph positions,
+// the menus' Circle where the player's layout puts it), the CAR PAINT PANEL key, the PC SETTINGS language
+std::shared_ptr<const HostUi> paint_sel_ui(PaintSelPrompt& prompt, const LiveScene& ls, PcPage& page, const HostPaintSel& ps) {
+    if (ls.feed.empty()) return nullptr;
+    const b3native::input::Controls c = NativePad::instance().controls();
+    constexpr std::size_t a = std::size_t(b3native::input::PortAction::PaintPanel);
+    const std::uint16_t key = c.port.keys[a].empty() ? 0 : c.port.keys[a].front();
+    return prompt.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures, ps.opacity, ls.view.prompt_device,
+                     ls.view.prompt_keys, key, page.ui_language());
+}
+
+// replayview (racetime.h): the REPLAY prompt: the device in use, the REPLAY key, the PC SETTINGS language
+std::shared_ptr<const HostUi> replay_prompt_ui(ReplayPrompt& prompt, const LiveScene& ls, PcPage& page, bool shown) {
+    if (ls.feed.empty()) return nullptr;
+    const b3native::input::Controls c = NativePad::instance().controls();
+    constexpr std::size_t a = std::size_t(b3native::input::PortAction::Replay);
+    const std::uint16_t key = c.port.keys[a].empty() ? 0 : c.port.keys[a].front();
+    return prompt.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures, shown, ls.view.prompt_device, key,
+                     page.ui_language());
 }
 
 using DisplayClock = DisplayClockT<LiveFeed>;
@@ -810,7 +1104,7 @@ double display_x(DisplayClock& c, const LiveFeed& f, const LiveOptions& o, doubl
 // finished (GPU done); window: the present was submitted.
 struct LatencyLog {
     // split2p: + player 2's drawn camera (split frames; else 0) and the two local players' drawn car positions (absent: 0)
-    struct Row { std::uint64_t loop, clock, newest_ns, done; std::uint32_t newest, shown, next; std::int32_t frac, age_us; float cam[3], cam2[3], car[2][3]; };
+    struct Row { std::uint64_t loop, clock, newest_ns, done; std::uint32_t newest, shown, next; std::int32_t frac, age_us; float cam[3], cam2[3], car[2][3]; std::int32_t margin_us = 0; };
     std::vector<Row> rows;
     // split2p: + the tick's ticks per frame (CB3Game +0x2DA84), its cameras (view 2's: split ticks) and the two players' cars
     struct TickRow { std::uint32_t poll; std::uint64_t pushed, stamp, drained; int tpf; float cam[3], cam2[3], car[2][3]; };
@@ -866,6 +1160,7 @@ struct LatencyLog {
         Row r{loop, clock, f.arrival_ns(f.last()), done, f.at(f.last()).poll, shown, next,
               std::int32_t(double(ex ? fr.alpha - 1.0f : fr.alpha) * 1e6), std::int32_t(std::clamp(c.latch_age_ms(f, double(i) + double(fr.alpha), done) * 1e3, -1e9, 1e9)),
               {fr.cam.m.r[3][0], fr.cam.m.r[3][1], fr.cam.m.r[3][2]}, {}, {}};   // perf1: the drawn camera (motion per frame)
+        r.margin_us = std::int32_t(c.margin_ms * 1e3);   // stutter: the schedule margin in use (last column)
         if (fr.split) std::memcpy(r.cam2, fr.cam2.m.r[3], sizeof r.cam2);   // split2p
         for (const Vehicle& v : fr.vehicles)
             if (v.kind == VehicleKind::kRaceCar && (v.player == 0 || v.player == 1)) std::memcpy(r.car[v.player], v.main.r[3], sizeof r.car[0]);
@@ -878,11 +1173,11 @@ struct LatencyLog {
         std::fprintf(out, "# b3lat-render 1 mode=%s margin_ms=%.2f delay=%.2f present=%s frames_in_flight=%d bench=%dx%d\n", o.latency.c_str(),
                      o.margin_ms, o.delay, present, fif, o.bench_w, o.bench_h);
         for (const Row& r : rows)
-            std::fprintf(out, "F,%llu,%llu,%u,%llu,%u,%d,%u,%llu,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n", static_cast<unsigned long long>(r.loop),
+            std::fprintf(out, "F,%llu,%llu,%u,%llu,%u,%d,%u,%llu,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d\n", static_cast<unsigned long long>(r.loop),
                          static_cast<unsigned long long>(r.clock), r.newest, static_cast<unsigned long long>(r.newest_ns), r.shown, r.frac, r.next,
                          static_cast<unsigned long long>(r.done), r.age_us, double(r.cam[0]), double(r.cam[1]), double(r.cam[2]), double(r.cam2[0]),
                          double(r.cam2[1]), double(r.cam2[2]), double(r.car[0][0]), double(r.car[0][1]), double(r.car[0][2]), double(r.car[1][0]),
-                         double(r.car[1][1]), double(r.car[1][2]));
+                         double(r.car[1][1]), double(r.car[1][2]), r.margin_us);
         for (const TickRow& t : ticks)
             std::fprintf(out, "T,%u,%llu,%llu,%llu,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n", t.poll,
                          static_cast<unsigned long long>(t.pushed), static_cast<unsigned long long>(t.stamp), static_cast<unsigned long long>(t.drained),
@@ -979,6 +1274,27 @@ void show_save_bubble(Notice& bubble, const std::string& alert, const std::strin
 // compare: the HD TEXTURES setting stays as chosen (it decides whether the pack is read at the start, and so what the
 // next start shows). No player's pack loaded: nothing to switch (a mod's textures are part of the mod and stay).
 // Returns the notice's lines, in our own text's language.
+// texpack: HD TEXTURE MEMORY (GRAPHICS > TEXTURES): whether an HD pack's PNG / BC7 files are encoded to BC1 / BC3 when
+// they load (b3asset::set_hd_encode) or kept as RGBA8. Auto: kept on a discrete GPU with 6 GB of its own memory or more
+// (the Vulkan device's largest DEVICE_LOCAL heap), encoded otherwise (integrated / unified memory, handhelds, not known);
+// Compressed always encodes, Full quality never; $B3_HD_RGBA: never. Only with a device that samples BC. Logged.
+void hd_memory_mode(const b3gfx::Device& dev, const b3settings::Settings* s) {
+    const int mode = s ? std::clamp(s->hd_texture_memory, 0, 2) : 0;
+    const double mb = dev.device_local_mb();
+    const int kind = dev.gpu_kind();
+    const bool plenty = kind == 2 && mb >= 6144.0;
+    const bool rgba_env = std::getenv("B3_HD_RGBA") != nullptr;
+    const bool encode = dev.supports_bc() && !rgba_env && (mode == 2 || (mode == 0 && !plenty));
+    b3asset::set_hd_encode(encode);
+    static const char* const kKind[] = {"not known", "integrated", "discrete", "virtual", "CPU"};
+    std::printf("[b3hd] HD TEXTURE MEMORY %s: PNG / BC7 replacements %s (GPU %s, %s of its own memory%s)\n",
+                mode == 0 ? "Auto" : mode == 1 ? "Full quality" : "Compressed",
+                encode ? "encoded to BC1 / BC3 at load" : "kept as RGBA8 (full quality)", kKind[kind >= 0 && kind <= 4 ? kind : 0],
+                mb > 0 ? (std::to_string(int(mb)) + " MB").c_str() : "memory not known",
+                !dev.supports_bc() ? "; the device takes no BC" : rgba_env ? "; $B3_HD_RGBA" : "");
+    std::fflush(stdout);
+}
+
 std::vector<std::string> hd_key(b3gfx::Device& dev, const b3settings::Settings& s, const std::string& language, const std::string& by) {
     const auto tr = [&](const char* t) { return notice_letters(b3settings::translate_text(t, language)); };
     if (!b3asset::hd_switchable()) {
@@ -1005,7 +1321,7 @@ std::vector<std::string> hd_key(b3gfx::Device& dev, const b3settings::Settings& 
 // closes: the swapchain wait at the loop's top (low / newest latency), the CPU part (events, drain, frame, draw lists),
 // the draw call (swapchain acquire, command recording, submit) and the whole loop. Host timing only.
 struct WindowStats {
-    struct Kind { std::vector<float> wait, cpu, draw, loop; double secs = 0; };
+    struct Kind { std::vector<float> wait, cpu, draw, loop, acq, gpu; double secs = 0; };
     Kind k[2];   // 0 race, 1 front end
     static constexpr std::size_t kMax = 4u << 20;
     void add(int kind, std::uint64_t t0, std::uint64_t t1, std::uint64_t t2, std::uint64_t t3) {
@@ -1016,6 +1332,13 @@ struct WindowStats {
         c.cpu.push_back(float(double(t2 - t1) * 1e-6));
         c.draw.push_back(float(double(t3 - t2) * 1e-6));
         c.loop.push_back(float(double(t3 - t0) * 1e-6));
+    }
+    // fifauto: the frame's swapchain acquire wait (the presentation side) and its GPU work when sampled (< 0: not)
+    void add_waits(int kind, double acquire_ms, double gpu_ms) {
+        Kind& c = k[kind];
+        if (c.acq.size() >= kMax) return;
+        c.acq.push_back(float(acquire_ms));
+        if (gpu_ms >= 0) c.gpu.push_back(float(gpu_ms));
     }
     static double p(const std::vector<float>& v, double q) {
         std::vector<double> d(v.begin(), v.end());
@@ -1043,6 +1366,12 @@ struct WindowStats {
                         i ? "front-end" : "race", c.loop.size(), c.secs > 0 ? double(c.loop.size()) / c.secs : 0.0, p(c.loop, 50), p(c.loop, 95),
                         p(c.loop, 99), p(c.wait, 50), p(c.wait, 95), p(c.wait, 99), p(c.cpu, 50), p(c.cpu, 95), p(c.cpu, 99), p(c.draw, 50),
                         p(c.draw, 95), p(c.draw, 99));
+            if (!c.acq.empty())   // fifauto: the acquire is the presentation side's wait (a free image / drawable), not GPU work
+                std::printf("[b3live] window %s frames: of the draw, the swapchain acquire (a free image / drawable) %.2f/%.2f/%.2f ms;"
+                            " GPU work (sampled: submit to fence) %s\n", i ? "front-end" : "race", p(c.acq, 50), p(c.acq, 95), p(c.acq, 99),
+                            c.gpu.empty() ? "not sampled (B3_GPU_TIME=<n>: every n-th frame)"
+                                          : (std::to_string(c.gpu.size()) + " frames, " + std::to_string(p(c.gpu, 50)).substr(0, 5) + "/" +
+                                             std::to_string(p(c.gpu, 95)).substr(0, 5) + "/" + std::to_string(p(c.gpu, 99)).substr(0, 5) + " ms").c_str());
         }
         std::fflush(stdout);
     }
@@ -1080,23 +1409,78 @@ int run_live_offscreen(const LiveOptions& o) {
     if (o.settings) { filter_options(o.settings->filter, opt); scale_options(*o.settings, opt); }   // settings1
     if (o.settings && o.settings->dither) opt.dither = 1.0f;   // perf1: DITHER
     opt.driver = o.driver;
+    if (opt.driver.empty() && o.settings) opt.driver = graphics_api_driver(*o.settings);   // d3d12 (GRAPHICS API; --driver wins)
     std::string err;
     SDL_Window* hidden = nullptr;   // Metal: b3gfx::create_headless (render5)
     auto dev = b3gfx::create_headless(opt, &err, &hidden);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
     b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
+    hd_memory_mode(*dev, o.settings ? &*o.settings : nullptr);   // texpack: HD TEXTURE MEMORY
     std::printf("[b3live] offscreen: feed %s, driver %s, %zu shots, bench %dx%d\n", o.name.c_str(), dev->driver_name(), o.shots.size(),
                 o.bench_w, o.bench_h);
     const std::string warm_file = warm_path(o, false);   // perf4 (offscreen: only with $B3_WARM_CACHE)
     warm_start(*dev, warm_file);
     std::fflush(stdout);
+    // paint3 diagnostics: B3_BENCH_ASYNC=1: the car thumbnails' pictures as the window draws them (not waited for);
+    // B3_BENCH_DUMP=<dir>:<from poll>:<to poll>: the front end's bench frames in those polls written as PNGs
+    std::string bench_dump;
+    unsigned bench_dump_from = 0, bench_dump_to = 0, bench_dump_n = 0;
+    if (const char* e = std::getenv("B3_BENCH_DUMP"); e && o.bench_w > 0) {
+        const std::string v = e;
+        const std::size_t a = v.rfind(':'), b = a == std::string::npos || a == 0 ? std::string::npos : v.rfind(':', a - 1);
+        if (b != std::string::npos) {
+            bench_dump = v.substr(0, b);
+            bench_dump_from = unsigned(std::atoi(v.c_str() + b + 1));
+            bench_dump_to = unsigned(std::atoi(v.c_str() + a + 1));
+        }
+    }
+    // (a frame in the polls: its regions' mean colours logged (the top background, the big car, the floor), the picture
+    // written at a quarter of its size)
+    auto bench_frame_dump = [&](unsigned poll, std::uint64_t build_ns, std::uint64_t draw_ns, const std::vector<std::uint8_t>& rgba) {
+        const int w = o.bench_w, h = o.bench_h;
+        if (poll < bench_dump_from || poll > bench_dump_to || rgba.size() < std::size_t(w) * std::size_t(h) * 4) return;
+        const auto mean = [&](float x0, float y0, float x1, float y1, double m[3]) {
+            m[0] = m[1] = m[2] = 0;
+            std::size_t n = 0;
+            for (int y = int(y0 * float(h)); y < int(y1 * float(h)); ++y)
+                for (int x = int(x0 * float(w)); x < int(x1 * float(w)); ++x, ++n)
+                    for (int c = 0; c < 3; ++c) m[c] += rgba[4 * (std::size_t(y) * std::size_t(w) + std::size_t(x)) + std::size_t(c)];
+            for (int c = 0; c < 3; ++c) m[c] /= double(n ? n : 1);
+        };
+        double bg[3], car[3], fl[3];
+        mean(0.35f, 0.05f, 0.95f, 0.2f, bg);
+        mean(0.45f, 0.3f, 0.95f, 0.7f, car);
+        mean(0.35f, 0.78f, 0.95f, 0.88f, fl);
+        std::printf("[b3live] bench frame %u poll %u: build %.2f ms draw %.2f ms; background %.1f %.1f %.1f car %.1f %.1f %.1f floor %.1f %.1f %.1f\n",
+                    bench_dump_n, poll, double(build_ns) / 1e6, double(draw_ns) / 1e6, bg[0], bg[1], bg[2], car[0], car[1], car[2], fl[0], fl[1], fl[2]);
+        if (bench_dump_n++ % 4 == 0) {
+            const int qw = w / 4, qh = h / 4;
+            std::vector<std::uint8_t> q(std::size_t(qw) * std::size_t(qh) * 4);
+            for (int y = 0; y < qh; ++y)
+                for (int x = 0; x < qw; ++x)
+                    for (int c = 0; c < 4; ++c) {
+                        unsigned sum = 0;
+                        for (int dy = 0; dy < 4; ++dy)
+                            for (int dx = 0; dx < 4; ++dx) sum += rgba[4 * (std::size_t(4 * y + dy) * std::size_t(w) + std::size_t(4 * x + dx)) + std::size_t(c)];
+                        q[4 * (std::size_t(y) * std::size_t(qw) + std::size_t(x)) + std::size_t(c)] = std::uint8_t(sum / 16);
+                    }
+            char nm[64];
+            std::snprintf(nm, sizeof nm, "/bench_%05u_%04u.png", poll, bench_dump_n - 1);
+            b3asset::write_png_rgba(bench_dump + nm, qw, qh, q.data());
+        }
+    };
     if (o.bench_w > 0 && b3perf::init_from_env()) {
         char inf[160];
         std::snprintf(inf, sizeof inf, "offscreen-bench driver=%s msaa=%d", dev->driver_name(), dev->msaa());
         b3perf::set_info(inf);
     }
     LiveScene ls(o);
+    if (o.bench_w > 0 && std::getenv("B3_BENCH_ASYNC") && std::getenv("B3_BENCH_ASYNC")[0] == '1') ls.view.async_paint = true;   // paint3
     ls.async_routes = o.bench_w > 0 && o.shots.empty();   // loadlag1: the bench without shots draws as the window does
+    // (nightfix, test path) the shot runner keeps 60 s of decoded ticks: a shot is taken only once the renderer reaches it,
+    // and a split-screen shot (24 bloom warm-ups, both views) takes ~11 s in the software rasteriser at night, during which
+    // the game ran past the next shot's poll (SCENARIO=multiplayer's 17000, night); the pictures are the same, kept longer
+    if (!o.shots.empty()) ls.feed.keep_ticks = 3600;
     Capture ref;
     if (!o.verify.empty()) {
         if (!ref.load(o.verify, &err, false)) { std::fprintf(stderr, "%s\n", err.c_str()); return 1; }
@@ -1122,6 +1506,7 @@ int run_live_offscreen(const LiveOptions& o) {
     // display clock statistics of the bench frames (live2): per tick rate class (races 60, crashes 30)
     struct ClockStats { std::vector<double> lag_ms, speed; std::uint64_t frames = 0, starved = 0, backwards = 0; };
     ClockStats cstat[2];
+    MotionStats bstats;   // stutter: the same "race motion" line as the window's (the offscreen proxy)
     double prev_x = -1;
     std::uint64_t prev_ns = 0, prev_seg = ~0ull;
     RaceStartLog race_log;   // gsoff1 (bench frames)
@@ -1136,18 +1521,29 @@ int run_live_offscreen(const LiveOptions& o) {
     if (o.settings) pc_page.load_settings(*o.settings);
     NativePad::instance().set_boost_toggle(pc_page.settings().boost_mode == 1);   // accessibility: BOOST Toggle (opt-in)
     NativePad::instance().set_instant_restart(pc_page.settings().instant_restart == 1);   // speedrun1 (opt-in, input-injecting)
-    NativePad::instance().set_series_shoulders(pc_page.settings().series_shoulders == 1);   // carsel1 (opt-in, input-changing)
+    NativePad::instance().set_series_shoulders(pc_page.settings().series_shoulders == 1);   // carsel1 (on by default, input-changing)
     GarageCam::instance().set_enabled(pc_page.settings().garage_camera);   // garagecam1 (drawn only)
+    OrbitCam::instance().set_enabled(pc_page.settings().orbit_camera);     // orbitcam1 (drawn only)
+    OrbitCam::instance().set_style(pc_page.settings().orbit_style);        // orbitcam2
+    OrbitCam::instance().set_roll(pc_page.settings().camera_roll);          // camroll1
+    FinishCam::instance().set_level(pc_page.settings().finish_camera);      // finishcam1
+    ReplayCams::instance().set_stay(pc_page.settings().replay_camera_stay);   // replaycams
     NativePad::instance().set_rumble(pc_page.settings().rumble == 1, pc_page.settings().rumble_strength, pc_page.settings().rumble_triggers);   // rumble1
     NativePad::instance().set_analog_pedals(pc_page.settings().analog_pedals);   // 1.0.1
     NativePad::instance().set_adaptive_triggers(pc_page.settings().adaptive_triggers == 1, pc_page.settings().adaptive_triggers_strength);   // pad1
     std::uint64_t pc_page_ns = 0;
     SkipHint skip_hint;   // mac5
     RaceTimeLabel race_label;   // todrace
+    PaintSelPrompt paint_prompt;   // paintsel
+    ReplayPrompt replay_prompt;    // replayview
+    ElimCountdown elim_countdown;  // elim1: TIMED ELIMINATION's countdown
+    GearIndicator gear_indicator;  // gearbox: the manual gearbox's gear
+    DriverLabels driver_labels;    // options3: DRIVER LABELS
     SpeedrunPanel speedrun_panel;   // speedrun1
     // hdkey: a script's HD TEXTURES key switches at the poll it was stamped with (NativePad::take_hd_presses), so a shot
     // of poll N shows the textures, and the key's notice, as the window would at N (the notice's age in game time)
     Notice hd_notice;
+    Notice replay_notice;   // replaycams: the shots' camera / driver line
     std::uint32_t hd_notice_poll = 0;
     float hd_notice_age = 0.0f;
     // photo mode in game time (photomode.h): the free camera follows the game's polls, its keys stamped on the game
@@ -1177,6 +1573,7 @@ int run_live_offscreen(const LiveOptions& o) {
         scene_epoch().fetch_add(1, std::memory_order_release);   // loadlag1: a pass with the feed drained (fastforward.h)
         ls.probe_traffic();   // traffic-popin (B3_TRAFFIC_PROBE=1)
         ls.ghosts();   // ghost1
+        ls.chase_trace();   // camfixes (B3_CHASE_TRACE=1)
         ls.speedrun_ticks(PcPage::instance().settings().speedrun_timer);   // speedrun1
         // accessibility diagnostics (SCREEN FLASHES, a11y.h): B3_FLASH_TRACE=1 lists every tick's large light 2D draws as
         // they arrive (the shots alone see few ticks), with what Reduced makes of each
@@ -1257,12 +1654,19 @@ int run_live_offscreen(const LiveOptions& o) {
             pc_page_ns = t;
             const MenuMouse::PagePointer mp = MenuMouse::instance().page_pointer();   // mac5
             const float pa = o.size_set ? float(o.w) / float(o.h) : 4.0f / 3.0f;
+            pc_page.set_context(!ls.feed.empty() && race_tick(ls.feed.at(ls.feed.last())), o.replay_playback);   // nextstart
             if (pc_page.frame(NativePad::instance().last(), dt, o.settings_path, &mp, pa)) {
                 apply_view(ls.view, pc_page.settings());
+                NativeAudio::instance().set_rain_volume(ls.view.rain_audio_volume());   // rainfe: RAIN VOLUME at once
                 NativePad::instance().set_boost_toggle(pc_page.settings().boost_mode == 1);
                 NativePad::instance().set_instant_restart(pc_page.settings().instant_restart == 1);
                 NativePad::instance().set_series_shoulders(pc_page.settings().series_shoulders == 1);
                 GarageCam::instance().set_enabled(pc_page.settings().garage_camera);   // garagecam1
+                OrbitCam::instance().set_enabled(pc_page.settings().orbit_camera);     // orbitcam1
+                OrbitCam::instance().set_style(pc_page.settings().orbit_style);        // orbitcam2
+                OrbitCam::instance().set_roll(pc_page.settings().camera_roll);          // camroll1
+                FinishCam::instance().set_level(pc_page.settings().finish_camera);      // finishcam1
+                ReplayCams::instance().set_stay(pc_page.settings().replay_camera_stay);   // replaycams
                 NativePad::instance().set_rumble(pc_page.settings().rumble == 1, pc_page.settings().rumble_strength, pc_page.settings().rumble_triggers);
                 NativePad::instance().set_analog_pedals(pc_page.settings().analog_pedals);   // 1.0.1
                 NativePad::instance().set_adaptive_triggers(pc_page.settings().adaptive_triggers == 1, pc_page.settings().adaptive_triggers_strength);
@@ -1317,16 +1721,35 @@ int run_live_offscreen(const LiveOptions& o) {
             PhotoMode& photo = PhotoMode::instance();
             const std::size_t li = ls.feed.last();
             photo.set_scene(ls.ready() && li >= ls.feed.segment().first && !pc_page.active());
+            photo.set_mirror((ls.feed.at(li).race_time.game_options & 1u) != 0);   // gameopts (MIRROR MODE)
             GarageCam::instance().set_blocked(pc_page.active() || photo.active());   // garagecam1: the stick is the page's then
+            OrbitCam::instance().set_blocked(pc_page.active() || photo.active());    // orbitcam1
             std::uint32_t to = ls.feed.at(li).poll;
             for (const std::size_t k : shot_order)
                 if (!shot_done[k]) { to = std::min(to, o.shots[k].first); break; }
             if (to > photo.game_time_poll()) photo.advance_to(to, photo_game_cam);
         }
         const bool ended = ls.feed.state() == LiveFeed::State::kEnded;
+        // sparkdet: the feed keeps the race ticks the first pending shot's bloom warm-up will draw (LiveFeed::hold_poll).
+        // trafmem: set again before each shot of a pass (a pass takes every shot whose ticks are there: 36 of them in a
+        // stress run, ~2 min, while a game held on the full hold saw it stand still); a hold moved on frees its ticks
+        // (and a game waiting on it goes on) at once
+        const auto set_hold = [&] {
+            std::uint32_t hold = 0xFFFFFFFFu;
+            for (const std::size_t k : shot_order)
+                if (!shot_done[k]) {
+                    const std::uint32_t back = std::uint32_t(std::max(0, o.bloom_warmup)) + 64u;
+                    hold = o.shots[k].first > back ? o.shots[k].first - back : 0u;
+                    break;
+                }
+            ls.feed.hold_poll.store(hold, std::memory_order_relaxed);
+            ls.feed.trim();
+        };
+        set_hold();
         // shots: the tick of the poll once the camera keys after it have arrived (or the session ended)
         for (const std::size_t k : shot_order) {
             if (shot_done[k] || ls.feed.empty()) continue;
+            set_hold();   // trafmem: the shots before this one in the pass are drawn: their ticks go
             const auto [poll, alpha] = o.shots[k];
             if (!ended && ls.feed.at(ls.feed.last()).poll < poll + std::uint32_t(kCameraKeyReach) + 1) continue;
             shot_done[k] = true;
@@ -1345,7 +1768,7 @@ int run_live_offscreen(const LiveOptions& o) {
             if (o.settings) {   // no record at the tick: the settings of the start, as the live window fills them
                 fps_shot_info.preset = b3settings::preset_name(b3settings::matching_preset(*o.settings));
                 fps_shot_info.msaa = dev->msaa();
-                fps_shot_info.target_fps = o.settings->frame_cap > 0 ? float(o.settings->frame_cap) : 60.0f;
+                fps_shot_info.target_fps = frame_cap_in_effect(o.settings->frame_cap) > 0 ? float(frame_cap_in_effect(o.settings->frame_cap)) : 60.0f;
             } else {
                 fps_shot_info.preset = b3settings::preset_name(b3settings::matching_preset(b3settings::Settings{}));
                 fps_shot_info.msaa = dev->msaa();
@@ -1358,7 +1781,7 @@ int run_live_offscreen(const LiveOptions& o) {
                 fps_shot_corner = fps_corner_from_setting(ps.fps_corner);
                 fps_shot_info.preset = b3settings::preset_name(b3settings::matching_preset(ps));
                 fps_shot_info.msaa = dev->msaa();
-                fps_shot_info.target_fps = ps.frame_cap > 0 ? float(ps.frame_cap) : 60.0f;
+                fps_shot_info.target_fps = frame_cap_in_effect(ps.frame_cap) > 0 ? float(frame_cap_in_effect(ps.frame_cap)) : 60.0f;
                 std::printf("[b3settings] shot poll %u: record %u, preset %s\n", poll, hs->serial, b3settings::preset_name(b3settings::matching_preset(ps)));
             }
             Frame f;
@@ -1367,11 +1790,18 @@ int run_live_offscreen(const LiveOptions& o) {
             items.clear();
             bool split_shot = false;   // gsoff1 (§29): `views` / `sfp` / `items` (the 2D) for draw_views_offscreen
             bool photo_shot = false;   // photo mode: the scene from its free camera at this poll (game time; no 2D)
+            int pay_variant = -1, pay_pieces = 0;   // payloads1 (diagnostics)
+            float pay_piece0[12] = {};
             Camera photo_cam;
             HudProjection hp;
             std::size_t hud_lo = 0, hud_hi = 0;   // textsize1: the race HUD's items (B3_HUD_SIZE_SHOTS below)
             bool hud_variants = false;
-            const bool race = idx >= 0 && ls.ready() && std::size_t(idx) >= ls.feed.segment().first;
+            // the segment holding the shot's tick (not only the feed's current one: a late shot of an earlier segment of the
+            // same route draws as that segment's race tick; a tick outside every race is a front-end shot)
+            ls.shot_seg.reset();
+            const std::optional<LiveFeed::Seg> shot_in = idx >= 0 ? ls.feed.segment_at(std::size_t(idx)) : std::nullopt;
+            if (shot_in && shot_in->id != ls.feed.segment().id) ls.shot_seg = shot_in;
+            const bool race = idx >= 0 && shot_in && ls.ready();
             if (!race) {   // menu1: a front-end shot (2D only)
                 if (idx < 0 || !ls.frontend_frame(double(idx) + double(alpha), f)) {
                     std::printf("[b3live] shot poll %u: not kept, or no 2D frame (index %ld)\n", poll, idx);
@@ -1387,16 +1817,47 @@ int run_live_offscreen(const LiveOptions& o) {
                     ls.view.view2_state.bloom_last = -1;
                     std::vector<std::uint8_t> scratch;
                     const std::size_t i = std::size_t(idx), lo = std::max(ls.feed.segment().first, ls.feed.first());
+                    // (diagnostics, nightfix: $B3_SPLIT_TIMING=1 prints the warm-up frames' mean build and draw time)
+                    static const bool split_timing = [] { const char* e = std::getenv("B3_SPLIT_TIMING"); return e && *e == '1'; }();
+                    double build_ms = 0, draw_ms = 0;
+                    int frames = 0;
                     for (std::size_t k = i > lo + std::size_t(o.bloom_warmup) ? i - std::size_t(o.bloom_warmup) : lo; k < i; ++k) {
                         Frame wf;
                         if (!ls.frame(double(k), true, wf) || !wf.split || !wf.cam.valid) continue;
+                        const auto t0 = std::chrono::steady_clock::now();
                         ls.view.split_frame(*dev, wf, ls.feed.models().heads, ls.feed.models().hud.textures, true, o.fog, spec, w, h, va, ha,
                                             views, sfp, items);
+                        const auto t1 = std::chrono::steady_clock::now();
                         dev->draw_views_offscreen(w, h, views, sfp, items, scratch);
+                        build_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
+                        draw_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+                        ++frames;
                     }
+                    if (split_timing && frames)
+                        std::printf("[b3live] split timing poll %u %dx%d: %d warm-up frames, mean ms build %.1f, draw %.1f\n", poll, w, h, frames,
+                                    build_ms / frames, draw_ms / frames);
                 }
                 ls.view.split_frame(*dev, f, ls.feed.models().heads, ls.feed.models().hud.textures, true, o.fog, spec, w, h, va, ha,
                                     views, sfp, items);
+            } else if (const char* ps = std::getenv("B3_PAYLOAD_SHOT"); ps && f.cam.valid &&
+                       payload_camera(f, float(std::atof(ps)), photo_cam, &pay_variant, &pay_pieces,
+                                      [&](const Vehicle& v) -> bool {
+                                          static const char* want = std::getenv("B3_PAYLOAD_SHOT_MODEL");
+                                          if (!want) return v.npay > 0;
+                                          if (v.model < 0 || std::size_t(v.model) >= ls.feed.models().heads.size()) return false;
+                                          const int file = ls.view.car_file(ls.feed.models().heads[std::size_t(v.model)]);
+                                          return file >= 0 && ls.view.cars[std::size_t(file)].path.find(want) != std::string::npos;
+                                      }, pay_piece0)) {
+                // payloads1 (diagnostics): the shot from a camera on the nearest vehicle with payload objects
+                photo_shot = true;
+                ls.photo_frame(*dev, f, photo_cam, o.size_set ? float(w) / float(h) : f.cam.half_w / f.cam.half_h, o.fog, spec, fp, items,
+                               o.size_set ? float(w) / float(h) : 4.0f / 3.0f);
+                std::printf("[payloads1] shot poll %u (+%.2f): the camera at (%.2f, %.2f, %.2f) on a payload vehicle (variant %d, %d pieces; "
+                            "the first at", poll, double(alpha), double(photo_cam.m.r[3][0]), double(photo_cam.m.r[3][1]), double(photo_cam.m.r[3][2]),
+                            pay_variant, pay_pieces);
+                for (int i = 0; i < 4 && i < pay_pieces; ++i)
+                    std::printf(" (%.3f, %.3f, %.3f)", double(pay_piece0[3 * i]), double(pay_piece0[3 * i + 1]), double(pay_piece0[3 * i + 2]));
+                std::printf(")\n");
             } else if (o.native_pad && f.cam.valid && PhotoMode::instance().camera_at(poll, f.cam, photo_cam)) {
                 photo_shot = true;   // (a free view's bloom is its own frame's: no warm-up)
                 ls.photo_frame(*dev, f, photo_cam, o.size_set ? float(w) / float(h) : f.cam.half_w / f.cam.half_h, o.fog, spec, fp, items,
@@ -1425,6 +1886,10 @@ int run_live_offscreen(const LiveOptions& o) {
                 ls.view.bloom_last = -1;
                 std::vector<std::uint8_t> scratch;
                 const std::size_t i = std::size_t(idx), lo = std::max(ls.feed.segment().first, ls.feed.first());
+                // sparkdet: a warm-up cut short by ticks the feed had already dropped (not by the segment's start) is said
+                const std::size_t want = i > std::size_t(o.bloom_warmup) ? i - std::size_t(o.bloom_warmup) : 0;
+                if (want < lo && ls.feed.first() > ls.feed.segment().first && ls.feed.first() > want)
+                    std::printf("[b3live] shot poll %u: bloom warm-up from tick %zu, not %zu (the feed had dropped the ticks before)\n", poll, lo, want);
                 for (std::size_t k = i > lo + std::size_t(o.bloom_warmup) ? i - std::size_t(o.bloom_warmup) : lo; k < i; ++k) {
                     Frame wf;
                     if (!ls.frame(double(k), true, wf) || !wf.cam.valid) continue;
@@ -1433,7 +1898,7 @@ int run_live_offscreen(const LiveOptions& o) {
                               o.size_set ? float(w) / float(h) : 4.0f / 3.0f);
                     std::vector<b3gfx::DrawItem> witems;
                     ls.view.render_aspect = o.size_set ? float(w) / float(h) : 0.0f;
-                    ls.view.draw_list(*dev, wf, ls.feed.models().heads, true, wp.eye, witems);
+                    ls.view.draw_list(*dev, wf, ls.feed.models().heads, !ls.feed.at(k).replay_cam.on, wp.eye, witems);
                     dev->draw_offscreen(w, h, wp, witems, scratch);
                 }
             }
@@ -1441,10 +1906,14 @@ int run_live_offscreen(const LiveOptions& o) {
             ls.params(f, o.size_set ? float(w) / float(h) : f.cam.half_w / f.cam.half_h, o.fog, spec, fp,
                       o.size_set ? float(w) / float(h) : 4.0f / 3.0f);
             ls.view.render_aspect = o.size_set ? float(w) / float(h) : 0.0f;
-            ls.view.draw_list(*dev, f, ls.feed.models().heads, true, fp.eye, items);
+            // (shots draw what the game streamed, culled by its camera, as it does: the golden's pictures; replaycams: a view of
+            // ours on a car far from the game's camera has the whole track, as the window always draws it)
+            ls.view.draw_list(*dev, f, ls.feed.models().heads, !ls.feed.at(idx).replay_cam.on, fp.eye, items);
             std::memcpy(hp.view_proj, fp.view_proj, sizeof hp.view_proj);
             hp.vehicles = &f.vehicles;
+            driver_labels_list(ls, driver_labels, *dev, f, fp.view_proj, o.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w);   // options3
             hud_lo = items.size();
+            ls.view.hud_carousel = f.carousel; ls.view.hud_tick = f.tick;   // paint3
             ls.view.hud_list(*dev, f.hud, ls.feed.models().hud.textures, o.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w, &hp);
             hud_hi = items.size();
             hud_variants = true;
@@ -1460,7 +1929,7 @@ int run_live_offscreen(const LiveOptions& o) {
                 ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
                 ls.view.host_ui_list(*dev, pc_page.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures),
                                      o.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w);
-                std::printf("[b3live] shot poll %u: PC SETTINGS page drawn\n", poll);
+                std::printf("[b3live] shot poll %u: %s drawn\n", poll, pc_page.panel_open() ? "car paint panel" : "PC SETTINGS page");   // paintsel
             }
             // todrace (racetime.h): the track page's DAY / NIGHT label of the shot's tick (its opacity the game's, in game time)
             if (idx >= 0 && !photo_shot && !pc_page.active() && ls.feed.at(std::size_t(idx)).race_time.label_opacity) {
@@ -1470,6 +1939,38 @@ int run_live_offscreen(const LiveOptions& o) {
                 std::printf("[b3live] shot poll %u: time of day label drawn (%s, opacity %u, %s)\n", poll,
                             race_time_text(rt.label_choice, ls.view.night.on, "").c_str(), unsigned(rt.label_opacity),
                             prompt_device_name(ls.view.prompt_device));
+            }
+            // replayview (racetime.h): the REPLAY prompt on a results page at the shot's tick
+            if (idx >= 0 && !photo_shot && !pc_page.active() && ls.feed.at(std::size_t(idx)).replay == 1) {
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, replay_prompt_ui(replay_prompt, ls, pc_page, true), o.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w);
+                std::printf("[b3live] shot poll %u: REPLAY prompt drawn (%s)\n", poll, prompt_device_name(ls.view.prompt_device));
+            }
+            // paintsel (paintsel.h): the PAINT prompt on SELECT CAR at the shot's tick (its opacity the game's, in game time)
+            if (idx >= 0 && !photo_shot && !pc_page.active() && ls.feed.at(std::size_t(idx)).paint_sel.opacity) {
+                const HostPaintSel& ps = ls.feed.at(std::size_t(idx)).paint_sel;
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, paint_sel_ui(paint_prompt, ls, pc_page, ps), o.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w);
+                std::printf("[b3live] shot poll %u: PAINT prompt drawn (player %u, opacity %u, %s)\n", poll, unsigned(ps.player) + 1,
+                            unsigned(ps.opacity), prompt_device_name(ls.view.prompt_device));
+            }
+            // elim1 (racetime.h): TIMED ELIMINATION's countdown at the shot's tick
+            if (idx >= 0 && !photo_shot && !pc_page.active() && ls.feed.at(std::size_t(idx)).elim_timer.seconds >= 0) {
+                const int sec = ls.feed.at(std::size_t(idx)).elim_timer.seconds;
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, elim_countdown.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures,
+                                                             ls.feed.at(std::size_t(idx)).elim_timer, pc_page.ui_language()),
+                                     o.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w);
+                std::printf("[b3live] shot poll %u: elimination countdown drawn (%d s)\n", poll, sec);
+            }
+            // gearbox (racetime.h): the manual gearbox's gear at the shot's tick
+            if (idx >= 0 && !photo_shot && !pc_page.active() && ls.feed.at(std::size_t(idx)).gear.gear >= -1) {
+                const HostGear& gt = ls.feed.at(std::size_t(idx)).gear;
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, gear_indicator.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures, gt,
+                                                             pc_page.ui_language()),
+                                     o.size_set ? float(w) / float(h) : 4.0f / 3.0f, items, h, w);
+                std::printf("[b3live] shot poll %u: gear indicator drawn (%s)\n", poll, gear_text(gt.gear).c_str());
             }
             // mac5: the video skip hint at the shot's tick (its opacity is the game's, in game time)
             if (idx >= 0 && !photo_shot && ls.feed.at(std::size_t(idx)).skip_hint && pc_page.settings().skip_hint) {
@@ -1501,6 +2002,14 @@ int run_live_offscreen(const LiveOptions& o) {
                 fps_shot_info.height = h;
                 none.draw_list(*dev, w, h, b3live::now_ns(), fps_shot, fps_shot_corner, ls.view.hud_size, fps_shot_info, nullptr, race, items);
                 std::printf("[b3live] shot poll %u: FPS counter drawn (%s)\n", poll, fps_shot == FpsView::kMinimal ? "minimal" : fps_shot == FpsView::kStandard ? "standard" : "detailed");
+            }
+            if (std::uint32_t since = 0; !photo_shot) {   // replaycams: the camera / driver line as it was at this poll (3 s from its change)
+                if (const std::string l = ReplayCams::instance().label_at(poll, &since); !l.empty() && poll - since < 4u * 60u) {
+                    Notice& n = replay_notice;   // (one kept: its texture made again only when the line changes)
+                    n.show_bubble({l}, Notice::Tone::kNeutral, 3.0f);
+                    n.draw_list(*dev, w, h, float(poll - since) / 60.0f, items);
+                    if (n.visible()) std::printf("[b3live] shot poll %u: replay camera line \"%s\" drawn\n", poll, l.c_str());
+                }
             }
             if (!photo_shot && hd_notice.visible() && poll >= hd_notice_poll) {   // hdkey: the key's notice, aged to this poll
                 const float age = float(poll - hd_notice_poll) / 60.0f;
@@ -1568,8 +2077,12 @@ int run_live_offscreen(const LiveOptions& o) {
             std::printf("[b3live] shot poll %u (+%.2f): tick %ld, %s, route %s, %zu draws, %zu vehicles -> %s\n", poll, double(alpha), idx,
                         race ? (split_shot ? "race, split screen" : photo_shot ? "race (photo mode)" : "race") : "front end", ls.view.route.c_str(),
                         items.size(), f.vehicles.size(), path);
-            if (race && fp.night.on)   // night mode (§17; todrace: the track page's choice or TIME OF DAY)
+            // night mode (§17; todrace: the track page's choice or TIME OF DAY). racetimefix: the view's night_on, not the frame's
+            // night pass -- rain by day runs that pass for its overcast grade (no lights), which is not night
+            if (race && ls.view.night_on(f))
                 std::printf("[b3live] shot poll %u: drawn at night (%s)\n", poll, f.race_time ? "the race's own choice" : "TIME OF DAY");
+            if (race && ls.view.rain_on(f))   // racetimefix: the checks' word that a race shot is in the rain (§38)
+                std::printf("[b3live] shot poll %u: drawn in the rain (%s)\n", poll, f.race_time ? "the race's own choice" : "WEATHER");
             // tunenav1: the F9 overlay as a script left it (live_<poll>_<alpha>_tune.png), and B3TUNE_OVERLAY_SHOTS' views of
             // it (live_<poll>_<alpha>_tune<k>.png), each over this shot's picture; after the shot, which stays without it, and
             // each with the bloom's kept picture started again (as the HUD size variants below: a draw carries into the next)
@@ -1634,6 +2147,7 @@ int run_live_offscreen(const LiveOptions& o) {
                     if (lvl < 0 || lvl >= a11y::kHudSizeLevels) continue;
                     std::vector<b3gfx::DrawItem> vitems(items.begin(), items.begin() + std::ptrdiff_t(hud_lo));
                     ls.view.hud_size = int(lvl);
+                    ls.view.hud_carousel = f.carousel; ls.view.hud_tick = f.tick;   // paint3
                     ls.view.hud_list(*dev, f.hud, ls.feed.models().hud.textures, o.size_set ? float(w) / float(h) : 4.0f / 3.0f, vitems, h, w, &hp);
                     vitems.insert(vitems.end(), items.begin() + std::ptrdiff_t(hud_hi), items.end());
                     std::snprintf(path, sizeof path, "%s/live_%u_%g_hud%d.png", o.out_dir.c_str(), poll, double(alpha), a11y::hud_size_percent(int(lvl)));
@@ -1644,6 +2158,7 @@ int run_live_offscreen(const LiveOptions& o) {
             }
             std::fflush(stdout);
         }
+        ls.shot_seg.reset();   // (the shots' own segments only while each is drawn)
         if (ended) break;
         // bench: one display frame as the window draws it (game camera, interpolated), offscreen with read-back
         if (o.bench_w > 0 && !ls.ready() && ls.feed.state() == LiveFeed::State::kSynced && !ls.feed.empty()) {
@@ -1661,6 +2176,10 @@ int run_live_offscreen(const LiveOptions& o) {
                 if (!dev->draw_offscreen(o.bench_w, o.bench_h, fp, items, rgba)) ++bench_failed;
                 const std::uint64_t f2 = b3live::now_ns();
                 lat_log.frame(ls.feed, f, clock, f0, cnow, f2);
+                if (!bench_dump.empty()) bench_frame_dump(ls.feed.at(std::min(f.tick, ls.feed.last())).poll, f1 - f0, f2 - f1, rgba);   // paint3
+                static const double slow_ms = [] { const char* e = std::getenv("B3_BENCH_SLOW"); return e ? std::atof(e) : 0.0; }();
+                if (slow_ms > 0 && double(f1 - f0) / 1e6 >= slow_ms)   // paint3 diagnostics: the front end's slow builds
+                    std::printf("[b3live] bench slow front-end build: poll %u, %.1f ms\n", ls.feed.at(std::min(f.tick, ls.feed.last())).poll, double(f1 - f0) / 1e6);
                 fe_build.push_back(double(f1 - f0) / 1e6);
                 fe_draw.push_back(double(f2 - f1) / 1e6);
                 fe_frame.push_back(double(f2 - f0) / 1e6);
@@ -1677,6 +2196,10 @@ int run_live_offscreen(const LiveOptions& o) {
                     if (x < prev_x) ++c.backwards;
                     c.speed.push_back((x - prev_x) / (double(cnow - prev_ns) * 1e-9 * clock.rate));
                 }
+                if (prev_seg == ls.feed.segment().id && !clock.ff_hold && ls.feed.state() != LiveFeed::State::kEnded)   // (motionend)
+                    bstats.frame(cnow, x, clock.rate);
+                else bstats.reset_run();
+                bstats.ticks(ls.feed);
                 prev_x = x; prev_ns = cnow; prev_seg = ls.feed.segment().id;
             }
             Frame f;
@@ -1704,6 +2227,7 @@ int run_live_offscreen(const LiveOptions& o) {
             std::memcpy(hp.view_proj, fp.view_proj, sizeof hp.view_proj);
             hp.vehicles = &f.vehicles;
             b3perf::Scope hud_scope(b3perf::kDlHud);
+            ls.view.hud_carousel = f.carousel; ls.view.hud_tick = f.tick;   // paint3
             ls.view.hud_list(*dev, f.hud, ls.feed.models().hud.textures, ba, items, o.bench_h, o.bench_w, &hp);
             hud_scope.end();
             }
@@ -1711,6 +2235,13 @@ int run_live_offscreen(const LiveOptions& o) {
             const std::uint64_t f1 = b3live::now_ns();
             if (!(f.split ? dev->draw_views_offscreen(o.bench_w, o.bench_h, views, sfp, items, rgba) : dev->draw_offscreen(o.bench_w, o.bench_h, fp, items, rgba))) ++bench_failed;
             const std::uint64_t f2 = b3live::now_ns();
+            {   // paint3 diagnostics (B3_BENCH_DUMP, B3_BENCH_SLOW), as the front end's above
+                const unsigned poll = ls.feed.at(std::min(f.tick, ls.feed.last())).poll;
+                static const double slow_ms = [] { const char* e = std::getenv("B3_BENCH_SLOW"); return e ? std::atof(e) : 0.0; }();
+                if (slow_ms > 0 && double(f1 - f0) / 1e6 >= slow_ms)
+                    std::printf("[b3live] bench slow build: poll %u, %.1f ms\n", poll, double(f1 - f0) / 1e6);
+                if (!bench_dump.empty()) bench_frame_dump(poll, f1 - f0, f2 - f1, rgba);
+            }
             lat_log.frame(ls.feed, f, clock, f0, cnow, f2);
             if (const double a = clock.latch_age_ms(ls.feed, double(std::min(f.tick, ls.feed.last())) + double(f.alpha), f2); a >= 0) sched_age.push_back(a);
             t_build.push_back(double(f1 - f0) / 1e6);
@@ -1758,6 +2289,7 @@ int run_live_offscreen(const LiveOptions& o) {
                         100.0 * double(c.starved) / double(c.frames), static_cast<unsigned long long>(c.backwards), pct(c.speed, 0.1),
                         pct(c.speed, 1), pct(c.speed, 50), pct(c.speed, 99), pct(c.speed, 99.9));
         }
+        if (bstats.frames) std::printf("%s\n", bstats.summary("bench").c_str());   // stutter
         if (!sched_age.empty())   // lat1
             std::printf("[b3live] latency %s: latch -> frame done ms p5/p50/p95/p99 %.1f/%.1f/%.1f/%.1f, schedule margin %.1f ms\n", o.latency.c_str(),
                         pct(sched_age, 5), pct(sched_age, 50), pct(sched_age, 95), pct(sched_age, 99), clock.margin_ms);
@@ -1839,6 +2371,10 @@ int run_live_window(const LiveOptions& o) {
     SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, o.activate ? "1" : "0");
     // the game's identity for the desktop (Wayland app-id, X11 class, the Windows / macOS app name)
     if (o.inproc) SDL_SetAppMetadata("Burnout 3 Native", b3port::version(), "b3port.native");
+    // issue #16 (b3port/trigger_rumble.h): TRIGGER RUMBLE on Windows: SDL's RawInput controller path, which reaches an Xbox
+    // pad's trigger motors (read at the joystick subsystem's start: before SDL_Init; only with the row on)
+    if (b3port::apply_trigger_rumble_hints(o.settings && o.settings->rumble_triggers))
+        std::printf("[b3pad] TRIGGER RUMBLE: SDL's RawInput controller path (the trigger motors of Xbox pads)\n");
     if (!SDL_Init(SDL_INIT_VIDEO)) { std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
     sl.enter("SDL_CreateWindow");
     // test builds: the native game's title carries the build's version (include/b3report/version.h)
@@ -1859,6 +2395,7 @@ int run_live_window(const LiveOptions& o) {
     if (o.settings) { filter_options(o.settings->filter, opt); scale_options(*o.settings, opt); }   // settings1
     if (o.settings && o.settings->dither) opt.dither = 1.0f;   // perf1: DITHER
     opt.driver = o.driver;
+    if (opt.driver.empty() && o.settings) opt.driver = graphics_api_driver(*o.settings);   // d3d12 (GRAPHICS API; --driver wins)
     opt.present = o.vsync ? b3gfx::PresentMode::kVsync : b3gfx::PresentMode::kUncapped;
     const Latency lat_mode = latency_mode(o);
     // lat1: the low-latency modes keep the GPU's frame queue short and wait for the swapchain before sampling the clock.
@@ -1867,14 +2404,31 @@ int run_live_window(const LiveOptions& o) {
     const bool fif_auto = lat_mode != Latency::kSmooth && o.frames_in_flight < 0 && o.latency_auto &&
                           !(std::getenv("B3_FIF_AUTO") && std::getenv("B3_FIF_AUTO")[0] == '0');
     if (lat_mode != Latency::kSmooth) opt.frames_in_flight = o.frames_in_flight < 0 ? 1 : o.frames_in_flight;
+    // fifauto: Auto's 1 / 2 held by the device (no SDL_SetGPUAllowedFramesInFlight at a change: that one stalls a frame);
+    // B3_FIF_SOFT=0 changes SDL's queue as before (comparisons)
+    opt.frames_soft = fif_auto && !(std::getenv("B3_FIF_SOFT") && std::getenv("B3_FIF_SOFT")[0] == '0');
     std::string err;
     auto dev = b3gfx::Device::create(win, opt, &err);
     if (!dev) { std::fprintf(stderr, "b3gfx: %s\n", err.c_str()); return 1; }
     b3asset::set_hd_compressed(dev->supports_bc());   // hdgpu: HD replacements stay BC on the GPU
+    hd_memory_mode(*dev, o.settings ? &*o.settings : nullptr);   // texpack: HD TEXTURE MEMORY
     std::printf("[b3live] window: feed %s, driver %s, MSAA %dx, present %s, %d frames in flight%s, latency %s\n", o.name.c_str(), dev->driver_name(),
                 dev->msaa(), dev->present_mode_name(), dev->frames_in_flight(), fif_auto ? " (auto)" : "", o.latency.c_str());
     b3gfx::FramesAuto fif;   // perf4
     fif.set_current(dev->frames_in_flight());
+    // fifauto: FRAMES IN FLIGHT Auto judges the GPU's waits (the fences); the swapchain acquire's wait is the presentation
+    // side's (a free image / drawable: macOS's compositor hands CAMetalLayer drawables back at the display's rate), which a
+    // second frame in flight does not help. B3_FIF_WAITS=all counts both as before.
+    const bool fif_all_waits = std::getenv("B3_FIF_WAITS") && std::string(std::getenv("B3_FIF_WAITS")) == "all";
+    // fifauto: B3_PERF_BISECT=<seconds per step> (perfbisect.h); B3_GPU_TIME=<n>: the GPU's work on every n-th frame
+    b3replay::PerfBisect bisect(std::getenv("B3_PERF_BISECT") ? std::atof(std::getenv("B3_PERF_BISECT")) : 0.0);
+    const int gpu_every = std::getenv("B3_GPU_TIME") ? std::max(0, std::atoi(std::getenv("B3_GPU_TIME"))) : bisect.on() ? 4 : 0;
+    dev->set_gpu_timing(gpu_every);
+    if (bisect.on())
+        std::printf("[perfbisect] on: during the race frames each step turns passes off for its seconds (then the table); GPU work "
+                    "sampled on every %d-th frame; MSAA %dx, present %s, %d frames in flight%s\n", gpu_every, dev->msaa(),
+                    dev->present_mode_name(), dev->frames_in_flight(), fif_auto ? " (auto)" : "");
+    else if (gpu_every) std::printf("[b3live] GPU work timed on every %d-th window frame (B3_GPU_TIME)\n", gpu_every);
     float fif_refresh = -1.0f;   // perf4: the display's refresh rate Auto aims for (< 0: read it)
     const std::string warm_file = warm_path(o, true);   // perf4: the pipelines and effect textures an earlier run used
     warm_start(*dev, warm_file);
@@ -1891,6 +2445,7 @@ int run_live_window(const LiveOptions& o) {
     std::fflush(stdout);
     sl.enter("feed and car scan");
     LiveScene ls(o);
+    const bool env_world_set = ls.view.car_env_world;   // fifauto: B3_PERF_BISECT's reflections step puts it back
     ls.async_routes = true;   // loadlag1: the route decoded on a worker, the window drawing meanwhile
     DisplayClock clock;
     clock.old_rule = o.clock_old;
@@ -1926,23 +2481,30 @@ int run_live_window(const LiveOptions& o) {
     int fullscreen_applied = -1;   // the FULLSCREEN setting last applied; -1: none yet
     bool battery_now = false;
     std::uint64_t battery_checked_ns = 0;
+    int vsync_setting = -1;   // nextstart: the VSYNC row as last seen (-1: not yet; the start's present mode stands)
     auto apply_settings = [&](const b3settings::Settings& stored) {
         cur_settings = stored;
         battery_now = stored.battery_saver && on_battery_power();
         const b3settings::Settings s = battery_now ? b3settings::on_battery(stored) : stored;
         if (battery_now) std::printf("[b3settings] on battery: BATTERY SAVER holds the frame rate to 60 and the effects to Medium at most\n");
         apply_view(ls.view, s);
+        NativeAudio::instance().set_rain_volume(ls.view.rain_audio_volume());   // rainfe: RAIN VOLUME at once
         NativePad::instance().set_hold_unfocused(s.pause_unfocused);   // mac5: native_play's focus hold
         NativePad::instance().set_boost_toggle(s.boost_mode == 1);    // accessibility: BOOST Toggle (opt-in, input-changing)
         NativePad::instance().set_instant_restart(s.instant_restart == 1);   // speedrun1: INSTANT RESTART (opt-in, input-injecting)
-        NativePad::instance().set_series_shoulders(s.series_shoulders == 1);   // carsel1: CAR SERIES ON L1 / R1 (opt-in, input-changing)
+        NativePad::instance().set_series_shoulders(s.series_shoulders == 1);   // carsel1: CAR SERIES ON L1 / R1 (on by default, input-changing)
         GarageCam::instance().set_enabled(s.garage_camera);   // garagecam1: GARAGE CAMERA (drawn only)
+        OrbitCam::instance().set_enabled(s.orbit_camera);     // orbitcam1: ORBIT CAMERA (drawn only)
+        OrbitCam::instance().set_style(s.orbit_style);        // orbitcam2: ORBIT STYLE
+        OrbitCam::instance().set_roll(s.camera_roll);          // camroll1: CAMERA ROLL (drawn only)
+        FinishCam::instance().set_level(s.finish_camera);      // finishcam1: FINISH CAMERA (drawn only)
+        ReplayCams::instance().set_stay(s.replay_camera_stay);   // replaycams: REPLAY CAMERA CUTS (drawn only)
         NativePad::instance().set_rumble(s.rumble == 1, s.rumble_strength, s.rumble_triggers);   // rumble1 (opt-in, game-visible)
         NativePad::instance().set_analog_pedals(s.analog_pedals);   // 1.0.1
         NativePad::instance().set_adaptive_triggers(s.adaptive_triggers == 1, s.adaptive_triggers_strength);   // pad1 (presentation only)
         interpolate = s.interpolation;
         specular = o.specular && s.specular;
-        max_fps = s.frame_cap > 0 ? double(s.frame_cap) : o.max_fps;
+        max_fps = frame_cap_in_effect(s.frame_cap) > 0 ? double(frame_cap_in_effect(s.frame_cap)) : o.max_fps;   // slowcpu: Auto
         fps_view = fps_view_from_setting(s.fps_view);
         if (o.fps_counter && fps_view == FpsView::kOff) fps_view = FpsView::kStandard;
         fps_corner = fps_corner_from_setting(s.fps_corner);
@@ -1950,6 +2512,16 @@ int run_live_window(const LiveOptions& o) {
         skip_hint_setting = s.skip_hint;   // mac5
         prompts_setting = s.button_prompts;
         dev->set_dither(o.dither > 0.0f || s.dither ? 1.0f : 0.0f);   // perf1: DITHER
+        // nextstart: VSYNC live (the swapchain's present mode set again when the row changes; the start's own, from
+        // the row, --vsync or $B3_VSYNC, stays until then)
+        if (vsync_setting < 0) {
+            vsync_setting = int(s.vsync);
+        } else if (int(s.vsync) != vsync_setting) {
+            vsync_setting = int(s.vsync);
+            const bool ok = dev->set_present(s.vsync ? b3gfx::PresentMode::kVsync : b3gfx::PresentMode::kUncapped);
+            std::printf("[b3settings] VSYNC %s: present mode %s%s\n", s.vsync ? "On" : "Off", dev->present_mode_name(), ok ? "" : " (not changed)");
+            std::fflush(stdout);
+        }
         dev->set_render_scale(float(std::clamp(s.render_scale, 50, 200)) / 100.0f);   // effects2: RENDER SCALE (perf4: up to 200)
         dev->set_sharp_upscale(s.upscaling != 0);   // 1.1 UPSCALING
         const bool want_full = fullscreen_applied < 0 ? (s.fullscreen || o.fullscreen) : s.fullscreen;
@@ -2004,11 +2576,19 @@ int run_live_window(const LiveOptions& o) {
     FpsPanel fps_panel;   // gsoff1: the FPS COUNTER setting or --fps-counter
     SkipHint skip_hint;   // mac5: the video skip hint (native_play)
     RaceTimeLabel race_label;   // todrace: the track page's DAY / NIGHT label (native_play)
+    PaintSelPrompt paint_prompt;   // paintsel: the PAINT prompt on SELECT CAR (native_play)
+    ReplayPrompt replay_prompt;    // replayview: the REPLAY prompt on a results page (native_play)
+    ElimCountdown elim_countdown;  // elim1: TIMED ELIMINATION's countdown (native_play)
+    GearIndicator gear_indicator;  // gearbox: the manual gearbox's gear (native_play)
+    DriverLabels driver_labels;    // options3: DRIVER LABELS (native_play)
     SpeedrunPanel speedrun_panel;   // speedrun1: the speedrun timer
     Notice notice;        // mac5: safe mode's banner
     std::uint64_t notice_ns = 0;
     Notice save_bubble;   // saveflow: the save notices (show_save_bubble), apart from the banner
     std::uint64_t save_bubble_ns = 0;
+    Notice replay_bubble;   // replaycams: the replay viewer's camera and driver
+    std::uint64_t replay_bubble_ns = 0;
+    std::uint32_t replay_bubble_serial = 0;
     if (o.safe_mode) {
         std::vector<std::string> lines = o.safe_forced ? std::vector<std::string>{"SAFE MODE", "STARTED WITH LOW SETTINGS AS ASKED",
                                                                                   "CHANGE THEM IN SETTINGS AT ANY TIME"}
@@ -2034,6 +2614,7 @@ int run_live_window(const LiveOptions& o) {
     lat_log.path = o.latency_log;
     double lat_ema = -1;  // lat1: input -> screen estimate for the title and the FPS panel (ms)
     WindowStats wstats;   // perf
+    MotionStats mstats;   // stutter: how evenly the shown game time moves (the run log's "race motion" line)
     if (b3perf::init_from_env()) {   // perf3: B3_PERF_LOG
         char inf[256];
         std::snprintf(inf, sizeof inf, "driver=%s msaa=%d present=%s frames_in_flight=%d gpu=\"%s\"", dev->driver_name(), dev->msaa(), dev->present_mode_name(),
@@ -2166,6 +2747,7 @@ int run_live_window(const LiveOptions& o) {
             const float dt = pc_page_ns ? float(double(t - pc_page_ns) * 1e-9) : 1.0f / 60.0f;
             pc_page_ns = t;
             const MenuMouse::PagePointer mp = MenuMouse::instance().page_pointer();   // mac5: the pointer on the page
+            pc_page.set_context(!ls.feed.empty() && race_tick(ls.feed.at(ls.feed.last())), o.replay_playback);   // nextstart
             if (pc_page.frame(npad.last(), dt, o.settings_path, &mp, float(w) / float(h > 0 ? h : 1))) apply_settings(pc_page.settings());
             TuneConsole::instance().set_enabled(pc_page.settings().developer_mods != 0);   // tune4: F9 while DEVELOPER MODS is on
             if (!pc_page.active()) TuneConsole::instance().pad(npad.last());
@@ -2177,6 +2759,7 @@ int run_live_window(const LiveOptions& o) {
         scene_epoch().fetch_add(1, std::memory_order_release);   // loadlag1: a pass with the feed drained (fastforward.h)
         ls.probe_traffic();   // traffic-popin (B3_TRAFFIC_PROBE=1)
         ls.ghosts();   // ghost1
+        ls.chase_trace();   // camfixes (B3_CHASE_TRACE=1)
         ls.speedrun_ticks(PcPage::instance().settings().speedrun_timer);   // speedrun1
         if (npad.enabled()) {   // pad1: ADAPTIVE TRIGGERS' view of the game (the newest tick; read only; used only when on)
             b3native::pad::TriggerGame tg[2];
@@ -2204,6 +2787,9 @@ int run_live_window(const LiveOptions& o) {
             const std::string stopped = npad.enabled() ? game_stopped() : std::string();
             if (!ended_at) {
                 ended_at = now;
+                // rainfe: the session's end: the sound's silence from here (the window's last 3 s) is on purpose, not the
+                // game late (the output queue's count)
+                if (o.native_audio) NativeAudio::instance().set_quiet(true);
                 if (!stopped.empty()) std::printf("[b3live] the game stopped (%s): the window stays until it is closed\n", stopped.c_str());
             }
             else if ((now - ended_at > 3000000000ull && stopped.empty()) || close_deadline) running = false;   // the session closed: the viewer follows
@@ -2239,7 +2825,15 @@ int run_live_window(const LiveOptions& o) {
                 drawn = ls.frame(x, interpolate && lat_mode != Latency::kNewest, f);
                 if (drawn) blend.apply(ls, x, interpolate && lat_mode != Latency::kNewest, f, now);   // perf1
             }
+            // stutter: the shown game time against the wall clock (race frames; a fast load's frames start it afresh), and
+            // each new tick's latch stamp interval. motionend: not once the session has ended (the window shows its last
+            // tick for 3 s before it closes: a run that ends in a race, as the test runner's at its VBlank limit, counted
+            // those as held frames)
+            if (drawn && !clock.ff_hold && ls.feed.state() != LiveFeed::State::kEnded) mstats.frame(now, x, clock.rate);
+            else mstats.reset_run();
+            if (!ls.feed.empty()) mstats.ticks(ls.feed);
             Camera pcam;
+            if (photo_on && drawn) photo.set_mirror(f.mirror);   // gameopts (MIRROR MODE): its horizontal input reversed
             if (photo_on && drawn && !f.split && f.cam.valid) photo.advance(photo_dt, f.cam);
             if (photo_on && drawn && !f.split && photo.camera(f.cam, pcam)) {   // photo mode: the scene from the free camera
                 ls.photo_frame(*dev, f, pcam, float(w) / float(h > 0 ? h : 1), fog, specular, fp, items);
@@ -2261,12 +2855,15 @@ int run_live_window(const LiveOptions& o) {
                 std::memcpy(hp.view_proj, fp.view_proj, sizeof hp.view_proj);
                 hp.vehicles = &f.vehicles;
                 b3perf::Scope hud_scope(b3perf::kDlHud);
+                driver_labels_list(ls, driver_labels, *dev, f, fp.view_proj, float(w) / float(h > 0 ? h : 1), items, h, w);   // options3
+                ls.view.hud_carousel = f.carousel; ls.view.hud_tick = f.tick;   // paint3
                 ls.view.hud_list(*dev, f.hud, ls.feed.models().hud.textures, float(w) / float(h > 0 ? h : 1), items, h, w, &hp);
                 hud_scope.end();
             }
         }
         if (npad.enabled()) photo.set_scene(drawn && !f.split && f.cam.valid && !pc_page.active());   // photo mode: a race picture
         GarageCam::instance().set_blocked(pc_page.active() || photo.active());   // garagecam1: the stick is the page's / photo mode's then
+        OrbitCam::instance().set_blocked(pc_page.active() || photo.active());    // orbitcam1
         bool frontend = false;
         if (!drawn && ls.feed.state() == LiveFeed::State::kSynced && !ls.feed.empty()) {
             // menu1 (§22): front end, loading screens, results after the race view: the 2D of the tick the display
@@ -2332,6 +2929,42 @@ int run_live_window(const LiveOptions& o) {
                 ls.view.host_ui_list(*dev, race_time_ui(race_label, ls, pc_page, rt), float(w) / float(h > 0 ? h : 1), items, h, w);
             }
         }
+        // replayview (racetime.h): the REPLAY prompt on a results page of the tick on screen
+        if (!pc_page.active() && !photo_drawn && !ls.feed.empty()) {
+            const std::size_t ti = drawn || frontend ? std::min<std::size_t>(f.tick, ls.feed.last()) : ls.feed.last();
+            if (ls.feed.at(ti).replay == 1) {
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, replay_prompt_ui(replay_prompt, ls, pc_page, true), float(w) / float(h > 0 ? h : 1), items, h, w);
+            }
+        }
+        // paintsel (paintsel.h): the PAINT prompt on SELECT CAR of the tick on screen
+        if (!pc_page.active() && !photo_drawn && !ls.feed.empty()) {
+            const std::size_t ti = drawn || frontend ? std::min<std::size_t>(f.tick, ls.feed.last()) : ls.feed.last();
+            if (const HostPaintSel& ps = ls.feed.at(ti).paint_sel; ps.opacity) {
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, paint_sel_ui(paint_prompt, ls, pc_page, ps), float(w) / float(h > 0 ? h : 1), items, h, w);
+            }
+        }
+        // elim1 (racetime.h): TIMED ELIMINATION's countdown of the tick on screen
+        if (!pc_page.active() && !photo_drawn && !ls.feed.empty()) {
+            const std::size_t ti = drawn || frontend ? std::min<std::size_t>(f.tick, ls.feed.last()) : ls.feed.last();
+            if (const int sec = ls.feed.at(ti).elim_timer.seconds; sec >= 0) {
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, elim_countdown.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures,
+                                                             ls.feed.at(ti).elim_timer, pc_page.ui_language()),
+                                     float(w) / float(h > 0 ? h : 1), items, h, w);
+            }
+        }
+        // gearbox (racetime.h): the manual gearbox's gear of the tick on screen
+        if (!pc_page.active() && !photo_drawn && !ls.feed.empty()) {
+            const std::size_t ti = drawn || frontend ? std::min<std::size_t>(f.tick, ls.feed.last()) : ls.feed.last();
+            if (const HostGear& gt = ls.feed.at(ti).gear; gt.gear >= -1) {
+                ls.view.host_ui_hud_textures = &ls.feed.models().hud.textures;
+                ls.view.host_ui_list(*dev, gear_indicator.ui(ls.feed.at(ls.feed.last()).host_fonts, ls.feed.models().hud.textures, gt,
+                                                             pc_page.ui_language()),
+                                     float(w) / float(h > 0 ? h : 1), items, h, w);
+            }
+        }
         // mac5: the video skip hint of the tick on screen (its opacity from the game), with the device in use
         if (skip_hint_setting && !pc_page.active() && !photo_drawn && !ls.feed.empty()) {
             const std::size_t ti = drawn || frontend ? std::min<std::size_t>(f.tick, ls.feed.last()) : ls.feed.last();
@@ -2343,6 +2976,15 @@ int run_live_window(const LiveOptions& o) {
             speedrun_panel.draw_list(*dev, w, h, rows, items);
         }
         auto banners = [&] {
+            if (const std::uint32_t rs = ReplayCams::instance().label_serial(); rs != replay_bubble_serial) {   // replaycams
+                replay_bubble_serial = rs;
+                if (const std::string l = ReplayCams::instance().label(); !l.empty()) replay_bubble.show_bubble({l}, Notice::Tone::kNeutral, 3.0f);
+            }
+            if (replay_bubble.visible() && !PhotoMode::instance().active()) {
+                const float rdt = replay_bubble_ns ? float(double(now - replay_bubble_ns) * 1e-9) : 0.0f;
+                replay_bubble_ns = now;
+                replay_bubble.draw_list(*dev, w, h, rdt, items);
+            } else replay_bubble_ns = 0;
             if (notice.visible()) {   // mac5: safe mode's banner
                 const float ndt = notice_ns ? float(double(now - notice_ns) * 1e-9) : 0.0f;
                 notice_ns = now;
@@ -2394,6 +3036,29 @@ int run_live_window(const LiveOptions& o) {
             std::fflush(stdout);
             show_save_bubble(save_bubble, alert, pc_page.ui_language());   // saveflow: a small bubble in the corner
             save_bubble_ns = 0;
+        }
+        // ownertests (tools/release/owner_tests, the owner's unattended test runner): B3_WINDOW_SHOTS=<poll>,<poll>,... takes
+        // F12's shot once the shown tick reaches each poll (scripted keys never reach the window's own keys); unset: nothing
+        static const std::vector<std::uint64_t> auto_shots = [] {
+            std::vector<std::uint64_t> v;
+            if (const char* e = std::getenv("B3_WINDOW_SHOTS"))
+                for (const char* q = e; *q;) {
+                    char* end = nullptr;
+                    const unsigned long long x = std::strtoull(q, &end, 10);
+                    if (end == q) break;
+                    v.push_back(x);
+                    q = *end == ',' ? end + 1 : end;
+                }
+            std::sort(v.begin(), v.end());
+            return v;
+        }();
+        static std::size_t auto_shot_next = 0;
+        if (auto_shot_next < auto_shots.size() && drawn && std::uint64_t(f.tick) >= auto_shots[auto_shot_next]) {
+            shot_pending = true;
+            while (auto_shot_next < auto_shots.size() && std::uint64_t(f.tick) >= auto_shots[auto_shot_next]) ++auto_shot_next;
+            // (racetimefix: with the frame's conditions, so run-all-tests' night / rain runs can expect them)
+            std::printf("[b3live] window shot at tick %llu (B3_WINDOW_SHOTS)%s%s\n", static_cast<unsigned long long>(f.tick),
+                        ls.view.night_on(f) ? ", drawn at night" : "", ls.view.rain_on(f) ? ", drawn in the rain" : "");
         }
         if (shot_pending && w > 0 && h > 0) {   // mac5: F12, the frame as shown at the window's size, written on a thread
             shot_pending = false;
@@ -2452,9 +3117,20 @@ int run_live_window(const LiveOptions& o) {
         }
         drawlist_scope.end();
         const std::uint64_t cpu_ns = b3live::now_ns();   // perf
+        if (bisect.on() && !bisect.done() && drawn && !f.split && !frontend) {   // fifauto: this step's passes off
+            const int s = bisect.step();
+            const bool all = s == b3replay::PerfBisect::kAllOff;
+            if (all || s == b3replay::PerfBisect::kSunShadows) fp.sun_shadow.on = false;
+            if (all || s == b3replay::PerfBisect::kSurface) fp.surface.relief = fp.surface.sheen = fp.surface.ao = 0;
+            if (all || s == b3replay::PerfBisect::kBloom) fp.bloom.on = false;
+            if (all || s == b3replay::PerfBisect::kBoostBlur) fp.blur.amount = fp.dblur.amount = 0;
+            if (all || s == b3replay::PerfBisect::kSunCorona) { fp.sun_sprites.clear(); fp.sun_occlusion = false; }
+            if (all || s == b3replay::PerfBisect::kPostGame) fp.post_game = true;
+        }
         const bool shown = drawn && f.split ? dev->draw_views(views, sfp, items, &w, &h)   // gsoff1 (§29): `items` holds the 2D
                                             : dev->draw_frame(fp, items, &w, &h);
         if (shown) {
+            window_away().store(false, std::memory_order_relaxed);   // scenewait
             if (no_frame_n > 0) std::printf("[b3live] frames shown again (after %llu not shown)\n", static_cast<unsigned long long>(no_frame_n));
             no_frame_n = 0;
             no_frame_told = false;
@@ -2469,6 +3145,7 @@ int run_live_window(const LiveOptions& o) {
             ++no_frame_n;
             const SDL_WindowFlags wf = SDL_GetWindowFlags(win);
             const bool away = (wf & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN | SDL_WINDOW_OCCLUDED)) != 0;
+            window_away().store(away, std::memory_order_relaxed);   // scenewait (fastforward.h): no extension then
             if (away || !(wf & SDL_WINDOW_INPUT_FOCUS)) no_frame_since = t;   // the 10 s count only in front, focused
             else if (no_frame_n == 1) no_frame_since = t;
             if (away) {
@@ -2510,13 +3187,15 @@ int run_live_window(const LiveOptions& o) {
                     e->sparks = s.sparks;
                     e->popcorn = s.popcorn;
                 }
-                max_fps = s.frame_cap > 0 ? double(s.frame_cap) : o.max_fps;
+                max_fps = frame_cap_in_effect(s.frame_cap) > 0 ? double(frame_cap_in_effect(s.frame_cap)) : o.max_fps;
                 fps_info.target_fps = max_fps > 0 ? float(max_fps) : 60.0f;
                 if (on_batt) std::printf("[b3settings] on battery: BATTERY SAVER holds the frame rate to 60 and the effects to Medium at most\n");
                 else std::printf("[b3settings] on mains power: the settings as chosen\n");
             }
         }
-        if (max_fps > 0) {   // --max-fps / FRAME RATE LIMIT
+        // slowcpu (game_behind.h): while the game is behind real time, no faster than the game (else the player's limit)
+        const double limit_fps = behind_limit(max_fps, game_behind().load(std::memory_order_relaxed));
+        if (limit_fps > 0) {   // --max-fps / FRAME RATE LIMIT
             // 1.1: on a fixed schedule (each frame's deadline one period after the last one's), so the average is the
             // limit exactly; a frame that ran late starts a new schedule instead of rushing to catch up. With vsync at a
             // refresh the limit does not go above, vsync alone paces the frames: a second clock at the same rate beats
@@ -2526,8 +3205,8 @@ int run_live_window(const LiveOptions& o) {
                 const SDL_DisplayMode* dm = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
                 refresh_hz = dm && dm->refresh_rate > 0.0f ? dm->refresh_rate : 0.0f;
             }
-            const bool vsync_paces = std::strcmp(dev->present_mode_name(), "vsync") == 0 && refresh_hz > 0.0f && max_fps >= double(refresh_hz) - 1.0;
-            const std::uint64_t period = std::uint64_t(1e9 / max_fps), t_end = b3live::now_ns();
+            const bool vsync_paces = std::strcmp(dev->present_mode_name(), "vsync") == 0 && refresh_hz > 0.0f && limit_fps >= double(refresh_hz) - 1.0;
+            const std::uint64_t period = std::uint64_t(1e9 / limit_fps), t_end = b3live::now_ns();
             if (vsync_paces) next_ns = 0;
             else {
                 next_ns = next_ns == 0 || t_end > next_ns + period ? t_end + (t_end - now < period ? period - (t_end - now) : 0) : next_ns + period;
@@ -2536,7 +3215,29 @@ int run_live_window(const LiveOptions& o) {
         }
         b3perf::frame_end(w, h);   // perf3
         {   // perf4: FRAMES IN FLIGHT Auto, from this frame's time and its GPU waits against the target (the cap, else the refresh)
-            const double wait_ms = double(dev->take_wait_ns()) * 1e-6;
+            const double all_wait_ms = double(dev->take_wait_ns()) * 1e-6, acq_ms = double(dev->take_acquire_ns()) * 1e-6;
+            const double gpu_ms = dev->take_gpu_ms();
+            const double wait_ms = fif_all_waits ? all_wait_ms : std::max(0.0, all_wait_ms - acq_ms);   // fifauto: the GPU's
+            if (drawn || frontend) wstats.add_waits(drawn ? 0 : 1, acq_ms, gpu_ms);
+            if (bisect.on() && !bisect.done()) {   // fifauto: the step's frame (the race in one view), then the next step's passes
+                std::string line;
+                if (drawn && !f.split && !frontend) {
+                    if (bisect.frame(double(b3live::now_ns() - top_ns) * 1e-6, wait_ms, acq_ms, gpu_ms, line)) {
+                        std::printf("[perfbisect] %s\n", line.c_str());
+                        if (bisect.done()) {
+                            std::printf("[perfbisect] done (%s, MSAA %dx, present %s, %d frames in flight%s):\n", dev->driver_name(), dev->msaa(),
+                                        dev->present_mode_name(), dev->frames_in_flight(), fif_auto ? " (auto)" : "");
+                            for (const std::string& l : bisect.lines()) std::printf("[perfbisect]   %s\n", l.c_str());
+                        }
+                        std::fflush(stdout);
+                    }
+                } else {
+                    bisect.pause();
+                }
+                const int s = bisect.step();   // the reflections' track pass is the view's (applied when the next frame's lists are made)
+                ls.view.car_env_world = env_world_set && !(s == b3replay::PerfBisect::kEnvTrack || s == b3replay::PerfBisect::kAllOff);
+                dev->set_bloom_lean(s == b3replay::PerfBisect::kBloomLean ? 1 : -1);
+            }
             if (fif_auto && (drawn || frontend) && !close_deadline) {
                 float& refresh = fif_refresh;   // (read again when the window moves to another display)
                 if (refresh < 0.0f) {
@@ -2580,6 +3281,7 @@ int run_live_window(const LiveOptions& o) {
     for (std::thread& t : shot_writers) t.join();   // mac5: the screenshots still being written
     lat_log.write(o, dev->present_mode_name(), dev->frames_in_flight());
     wstats.print();   // perf
+    if (mstats.frames) { std::printf("%s\n", mstats.summary("window").c_str()); std::fflush(stdout); }   // stutter
     WindowStats::print_decode(ls.feed);
     if (o.native_audio) NativeAudio::instance().close();   // play1
     npad.release_pads();   // pad1: the DualSense's triggers free, the gyro sensors off

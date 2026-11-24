@@ -28,6 +28,26 @@
   four programs linked and no b3asset::Vu1. make test, save_check: PASS; tools/native/build_win.sh (RENDER=1) builds,
   its native_play.exe with the four programs and no b3asset::Vu1 (nm). 5 SHA-256 lookups in a race (the rest cached).
 - **Open**: run the scenarios on Windows and the Mac with the default build.
+- **vu0flags (1.4.1, issue #15: VU0 micro mode ~25% of the game thread on a slow CPU, the flags and the per-pair commit a
+  large part of it)**: `tools/native/vu0_aot.py` decides from each program's control flow what a pair needs at run time.
+  A census of the four images: no STATUS reader (no FSEQ / FSAND / FSOR / FSSET), MAC read by FMEQ / FMAND / FMOR at 50
+  pairs against 811 flag pushes, no CLIP; and no EE code reads VU0's vi16 / vi17 / vi18 (cfc2). So a flag push is
+  generated only when its MAC can be observed: as the newest push at least 4 pairs before a MAC read on some path, or as
+  the last push before the launch ends (the settled MAC, which crosses launches, stays exact). 74 of the 811 pushes are
+  kept; STATUS's Z S U O bits and their sticky copies are not kept up by the others (nobody can read them); its I / D
+  bits (DIV / SQRT / RSQRT) are. The commit at a pair checks the flag slot only where a kept push can be 4 pairs back
+  (89 of 1346 pairs), Q / P only in an image with DIV / EFU ops, CLIP nowhere; a VI write keeps its history entry
+  (Rt::branch_vi) only where a conditional branch can follow within 4 pairs. The control flow is over-approximated
+  (after a branch's delay slot both the target and the next pair), so a kept push or a check is never missing.
+  `B3_VU0_AOT=check` compares STATUS's I / D bits only (vu0_unit.cpp).
+- **vu0lanes (1.4.1)**: an FMAC instruction (ADD / SUB / MUL / MADD / MSUB and their broadcast, Q and I forms) with two or
+  more dest lanes is generated as one call of `b3fp::vufast4` (include/b3host/ps2float_hw.h) on the register's four lanes:
+  on x86 under Ps2FloatEnv the four clamp255s as a compare and a blend, then one mulps / addps / subps (a packed lane is
+  the scalar operation on that lane: the same RZ rounding, the same FTZ / DAZ, the same inputs), and a dest lane whose
+  exponents are more than 28 apart done again by hw::add / sub (ref there); madd / msub keep the product rounded first.
+  Elsewhere (no SSE2, or `B3_VU0_FLOAT=ref`) lane by lane as before. 398 such instructions in the four images; MAX / MIN,
+  OPMSUB / OPMULA and single-lane ones stay per lane. tests/test_vufloat.cpp checks the four-lane forms against ref lane
+  by lane (every operation and shape, every dest mask, exponent gaps 0..60).
 
 ## History
 

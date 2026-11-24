@@ -42,6 +42,7 @@
 //                    version (address, name, kind, calls) -- the boot's next stops without a rebuild per stop
 #include "b3host/call.h"
 #include "b3host/native_backend.h"
+#include "b3port/game_program.h"   // ghvariant: the programs accepted
 #include "b3asset/discfs.h"   // iso1: the ELF / SYSTEM.CNF from a disc folder or a disc image
 #include "b3host/watch.h"
 #include "native_table.h"
@@ -107,10 +108,12 @@ std::string hex32(std::uint32_t v) {
 bool load(b3host::NativeBackend& nb, const std::string& path) {
     std::vector<std::uint8_t> d;
     b3asset::disc::read_file(path, d);   // iso1: <image>/SLUS_210.50 too
-    if (d.size() != kElfSize || b3host::fnv1a64(d.data(), d.size()) != kElfFnv) {
+    const b3port::KnownProgram* known = b3port::known_program(d.size(), b3host::fnv1a64(d.data(), d.size()));   // ghvariant
+    if (!known) {
         std::printf("ELF %s: not the retail SLUS_210.50 (size %zu)\n", path.c_str(), d.size());
         return false;
     }
+    if (!known->retail) std::printf("ELF %s: %s\n", path.c_str(), known->name);
     std::string err;
     if (!nb.load_elf_bytes(d, path, err)) { std::printf("ELF: %s\n", err.c_str()); return false; }
     return true;

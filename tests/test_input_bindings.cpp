@@ -55,6 +55,18 @@ GamepadState random_state(std::mt19937& r) {
 
 // ---- the defaults are the mapping before remap1 ----
 
+TEST(party_mode_actions) {
+    // party1: PARTY MODES' buttons -- keys 4 / 5 / 6 (scancodes 33-35), no controller binding of their own
+    const PortControls& d = default_port();
+    using PA = PortAction;
+    CHECK(d.keys[std::size_t(PA::PartyMoonJump)] == std::vector<std::uint16_t>{33} && d.pad[std::size_t(PA::PartyMoonJump)].empty());
+    CHECK(d.keys[std::size_t(PA::PartyCrash)] == std::vector<std::uint16_t>{34} && d.pad[std::size_t(PA::PartyCrash)].empty());
+    CHECK(d.keys[std::size_t(PA::PartyAiDriver)] == std::vector<std::uint16_t>{35} && d.pad[std::size_t(PA::PartyAiDriver)].empty());
+    CHECK(std::string(port_key(PA::PartyMoonJump)) == "party_moon_jump" && parse_port_action("party_crash") == PA::PartyCrash);
+    CHECK(port_actions_of_key(d, 33) == (std::uint64_t(1) << int(PA::PartyMoonJump)));
+    for (std::uint16_t k : {33, 34, 35}) CHECK(port_has_pad(PA::PartyCrash) && !port_page(PA::PartyCrash) && port_actions_of_key(d, k) != 0);
+}
+
 TEST(default_keyboard_byte_identical_every_key) {
     const std::vector<KeyBinding> mine = key_map(default_player(0));
     CHECK(mine.size() == default_key_map().size());
@@ -676,6 +688,10 @@ TEST(race_time_action) {
     CHECK(d.port.pad[std::size_t(a)] == std::vector<PadInput>{PadInput::LeftShoulder});
     CHECK(port_page(a) && !port_photo(a) && port_has_pad(a) && !port_analog(a));
     CHECK(parse_port_action("race_time") == a && std::string(port_label(a)) == "TIME OF DAY PER RACE");
+    // 1.3.0 (held back with night): listed on the CONTROLS pages only when it is this release's; the rest always
+    CHECK(port_listed(a) == kRaceTimeThisRelease);
+    for (int b = 0; b < kPortActions; ++b)
+        if (PortAction(b) != a) CHECK(port_listed(PortAction(b)));
     CHECK(port_actions_of_key(d.port, 23) == (std::uint64_t(1) << int(a)));
     for (int pl = 0; pl < 2; ++pl)   // T is free: no game action of either player has it
         for (const KeyBinding& k : key_map(d.player[std::size_t(pl)])) CHECK(k.scancode != 23);
@@ -734,6 +750,37 @@ TEST(race_time_refuses_page_inputs) {
     std::vector<std::string> w;
     const Controls e = controls_from_ini("version = 3\n[port.keyboard]\nrace_time = Return\n", &w);
     CHECK(!port_page_safe(e, a, Device::Keyboard) && port_page_safe(e, a, Device::Gamepad));
+}
+
+TEST(paint_panel_action) {
+    // paintsel (tools/native/paint_select.h): CAR PAINT PANEL, P on the keyboard (photo mode's P too: never on SELECT CAR,
+    // so no conflict either way); a controller opens it with the menus' Circle (no port binding of its own); a page action:
+    // it may not take what SELECT CAR reads (Square, the colour, besides the track pages' inputs)
+    const Controls d = default_controls();
+    constexpr PortAction a = PortAction::PaintPanel;
+    CHECK(d.port.keys[std::size_t(a)] == std::vector<std::uint16_t>{19} && d.port.pad[std::size_t(a)].empty());
+    CHECK(port_page(a) && !port_photo(a) && !port_has_pad(a) && !port_analog(a));
+    CHECK(parse_port_action("paint_panel") == a && std::string(port_label(a)) == "CAR PAINT PANEL");
+    CHECK(port_actions_of_key(d.port, 19) == ((std::uint64_t(1) << int(a)) | (std::uint64_t(1) << int(PortAction::PhotoMode))));
+    for (int pl = 0; pl < 2; ++pl)   // P is free: no game action of either player has it
+        for (const KeyBinding& k : key_map(d.player[std::size_t(pl)])) CHECK(k.scancode != 19);
+    CHECK(uses_port(d, a, Device::Keyboard, PhysInput{Device::Keyboard, 19, PadInput::None}).empty());
+    CHECK(uses_port(d, PortAction::PhotoMode, Device::Keyboard, PhysInput{Device::Keyboard, 19, PadInput::None}).empty());
+    CHECK(!uses_port(d, a, Device::Keyboard, PhysInput{Device::Keyboard, 23, PadInput::None}).empty());   // T: TIME OF DAY's
+    CHECK(port_page_safe(d, a, Device::Keyboard));
+    // V (Square in the menus) is SELECT CAR's colour: refused for this action, free for the track pages' TIME OF DAY
+    CHECK(page_reads_input(d, PhysInput{Device::Keyboard, 25, PadInput::None}, a));
+    CHECK(!page_reads_input(d, PhysInput{Device::Keyboard, 25, PadInput::None}, PortAction::RaceTime));
+    CHECK(!page_reads_input(d, PhysInput{Device::Keyboard, 19, PadInput::None}, a));
+    Controls c = d;
+    RebindFlow f;
+    f.begin_port(a, Device::Keyboard, false);
+    CHECK(f.input(c, PhysInput{Device::Keyboard, 25, PadInput::None}) == RebindFlow::State::Waiting);   // V: refused
+    CHECK(f.message(PadStyle::Xbox).find("SELECT CAR USES ITSELF") != std::string::npos);
+    CHECK(f.input(c, PhysInput{Device::Keyboard, 10, PadInput::None}) == RebindFlow::State::Done);     // G: taken
+    CHECK(c.port.keys[std::size_t(a)] == std::vector<std::uint16_t>{10});
+    std::vector<std::string> w;
+    CHECK(controls_from_ini(to_ini(c), &w) == c && w.empty() && to_ini(c).find("paint_panel") != std::string::npos);
 }
 
 TEST(page_chord_held_past_the_page) {
@@ -1259,6 +1306,30 @@ TEST(layout_two_players_two_pads) {
     set_page_family(k, 1, PadStyle::Xbox);
     rebind(k, 1, Device::Gamepad, Ds2::Cross, pad(PadInput::LeftPaddle1), KeyCtx::Any, Resolve::Keep, true);
     CHECK(k.player[1].layout == PadLayout::Custom && k.player[0].layout == PadLayout::Custom && k.player[0].pad == default_player(0).pad);
+}
+
+// orbitcam1: the right stick is free while driving on the Xbox and Nintendo layouts (and the 1.x defaults), bound on the
+// PlayStation layout (the game's analog throttle and brake); a Custom layout that binds it keeps it
+TEST(right_stick_bound_by_layout) {
+    CHECK(!right_stick_bound(layout_bindings(PadLayout::Xbox), KeyCtx::Drive));
+    CHECK(!right_stick_bound(layout_bindings(PadLayout::Nintendo), KeyCtx::Drive));
+    CHECK(!right_stick_bound(default_player(0).pad, KeyCtx::Drive));
+    CHECK(right_stick_bound(layout_bindings(PadLayout::PlayStation), KeyCtx::Drive));
+    PadBindings b = layout_bindings(PadLayout::Xbox);
+    b[std::size_t(Ds2::Cross)].push_back(PadBind(PadInput::RightYNeg, KeyCtx::Menu));   // a menu-only binding: free while driving
+    CHECK(!right_stick_bound(b, KeyCtx::Drive) && right_stick_bound(b, KeyCtx::Menu));
+    b[std::size_t(Ds2::Cross)].push_back(PadBind(PadInput::RightYNeg, KeyCtx::Drive));
+    CHECK(right_stick_bound(b, KeyCtx::Drive));
+    // the port shortcuts: the defaults leave the stick free (photo mode's look is photo mode's); a shortcut on a
+    // right-stick direction takes it, a photo control or the track pages' one does not
+    const PadBindings& x = layout_bindings(PadLayout::Xbox);
+    PortControls port = default_port();
+    CHECK(!right_stick_bound(x, KeyCtx::Drive, &port));
+    port.pad[std::size_t(PortAction::PhotoLookUp)] = {PadInput::RightYNeg};
+    port.pad[std::size_t(PortAction::RaceTime)] = {PadInput::LeftShoulder, PadInput::RightYPos};
+    CHECK(!right_stick_bound(x, KeyCtx::Drive, &port));
+    port.pad[std::size_t(PortAction::Screenshot)] = {PadInput::Back, PadInput::RightXPos};
+    CHECK(right_stick_bound(x, KeyCtx::Drive, &port));
 }
 
 TEST_MAIN("test_input_bindings: control remapping (src/native/input_bindings.h)")

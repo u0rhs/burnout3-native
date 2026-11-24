@@ -46,9 +46,20 @@ inline bool race_time_page(std::uint32_t current_page) {
     return p == kSelectOptionsPage || p == kJunctionPage || p == kMultiTrackPage;
 }
 
-// The choice's values (also the replay's "race_time" and the host record's)
-enum : std::uint8_t { kRaceTimeDefault = 0, kRaceTimeDay = 1, kRaceTimeNight = 2 };
-inline const char* race_time_name(int c) { return c == kRaceTimeDay ? "Day" : c == kRaceTimeNight ? "Night" : "Default"; }
+// The choice's values (also the replay's "race_time" and the host record's). weather (remaster-features §38): Rain (3,
+// by day) and Night rain (4) after the old values, which keep theirs (a recording's 0 / 1 / 2 plays back as before);
+// SELECT OPTIONS' TIME OF DAY and WEATHER rows (condrows) set its two halves. The label (the track pages without the row) steps Day / Night only.
+enum : std::uint8_t { kRaceTimeDefault = 0, kRaceTimeDay = 1, kRaceTimeNight = 2, kRaceTimeRain = 3, kRaceTimeNightRain = 4 };
+constexpr int kRaceTimeValues = 5;
+inline const char* race_time_name(int c) {
+    return c == kRaceTimeDay ? "Day" : c == kRaceTimeNight ? "Night" : c == kRaceTimeRain ? "Rain" : c == kRaceTimeNightRain ? "Night rain" : "Default";
+}
+// A chosen value (not Default) is at night / in the rain
+constexpr bool race_time_night(int c) { return c == kRaceTimeNight || c == kRaceTimeNightRain; }
+constexpr bool race_time_rain(int c) { return c == kRaceTimeRain || c == kRaceTimeNightRain; }
+// weather: held back (as night mode, input_bindings.h kRaceTimeThisRelease) until the owner releases it; B3_WEATHER_ROW=1
+// (tests) gives SELECT OPTIONS' row its rain values
+constexpr bool kWeatherThisRelease = false;
 
 class RaceTime {
 public:
@@ -83,7 +94,7 @@ public:
         return s;
     }
     // Playback (or a test): the recorded choice, from this VBlank on
-    void set_choice(int c) { choice_ = std::uint8_t(c == kRaceTimeDay || c == kRaceTimeNight ? c : kRaceTimeDefault); }
+    void set_choice(int c) { choice_ = std::uint8_t(c > kRaceTimeDefault && c < kRaceTimeValues ? c : kRaceTimeDefault); }
     int choice() const { return choice_; }        // the page's choice (the label shows it)
     int race() const { return race_; }            // what the race on screen uses (taken at the last load)
     std::uint8_t opacity() const { return opacity_; }   // the label's, 0..255 (0: not drawn)

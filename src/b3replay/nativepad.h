@@ -13,6 +13,7 @@
 #ifndef B3REPLAY_NATIVEPAD_H
 #define B3REPLAY_NATIVEPAD_H
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -56,7 +57,7 @@ public:
     // padlayout (checks only): with B3NATIVE_TEST_PAD=xbox|ps|switch|generic a scripted pad of that SDL type is player 1's
     // (tools/native/race_check.sh SCENARIO=padlayout). Its inputs are script codes kTestPadCode + an SDL_GamepadButton
     // (0..20), + 32 / 33 the left / right trigger fully pressed, + 34 / 35 / 36 / 37 the right stick up / left / right /
-    // down (garagecam1: 35-37); the pad goes through the
+    // down (garagecam1: 35-37), + 38 / 39 the left stick left / right (gameopts' steering check); the pad goes through the
     // player's bindings (its layout for the type, in the game's context) as a window pad does. Without the variable
     // these codes are ignored.
     static constexpr std::uint16_t kTestPadCode = 1024;
@@ -68,7 +69,8 @@ public:
     // controller layout (the PS2 report's L2 / R2 carry nothing in the menus on the Xbox layout)
     int section_stick() const { return section_stick_.load(); }
     // mac4 (b3r_pad_context): the key map's context, from the game thread (driving: the race simulation runs)
-    void set_driving(bool on);
+    // (padskip: `orbit`, the orbit camera's input, also in the game's replay: tools/native/pad_context.h)
+    void set_driving(bool on, bool orbit);
 
     // The window was closed: the game is asked to end (native_play polls b3r_quit_requested).
     void request_quit() { quit_ = true; }
@@ -87,7 +89,7 @@ public:
     // for it; the game thread starts it at its next sample while driving (else it is dropped). Off: nothing changes.
     void set_instant_restart(bool on) { restart_on_.store(on); }
     bool instant_restart() const { return restart_on_.load(); }
-    // carsel1: CAR SERIES ON L1 / R1 (PC SETTINGS; b3settings series_shoulders 1; input_keys.h ShoulderSeries): opt-in, it
+    // carsel1: CAR SERIES ON L1 / R1 (PC SETTINGS; b3settings series_shoulders 1, the default; input_keys.h ShoulderSeries): it
     // changes the reports the game reads on the car select page. native_play reads it each VBlank (b3r_series_shoulders)
     // and translates there, where the game's current page is known. Off: nothing changes.
     void set_series_shoulders(bool on) { series_on_.store(on); }
@@ -168,6 +170,37 @@ public:
     // game's input (the game sees none of them) and each press is counted for native_play (b3r_race_time_presses)
     void set_race_time_page(bool up) { race_page_.store(up); }
     int take_race_time_presses() { return race_presses_.exchange(0); }
+    // paintsel (tools/native/paint_select.h): native_play says each VBlank whether SELECT CAR takes input and whose page it
+    // is (b3r_paint_page: 0 / 1, -1 none). While it is, the CAR PAINT PANEL action's key (PortAction::PaintPanel, P) and
+    // the page player's controller Circle (as the player's layout gives it in the menus: Circle, Y on Xbox and Nintendo
+    // pads) are presses for the paint panel (PcPage; take_paint_presses), and no Circle reaches the game from either port
+    // (the page reads none: car_select.h)
+    void set_paint_page(int player) { paint_page_.store(player == 0 || player == 1 ? player : -1); }
+    int paint_page() const { return paint_page_.load(); }
+    int take_paint_presses() { return paint_presses_.exchange(0); }
+    // gearbox: the SHIFT UP / SHIFT DOWN presses since the last call (keys, player 1's pads); native_play applies them in a
+    // race with TRANSMISSION Manual only (tools/native/gearbox.h)
+    int take_shift_presses(bool up) { return (up ? shift_up_presses_ : shift_down_presses_).exchange(0); }
+    // party1 (b3r_party_keys): PARTY MODES' buttons since the last call -- bit 0 MOON JUMP held, bits 8..15 CRASH presses,
+    // 16..23 AI DRIVER presses (the window's keys, a script's, player 1's pads)
+    int take_party_keys() {
+        const int moon = party_moon_keys_.load() > 0 || party_moon_pad_.load() ? 1 : 0;
+        return moon | std::min(party_crash_.exchange(0), 255) << 8 | std::min(party_ai_.exchange(0), 255) << 16;
+    }
+    // replayview: REPLAY presses (key and pad) since the last call; native_play acts on them on a results page or in a replay
+    int take_replay_presses() { return replay_presses_.exchange(0); }
+    // replaycams: native_play says each VBlank whether the game's replay is being watched (replay_view.h showing(), from
+    // the request to the leave): the replay viewer's five bindings are taken out of the game's input only then (the
+    // game's own state, not the renderer's ticks, which lag: a results page after a leave gets its D-pad and Start)
+    void set_replay_showing(bool on) { replay_showing_.store(on); }
+    // paintsel: the paint panel's input on the game's VBlank grid: from panel_feed(true) (the game thread, as the panel
+    // opens) each sample's report (player 2's panel: player 2's pad and the keyboard only, input_keys.h panel_report) is
+    // queued when it changed, and the
+    // panel takes them in order (take_panel_reports): no press is lost however far the render thread is behind. Off:
+    // nothing queued.
+    void panel_feed(bool on, int player = 0);
+    std::vector<std::array<std::uint8_t, 32>> take_panel_reports();
+    bool panel_feeding() const { return panel_feed_.load(); }
     // The first key bound to a port action as a label ("F9"; "-" when none): for the texts that name it
     std::string port_key_text(b3native::input::PortAction a) const;
     // Ctrl / GUI held, and that modifier is not itself bound to anything: a window shortcut, not a game key
@@ -222,12 +255,35 @@ private:
     bool shortcut_mods_locked(unsigned sdl_mod) const;  // (mu_ held)
     std::uint64_t port_pad_prev_ = 0;                   // (under mu_) the gamepad port actions held at the last poll
     std::atomic<std::uint64_t> port_pad_edges_{0};
+    // party1 (tools/native/party_modes.h): PARTY MODES' buttons -- MOON JUMP's held keys and chord, CRASH / AI DRIVER presses
+    std::atomic<int> party_moon_keys_{0}, party_crash_{0}, party_ai_{0};
+    std::atomic<bool> party_moon_pad_{false};
+    bool party_pad_prev_[3] = {};
+    bool replay_pad_prev_[5] = {};   // replaycams
+    // replaycams: one of the replay viewer's actions (0 camera -, 1 camera +, 2 car -, 3 car +, 4 free camera)
+    void replay_action(int k, const char* how);
+    void party_key(std::uint16_t scancode, bool down);
     std::vector<std::uint32_t> hd_presses_;   // hdkey (under mu_)
     std::atomic<bool> race_page_{false};      // todrace
     std::atomic<int> race_presses_{0};
     b3native::input::PageChord race_chord_;   // todrace: the chord's withholding, kept until released (under mu_)
     bool race_keys_safe_ = true, race_pad_safe_ = true;   // todrace: the bindings take nothing the pages read (under mu_)
     void race_time_press(const char* by);
+    std::atomic<int> paint_page_{-1}, paint_presses_{0};   // paintsel
+    std::atomic<int> shift_up_presses_{0}, shift_down_presses_{0};   // gearbox
+    bool shift_up_prev_ = false, shift_down_prev_ = false, replay_prev_ = false;
+    std::atomic<int> replay_presses_{0};   // replayview
+    std::atomic<bool> replay_showing_{false};   // replaycams (set_replay_showing)
+    void shift_press(bool up, const char* by);
+    bool paint_keys_safe_ = true;                           // paintsel: its key is none SELECT CAR reads (under mu_)
+    std::array<bool, 2> circle_prev_{};                     // paintsel: each port's pad Circle at the last sample (under mu_)
+    void paint_press(const char* by);
+    std::atomic<bool> panel_feed_{false};
+    int panel_player_ = 0;                                   // (under mu_)
+    std::vector<std::array<std::uint8_t, 32>> panel_q_;      // (under mu_)
+    std::array<std::uint8_t, 32> panel_prev_{};              // (under mu_) the last report queued
+    void panel_queue();                                      // (mu_ held) the report of this sample, when it changed
+    void paint_circle(int port, std::array<std::uint8_t, 32>& report, const std::uint8_t* pad);   // (mu_ held)
     std::atomic<std::uint64_t> taken_{0};
     PromptDeviceTracker tracker_;   // mac5 (under mu_)
     std::array<SDL_JoystickID, 2> active_pad_{};   // padlayout: each player's last used pad (under mu_)
@@ -236,6 +292,12 @@ private:
     int test_pad_type_ = -1;                       // padlayout: B3NATIVE_TEST_PAD's SDL type, -1 none (under mu_)
     b3native::input::GamepadState test_pad_;       // its state (under mu_)
     std::array<std::uint8_t, 32> test_report() const;   // (mu_ held)
+    std::array<std::uint8_t, 32> test_report(const b3native::input::GamepadState& g) const;   // (mu_ held) of `g`
+    // replaycams (mu_ held): the replay viewer's five actions on pad state `s` read into amt[] (the largest so far), then,
+    // while the game's replay is watched, taken out of `s` (the game's report never has them); replay_edges acts on presses
+    void replay_take(b3native::input::GamepadState& s, float amt[5]);
+    void replay_edges(const float amt[5], bool prev[5], const char* how);
+    bool test_replay_prev_[5] = {};   // replaycams: the scripted test pad's presses
     void pad_used(SDL_JoystickID id);              // (mu_ held)
     bool keyboard_used_ = false;
     std::atomic<bool> text_mode_{false};   // mac5

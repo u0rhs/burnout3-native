@@ -236,7 +236,7 @@ TEST(the_split_screen_setting) {
     for (std::size_t k = 0; k < disp.rows.size(); ++k) if (disp.rows[k].label == "SPLIT SCREEN") { row = &disp.rows[k]; at = k; }
     for (const Tab& t : c.tabs) if (&t != &disp) for (const Row& r : t.rows) CHECK(r.label != "SPLIT SCREEN");
     CHECK(row != nullptr && at > 0 && at + 1 < disp.rows.size() && disp.rows[at - 1].label == "MENU MOVIE SIDES" &&
-          disp.rows[at + 1].kind == RowKind::kSection && disp.rows[at + 1].label == "CAMERA");
+          disp.rows[at + 1].kind == RowKind::kSection && disp.rows[at + 1].label == "RACE HUD");   // (hudmods: RACE HUD next)
     if (row) {
         CHECK(row->id == 180 && row->values.size() == 2 && row->value == 1);
         CHECK(row->values[0] == "Top / bottom" && row->values[1] == "Side by side");

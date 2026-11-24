@@ -84,6 +84,18 @@
 // apart, within the rip's second lossy encode); the rip through the player came out at exactly the stream's gain
 // (0.4495 there). So a custom song at 100 % plays as loud as a game song mastered as loud (the disc's songs are about
 // -8 LUFS, a modern master's level); a quieter file is quieter, which CUSTOM MUSIC VOLUME is for.
+//
+// CUSTOM MUSIC LOUDNESS (musicloud, default Even out): each custom song's EBU R128 integrated loudness and sample peak
+// (b3music::LoudnessMeter) bring it to b3music::kLoudnessTarget (-10 LUFS: the disc's songs at their source level,
+// measured in the menus as the output over the stream's gain: "Give It Up" -8.8, the front end's piece -11.3), at most
+// 20 dB down and 12 dB up, and up only as far as its peaks go 3 dB over the player's Limiter (a dynamic song is raised
+// as far as it stays clean). The folder's songs are measured on a worker thread from the scan on (b3music::
+// LoudnessService) and kept in music_loudness.txt beside pc_settings.ini (path, size, time: a changed file is measured
+// again, a gone one dropped at the load; B3NATIVE_MUSIC_LOUDNESS_FILE overrides it, "-": none); a song not measured yet
+// when it starts is measured then, in the game's prepare call, if small (LoudnessService::kNowBytes: a few hundred ms
+// at most); a bigger one plays as the file is until the worker (which takes it next) has it, then eases to its gain. A
+// song's gain only depends on its file; only when a big unmeasured song's gain arrives depends on the timing.
+// The gain multiplies the stream gain above; Off: 1. B3NATIVE_MUSIC_LOUDNESS=0|1 overrides the setting (tests).
 #ifndef B3NATIVE_CUSTOM_SOUNDTRACK_H
 #define B3NATIVE_CUSTOM_SOUNDTRACK_H
 
@@ -118,6 +130,9 @@ public:
     // volume(): CUSTOM MUSIC VOLUME in percent (0..200, 100 = as loud as the game's own songs); read every poll (null: 100)
     using VolumeFn = int (*)();
     void set_volume_source(VolumeFn volume) { volume_ = volume; }
+    // loudness(): CUSTOM MUSIC LOUDNESS (musicloud): 1 Even out (each song's measured level brought to the game's own
+    // songs' level, b3music::loudness_gain), 0 Off (the file's own level); read every poll (null: 1)
+    void set_loudness_source(VolumeFn loudness) { loudness_ = loudness; }
     // RW Audio + the SPU2 between the music stream's gain and the output, for the game's own songs: unity (the header)
     static constexpr float kStreamLevel = 1.0f;
     static float custom_volume(int percent) { return float(std::clamp(percent, 0, 200)) / 100.0f; }
@@ -288,6 +303,15 @@ private:
        song_allowed_ = nullptr, run_stream_ = nullptr, page_update_ = nullptr, lookup_ = nullptr, save_image_ = nullptr, page_rows_ = nullptr;
     ConfigFn config_ = nullptr;
     VolumeFn volume_ = nullptr;
+    VolumeFn loudness_ = nullptr;              // musicloud
+    b3music::LoudnessService loud_;            // musicloud: the folder's songs measured (a worker thread, a cache file)
+    std::string loud_folder_;                  // the folder the worker was started for
+    float song_gain_ = 1.0f;                   // the playing song's CUSTOM MUSIC LOUDNESS gain
+    bool song_measured_ = false;               // song_gain_ is the song's (else 1 until it is)
+    unsigned loud_wait_ = 0;                   // polls until the next lookup (switched on during an unmeasured song)
+    void loudness_start();                     // the worker on the folder's songs (Even out; once per folder)
+    void loudness_song(bool may_measure);      // song_gain_ for the player's song
+    static std::string loudness_file();
     float logged_vol_ = -1.0f, logged_cat_ = -1.0f, logged_user_ = -1.0f;   // B3NATIVE_MUSIC_LOG: the gain last logged
     bool logged_virtual_ = false;
     std::string folder_;                       // the folder scanned
@@ -325,6 +349,52 @@ inline CustomSoundtrack::~CustomSoundtrack() {
         std::printf("custom_music: limiter: %llu frames turned down (%.1f s), lowest gain %.3f\n",
                     static_cast<unsigned long long>(player_.limiter().limited()), double(player_.limiter().limited()) / b3music::kOutputRate,
                     double(player_.limiter().min_gain()));
+}
+
+// musicloud: the cache of measured songs: B3NATIVE_MUSIC_LOUDNESS_FILE ("-": none, measured for this run only), else
+// beside pc_settings.ini: music_loudness.txt
+inline std::string CustomSoundtrack::loudness_file() {
+    if (const char* e = std::getenv("B3NATIVE_MUSIC_LOUDNESS_FILE"); e && *e) return std::string(e) == "-" ? std::string() : std::string(e);
+    const std::filesystem::path d = save::user_data_dir();
+    if (d.empty()) return {};
+    const std::u8string u = (d / "music_loudness.txt").u8string();
+    return std::string(u.begin(), u.end());
+}
+
+inline void CustomSoundtrack::loudness_start() {
+    if (tracks_.empty() || loud_folder_ == folder_) return;
+    loud_folder_ = folder_;
+    loud_.set_cache_file(loudness_file());
+    std::vector<std::string> paths;
+    paths.reserve(tracks_.size());
+    for (const b3music::Track& t : tracks_) paths.push_back(t.path);
+    loud_.start(paths);
+}
+
+inline void CustomSoundtrack::loudness_song(bool may_measure) {
+    if (!player_.open()) return;
+    const std::string& path = player_.track().path;
+    float g = 1.0f;
+    bool cached = loud_.lookup(path, g);
+    if (!cached && !may_measure) return;
+    const auto t0 = std::chrono::steady_clock::now();
+    if (!cached && !loud_.need(path, g)) {   // a big song: the worker's next; gain 1 until its result (update())
+        std::printf("custom_music: VBlank %llu: loudness: a big file, measured in the background (as the file is until then)\n",
+                    static_cast<unsigned long long>(vb()));
+        return;
+    }
+    song_gain_ = g;
+    song_measured_ = true;
+    b3music::LoudnessCache::Entry e;
+    const bool have = loud_.cache().get(path, e);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    if (have && std::isfinite(e.lufs))
+        std::printf("custom_music: VBlank %llu: loudness %.2f LUFS, peak %.1f dBFS: gain %+.1f dB (%s)\n", static_cast<unsigned long long>(vb()),
+                    e.lufs, 20.0 * std::log10(std::max(e.peak, 1e-9)), 20.0 * std::log10(double(g)),
+                    cached ? (may_measure ? "measured before" : "measured in the background: from here")
+                           : ("measured now, " + std::to_string(int(ms)) + " ms").c_str());
+    else
+        std::printf("custom_music: VBlank %llu: loudness: none measured (silent or unreadable): as the file is\n", static_cast<unsigned long long>(vb()));
 }
 
 inline std::string CustomSoundtrack::modes_file() {
@@ -428,6 +498,7 @@ inline bool CustomSoundtrack::refresh(const std::string& folder) {
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     std::printf("custom_music: VBlank %llu: %zu songs in %s, %zu playable (%.0f ms)%s%s%s\n", static_cast<unsigned long long>(vb()), found_,
                 folder.c_str(), tracks_.size(), ms, found_ > kMaxCustom ? ": the first 200 are listed" : "", why.empty() ? "" : ": ", why.c_str());
+    if (!loudness_ || loudness_()) loudness_start();   // musicloud
     return !tracks_.empty();
 }
 
@@ -830,6 +901,9 @@ inline void CustomSoundtrack::prepare(const b3host::CallArgs& a, b3host::CallRes
             if (at == 0) ++p->songs_played_;
             std::printf("custom_music: VBlank %llu: stream %08X plays %s (%u Hz, from frame %u)\n", static_cast<unsigned long long>(vb()), stream,
                         p->player_.track().path.c_str(), p->player_.source_rate(), at);
+            p->song_measured_ = false;   // musicloud: the song's gain (measured now if the worker has not yet)
+            p->song_gain_ = 1.0f;
+            if (!p->loudness_ || p->loudness_()) p->loudness_song(true);
         }
     }
     b3host::store<std::uint8_t>(stream + 0x1F5u, 0);   // as func_003865A0's start, then "prepared" (Update's 1 -> 2)
@@ -924,7 +998,16 @@ inline void CustomSoundtrack::update(const b3host::CallArgs& a, b3host::CallResu
     const float cat_pitch = b3host::load<float>(kCategories + 8u * cat), cat_gain = b3host::load<float>(kCategories + 8u * cat + 4u);
     const float user = custom_volume(p->volume_ ? p->volume_() : 100);
     if (log) p->log_gain(true, vol, cat_gain, user);
-    const float g = game_music_muted() && cat == 13 ? 0.0f : vol * cat_gain * kStreamLevel * user;
+    // musicloud: CUSTOM MUSIC LOUDNESS (switched on during a song not measured yet: looked up now and then, the worker
+    // started; the gain moves there smoothly, Player::mix)
+    const bool even = !p->loudness_ || p->loudness_();
+    if (even && !p->song_measured_ && p->player_.open() && p->loud_wait_-- == 0) {
+        p->loud_wait_ = 30;
+        p->loudness_start();
+        p->loudness_song(false);
+    }
+    const float loud = even && p->song_measured_ ? p->song_gain_ : 1.0f;
+    const float g = game_music_muted() && cat == 13 ? 0.0f : vol * cat_gain * kStreamLevel * user * loud;
     p->player_.set_gain(g == g ? g : 0.0f);
     p->player_.set_pitch(cat_pitch == cat_pitch && cat_pitch > 0.0f ? cat_pitch : 1.0f);
 }

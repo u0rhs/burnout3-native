@@ -75,6 +75,7 @@ struct CarPose {
     float sh[9] = {};
     float shininess = 1.0f, lighting = 1.0f;  // BeginRenderingSingleVehicle's f0 / f1 (car_shading_scales)
     std::uint16_t lit = 0;         // EssentialParams +0x58 & 0xFC
+    float tail = -1.0f, brake = 0; // taillights (night, rain): the rear lamps' tail and brake levels (tail < 0: the game's)
     std::uint8_t glass = 0;        // VehicleParams +0x1014
     // Damage deformation (render6): RenderVehicle draws the body through RenderDeformedObject with the 8 zone matrices at
     // VehicleParams +0x500 while +0x101B, panel p with the 2 at +0x900 + 0x80 p while +0x101C[p] [C draft 0x21E6F0]
@@ -82,6 +83,11 @@ struct CarPose {
     RowMat zone[8];
     bool bit_deformed[7] = {};
     RowMat bit_zone[7][2];
+    // payloads1: the payload objects RenderVehicle draws (vehicle data +0x16C0 set): C list pay_list[i] at pay[i] (world)
+    static constexpr int kMaxPayload = 32;   // (the flatbed, PVEH/HEVY/CAR27.BTV: 8 variants of up to 19)
+    int npay = 0;
+    std::int8_t pay_list[kMaxPayload] = {};
+    RowMat pay[kMaxPayload];
 };
 
 // CB3TrafficSystem::Draw 0x3078F0's VehicleParams for a traffic vehicle [L draft, C asm: angles +0x128 / +0x130, speed

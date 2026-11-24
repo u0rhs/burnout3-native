@@ -1,6 +1,7 @@
 // b3host native backend (S0): see include/b3host/native_backend.h and docs/standalone.md §8.
 #include "b3host/native_backend.h"
 #include "b3host/watch.h"
+#include "b3host/split_array.h"
 
 #include <atomic>
 #include <cstdio>
@@ -139,9 +140,10 @@ std::size_t round_up(std::size_t v, std::size_t to) { return (v + to - 1) / to *
 }  // namespace
 
 namespace {
-// Reserves guard + committed + guard bytes, the middle read-write; null when the address space is not there
-std::uint8_t* reserve_guarded(std::size_t guard, std::size_t committed) {
-    const std::size_t total = guard + committed + guard;
+// Reserves guard + middle + guard bytes, the middle's first `committed` read-write (the rest no-access, reserved);
+// null when the address space is not there
+std::uint8_t* reserve_guarded(std::size_t guard, std::size_t middle, std::size_t committed) {
+    const std::size_t total = guard + middle + guard;
 #ifdef _WIN32
     auto* base = static_cast<std::uint8_t*>(VirtualAlloc(nullptr, total, MEM_RESERVE, PAGE_NOACCESS));
     if (!base) return nullptr;
@@ -167,32 +169,51 @@ std::uint8_t* reserve_guarded(std::size_t guard, std::size_t committed) {
 }
 }  // namespace
 
-GuardedRegion::GuardedRegion(std::size_t size, std::size_t guard, const char* name) : size_(size) {
+GuardedRegion::GuardedRegion(std::size_t size, std::size_t guard, const char* name, std::size_t growable) : size_(size) {
     const std::size_t ps = page_size();   // 4 KB, 16 KB on Apple silicon; both sizes used here are multiples
     guard_ = round_up(guard, ps);
     const std::size_t committed = round_up(size, ps);
-    base_ = guard_ ? reserve_guarded(guard_, committed) : nullptr;
+    growable_ = round_up(growable, ps);
+    // the growable part is reserved after the committed one and left no-access: until grow() it is the guard's start
+    base_ = guard_ ? reserve_guarded(guard_, committed + growable_, committed) : nullptr;
     if (!base_) {   // guards off, or not even their address space (a very low ulimit -v): the plain block, no guards
         guard_ = 0;
-        base_ = reserve_guarded(0, committed);
+        base_ = reserve_guarded(0, committed + growable_, committed + growable_);
         if (!base_) throw std::bad_alloc();
         data_ = base_;
+        total_ = committed + growable_;
         return;   // nothing to register
     }
     data_ = base_ + guard_;
-    const std::size_t total = guard_ + committed + guard_;
+    total_ = guard_ + committed + growable_ + guard_;
     std::lock_guard<std::mutex> lock(g_guard_mutex);
     for (int k = 0; k < kGuardSlots; ++k) {
         GuardSlot& g = g_guard_slots[k];
         if (g.data.load(std::memory_order_relaxed) != 0) continue;
         g.lo = reinterpret_cast<std::uintptr_t>(base_);
         g.end = reinterpret_cast<std::uintptr_t>(data_) + size_;
-        g.hi = reinterpret_cast<std::uintptr_t>(base_) + total;
+        g.hi = reinterpret_cast<std::uintptr_t>(base_) + total_;
         g.name = name;
         g.data.store(reinterpret_cast<std::uintptr_t>(data_), std::memory_order_release);
         slot_ = k;
         break;
     }   // (all slots taken: the guards still fault, the report only lacks the "overrun" line)
+}
+
+bool GuardedRegion::grow() {
+    if (growable_ == 0) return false;
+    std::uint8_t* at = data_ + round_up(size_, page_size());
+    if (guard_) {   // (no guards: committed with the rest already)
+#ifdef _WIN32
+        if (!VirtualAlloc(at, growable_, MEM_COMMIT, PAGE_READWRITE)) return false;
+#else
+        if (mprotect(at, growable_, PROT_READ | PROT_WRITE) != 0) return false;
+#endif
+    }
+    size_ = round_up(size_, page_size()) + growable_;
+    growable_ = 0;
+    if (slot_ >= 0) g_guard_slots[slot_].end = reinterpret_cast<std::uintptr_t>(data_) + size_;
+    return true;
 }
 
 GuardedRegion::~GuardedRegion() {
@@ -203,7 +224,7 @@ GuardedRegion::~GuardedRegion() {
 #ifdef _WIN32
     VirtualFree(base_, 0, MEM_RELEASE);
 #else
-    munmap(base_, guard_ + round_up(size_, page_size()) + guard_);
+    munmap(base_, total_);
 #endif
 }
 
@@ -247,7 +268,8 @@ static std::string guards_off_reason(const char* asked) {
 }
 NativeBackend::NativeBackend(const char* guards_off)
     : guards_off_(guards_off_reason(guards_off)),
-      ram_(kMainRamSize, guards_off_.empty() ? ram_guard_size() : 0, "guest RAM"),
+      ram_(kMainRamSize, guards_off_.empty() ? ram_guard_size() : 0, "guest RAM",
+           split::ram_bytes() - kMainRamSize),   // MORE RIVALS: 33 MB more reserved, grown at the first race that needs it
       spr_(kScratchpadSize, guards_off_.empty() ? 64u * 1024u : 0, "the scratchpad") {}
 
 std::string NativeBackend::guard_text() const {
@@ -299,6 +321,12 @@ bool NativeBackend::load_elf_bytes(const std::vector<std::uint8_t>& d, const std
         ++loaded;
     }
     if (!loaded) { error = path + " has no PT_LOAD segment"; return false; }
+    return true;
+}
+
+bool NativeBackend::grow_ram() {
+    if (!ram_.grow()) return false;
+    if (detail::g_backend == this) detail::g_windows = windows();
     return true;
 }
 

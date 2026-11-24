@@ -12,6 +12,8 @@
 #include "chd_writer.h"   // chd1
 #include "b3settings/page.h"   // chd1: translate_text
 #include "b3port/user_dir.h"   // portable mode
+#include "b3port/game_program.h"   // ghvariant
+#include "b3asset/sunflare.h"   // ghvariant: the flare table read from both programs
 #include "../src/native/save_store.h"
 
 #include <chrono>
@@ -98,6 +100,12 @@ TEST(config_ini_round_trip) {
     const Config d = config_from_ini("# x\n  game_dir =  C:\\Games\\B3 \r\nunknown = 1\nbad line\n");
     CHECK(d.game_dir == "C:\\Games\\B3");
     CHECK(config_from_ini("").game_dir.empty());
+    {   // showroom2: the SHOWROOM's last series (none: no line)
+        Config k;
+        CHECK(config_to_ini(k).find("showroom_series") == std::string::npos && k.showroom_series == -1);
+        k.showroom_series = 7;
+        CHECK(config_to_ini(k).find("showroom_series = 7") != std::string::npos && config_from_ini(config_to_ini(k)) == k);
+    }
     // 1.1: the chosen save folder; none: no line (the file as before)
     CHECK(config_to_ini(c).find("saves_dir") == std::string::npos && config_from_ini(config_to_ini(c)).saves_dir.empty());
     Config sd = c;
@@ -441,7 +449,7 @@ TEST(settings_rows_are_the_games) {
     b3settings::Settings st;
     b3settings::Content c = settings_content(st, "", false);
     // the in-game tabs without SAVES (the launcher's page; settingsui: its own LAUNCHER tab is drawn after them)
-    CHECK(c.tabs.size() == 8);   // DISPLAY GRAPHICS EFFECTS CAR CONTROLS AUDIO GAME MODS
+    CHECK(c.tabs.size() == 9);   // DISPLAY GRAPHICS EFFECTS CAR CONTROLS AUDIO GAME EXTRAS MODS
     for (const auto& t : c.tabs) CHECK(t.label != "SAVES");
     // settingsui (Env::launcher): a row that opens the launcher's HD Textures, Music and Controllers pages stands in for
     // the game's rows; OPEN THE LAUNCHER AT START is on the LAUNCHER tab, not GAME
@@ -831,6 +839,70 @@ TEST(game_art_from_the_disc) {
     }
 }
 #endif
+
+// ghvariant (b3port/game_program.h): the programs the port runs. With the files (B3_GAME_DIR's retail SLUS_210.50 and
+// $B3_TEST_VARIANT_PROGRAM, a player's online-server patched copy; game data: never in the repo, the test skips without
+// them): the variant is accepted, differs only in the 4 places named there, and what the host reads from the program
+// (the three fonts, the sun-flare table) comes out the same from both.
+TEST(program_variants) {
+    using b3port::known_program;
+    const b3port::KnownProgram* r = known_program(b3port::kRetailProgramSize, b3port::kRetailProgramFnv);
+    CHECK(r && r->retail);
+    const b3port::KnownProgram* v = known_program(b3port::kRetailProgramSize, 0xeeeadf1d5e0bcfcbull);
+    CHECK(v && !v->retail && std::string(v->name).find("online-server") != std::string::npos);
+    CHECK(!known_program(b3port::kRetailProgramSize, 0x1234) && !known_program(4073815, b3port::kRetailProgramFnv));
+    // a replay's "ram_hash": none the full hash, "2" masked, anything else refused (native_play names it)
+    const std::string two = "2", three = "3", empty;
+    CHECK(b3port::ram_hash_form(nullptr) == 0 && b3port::ram_hash_form(&two) == 1);
+    CHECK(b3port::ram_hash_form(&three) == -1 && b3port::ram_hash_form(&empty) == -1);
+    const char* game = std::getenv("B3_GAME_DIR");
+    const char* var = std::getenv("B3_TEST_VARIANT_PROGRAM");
+    if (!game || !var || !fs::exists(fs::path(game) / "SLUS_210.50") || !fs::exists(var)) {
+        std::printf("  (no retail / variant program: skipped the file checks)\n");
+        return;
+    }
+    const auto read = [](const fs::path& p) {
+        std::ifstream f(p, std::ios::binary);
+        return std::vector<std::uint8_t>((std::istreambuf_iterator<char>(f)), {});
+    };
+    ElfFile a, b;
+    a.bytes = read(fs::path(game) / "SLUS_210.50");
+    b.bytes = read(var);
+    CHECK(a.parse() && b.parse());
+    const auto fnv = [](const std::vector<std::uint8_t>& d) {
+        std::uint64_t h = 0xcbf29ce484222325ull;
+        for (std::uint8_t x : d) h = (h ^ x) * 0x100000001b3ull;
+        return h;
+    };
+    CHECK(known_program(a.bytes.size(), fnv(a.bytes)) == r && known_program(b.bytes.size(), fnv(b.bytes)) == v);
+    // the differences: the four places, none in what the host reads (by virtual address through the ELF's segments)
+    std::vector<std::pair<std::size_t, std::size_t>> runs;
+    for (std::size_t i = 0; i < a.bytes.size() && a.bytes.size() == b.bytes.size(); ++i)
+        if (a.bytes[i] != b.bytes[i]) {
+            if (!runs.empty() && i <= runs.back().second + 8) runs.back().second = i + 1;
+            else runs.push_back({i, i + 1});
+        }
+    CHECK(runs.size() == 4);
+    const std::size_t expect[4] = {0x16BFF8, 0x3C6F61, 0x3C9217, 0x3D39D7};
+    for (std::size_t k = 0; k < runs.size() && k < 4; ++k) CHECK(runs[k].first >= expect[k] && runs[k].first < expect[k] + 4);
+    const std::pair<std::uint32_t, std::uint32_t> reads[] = {{0x4BB610u, 0x4BB610u + 12 * 0x18}, {0x4E1978u, 0x4E1979u}, {0x4E1584u, 0x4E1598u}};
+    for (const auto& [lo, hi] : reads) {
+        const auto off = a.offset_of(lo, hi - lo);
+        CHECK(off.has_value());
+        for (const auto& [s0, s1] : runs) CHECK(!off || *off + (hi - lo) <= s0 || s1 <= *off);
+    }
+    // the fonts (and the dictionaries their textures come from) and the flare table: the same from both
+    GameFont fa[3], fb[3];
+    CHECK(load_game_fonts(a, fa) && load_game_fonts(b, fb));
+    for (int f = 0; f < 3; ++f) {
+        CHECK(fa[f].glyphs.size() == fb[f].glyphs.size() && fa[f].tex.rgba == fb[f].tex.rgba && fa[f].scale_x == fb[f].scale_x);
+        for (std::size_t g = 0; g < fa[f].glyphs.size() && g < fb[f].glyphs.size(); ++g)
+            CHECK(std::memcmp(&fa[f].glyphs[g], &fb[f].glyphs[g], sizeof(FontGlyph)) == 0);
+    }
+    b3asset::SunFlareTable ta, tb;
+    CHECK(b3asset::read_sun_flare_table((fs::path(game) / "SLUS_210.50").string(), ta) && b3asset::read_sun_flare_table(var, tb));
+    CHECK(ta.valid && tb.valid && std::memcmp(ta.sec, tb.sec, sizeof ta.sec) == 0 && ta.secondaries == tb.secondaries);
+}
 
 // osk1: a text field's cursor (UTF-8 whole characters), Backspace / Delete, pasted paths
 TEST(text_field_cursor) {

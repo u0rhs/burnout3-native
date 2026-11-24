@@ -139,6 +139,9 @@ void install_rwa_iop(b3audio::AudioSink* sink = nullptr);
 // custom soundtrack (2026-11-10, remaster-features §6; src/native/custom_music.h): a host source mixed into each
 // VBlank's rendered 48 kHz frames before they go to the sink (s16 stereo, added in place); null: none (the default)
 void set_music_overlay(void (*mix)(std::int16_t* lr, std::size_t frames));
+// audioq: PC SETTINGS > AUDIO > SOUND OUTPUT: true Original (the SPU2's clamped output), false Clean (the mixer's
+// limiter; src/audio/spu2_mixer_impl.h); applied from the next sample (any thread). B3_AUDIO_HARD_CLIP=1 forces Original
+void set_sound_output_original(bool original);
 // boot2 diagnostics: B3NATIVE_RWA_LOG=<file> -- RW Audio's commands and replies in order, `S|U <poll> <op>` (the poll
 // as native_boot's poll point counts it: log_poll)
 inline std::uint64_t log_poll = 0;

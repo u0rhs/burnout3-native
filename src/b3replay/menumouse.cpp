@@ -1,6 +1,7 @@
 // The mouse in the game's own menus, the renderer's side: src/b3replay/menumouse.h.
 #include "menumouse.h"
 #include "garagecam.h"   // garagecam1: a drag on a car page
+#include "orbitcam.h"    // orbitcam1: a right drag in a race
 
 #include <algorithm>
 #include <cmath>
@@ -175,10 +176,18 @@ MenuMouse& MenuMouse::instance() {
 void MenuMouse::move(float x, float y, double) {
     std::lock_guard<std::mutex> l(mu_);
     if (events_.size() < 256) events_.push_back({Event::kMove, x, y, 0});
+    // orbitcam1 (orbitcam.h): with the right button held while driving, the moves turn the race's chase view; taken
+    // here, as the event comes (stamped with the game's poll like the stick), not at the renderer's next frame
+    if (orbit_held_ && !OrbitCam::instance().takes_input()) orbit_held_ = false;   // (paused, a page, photo mode: let go)
+    if (orbit_held_ && orbit_have_) OrbitCam::instance().add_drag(x - orbit_x_, y - orbit_y_);
+    orbit_x_ = x;
+    orbit_y_ = y;
+    orbit_have_ = true;
 }
 void MenuMouse::button(int b, bool down, double) {
     std::lock_guard<std::mutex> l(mu_);
     if (events_.size() < 256) events_.push_back({down ? Event::kDown : Event::kUp, 0, 0, b});
+    if (b == 3) orbit_held_ = down && OrbitCam::instance().takes_input();   // orbitcam1: no menu while driving
 }
 void MenuMouse::wheel(int steps, double) {
     std::lock_guard<std::mutex> l(mu_);
@@ -196,7 +205,12 @@ bool MenuMouse::pending() const {
 }
 bool MenuMouse::cursor_wanted(double now) const {
     std::lock_guard<std::mutex> l(mu_);
-    return !hidden_by_device_ && now - last_move_ < kHideAfter;
+    // orbitcam1: no cursor while the right button looks (not once the look stopped counting: paused, a page, photo mode)
+    return !hidden_by_device_ && now - last_move_ < kHideAfter && !(orbit_held_ && OrbitCam::instance().takes_input());
+}
+void MenuMouse::focus_lost() {
+    std::lock_guard<std::mutex> l(mu_);
+    orbit_held_ = false;   // orbitcam1: a button released outside the window never sends its up
 }
 
 void MenuMouse::emit(const b3live::MenuAction& a) {

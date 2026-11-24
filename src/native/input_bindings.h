@@ -156,9 +156,26 @@ enum class PortAction : std::uint8_t {
     CarLook,   // reflect2: the CAR LOOK panel (DEVELOPER MODS)
     HdTextures,   // 1.2 (hdkey): the HD texture pack or the original textures, at once (the renderer keeps both)
     RaceTime,     // todrace (1.3.0): DAY / NIGHT per race on the track pages (tools/native/race_time.h); those pages only
+    PaintPanel,   // paintsel: the car paint panel on SELECT CAR (tools/native/paint_select.h); that page only. The keyboard's
+                  // key (P); a controller opens it with the player's menus Circle (Y on the Xbox and Nintendo layouts)
+    ShiftUp, ShiftDown,   // gearbox: TRANSMISSION Manual's gear changes (tools/native/gearbox.h); a manual race only. U / Y,
+                          // the right / left paddle (the game's own R2 / L2 shift too)
+    PartyMoonJump, PartyCrash, PartyAiDriver,   // party1 (tools/native/party_modes.h): GAME > PARTY MODES' buttons, in races
+                                                // with that mode on; keys 4 / 5 / 6, no controller binding by default
+    Replay,               // replayview (RACE REPLAY, tools/native/replay_view.h): the race's replay from its results page, and back
+                          // (F6; Square / X); the results pages and the replay only
+    ReplayCameraPrev, ReplayCameraNext, ReplayCarPrev, ReplayCarNext, ReplayFreeCamera,   // replaycams (src/b3replay/replaycams.h):
+        // the replay viewer's, while the game's replay plays only (the game reads no input then); [ / ], comma / period, I;
+        // the D-pad up / down, left / right, Start
     Count
 };
 constexpr int kPortActions = int(PortAction::Count);
+// 1.3.0: night mode is held back (still being finished), and with it the DAY / NIGHT choice on the track pages
+// (tools/native/race_time.h): native_play takes no presses and publishes no label, and the CONTROLS lists (the game's
+// page, the launcher) leave TIME OF DAY PER RACE out. Its PortAction id, ini key and row id stay as they are.
+constexpr bool kRaceTimeThisRelease = false;
+// a row for it on the CONTROLS lists (the game's page, the launcher): every action but one held back this release
+constexpr bool port_listed(PortAction a) { return a != PortAction::RaceTime || kRaceTimeThisRelease; }
 const char* port_key(PortAction a);                 // the ini's name: "restart", "photo_forward", ...
 const char* port_label(PortAction a);               // "INSTANT RESTART", "PHOTO: MOVE FORWARD", ...
 const char* port_use(PortAction a);                 // what it does, for the pages
@@ -166,6 +183,7 @@ bool port_photo(PortAction a);                      // one of photo mode's (conf
 // todrace: taken on game pages that read none of its inputs only (RaceTime: the track pages, race_time.h):
 // it conflicts only with the other port actions, and never with photo mode's (the two are never active together)
 bool port_page(PortAction a);
+bool port_replay(PortAction a);                     // replaycams: the replay viewer's (port_page too: taken during the replay only)
 bool port_has_pad(PortAction a);                    // a gamepad binding is meaningful (not the tuning overlay, the sections)
 bool port_analog(PortAction a);                     // a gamepad stick / trigger axis drives it (photo mode's movement and look)
 std::optional<PortAction> parse_port_action(std::string_view s);
@@ -227,6 +245,11 @@ std::vector<KeyBinding> key_map(const PlayerControls& p);
 const PadBindings& pad_bindings(const PlayerControls& p, PadStyle family);
 // What "back to the default" gives a player's pad of this family: the layout's (Custom: Auto's)
 const PadBindings& pad_default(const PlayerControls& p, PadStyle family);
+// orbitcam1: the bindings use the right stick's axes in the context `ctx` (a binding of that context or of both): the
+// PlayStation layout's analog throttle and brake, a Custom layout's (the race's orbit camera then leaves the stick alone);
+// with `port`, also a port shortcut whose chord has a right-stick direction (photo mode's own controls and the track
+// pages' aside: photo mode takes the stick from the orbit anyway, those pages are no race)
+bool right_stick_bound(const PadBindings& b, KeyCtx ctx, const PortControls* port = nullptr);
 // A gamepad's report with these bindings in the context `now` (Menu / Drive: the bindings of that context and of both;
 // Any: all of them). With the 1.x defaults (the Custom layout's, every binding of both contexts): gamepad_sample(g, t),
 // byte for byte, in either context.
@@ -342,6 +365,8 @@ void reset_port(Controls& c, PortAction a, Device d);   // that action's device 
 // (Triangle) or a direction (the D-pad, the left stick) -- which a page action (port_page) must not take: the page would
 // lose it. A gamepad input counts in any controller layout.
 bool page_reads_input(const Controls& c, const PhysInput& in);
+// paintsel: the same for page action `a`'s page: SELECT CAR (PaintPanel) also reads Square (the game's colour choice)
+bool page_reads_input(const Controls& c, const PhysInput& in, PortAction a);
 // None of the action's inputs on device `d` is one (a hand-edited controls.ini can bind one; the window then leaves them
 // to the game)
 bool port_page_safe(const Controls& c, PortAction a, Device d);

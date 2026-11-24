@@ -22,12 +22,18 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <cstring>
 
 namespace b3gv {
 
 inline constexpr std::uint32_t kRamLo = 0x00100000U, kRamEnd = 0x02000000U;   // the capture reads main RAM above 1 MB
 inline constexpr std::uint32_t kSprBase = 0x70000000U, kSprSize = 0x4000U;
+// The race cars: their count gWorld + 0x12AD1C, the game's list of 6 CB3RaceCar pointers gWorld + 0x12AD28. MORE RIVALS
+// (tools/native/more_rivals.h): a race of up to 8 keeps the pointers of cars 7 and 8 at kMoreCars (below 32 MB, so the
+// capture's view has them; the game's own list holds them in a shadow above it), written as the race is set up
+inline constexpr std::uint32_t kMaxRaceCars = 8, kMoreCars = 0x01D52500U;
+inline constexpr std::uint32_t race_car_slot(std::uint32_t i) { return i < 6 ? 0x00522660U + 0x12AD28U + 4 * i : kMoreCars + 4 * (i - 6); }
 
 // Guest memory, read only. A view (ram / spr) is used where set; else the callbacks; else the read gives 0.
 struct Memory {
@@ -88,6 +94,14 @@ bool hud_on();
 // One observation before the first instruction of the function at pc: arg = a0, a1, a2, a3, t0, t1, t2, t3 (GPR
 // 4..11, low words). Idempotent for the same call observed twice.
 void on_entry(std::uint32_t pc, const std::uint32_t arg[8], const Memory& m);
+// 1.3.1 (tools/native/pc_menu.h): the port's own help texts. A ticker (CB3ScrollingText2dObject) whose text is at guest
+// address `text` is captured with `display` instead (its TICKER event's length word gets bit 31); the game lays out and
+// draws its own text there, so its work (the virtual EE time) is as before, and the renderer lays `display` out in its
+// place (src/b3replay/view.cpp). An empty `display` removes the entry. From the game thread.
+void set_ticker_text(std::uint32_t text, const std::u16string& display);
+// gamemods1 (tools/native/car_viewer.h): a frame of the CAR VIEWER: its car (the player's race car) and background colour
+// (0..14), recorded as a FECAR event of its own (hud_capture.cpp). From the game thread, once a frame.
+void car_viewer_frame(std::uint32_t car, int background);
 
 // ---- split2: CB3World::Render(idx)'s entry (scene_capture.cpp; docs/native-renderer.md §29.6) ----
 // The adapter calls this at the entry of 0x276300 with a1 (the view index); reads only. In a 2-player split screen,

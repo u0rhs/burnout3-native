@@ -3,6 +3,7 @@
 #include <sstream>
 #include "b3port/user_dir.h"
 
+#include "b3settings/settings_path.h"
 #include "b3settings/i18n.h"
 #include "b3settings/page.h"
 #include "b3settings/safemode.h"
@@ -10,6 +11,9 @@
 #include "input_bindings.h"   // 1.2.1: the CONTROLS page's shortcut rows (kPort)
 
 #include <algorithm>
+#include <array>
+#include <cstdlib>
+#include <vector>
 #include <cstring>
 #include <cstdio>
 #include <fstream>
@@ -41,7 +45,7 @@ const Tab* holding(const Content& c, const std::string& label) {
 TEST(defaults_are_main_and_the_high_preset) {
     const Settings d{};
     // main before settings1: MSAA 4, anisotropy 16, interpolation, wide HUD, every effect, radial 0.5, PC post, game LODs
-    CHECK(d.msaa == 4 && d.filter == Filter::kAniso16 && d.interpolation && d.hud_wide && !d.vsync && d.frame_cap == 0);
+    CHECK(d.msaa == 4 && d.filter == Filter::kAniso16 && d.interpolation && d.hud_wide && !d.vsync && d.frame_cap == b3settings::kFrameCapAuto);
     CHECK(d.motion_blur && d.bloom && d.post_pc && d.radial_blur == 50 && !d.car_detail_highest && d.damage && d.glass_damage);
     CHECK(d.fov == 0 && d.fps_view == 0 && d.fps_corner == 0 && !d.fullscreen);
     CHECK(d.fe_layout == 2 && d.movie_fill && d.latency == 0 && d.lead == -1 && d.frames_in_flight == -1);   // fe3 / lat1 defaults, auto
@@ -117,7 +121,7 @@ TEST(fov_scale) {
 
 TEST(every_row_applies) {
     const Content c = build_content(Settings{}, Env{true});
-    CHECK(c.tabs.size() == 8);   // settingsui: DISPLAY GRAPHICS EFFECTS CAR CONTROLS AUDIO GAME MODS (SAVES with a card)
+    CHECK(c.tabs.size() == 9);   // settingsui: DISPLAY GRAPHICS EFFECTS CAR CONTROLS AUDIO GAME EXTRAS MODS (SAVES with a card)
     int rows = 0;
     for (const Tab& t : c.tabs)
         for (const Row& r : t.rows) {
@@ -231,8 +235,8 @@ TEST(saves_tab) {
     e.profile_used = {true, true, false, false, false};
     e.saves_folder = "/saves";
     const Content c = build_content(Settings{}, e);
-    CHECK(c.tabs.size() == 9 && c.tabs[7].label == "SAVES" && c.tabs.back().label == "MODS");   // settingsui: SAVES, then MODS
-    const Tab& t = c.tabs[7];
+    CHECK(c.tabs.size() == 10 && c.tabs[8].label == "SAVES" && c.tabs.back().label == "MODS");   // settingsui: SAVES, then MODS
+    const Tab& t = c.tabs[8];
     bool file = false, ex = false, im = false, folder = false;
     for (const Row& r : t.rows) {
         Settings s;
@@ -247,7 +251,7 @@ TEST(saves_tab) {
     e.save_status = "IMPORT FAILED: no Burnout 3 save";
     bool status = false;
     const Content with_status = build_content(Settings{}, e);
-    for (const Row& r : with_status.tabs[7].rows) status = status || (r.label == "LAST RESULT" && r.values[0] == "Failed");
+    for (const Row& r : with_status.tabs[8].rows) status = status || (r.label == "LAST RESULT" && r.values[0] == "Failed");
     CHECK(status);
 }
 
@@ -275,6 +279,99 @@ TEST(save_screens_row) {
                 CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.hide_save_screens);
             }
     CHECK(found);
+}
+
+TEST(gameplay_rows) {
+    // gameopts (tools/native/game_options.h): MIRROR MODE and CRASHBREAKER IN EVERY MODE are off by default, in the file,
+    // toggles of their own GAMEPLAY section (41) on the GAME tab (ids 430 / 431), and no preset changes them
+    CHECK(!Settings{}.mirror_mode && !Settings{}.crashbreaker_all);
+    Settings s;
+    s.mirror_mode = true;
+    s.crashbreaker_all = true;
+    CHECK(from_ini(to_ini(s)) == s);
+    CHECK(to_ini(s).find("mirror_mode = true") != std::string::npos);
+    CHECK(to_ini(s).find("crashbreaker_all_modes = true") != std::string::npos);
+    CHECK(!from_ini("").mirror_mode && !from_ini("").crashbreaker_all);
+    CHECK(from_ini("mirror_mode = on\n").mirror_mode && !from_ini("mirror_mode = on\n").crashbreaker_all);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) {
+        CHECK(with_preset(s, p).mirror_mode && with_preset(s, p).crashbreaker_all);
+        CHECK(!with_preset(Settings{}, p).mirror_mode && !with_preset(Settings{}, p).crashbreaker_all);
+    }
+    int found = 0;
+    for (const auto& t : build_content(Settings{}, Env{true}).tabs) {
+        bool in_section = false;
+        for (const auto& r : t.rows) {
+            if (r.kind == RowKind::kSection) in_section = r.label == "GAMEPLAY" && r.id == 0xFFFF0000u + 41;
+            if (r.label != "MIRROR MODE" && r.label != "CRASHBREAKER IN EVERY MODE") continue;
+            CHECK(t.label == "EXTRAS" && in_section && r.kind == (r.id == 431u ? RowKind::kChoice : RowKind::kToggle) && r.value == 0);
+            if (r.id == 431u) CHECK(r.values.size() == 3 && r.values[2] == "Full");   // gamemods1: Off / Traffic only / Full
+            CHECK(r.id == (r.label == "MIRROR MODE" ? 430u : 431u));
+            Settings x;
+            CHECK(apply_edit(x, Edit{r.id, 1, 0, false}));
+            CHECK(r.id == 430 ? x.mirror_mode && !x.crashbreaker_all : x.crashbreaker_all && !x.mirror_mode);
+            if (r.id == 431u) CHECK(apply_edit(x, Edit{r.id, 2, 0, false}) && x.crashbreaker_all && x.crashbreaker_full);
+            CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x == Settings{});
+            ++found;
+        }
+    }
+    CHECK(found == 2);
+    // CRASHBREAKER AFTER (432): only with CRASHBREAKER IN EVERY MODE on, under it; 0..3, 1 by default; in every language
+    CHECK(Settings{}.crashbreaker_cars == 1);
+    Settings on;
+    on.crashbreaker_all = true;
+    on.crashbreaker_cars = 3;
+    CHECK(from_ini(to_ini(on)) == on && to_ini(on).find("crashbreaker_cars = 3") != std::string::npos);
+    CHECK(from_ini("crashbreaker_cars = 9\n").crashbreaker_cars == 1);   // (out of range: the default)
+    int cars_rows = 0;
+    for (const Settings& x : {Settings{}, on})
+        for (const auto& t : build_content(x, Env{true}).tabs)
+            for (std::size_t k = 0; k < t.rows.size(); ++k) {
+                const Row& r = t.rows[k];
+                if (r.id != 432) continue;
+                ++cars_rows;
+                CHECK(x.crashbreaker_all && k > 0 && t.rows[k - 1].id == 431 && r.kind == RowKind::kChoice && r.values.size() == 4 &&
+                      r.value == 3);
+                Settings y = on;
+                CHECK(apply_edit(y, Edit{r.id, 0, 0, false}) && y.crashbreaker_cars == 0);
+            }
+    CHECK(cars_rows == 1);
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"})
+        for (const std::string& m : untranslated(build_content(on, Env{true}), code))
+            if (m.find("CRASHBREAKER AFTER") != std::string::npos || m.find("vehicles your crash") != std::string::npos ||
+                m.find("ready as soon") != std::string::npos) {
+                std::printf("  %s lacks: %s\n", code, m.c_str());
+                CHECK(false);
+            }
+}
+
+TEST(party_mode_rows) {
+    // party1 (tools/native/party_modes.h): GAME > PARTY MODES (section 42, rows 530-535), all off by default, in the file
+    const Settings d;
+    CHECK(d.party_crazy_ai == 0 && d.party_moon_jump == 0 && !d.party_crash && !d.party_ai_driver && !d.party_kamikaze && !d.party_tuk_tuks);
+    Settings s;
+    s.party_crazy_ai = 3;
+    s.party_moon_jump = 2;
+    s.party_crash = s.party_ai_driver = s.party_kamikaze = s.party_tuk_tuks = true;
+    CHECK(from_ini(to_ini(s)) == s);
+    CHECK(to_ini(s).find("party_crazy_ai = 3") != std::string::npos && to_ini(s).find("party_kamikaze_traffic = true") != std::string::npos &&
+          to_ini(s).find("party_tuk_tuks = true") != std::string::npos);
+    CHECK(from_ini("") == Settings{});
+    const std::uint32_t ids[] = {530, 531, 532, 533, 534, 535};
+    int found = 0;
+    for (const auto& t : build_content(Settings{}, Env{true}).tabs) {
+        bool in_section = false;
+        for (const auto& r : t.rows) {
+            if (r.kind == RowKind::kSection) in_section = r.label == "PARTY MODES" && r.id == 0xFFFF0000u + 42;
+            if (std::find(std::begin(ids), std::end(ids), r.id) == std::end(ids)) continue;
+            CHECK(t.label == "EXTRAS" && in_section && r.value == 0);   // extras: PARTY MODES on EXTRAS
+            Settings x;
+            const std::size_t top = r.kind == RowKind::kToggle ? 1 : 3;
+            CHECK(apply_edit(x, Edit{r.id, top, 0, false}) && !(x == Settings{}));
+            CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x == Settings{});
+            ++found;
+        }
+    }
+    CHECK(found == 6);
 }
 
 TEST(dither_row) {
@@ -1102,7 +1199,7 @@ TEST(music_folder_and_playlist) {
         Env both;
         both.music = true;
         both.profile = 1;
-        CHECK(build_content(Settings{}, both).tabs.size() == 9);
+        CHECK(build_content(Settings{}, both).tabs.size() == 10);
     }
     Env e;
     e.music = true;
@@ -1167,7 +1264,7 @@ TEST(accessibility_rows) {
     CHECK(matching_preset(s) == Preset::kHigh);
     for (const Env& env : {Env{true}, Env{false}}) {   // (the launcher's Env too: no music, no card)
         const Content c = build_content(Settings{}, env);
-        CHECK(c.tabs.size() == 8);
+        CHECK(c.tabs.size() == 9);
         const Tab* in = nullptr;
         for (const Tab& t : c.tabs) if (t.label == "GAME") in = &t;
         CHECK(in != nullptr);
@@ -1412,14 +1509,36 @@ TEST(other_music_apps_row) {
     Settings x;
     CHECK(apply_edit(x, Edit{r->id, 1, 0, false}) && x.other_music_apps == 1);
     CHECK(apply_edit(x, Edit{r->id, 0, 0, false}) && x.other_music_apps == 0);
-    // right after PLAYLIST and its CUSTOM MUSIC VOLUME (musicvol1)
+    // right after PLAYLIST, its CUSTOM MUSIC VOLUME (musicvol1) and CUSTOM MUSIC LOUDNESS (musicloud)
     const Tab* in = nullptr;
     for (const Tab& t : c.tabs) if (t.label == "AUDIO") in = &t;   // settingsui: AUDIO > MUSIC
     CHECK(in != nullptr);
     if (!in) return;
-    for (std::size_t i = 0; i + 2 < in->rows.size(); ++i)
+    for (std::size_t i = 0; i + 3 < in->rows.size(); ++i)
         if (in->rows[i].label == "PLAYLIST")
-            CHECK(in->rows[i + 1].label == "CUSTOM MUSIC VOLUME" && in->rows[i + 2].label == "OTHER MUSIC APPS");
+            CHECK(in->rows[i + 1].label == "CUSTOM MUSIC VOLUME" && in->rows[i + 2].label == "CUSTOM MUSIC LOUDNESS" &&
+                  in->rows[i + 3].label == "OTHER MUSIC APPS");
+}
+
+TEST(custom_music_loudness_row) {
+    // musicloud: CUSTOM MUSIC LOUDNESS Off / Even out, default Even out, ini custom_music_loudness, live
+    const Settings d{};
+    CHECK(d.custom_music_loudness == 1);
+    Env env;
+    env.music = true;
+    const Content c = build_content(d, env);
+    const Row* r = nullptr;
+    for (const Tab& t : c.tabs)
+        for (const Row& row : t.rows)
+            if (row.label == "CUSTOM MUSIC LOUDNESS") r = &row;
+    CHECK(r != nullptr);
+    if (!r) return;
+    CHECK(r->values.size() == 2 && r->values[0] == "Off" && r->values[1] == "Even out" && r->value == 1);
+    Settings x;
+    CHECK(apply_edit(x, Edit{r->id, 0, 0, false}) && x.custom_music_loudness == 0);
+    CHECK(from_ini("custom_music_loudness = 0\n").custom_music_loudness == 0);
+    CHECK(to_ini(x).find("custom_music_loudness = 0") != std::string::npos && from_ini(to_ini(x)) == x);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kUltra}) CHECK(with_preset(x, p).custom_music_loudness == 0);
 }
 
 TEST(adaptive_trigger_rows) {
@@ -1477,19 +1596,162 @@ TEST(adaptive_trigger_rows) {
     }
 }
 
-TEST(series_shoulders_row) {
-    // carsel1 (src/native/input_keys.h ShoulderSeries): CAR SERIES ON L1 / R1 Off / On (default Off: the reports untouched,
-    // nothing drawn), row 200, the CONTROLLER section's last row (after TRIGGER STRENGTH, before TIME ATTACK); in the file,
-    // untouched by the presets
+// extras (2026-11-23): PC SETTINGS > EXTRAS -- every row off by default (a fresh install plays as the game shipped), each
+// row its own bit of extras_bits, the game's two limits as inverted rows, the extra cars of an older install by folder
+TEST(extras_tab_rows_and_bits) {
     const Settings d{};
-    CHECK(d.series_shoulders == 0 && to_ini(d).find("series_shoulders = 0") != std::string::npos);
-    Settings s;
-    s.series_shoulders = 1;
-    CHECK(from_ini(to_ini(s)) == s);
+    // (ELIMINATOR on by default: the owner's, 2026-11-23; the rest off)
+    CHECK(extras_bits(d) == kExtraEliminator && d.idle_pause && d.long_event_end && d.extra_custom_cars == 0 && d.extra_beta_cars == 0);
+    const Content c = build_content(d, Env{true});
+    const Tab* x = nullptr;
+    for (const Tab& t : c.tabs) if (t.label == "EXTRAS") x = &t;
+    CHECK(x != nullptr);
+    if (!x) return;
+    std::uint32_t all = 0;
+    int rows = 0;
+    for (const Row& r : x->rows) {
+        if (r.kind == RowKind::kSection) continue;
+        ++rows;
+        // all off by default (NO IDLE PAUSE / NO EVENT TIME LIMIT: Off = the game's; DEFORMATION: the game's 100%)
+        CHECK(r.value == (r.label == "DEFORMATION" ? 2u : r.label == "ELIMINATOR" ? 1u : 0u));
+        Settings s;
+        CHECK(apply_edit(s, Edit{r.id, r.value == 1 ? 0u : 1u, 0, false}));
+        CHECK(!(s == d));
+        const std::uint32_t b = extras_bits(s) ^ extras_bits(d);
+        if (r.id >= 700 && r.id <= 720) {   // the new rows: exactly one bit each
+            CHECK(b != 0 && (b & (b - 1)) == 0 && (b & all) == 0);
+            all |= b;
+        }
+        CHECK(from_ini(to_ini(s)) == s);
+        Settings back = s;
+        CHECK(apply_edit(back, Edit{r.id, r.value, 0, false}) && back == d);
+    }
+    CHECK(all == (kExtrasMask & ~(kExtraNightWorldTour | kExtraRainWorldTour)));   // (the World Tour rows: shown with NIGHT / RAIN)
+    CHECK((kExtrasAll & (kExtraNight | kExtraRain | kExtraNightWorldTour | kExtraRainWorldTour)) == 0);   // "all": not the experimental ones
+    CHECK(rows == 21 + 2 + 5 + 6 + 1);
+    // EXPERIMENTAL NIGHT / RAIN, each combination: MOON (GRAPHICS > LIGHTING) and NIGHT IN WORLD TOUR with NIGHT, RAIN
+    // VOLUME (AUDIO) and RAIN IN WORLD TOUR with RAIN; the World Tour values in the word only with their row
+    for (int k = 0; k < 4; ++k) {
+        Settings s;
+        s.extra_night = k & 1;
+        s.extra_rain = k & 2;
+        s.night_world_tour = 2;
+        s.rain_world_tour = 1;
+        int moon = 0, rainv = 0, nwt = 0, rwt = 0;
+        for (const Tab& tb : build_content(s, Env{true}).tabs)
+            for (const Row& r : tb.rows) {
+                moon += r.label == "MOON"; rainv += r.label == "RAIN VOLUME";
+                nwt += r.label == "NIGHT IN WORLD TOUR"; rwt += r.label == "RAIN IN WORLD TOUR";
+            }
+        CHECK(moon == (s.extra_night ? 1 : 0) && nwt == moon && rainv == (s.extra_rain ? 1 : 0) && rwt == rainv);
+        const std::uint32_t w = extras_bits(s);
+        CHECK(extras_world_tour_night(w) == (s.extra_night ? 2 : 0) && extras_world_tour_rain(w) == (s.extra_rain ? 1 : 0));
+        CHECK(from_ini(to_ini(s)) == s);
+    }   // the new rows, the two limits, GAMEPLAY's five, PARTY MODES' six, RACE REPLAY
+    for (const Row& r : x->rows) {   // the inverted rows: On is the change; through the file and the page again
+        Settings s;
+        const bool idle = r.label == "NO IDLE PAUSE", event = r.label == "NO EVENT TIME LIMIT";
+        if (!idle && !event) continue;
+        CHECK(r.value == 0);   // Off: the game's limit
+        CHECK(apply_edit(s, Edit{r.id, 1, 0, false}));
+        CHECK(idle ? (!s.idle_pause && s.long_event_end) : (!s.long_event_end && s.idle_pause));
+        CHECK(to_ini(s).find(idle ? "idle_pause = false" : "long_event_end = false") != std::string::npos);
+        const Settings back = from_ini(to_ini(s));
+        CHECK(back == s);
+        for (const Tab& t : build_content(back, Env{true}).tabs)
+            for (const Row& q : t.rows) if (q.id == r.id) CHECK(q.value == 1);   // shown On
+        CHECK(apply_edit(s, Edit{r.id, 0, 0, false}) && s.idle_pause && s.long_event_end);   // Off: the game's again
+        CHECK(from_ini(idle ? "idle_pause = false\n" : "long_event_end = false\n") == back);   // an older file's Off: On here
+    }
+    // the SELECT OPTIONS rows' bits are their RaceRow indices (race_choice.h; 2 ROAD RAGE's RIVALS; TIME OF DAY 3 is not an extra)
+    CHECK(kExtraTraffic == 1u << 0 && kExtraLaps == 1u << 1 && kExtraTimedElimination == 1u << 4 && kExtraTrafficCheck == 1u << 12);
+    CHECK((kExtraRaceRows & 0x8u) == 0 && kExtraRoadRageRivals == 1u << 2 && (kExtrasAll & kExtraRaceRows) == kExtraRaceRows);
+}
+
+TEST(extras_older_install_extra_cars) {
+    // a version 1 / 2 file: the CUSTOM / BETA series wait for their folders (-1, counted on); a version 3 file as written
+    int v = 0;
+    Settings s = from_ini("version = 2\nmsaa = 4\n", nullptr, &v);
+    CHECK(v == 2 && s.extra_custom_cars == -1 && s.extra_beta_cars == -1);
+    CHECK((extras_bits(s) & (kExtraCustomCars | kExtraBetaCars)) == (kExtraCustomCars | kExtraBetaCars));
+    CHECK(from_ini("version = 1\n").extra_custom_cars == -1);
+    CHECK(from_ini("version = 3\n").extra_custom_cars == -1);   // (slowcpu's version: before EXTRAS too)
+    CHECK(from_ini("version = 4\n").extra_custom_cars == 0 && from_ini("\n").extra_beta_cars == 0);
+    CHECK(from_ini("version = 4\nextra_custom_cars = 1\n").extra_custom_cars == 1);
+    Settings r = s;
+    CHECK(resolve_extra_cars(r, true, false) && r.extra_custom_cars == 1 && r.extra_beta_cars == 0);
+    CHECK(!resolve_extra_cars(r, false, true) && r.extra_custom_cars == 1 && r.extra_beta_cars == 0);   // once only
+    CHECK(to_ini(r).find("extra_custom_cars = 1") != std::string::npos && to_ini(r).find("version = 4") != std::string::npos);
     std::vector<std::string> w;
-    CHECK(from_ini("series_shoulders = 2\n", &w).series_shoulders == 0 && w.size() == 1);
-    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(with_preset(s, p).series_shoulders == 1);
-    CHECK(matching_preset(s) == Preset::kHigh);
+    CHECK(from_ini("extra_custom_cars = 2\n", &w).extra_custom_cars == 0 && w.size() == 1);
+}
+
+// The ini's steps together (version 4): each keyed "version > 0 && version < N" -- a v1 / v2 file gets slowcpu's
+// (frame_cap 0 -> Auto) and extras' (CUSTOM / BETA -1), a v3 file extras' alone (its frame_cap 0 the player's Unlimited),
+// a v4 file neither, a file without `version` neither
+// extrastart (pre4): where the PC settings are read -- the renderer and its getters asked before it has loaded them
+// (native_play's setup) by one rule: --settings, else a window run's user pc_settings.ini, never an offscreen run's
+TEST(settings_path_rule) {
+    using b3settings::settings_path_for;
+    CHECK(settings_path_for("given.ini", true, false, false, "/u/") == "given.ini");
+    CHECK(settings_path_for("given.ini", false, true, true, "") == "given.ini");
+    CHECK(settings_path_for("", true, false, false, "/u/") == "/u/pc_settings.ini");   // the window run (the owner's)
+    CHECK(settings_path_for("", true, true, false, "/u/").empty());    // offscreen (tests): never the user's
+    CHECK(settings_path_for("", false, false, false, "/u/").empty());  // not the native game's window
+    CHECK(settings_path_for("", true, false, true, "/u/").empty());    // $B3_NO_USER_SETTINGS
+    CHECK(settings_path_for("", true, false, false, "").empty());      // no user folder
+}
+
+TEST(ini_versions_every_step) {
+    for (int v : {1, 2}) {
+        const Settings s = from_ini("version = " + std::to_string(v) + "\nframe_cap = 0\n");
+        CHECK(s.frame_cap == kFrameCapAuto && s.extra_custom_cars == -1 && s.extra_beta_cars == -1);
+    }
+    const Settings v3 = from_ini("version = 3\nframe_cap = 0\n");
+    CHECK(v3.frame_cap == 0 && v3.extra_custom_cars == -1 && v3.extra_beta_cars == -1);
+    const Settings v4 = from_ini("version = 4\nframe_cap = 0\n");
+    CHECK(v4.frame_cap == 0 && v4.extra_custom_cars == 0 && v4.extra_beta_cars == 0);
+    const Settings none = from_ini("frame_cap = 0\n");
+    CHECK(none.frame_cap == 0 && none.extra_custom_cars == 0);
+}
+
+TEST(ini_version_2_series_shoulders_on) {
+    // 2026-11-23: the ini's version 1 -> 2. A version 1 file wrote series_shoulders = 0 only because 0 was the default:
+    // read as 1. A version 2 file's 0 is the player's Off; a file without `version` (by hand, a test's) as it says.
+    CHECK(kIniVersion == 4 && to_ini(Settings{}).find("\nversion = 4\n") != std::string::npos);
+    CHECK(from_ini("version = 1\nseries_shoulders = 0\n").series_shoulders == 1);
+    CHECK(from_ini("version = 1\nseries_shoulders = 1\n").series_shoulders == 1);
+    CHECK(from_ini("version = 1\n").series_shoulders == 1);
+    CHECK(from_ini("version = 2\nseries_shoulders = 0\n").series_shoulders == 0);
+    CHECK(from_ini("series_shoulders = 0\n").series_shoulders == 0);
+    // an old install's whole file: everything else as written
+    Settings old;
+    old.series_shoulders = 0;
+    old.msaa = 8;
+    old.ghost = 1;
+    std::string text = to_ini(old);
+    text.replace(text.find("version = 4"), 11, "version = 1");
+    Settings want = old;
+    want.series_shoulders = 1;
+    want.extra_custom_cars = want.extra_beta_cars = -1;   // extras: a version 1 / 2 file's extra cars wait for their folders
+    std::vector<std::string> w;
+    CHECK(from_ini(text, &w) == want && w.empty());
+}
+
+TEST(series_shoulders_row) {
+    // carsel1 (src/native/input_keys.h ShoulderSeries): CAR SERIES ON L1 / R1 Off / On (default On since 2026-11-23), row
+    // 200, in CAR > GARAGE; in the file, untouched by the presets (PS2 ORIGINAL too: input, not graphics)
+    const Settings d{};
+    CHECK(d.series_shoulders == 1 && to_ini(d).find("series_shoulders = 1") != std::string::npos);
+    for (int v : {0, 1}) {   // Off chosen now is kept (the file says version 2)
+        Settings s;
+        s.series_shoulders = v;
+        CHECK(from_ini(to_ini(s)) == s);
+        for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(with_preset(s, p).series_shoulders == v);
+        CHECK(matching_preset(s) == Preset::kHigh);
+    }
+    std::vector<std::string> w;
+    CHECK(from_ini("series_shoulders = 2\n", &w).series_shoulders == 1 && w.size() == 1);
     for (const Env& env : {Env{true}, Env{false}}) {
         const Tab* in = nullptr;
         const Content c = build_content(Settings{}, env);
@@ -1505,17 +1767,19 @@ TEST(series_shoulders_row) {
             if (r.label == "CAR SERIES ON L1 / R1") {
                 row = i;
                 CHECK(r.id == 200 && r.kind == RowKind::kChoice && r.values.size() == 2 && r.values[0] == "Off" && r.values[1] == "On" &&
-                      r.value == 0 && !r.disabled);
+                      r.value == 1 && !r.disabled);
                 CHECK(r.description.find("input") != std::string::npos);   // says it changes the game's input
                 CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.series_shoulders == 1);
                 CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.series_shoulders == 0);
             }
         }
-        // settingsui: CAR > GARAGE: GARAGE CAMERA, then CAR SERIES ON L1 / R1, the tab's last row
-        CHECK(ghost > 0 && strength == ghost + 1 && row == strength + 1 && row + 1 == in->rows.size());
-        for (const Tab& t : build_content(s, env).tabs)
+        // settingsui: CAR > GARAGE: GARAGE CAMERA, then CAR SERIES ON L1 / R1, then (carstats1) CAR STATS, the tab's last row
+        CHECK(ghost > 0 && strength == ghost + 1 && row == strength + 1 && row + 2 == in->rows.size());
+        Settings off;
+        off.series_shoulders = 0;
+        for (const Tab& t : build_content(off, env).tabs)
             for (const Row& r : t.rows)
-                if (r.label == "CAR SERIES ON L1 / R1") CHECK(r.value == 1);
+                if (r.label == "CAR SERIES ON L1 / R1") CHECK(r.value == 0);
     }
 }
 
@@ -1541,6 +1805,271 @@ TEST(garage_camera_row) {
                     CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && !x.garage_camera);
                     CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.garage_camera);
                 }
+        CHECK(seen == 1);
+    }
+}
+
+// orbitcam1 (src/b3replay/orbitcam.h): ORBIT CAMERA, on by default, drawn only; DISPLAY > CAMERA after CAMERA HEIGHT,
+// row 440; the ini key; the presets keep it
+TEST(orbit_camera_row) {
+    const Settings d;
+    Settings o;
+    o.orbit_camera = false;
+    CHECK(d.orbit_camera && to_ini(d).find("orbit_camera") != std::string::npos && !from_ini(to_ini(o)).orbit_camera);
+    CHECK(!from_ini("orbit_camera = 0\n").orbit_camera && from_ini("").orbit_camera);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(!with_preset(o, p).orbit_camera);
+    for (const Env& env : {Env{true}, Env{false}}) {
+        int seen = 0;
+        for (const Tab& t : build_content(Settings{}, env).tabs)
+            for (std::size_t k = 0; k < t.rows.size(); ++k) {
+                const Row& r = t.rows[k];
+                if (r.label != "ORBIT CAMERA") continue;
+                ++seen;
+                CHECK(r.id == 440 && r.value == 1 && !r.disabled && k > 0 && t.rows[k - 1].label == "CAMERA HEIGHT");
+                CHECK(r.description.find("right stick") != std::string::npos && r.description.find("PlayStation") != std::string::npos &&
+                      r.description.find("The game is unchanged.") != std::string::npos);
+                Settings x;
+                CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && !x.orbit_camera);
+                CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.orbit_camera);
+            }
+        CHECK(seen == 1);
+    }
+}
+
+// carstats1 / blinkers1 / rrparts1: CAR STATS (CAR > GARAGE, More by default, 490), TURN SIGNALS (CAR > CAR LOOK, Off, 491), ROAD RAGE PARTS
+// (GAME > GAMEPLAY, Game, 492); the ini keys; the presets keep them
+TEST(stats_signals_parts_rows) {
+    const Settings d;
+    CHECK(d.car_stats == 1 && d.turn_signals == 0 && d.road_rage_parts == 0);
+    Settings o;
+    o.car_stats = 0;
+    o.turn_signals = 1;
+    o.road_rage_parts = 1;
+    const Settings b = from_ini(to_ini(o));
+    CHECK(b.car_stats == 0 && b.turn_signals == 1 && b.road_rage_parts == 1);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) {
+        const Settings w = with_preset(o, p);
+        CHECK(w.car_stats == 0 && w.turn_signals == 1 && w.road_rage_parts == 1);
+    }
+    const struct { const char* label; std::uint32_t id; int def; const char* before; } rows[] = {
+        {"CAR STATS", 490, 1, "CAR SERIES ON L1 / R1"}, {"TURN SIGNALS", 491, 0, "REFLECTION RESOLUTION"}, {"ROAD RAGE PARTS", 492, 0, "DEFORMATION"}};
+    for (const auto& want : rows)
+        for (const Env& env : {Env{true}, Env{false}}) {
+            int seen = 0;
+            for (const Tab& t : build_content(Settings{}, env).tabs)
+                for (std::size_t k = 0; k < t.rows.size(); ++k) {
+                    const Row& r = t.rows[k];
+                    if (r.label != want.label) continue;
+                    ++seen;
+                    CHECK(r.id == want.id && r.value == std::size_t(want.def) && k > 0 && t.rows[k - 1].label == want.before);
+                    Settings x;
+                    CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && apply_edit(x, Edit{r.id, 0, 0, false}));
+                }
+            CHECK(seen == 1);
+        }
+    CHECK(from_ini("road_rage_parts = 1\n").road_rage_parts == 1);
+}
+
+TEST(reflect2_rows) {
+    // reflect2 (docs/car-shading.md §10): REFLECTION DISTANCE / DETAIL / UPDATE (CAR > CAR LOOK after CAR REFLECTIONS,
+    // 610-612): the game's map by default and on HIGH (the defaults), MEDIUM, LOW, PS2; ULTRA 200 m with the props
+    const Settings d;
+    CHECK(d.reflect_distance == 0 && d.reflect_detail == 0 && d.reflect_update == 0);
+    Settings o;
+    o.reflect_distance = 2;
+    o.reflect_detail = 2;
+    o.reflect_update = 1;
+    const Settings b = from_ini(to_ini(o));
+    CHECK(b.reflect_distance == 2 && b.reflect_detail == 2 && b.reflect_update == 1);
+    o.reflect_resolution = 1;
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh}) {
+        const Settings w = with_preset(o, p);
+        CHECK(w.reflect_distance == 0 && w.reflect_detail == 0 && w.reflect_update == 0 && w.reflect_resolution == 0);
+    }
+    const Settings u = with_preset(Settings{}, Preset::kUltra);
+    CHECK(u.reflect_distance == 1 && u.reflect_detail == 2 && u.reflect_update == 0 && u.reflect_resolution == 1);
+    CHECK(d.reflect_resolution == 0);
+    CHECK(matching_preset(u) == Preset::kUltra && matching_preset(Settings{}) == Preset::kHigh);
+    const struct { const char* label; std::uint32_t id; std::size_t values; const char* before; } rows[] = {
+        {"REFLECTION DISTANCE", 610, 3, "CAR REFLECTIONS"}, {"REFLECTION DETAIL", 611, 3, "REFLECTION DISTANCE"},
+        {"REFLECTION UPDATE", 612, 2, "REFLECTION DETAIL"}, {"REFLECTION RESOLUTION", 614, 2, "REFLECTION UPDATE"}};
+    for (const auto& want : rows)
+        for (const Env& env : {Env{true}, Env{false}}) {
+            int seen = 0;
+            for (const Tab& t : build_content(Settings{}, env).tabs)
+                for (std::size_t k = 0; k < t.rows.size(); ++k) {
+                    const Row& r = t.rows[k];
+                    if (r.label != want.label) continue;
+                    ++seen;
+                    CHECK(r.id == want.id && r.value == 0 && r.values.size() == want.values && k > 0 && t.rows[k - 1].label == want.before);
+                    Settings x;
+                    CHECK(apply_edit(x, Edit{r.id, want.values - 1, 0, false}));
+                }
+            CHECK(seen == 1);
+        }
+    Settings x;
+    CHECK(apply_edit(x, Edit{610, 2, 0, false}) && x.reflect_distance == 2);
+    CHECK(apply_edit(x, Edit{611, 1, 0, false}) && x.reflect_detail == 1);
+    CHECK(apply_edit(x, Edit{611, 2, 0, false}) && x.reflect_detail == 2);
+    CHECK(apply_edit(x, Edit{612, 1, 0, false}) && x.reflect_update == 1);
+    CHECK(apply_edit(x, Edit{614, 1, 0, false}) && x.reflect_resolution == 1);
+    CHECK(from_ini("reflect_distance = 9\n").reflect_distance <= 2);
+}
+
+TEST(prop_shadows_row) {
+    // propshadow1: PROP SHADOWS (GRAPHICS > LIGHTING after SUN SHADOWS, 613), off by default, saved, no preset touches it
+    CHECK(!Settings{}.prop_shadows);
+    Settings o;
+    o.prop_shadows = true;
+    CHECK(from_ini(to_ini(o)).prop_shadows);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(with_preset(o, p).prop_shadows);
+    for (const Env& env : {Env{true}, Env{false}}) {
+        int seen = 0;
+        for (const Tab& t : build_content(Settings{}, env).tabs)
+            for (std::size_t k = 0; k < t.rows.size(); ++k)
+                if (t.rows[k].label == "PROP SHADOWS") {
+                    ++seen;
+                    CHECK(t.rows[k].id == 613 && t.rows[k].value == 0 && k > 0 && t.rows[k - 1].label == "SUN SHADOWS");
+                }
+        CHECK(seen == 1);
+    }
+    Settings x;
+    CHECK(apply_edit(x, Edit{613, 1, 0, false}) && x.prop_shadows);
+}
+
+TEST(hudmods_rows) {
+    // hudmods (remaster-features §29): RPM METER / BOOST BAR SHAKE (DISPLAY > RACE HUD, 450 / 451) and TAKEDOWN STREAK
+    // PITCH (AUDIO > RACE SOUNDS, 452): off by default, saved, not touched by the presets
+    const Settings d;
+    CHECK(!d.rpm_meter && !d.boost_shake && !d.takedown_pitch);
+    Settings o;
+    o.rpm_meter = o.boost_shake = o.takedown_pitch = true;
+    const Settings back = from_ini(to_ini(o));
+    CHECK(back.rpm_meter && back.boost_shake && back.takedown_pitch);
+    CHECK(to_ini(d).find("rpm_meter = 0") != std::string::npos || to_ini(d).find("rpm_meter = false") != std::string::npos);
+    CHECK(from_ini("takedown_pitch = 1\n").takedown_pitch && !from_ini("").takedown_pitch);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) {
+        const Settings w = with_preset(o, p);
+        CHECK(w.rpm_meter && w.boost_shake && w.takedown_pitch);
+    }
+    for (const Env& env : {Env{true}, Env{false}}) {
+        int seen = 0;
+        for (const Tab& t : build_content(Settings{}, env).tabs)
+            for (std::size_t k = 0; k < t.rows.size(); ++k) {
+                const Row& r = t.rows[k];
+                const bool rpm = r.label == "RPM METER", shake = r.label == "BOOST BAR SHAKE", pitch = r.label == "TAKEDOWN STREAK PITCH";
+                if (!rpm && !shake && !pitch) continue;
+                ++seen;
+                CHECK(r.value == 0 && !r.disabled && k > 0);
+                if (rpm) CHECK(r.id == 450 && t.label == "DISPLAY" && t.rows[k - 1].label == "RACE HUD" && r.description.find("Drawn only.") != std::string::npos);
+                if (shake) CHECK(r.id == 451 && t.rows[k - 1].label == "RPM METER");
+                if (pitch) CHECK(r.id == 452 && t.rows[k - 1].label == "RACE SOUNDS" && r.description.find("Sound only.") != std::string::npos);
+                Settings x;
+                CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && (rpm ? x.rpm_meter : shake ? x.boost_shake : x.takedown_pitch));
+                CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && !(rpm ? x.rpm_meter : shake ? x.boost_shake : x.takedown_pitch));
+            }
+        CHECK(seen == 3);
+    }
+}
+
+// orbitcam2: ORBIT STYLE (Look / Swing, default Look), row 441 after ORBIT CAMERA, disabled with ORBIT CAMERA Off
+TEST(orbit_style_row) {
+    const Settings d;
+    CHECK(d.orbit_style == 0 && to_ini(d).find("orbit_style") != std::string::npos);
+    Settings o;
+    o.orbit_style = 1;
+    CHECK(from_ini(to_ini(o)).orbit_style == 1 && from_ini("orbit_style = 5\n").orbit_style == 0);
+    for (const bool on : {true, false}) {
+        Settings s;
+        s.orbit_camera = on;
+        int seen = 0;
+        for (const Tab& t : build_content(s, Env{true}).tabs)
+            for (std::size_t k = 0; k < t.rows.size(); ++k) {
+                const Row& r = t.rows[k];
+                if (r.label != "ORBIT STYLE") continue;
+                ++seen;
+                CHECK(r.id == 441 && r.value == 0 && r.disabled == !on && k > 0 && t.rows[k - 1].label == "ORBIT CAMERA");
+                Settings x;
+                CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.orbit_style == 1);
+                CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.orbit_style == 0);
+            }
+        CHECK(seen == 1);
+    }
+}
+
+// camroll1 (src/b3replay/orbitcam.h ChaseRoll): CAMERA ROLL, Off by default, drawn only; DISPLAY > CAMERA after ORBIT STYLE,
+// row 460; the ini key; the presets keep it
+TEST(camera_roll_row) {
+    const Settings d;
+    Settings o;
+    o.camera_roll = 2;
+    CHECK(d.camera_roll == 0 && to_ini(d).find("camera_roll") != std::string::npos && from_ini(to_ini(o)).camera_roll == 2);
+    CHECK(from_ini("camera_roll = 1\n").camera_roll == 1 && from_ini("").camera_roll == 0);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(with_preset(o, p).camera_roll == 2);
+    for (const Env& env : {Env{true}, Env{false}}) {
+        int seen = 0;
+        for (const Tab& t : build_content(Settings{}, env).tabs)
+            for (std::size_t k = 0; k < t.rows.size(); ++k) {
+                const Row& r = t.rows[k];
+                if (r.label != "CAMERA ROLL") continue;
+                ++seen;
+                CHECK(r.id == 460 && r.value == 0 && !r.disabled && k > 0 && t.rows[k - 1].label == "ORBIT STYLE");   // (orbitcam2: after ORBIT STYLE)
+                CHECK(r.description.find("corners") != std::string::npos && r.description.find("The game is unchanged.") != std::string::npos);
+                Settings x;
+                CHECK(apply_edit(x, Edit{r.id, 2, 0, false}) && x.camera_roll == 2);
+                CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.camera_roll == 0);
+            }
+        CHECK(seen == 1);
+    }
+}
+
+// finishcam1 (src/b3replay/finishcam.h): FINISH CAMERA, Game by default, drawn only; DISPLAY > CAMERA after CAMERA ROLL,
+// row 461; the ini key; the presets keep it
+TEST(finish_camera_row) {
+    const Settings d;
+    Settings o;
+    o.finish_camera = 1;
+    CHECK(d.finish_camera == 0 && to_ini(d).find("finish_camera") != std::string::npos && from_ini(to_ini(o)).finish_camera == 1);
+    CHECK(from_ini("").finish_camera == 0);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(with_preset(o, p).finish_camera == 1);
+    for (const Env& env : {Env{true}, Env{false}}) {
+        int seen = 0;
+        for (const Tab& t : build_content(Settings{}, env).tabs)
+            for (std::size_t k = 0; k < t.rows.size(); ++k) {
+                const Row& r = t.rows[k];
+                if (r.label != "FINISH CAMERA") continue;
+                ++seen;
+                CHECK(r.id == 461 && r.value == 0 && !r.disabled && k > 0 && t.rows[k - 1].label == "CAMERA ROLL");
+                CHECK(r.description.find("set pieces") != std::string::npos && r.description.find("The game is unchanged.") != std::string::npos);
+                Settings x;
+                CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.finish_camera == 1);
+                CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.finish_camera == 0);
+            }
+        CHECK(seen == 1);
+    }
+}
+
+// audioq: SOUND OUTPUT (Clean / Original, default Clean), AUDIO > OUTPUT, row 93, in the game and in the launcher; the
+// ini key; the presets leave it (they are the picture's)
+TEST(sound_output_row) {
+    const Settings d;
+    CHECK(d.sound_output == 0 && to_ini(d).find("sound_output") != std::string::npos);
+    Settings o;
+    o.sound_output = 1;
+    CHECK(from_ini(to_ini(o)).sound_output == 1 && from_ini("sound_output = 7\n").sound_output == 0);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(with_preset(o, p).sound_output == 1);
+    for (const Env& env : {Env{true}, Env{false}}) {
+        int seen = 0;
+        for (const Tab& t : build_content(Settings{}, env).tabs)
+            for (const Row& r : t.rows) {
+                if (r.label != "SOUND OUTPUT") continue;
+                ++seen;
+                CHECK(t.label == "AUDIO" && r.id == 93 && r.value == 0 && !r.disabled);
+                CHECK(r.description.find("The game is unchanged.") != std::string::npos);
+                Settings x;
+                CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && x.sound_output == 1);
+                CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.sound_output == 0);
+            }
         CHECK(seen == 1);
     }
 }
@@ -1590,6 +2119,99 @@ TEST(gyro_controls_rows) {
           in->rows[first - 1].label == "GYRO" && first + 5 == in->rows.size());
 }
 
+TEST(next_start_rows_and_their_question) {
+    // nextstart: the rows read only at the game's start are exactly those whose help says so (bar the launcher's own
+    // rows, which a restart of the game does not apply, and two actions); VSYNC is live now
+    Env env{false};
+    env.graphics_api = true;
+    env.hd_pack = true;
+    env.languages = {{"FR", "Français"}};
+    Settings s;
+    s.hd_pack_dir = "/packs/SLUS-21050";
+    const Content c = build_content(s, env);
+    std::size_t marked = 0;
+    for (const Tab& t : c.tabs)
+        for (const Row& r : t.rows) {
+            if (r.kind == RowKind::kSection) continue;
+            const bool says = r.description.find("next start") != std::string::npos;
+            if (next_start_row(r.id)) {
+                ++marked;
+                CHECK(says);
+                if (!says) std::printf("  %s: next_start_row, but its help does not say so\n", r.label.c_str());
+            } else if (says && r.label != "OPEN THE LAUNCHER AT START" && r.label != "PORTABLE MODE" && r.label != "REMOVE HD PACK" &&
+                       r.label != "IMPORT SAVE" && r.label != "CUSTOM MUSIC LOUDNESS") {
+                CHECK(false);
+                std::printf("  %s: its help says the next start, but it is not a next_start_row\n", r.label.c_str());
+            }
+            if (r.label == "VSYNC") CHECK(!next_start_row(r.id) && !says);
+        }
+    CHECK(marked >= 15);
+    // a change seen, in the page's order; nothing when nothing changed
+    CHECK(next_start_changes(s, env, s, env).empty());
+    Settings t = s;
+    t.msaa = s.msaa == 4 ? 2 : 4;
+    t.boot_to = 2;
+    t.fov = s.fov + 5;   // (live: not asked)
+    const std::vector<PendingChange> ch = next_start_changes(s, env, t, env);
+    CHECK(ch.size() == 2);
+    if (ch.size() == 2) {
+        CHECK(ch[0].label == "ANTI-ALIASING" && ch[0].before != ch[0].after);
+        CHECK(ch[1].label == "START AT" && ch[1].after == "Main menu, profile 1");
+    }
+    // SAVE FILE AT START: the file the next start uses (Env::next_profile)
+    Env e2 = env;
+    e2.profile = 1;
+    e2.profile_used = {true, true, false};
+    Env e3 = e2;
+    e3.next_profile = 2;
+    const std::vector<PendingChange> sf = next_start_changes(s, e2, s, e3);
+    CHECK(sf.size() == 1 && !sf.empty() && sf[0].label == "SAVE FILE AT START");
+    // REVERT: the next-start rows back, the live ones as they are
+    revert_next_start(t, s);
+    CHECK(t.msaa == s.msaa && t.boot_to == s.boot_to && t.fov == s.fov + 5);
+    // the question: KEEP first (the default: a stray confirm never restarts), the race's line, no restart in a replay
+    const Content q = restart_ask_content(ch, true, true);
+    CHECK(q.tabs.size() == 1);
+    if (!q.tabs.empty()) {
+        const std::vector<Row>& rows = q.tabs[0].rows;
+        std::size_t first = rows.size();
+        for (std::size_t i = 0; i < rows.size(); ++i) if (rows[i].kind != RowKind::kSection) { first = i; break; }   // (Menu's first focus)
+        CHECK(first < rows.size() && rows[first].id == kActionAskKeep);
+        bool restart = false, race = false;
+        std::size_t lines = 0;
+        for (const Row& r : rows) {
+            if (r.id == kActionAskRestart) restart = true, race = r.description.find("race in progress") != std::string::npos;
+            if (r.kind == RowKind::kSection) ++lines;   // the changes: section rows (never focused)
+        }
+        CHECK(restart && race && lines == ch.size());
+    }
+    for (const Row& r : restart_ask_content(ch, false, false).tabs[0].rows) CHECK(r.id != kActionAskRestart);
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"}) {   // every word of the box translated
+        // (the change lines are the caller's: PcPage builds them from the rows' own translated label and values)
+        for (const std::string& m : untranslated(restart_ask_content(ch, true, true), code)) {
+            const bool change_line = m.find("  >  ") != std::string::npos;
+            CHECK(change_line);
+            if (!change_line) std::printf("  %s untranslated: %s\n", code, m.c_str());
+        }
+    }
+    // the pending marker: a row changed since the start, its value marked and its help told
+    Content cm = build_content(t, env);
+    Settings started = s;
+    started.msaa = s.msaa == 4 ? 2 : 4;
+    mark_pending(cm, started, env, "");
+    bool seen = false;
+    for (const Tab& tb : cm.tabs)
+        for (const Row& r : tb.rows)
+            if (r.label == "ANTI-ALIASING") {
+                seen = true;
+                CHECK(r.values[r.value].size() > 2 && r.values[r.value].substr(r.values[r.value].size() - 2) == " *");
+                CHECK(r.description.rfind("Changed: applies at the next start.", 0) == 0);
+            } else if (r.label == "START AT" && !r.values.empty()) {
+                CHECK(r.values[r.value].find('*') == std::string::npos);   // (the same as at the start: not marked)
+            }
+    CHECK(seen);
+}
+
 TEST(record_replays_row) {
     // replay1 (replay files, src/native/replay_file.h): RECORD REPLAYS Off / On in the INTERFACE tab's REPLAYS section,
     // after TIME ATTACK; Off by default (nothing recorded), in the file, untouched by the presets
@@ -1626,6 +2248,44 @@ TEST(record_replays_row) {
         for (const Tab& t : build_content(s, env).tabs)
             for (const Row& r : t.rows)
                 if (r.label == "RECORD REPLAYS") CHECK(r.value == 1);
+    }
+}
+
+TEST(traffic_check_row) {
+    // trafficcheck (tools/native/traffic_check.h): TRAFFIC CHECK (2 PLAYERS) Off / Revenge / Extreme in GAME > GAMEPLAY (section 41,
+    // row 433), after MODES' RECORD REPLAYS; Off by default (the game's crashes), in the file, untouched by the presets
+    const Settings d{};
+    CHECK(d.traffic_check == 0);
+    Settings s;
+    s.traffic_check = 2;
+    CHECK(from_ini(to_ini(s)) == s);
+    CHECK(to_ini(s).find("traffic_check = 2") != std::string::npos && to_ini(d).find("traffic_check = 0") != std::string::npos);
+    std::vector<std::string> w;
+    CHECK(from_ini("traffic_check = 3\n", &w).traffic_check == 0 && w.size() == 1);
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) CHECK(with_preset(s, p).traffic_check == 2);
+    for (const Env& env : {Env{true}, Env{false}}) {
+        const Content c = build_content(Settings{}, env);
+        const Tab* in = nullptr;
+        for (const Tab& t : c.tabs) if (t.label == "EXTRAS") in = &t;   // extras: GAMEPLAY and REPLAYS moved there
+        CHECK(in != nullptr);
+        if (!in) return;
+        std::size_t sec = 0, row = 0, replays = 0, race_replay = 0;
+        for (std::size_t i = 0; i < in->rows.size(); ++i) {
+            const Row& r = in->rows[i];
+            if (r.kind == RowKind::kSection && r.label == "GAMEPLAY") sec = i;
+            if (r.kind == RowKind::kSection && r.label == "REPLAYS") replays = i;
+            if (r.label == "RACE REPLAY") race_replay = i;   // replayview: EXTRAS > REPLAYS
+            if (r.label == "TRAFFIC CHECK (2 PLAYERS)") {
+                row = i;
+                CHECK(r.id == 433 && r.values == (std::vector<std::string>{"Off", "Revenge", "Extreme"}) && r.value == 0 && !r.disabled);
+                Settings x;
+                for (std::size_t v : {std::size_t(1), std::size_t(2), std::size_t(0)}) CHECK(apply_edit(x, Edit{r.id, v, 0, false}) && x.traffic_check == int(v));
+            }
+        }
+        CHECK(sec > 0 && row == sec + 3 && replays > row && race_replay == replays + 1);
+        for (const Tab& t : build_content(s, env).tabs)
+            for (const Row& r : t.rows)
+                if (r.label == "TRAFFIC CHECK (2 PLAYERS)") CHECK(r.value == 2);
     }
 }
 
@@ -1758,6 +2418,42 @@ TEST(photo_row_setting) {
     }
 }
 
+TEST(settings_back_row) {
+    // settingsback (tools/native/settings_back.h): SETTINGS BACK BUTTON Keep changes / Cancel (default Keep changes), in the
+    // INTERFACE tab after PHOTO MODE IN PAUSE MENU, row 241; ini key settings_back_keeps; the presets and safe mode leave it
+    const Settings d{};
+    CHECK(d.settings_back_keeps);
+    CHECK(to_ini(d).find("settings_back_keeps = true") != std::string::npos);
+    Settings s;
+    s.settings_back_keeps = false;
+    CHECK(from_ini(to_ini(s)) == s && !from_ini(to_ini(s)).settings_back_keeps);
+    CHECK(from_ini("").settings_back_keeps);   // an older file: Keep changes
+    for (Preset p : {Preset::kPs2, Preset::kLow, Preset::kMedium, Preset::kHigh, Preset::kUltra}) {
+        CHECK(!with_preset(s, p).settings_back_keeps);
+        CHECK(with_preset(Settings{}, p).settings_back_keeps);
+    }
+    CHECK(safe_settings(s).settings_back_keeps == s.settings_back_keeps);
+    for (const Env& env : {Env{true}, Env{false}}) {
+        int found = 0;
+        for (const Tab& t : build_content(Settings{}, env).tabs)
+            for (std::size_t i = 0; i < t.rows.size(); ++i) {
+                const Row& r = t.rows[i];
+                if (r.label != "SETTINGS BACK BUTTON") continue;
+                ++found;
+                CHECK(t.label == "GAME" && i > 0 && t.rows[i - 1].label == "PHOTO MODE IN PAUSE MENU");
+                CHECK(r.id == 241 && r.values.size() == 2 && r.values[0] == "Keep changes" && r.values[1] == "Cancel" &&
+                      r.value == 0 && !r.disabled);
+                Settings x;
+                CHECK(apply_edit(x, Edit{r.id, 1, 0, false}) && !x.settings_back_keeps);
+                CHECK(apply_edit(x, Edit{r.id, 0, 0, false}) && x.settings_back_keeps);
+            }
+        CHECK(found == 1);
+        for (const Tab& t : build_content(s, env).tabs)
+            for (const Row& r : t.rows)
+                if (r.label == "SETTINGS BACK BUTTON") CHECK(r.value == 1);
+    }
+}
+
 TEST(fps_counter_rows_and_old_ini) {
     // fpsoverlay2: FPS COUNTER (Off / Minimal / Standard / Detailed, ini fps_view 0-3, row 255) and its corner (fps_corner 0-3,
     // row 256), first on INTERFACE; an ini from before the views holds fps_counter = true / false (on = Standard)
@@ -1782,7 +2478,7 @@ TEST(fps_counter_rows_and_old_ini) {
                 const Row& r = t.rows[i];
                 if (r.label != "FPS COUNTER") continue;
                 ++found;
-                CHECK(t.label == "GAME" && i == 4 && r.id == 255 && r.kind == RowKind::kChoice && r.values.size() == 4 && r.value == 3);   // settingsui: INTERFACE's 4th
+                CHECK(t.label == "GAME" && i == 5 && r.id == 255 && r.kind == RowKind::kChoice && r.values.size() == 4 && r.value == 3);   // settingsui: INTERFACE's 5th (settingsback: after SETTINGS BACK BUTTON)
                 CHECK(r.values[0] == "Off" && r.values[1] == "Minimal" && r.values[2] == "Standard" && r.values[3] == "Detailed");
                 CHECK(t.rows[i + 1].id == 256 && t.rows[i + 1].values.size() == 4 && t.rows[i + 1].value == 1);
                 Settings x;
@@ -1983,6 +2679,7 @@ TEST(translations_cover_the_page) {
                      {"IT", "Italiano (Italian)", 0, 330457088, -1}, {"GE", "Deutsch (German)", 135000000, 0, -1, true},
                      {"FR", "Fran\xC3\xA7" "ais (French)", 0, 135000000, -1, true}, {"SP", "Espa\xC3\xB1" "ol (Spanish)", 1, 0, 3, true}};
     env.xbox_textures = true;   // xboximport: XBOX TEXTURES
+    env.graphics_api = true;    // d3d12: GRAPHICS API (Windows)
     env.profile = 1;
     env.next_profile = 2;
     env.controls.on = true;
@@ -2011,6 +2708,43 @@ TEST(translations_cover_the_page) {
     CHECK(untranslated(build_content(s, env), "XX").empty());   // no table: English, nothing to check
 }
 
+TEST(translations_cover_every_row_state) {
+    // i18ncheck (2026-11-22): each row at each of its values (a slider at both ends), the page rebuilt: descriptions and
+    // values that change with a row's state (disabled reasons, per-value sentences) are translated too, in the game's
+    // page and the launcher's
+    Env env{true};
+    env.music = true;
+    env.language_import = true;
+    env.xbox_textures = true;
+    env.controls.on = true;
+    env.portable.shown = true;
+    std::size_t states = 0;
+    for (const bool launcher : {false, true}) {
+        env.launcher = launcher;
+        const Settings base;
+        for (const Tab& t : build_content(base, env).tabs)
+            for (const Row& r : t.rows) {
+                if (r.kind == RowKind::kSection || r.kind == RowKind::kAction) continue;
+                std::vector<std::size_t> values;
+                if (r.kind == RowKind::kSlider) values = {0, r.levels ? r.levels - 1 : 0};
+                else for (std::size_t v = 0; v < r.values.size(); ++v) values.push_back(v);
+                for (const std::size_t v : values) {
+                    Settings s = base;
+                    if (!apply_edit(s, Edit{r.id, v, 0, false})) break;
+                    const Content c = build_content(s, env);
+                    ++states;
+                    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"})
+                        for (const std::string& m : untranslated(c, code))
+                            if (m.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") != std::string::npos) {
+                                std::printf("  %s, %s at value %zu: %s lacks: %s\n", t.label.c_str(), r.label.c_str(), v, code, m.c_str());
+                                CHECK(false);
+                            }
+                }
+            }
+    }
+    CHECK(states > 400);   // (every row's values on both pages: about 900)
+}
+
 TEST(translations_cover_the_shortcuts) {
     // 1.2.1: CONTROLS > Shortcuts (player 2 on the page): every port action's label and use sentence, and the Bound /
     // CONFIRM sentences, in each language. The rows as PcPage::controls_env builds them (src/b3replay/pcpage.cpp); the
@@ -2032,7 +2766,11 @@ TEST(translations_cover_the_shortcuts) {
             Env::Controls::Action row;
             // the ids the hosts give (src/b3replay/pcpage.cpp port_row_id): photoblur's block, todrace's 413; the rest positional
             row.id = pa == in::PortAction::PhotoMotion ? kActionCtlPhotoFirst : pa == in::PortAction::PhotoShutterFaster ? kActionCtlPhotoFirst + 1
-                   : pa == in::PortAction::PhotoShutterSlower ? kActionCtlPhotoFirst + 2 : pa == in::PortAction::RaceTime ? kActionCtlRaceTime : 0;
+                   : pa == in::PortAction::PhotoShutterSlower ? kActionCtlPhotoFirst + 2 : pa == in::PortAction::RaceTime ? kActionCtlRaceTime
+                   : pa == in::PortAction::PaintPanel ? kActionCtlPaint   // paintsel: 414
+                   : pa == in::PortAction::ShiftUp ? kActionCtlShiftUp : pa == in::PortAction::ShiftDown ? kActionCtlShiftDown   // gearbox
+                   : pa == in::PortAction::Replay ? kActionCtlReplay   // replayview: 622
+                   : in::port_replay(pa) ? kActionCtlReplayFirst + std::uint32_t(int(pa) - int(in::PortAction::ReplayCameraPrev)) : 0;   // replaycams
             row.label = in::port_label(pa);
             row.value = in::bound_port_text(defaults, pa, dev, in::PadStyle::PlayStation);
             row.description = std::string(in::port_use(pa)) + " Bound: " + row.value + ". CONFIRM: press a new " +
@@ -2358,16 +3096,20 @@ TEST(car_paint_finish_and_player2_rows) {
     if (!g) return;
     std::size_t at = 0;
     while (at < g->rows.size() && g->rows[at].label != "FINISH") ++at;
-    CHECK(at + 9 < g->rows.size());
-    if (at + 9 >= g->rows.size()) return;
+    CHECK(at + 15 < g->rows.size());
+    if (at + 15 >= g->rows.size()) return;
     const Row& fin = g->rows[at];
-    CHECK(fin.id == 285 && fin.label == "FINISH" && fin.values.size() == 3 && fin.values[2] == "Pearl" && fin.value == 0);
+    CHECK(fin.id == 285 && fin.label == "FINISH" && fin.values.size() == 4 && fin.values[2] == "Pearl" && fin.values[3] == "Chrome" && fin.value == 0);
     CHECK(g->rows[at + 1].label == "DECALS");
+    // paint2: the decals', wheels' and boost glow's colours after DECALS (Game, ready, Custom; any colour: the panel)
+    CHECK(g->rows[at + 2].id == 561 && g->rows[at + 2].label == "DECAL COLOUR" && g->rows[at + 2].value == 0 && g->rows[at + 3].id == 562 &&
+          g->rows[at + 4].id == 563 && g->rows[at + 4].label == "BOOST GLOW COLOUR");
+    at += 3;
     CHECK(g->rows[at + 2].kind == RowKind::kSection && g->rows[at + 2].label == "PLAYER 2 CAR PAINT");
-    const std::uint32_t ids[6] = {286, 293, 287, 288, 289, 291};   // (293: P2 COLOUR, the ready colours)
-    for (int k = 0; k < 6; ++k) CHECK(g->rows[at + 3 + std::size_t(k)].id == ids[k]);
+    const std::uint32_t ids[9] = {286, 293, 287, 288, 289, 291, 565, 566, 567};   // (293: P2 COLOUR, the ready colours)
+    for (int k = 0; k < 9; ++k) CHECK(g->rows[at + 3 + std::size_t(k)].id == ids[k]);
     CHECK(g->rows[at + 5].label == "P2 PAINT RED" && g->rows[at + 5].disabled && g->rows[at + 5].swatch == 0x1E5AD2);
-    CHECK(g->rows[at + 8].label == "P2 DECALS" && g->rows[at + 8].value == 1);
+    CHECK(g->rows[at + 8].label == "P2 DECALS" && g->rows[at + 8].value == 1 && g->rows[at + 11].label == "P2 BOOST GLOW COLOUR");
     Settings e;
     CHECK(apply_edit(e, Edit{285, 2, 0, false}) && e.paint_finish == 2);
     CHECK(apply_edit(e, Edit{286, 1, 0, false}) && e.p2_car_paint == 1);
@@ -2376,7 +3118,7 @@ TEST(car_paint_finish_and_player2_rows) {
     CHECK(apply_edit(e, Edit{291, 0, 0, false}) && !e.p2_car_decals);
     const Settings back = from_ini(to_ini(e));
     CHECK(back.paint_finish == 2 && back.p2_car_paint == 1 && back.p2_paint_red == 255 && back.p2_paint_blue == 0 && !back.p2_car_decals);
-    CHECK(from_ini("paint_finish = 3\n").paint_finish == 0);
+    CHECK(from_ini("paint_finish = 3\n").paint_finish == 3 && from_ini("paint_finish = 4\n").paint_finish == 0);   // (options3: 3 Chrome)
     // every word of the new rows has its translation
     for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"})
         for (const std::string& m : untranslated(c, code))
@@ -2418,8 +3160,63 @@ TEST(night_rows) {
     CHECK(low.time_of_day == 1 && low.surface_detail && low.ambient_occlusion);   // the presets leave them
 }
 
+TEST(tunnel_lights_row) {
+    // nightfix (remaster-features §35.4): GRAPHICS > LIGHTING's last row, TUNNEL LIGHTS Game / Glow (id 374, ini
+    // `tunnel_lights`), Glow by default; PS2 ORIGINAL sets Game, the other presets leave it; translated in every language
+    Settings s;
+    CHECK(s.tunnel_lights == 1);
+    Content c = build_content(s, Env{true});
+    const Row* row = nullptr;
+    for (const Tab& t : c.tabs)
+        for (std::size_t k = 0; k < t.rows.size(); ++k)
+            if (t.rows[k].label == "TUNNEL LIGHTS") {
+                row = &t.rows[k];
+                CHECK(t.label == "GRAPHICS" && k + 1 == t.rows.size() && t.rows[k - 1].label == "PROP SHADOWS");   // (propshadow1 between)
+            }
+    CHECK(row != nullptr);
+    if (!row) return;
+    CHECK(row->id == 374 && row->kind == RowKind::kChoice && row->value == 1);
+    // xboxglow (§35.5): Game / Glow / Xbox; the withdrawn Xbox all lamps (3) is read from an older ini as Xbox
+    CHECK(row->values == std::vector<std::string>({"Game", "Glow", "Xbox"}));
+    CHECK(from_ini("tunnel_lights = 3\n").tunnel_lights == 2 && from_ini("tunnel_lights = 2\n").tunnel_lights == 2);
+    CHECK(from_ini("tunnel_lights = 4\n").tunnel_lights == 1);   // out of range: the default
+    Settings e;
+    CHECK(apply_edit(e, Edit{row->id, 3, 0, false}) && e.tunnel_lights == 2);
+    CHECK(apply_edit(e, Edit{row->id, 0, 0, false}) && e.tunnel_lights == 0);
+    CHECK(from_ini(to_ini(e)).tunnel_lights == 0);
+    CHECK(from_ini(to_ini(s)).tunnel_lights == 1);
+    CHECK(with_preset(s, Preset::kPs2).tunnel_lights == 0 && with_preset(s, Preset::kHigh).tunnel_lights == 1);
+    CHECK(matching_preset(Settings{}) == Preset::kHigh);
+}
+
+TEST(weather_setting_held_back) {
+    // weather (remaster-features §38): WEATHER Dry / Rain (id 650, ini `weather`), Dry by default and held back with night
+    // mode: no row on the page yet, the edit and the ini work; its words are translated in every language
+    Settings s;
+    CHECK(s.weather == 0);
+    Content c = build_content(s, Env{true});
+    for (const Tab& t : c.tabs)
+        for (const Row& r : t.rows) CHECK(r.id != 650 && r.label != "WEATHER");
+    Settings e;
+    CHECK(apply_edit(e, Edit{650, 1, 0, false}) && e.weather == 1);
+    CHECK(from_ini(to_ini(e)).weather == 1 && from_ini(to_ini(s)).weather == 0);
+    CHECK(with_preset(e, Preset::kPs2).weather == 1 && matching_preset(Settings{}) == Preset::kHigh);
+    // RAIN VOLUME (row 651, ini rain_volume 0..200, 100 default): held back too; 21 steps of 10 %
+    CHECK(s.rain_volume == 100);
+    for (const Tab& t : c.tabs)
+        for (const Row& r : t.rows) CHECK(r.id != 651);
+    CHECK(apply_edit(e, Edit{651, 15, 0, false}) && e.rain_volume == 150 && from_ini(to_ini(e)).rain_volume == 150);
+    for (const char* w : {"WEATHER", "Dry", "Rain", "Rain: falling rain, wet roads that mirror the lights, spray from the wheels and a grey sky.",
+                          "Dry: the game's own weather.", "RAIN VOLUME", "The rain's sound, on top of the game's own EFFECTS volume."})
+        for (const i18n::Table& t : i18n::kTables) {
+            bool found = false;
+            for (std::size_t k = 0; k < t.count && !found; ++k) found = std::string(w) == t.entries[k].en;
+            CHECK(found);
+        }
+}
+
 TEST(sun_shadow_row) {
-    // sunshadow (remaster-features §19): GRAPHICS > LIGHTING's last row, SUN SHADOWS Off / On (id 390, ini `sun_shadows`), off by
+    // sunshadow (remaster-features §19): GRAPHICS > LIGHTING's last row but PROP SHADOWS, SUN SHADOWS Off / On (id 390, ini `sun_shadows`), off by
     // default; the PS2 and Low presets turn it off, the others leave it; translated in every language
     Settings s;
     CHECK(!s.sun_shadows);
@@ -2429,7 +3226,8 @@ TEST(sun_shadow_row) {
         for (std::size_t k = 0; k < t.rows.size(); ++k)
             if (t.rows[k].label == "SUN SHADOWS") {
                 row = &t.rows[k];
-                CHECK(t.label == "GRAPHICS" && k + 1 == t.rows.size() && t.rows[k - 1].label == "SURFACE DETAIL");   // (1.3.0: AO held back)
+                // (1.3.0: AO held back; propshadow1: PROP SHADOWS after it, nightfix: TUNNEL LIGHTS last)
+                CHECK(t.label == "GRAPHICS" && k + 3 == t.rows.size() && t.rows[k + 1].label == "PROP SHADOWS" && t.rows[k - 1].label == "SURFACE DETAIL");
             }
     CHECK(row != nullptr);
     if (!row) return;
@@ -2797,23 +3595,24 @@ TEST(settingsui_tabs_and_sections) {
     const Content c = build_content(Settings{}, e);
     std::vector<std::string> tabs;
     for (const Tab& t : c.tabs) tabs.push_back(t.label);
-    CHECK((tabs == std::vector<std::string>{"DISPLAY", "GRAPHICS", "EFFECTS", "CAR", "CONTROLS", "AUDIO", "GAME", "SAVES", "MODS"}));
+    CHECK((tabs == std::vector<std::string>{"DISPLAY", "GRAPHICS", "EFFECTS", "CAR", "CONTROLS", "AUDIO", "GAME", "EXTRAS", "SAVES", "MODS"}));
     const auto sections = [](const Tab& t) {
         std::vector<std::string> o;
         for (const Row& r : t.rows)
             if (r.kind == RowKind::kSection) o.push_back(r.label);
         return o;
     };
-    CHECK((sections(c.tabs[0]) == std::vector<std::string>{"WINDOW", "LAYOUT", "CAMERA", "SMOOTHNESS"}));
+    CHECK((sections(c.tabs[0]) == std::vector<std::string>{"WINDOW", "LAYOUT", "RACE HUD", "CAMERA", "SMOOTHNESS"}));   // hudmods: RACE HUD
     CHECK((sections(c.tabs[1]) == std::vector<std::string>{"IMAGE", "TEXTURES", "WORLD", "LIGHTING"}));
     CHECK(c.tabs[1].rows[0].label == "QUALITY PRESET");   // the first row of the tab it changes
     CHECK((sections(c.tabs[2]) == std::vector<std::string>{"POST", "CRASHES"}));
     CHECK((sections(c.tabs[3]) == std::vector<std::string>{"CAR PAINT", "PLAYER 2 CAR PAINT", "CAR LOOK", "GARAGE"}));
     CHECK((sections(c.tabs[4]) == std::vector<std::string>{"FEEDBACK", "DRIVING", "BINDINGS", "GYRO"}));
-    CHECK((sections(c.tabs[5]) == std::vector<std::string>{"MUSIC"}));
+    CHECK((sections(c.tabs[5]) == std::vector<std::string>{"OUTPUT", "RACE SOUNDS", "MUSIC"}));   // audioq: OUTPUT; hudmods: RACE SOUNDS
     CHECK(c.tabs[5].rows[0].label == "VOLUMES AND DJ" && c.tabs[5].rows[0].disabled);
     CHECK((sections(c.tabs[6]) == std::vector<std::string>{"INTERFACE", "LANGUAGE AND UNITS", "MODES", "ACCESSIBILITY", "STARTING AND LOADING"}));
-    CHECK((sections(c.tabs[8]) == std::vector<std::string>{"DEVELOPER"}));
+    CHECK((sections(c.tabs[7]) == std::vector<std::string>{"SINGLE EVENT", "SELECT OPTIONS", "SELECT CAR", "GAMEPLAY", "PARTY MODES", "EXPERIMENTAL", "REPLAYS"}));   // extras
+    CHECK((sections(c.tabs[9]) == std::vector<std::string>{"DEVELOPER"}));
     // each tab's first row is selectable, or a section heading followed by one
     for (const Tab& t : c.tabs) CHECK(!t.rows.empty() && (t.rows[0].kind != RowKind::kSection || t.rows.size() > 1));
     // the launcher's: no SAVES (its own page), the controls / music / HD pack rows open its pages
@@ -2822,7 +3621,7 @@ TEST(settingsui_tabs_and_sections) {
     const Content lc = build_content(Settings{}, l);
     tabs.clear();
     for (const Tab& t : lc.tabs) tabs.push_back(t.label);
-    CHECK((tabs == std::vector<std::string>{"DISPLAY", "GRAPHICS", "EFFECTS", "CAR", "CONTROLS", "AUDIO", "GAME", "MODS"}));
+    CHECK((tabs == std::vector<std::string>{"DISPLAY", "GRAPHICS", "EFFECTS", "CAR", "CONTROLS", "AUDIO", "GAME", "EXTRAS", "MODS"}));
     int links = 0;
     for (const Tab& t : lc.tabs)
         for (const Row& r : t.rows) {
@@ -2884,14 +3683,15 @@ TEST(frame_cap_value_of_its_own) {
     CHECK(d && d->label == "DISPLAY");
     if (!d) return;
     const Row& r = d->rows[row_at(*d, "FRAME RATE LIMIT")];
-    CHECK(r.values.size() == 8 && r.values[r.value] == "90" && r.values[0] == "Unlimited" && r.values[2] == "60" && r.values[4] == "120");
+    CHECK(r.values.size() == 9 && r.values[r.value] == "90" && r.values[0] == "Auto" && r.values[1] == "Unlimited" && r.values[3] == "60" &&
+          r.values[5] == "120");   // (slowcpu: Auto first)
     Settings x = s;
     CHECK(apply_edit(x, Edit{r.id, r.value, 0, false}) && x.frame_cap == 90);   // the same value: unchanged
     CHECK(apply_edit(x, Edit{r.id, r.value + 1, 0, false}) && x.frame_cap == 120);
     Settings y;   // the page's own values: as before
     const Content cy = build_content(y, Env{true});
     const Tab* dy = holding(cy, "FRAME RATE LIMIT");
-    CHECK(dy->rows[row_at(*dy, "FRAME RATE LIMIT")].values.size() == 7);
+    CHECK(dy->rows[row_at(*dy, "FRAME RATE LIMIT")].values.size() == 8);
 }
 
 // Left / right on an action row (a binding: remove / add) act once per press, never on the hold repeat
@@ -2979,6 +3779,9 @@ TEST(menu_tab_memory_follows_the_tab_list) {
     CHECK(b.tabs[m.tab()].label == "GAME");
     Input next;
     next.next_tab = true;
+    m.update(b, next);
+    CHECK(b.tabs[m.tab()].label == "EXTRAS");   // extras: after GAME
+    m.update(b, Input{});   // (released, then pressed again)
     m.update(b, next);
     CHECK(b.tabs[m.tab()].label == "SAVES");
 }
@@ -3174,6 +3977,271 @@ TEST(ini_merge_covers_every_field) {
         if (!taken || !kept) std::printf("  %s: merge_changes %s\n", k.c_str(), taken ? "drops this program's change" : "ignores the file's change");
         CHECK(taken && kept);
     }
+}
+
+// paintsel: the car paint panel on SELECT CAR -- the CAR tab's paint rows of one player (its ids, values and edits), the
+// ready colours as chips, player 2's labelled as player 1's under its own title; driven by the menu model as the page
+TEST(paint_panel_rows_and_edits) {
+    // paint2: LAYER, COLOUR (Game, ready, Custom), COLOUR PICKER, the layer's RGB, FINISH, DECALS, FACTORY COLOURS
+    Settings s;
+    const Content c = paint_panel_content(s, 0);
+    CHECK(c.title == "CAR PAINT" && c.tabs.size() == 1);
+    if (c.tabs.size() != 1) return;
+    const std::vector<Row>& r = c.tabs[0].rows;
+    const std::vector<std::uint32_t> want = {594, 560, 595, 570, 571, 572, 285, 284, 596};
+    CHECK(r.size() == want.size());
+    for (std::size_t k = 0; k < r.size() && k < want.size(); ++k) CHECK(r[k].id == want[k]);
+    if (r.size() != want.size()) return;
+    CHECK(r[0].label == "LAYER" && r[0].values.size() == 4 && r[0].value == 0 && r[1].label == "COLOUR" && r[2].label == "COLOUR PICKER" &&
+          r[3].label == "PAINT RED" && r[6].label == "FINISH" && r[7].label == "DECALS" && r[8].label == "FACTORY COLOURS");
+    // COLOUR: Game first (no colour: chip -2), the ten ready colours, Custom (the default red is none of them)
+    CHECK(r[1].values.size() == 12 && r[1].values[0] == "Game" && r[1].value == 0 && r[1].chips.size() == 12 && r[1].chips[0] == -2 &&
+          r[1].chips[1] == 0xE11E1E && r[1].chips[11] == 0xC31E1E && r[1].swatch == -1);
+    CHECK(r[3].disabled && r[2].kind == RowKind::kAction && !r[2].disabled && r[2].values[0] == "#C31E1E" && r[8].kind == RowKind::kAction);
+    // another layer's rows: their own ids; player 2's: ids of their own, labels as player 1's
+    const Content w = paint_panel_content(s, 0, kLayerWheels);
+    CHECK(w.tabs[0].rows[0].value == 2 && w.tabs[0].rows[1].id == 562 && w.tabs[0].rows[3].id == 576 && w.tabs[0].rows[2].values[0] == "#A5A5B4");
+    const Content c2 = paint_panel_content(s, 1, kLayerFlame);
+    CHECK(c2.title == "PLAYER 2 CAR PAINT" && c2.tabs[0].rows[1].id == 567 && c2.tabs[0].rows[5].id == 593 && c2.tabs[0].rows[7].id == 291 &&
+          c2.tabs[0].rows[7].label == "DECALS" && c2.tabs[0].rows[8].id == 597);
+    // the layer edits (any player, any layer) and FACTORY COLOURS
+    Settings x;
+    CHECK(apply_edit(x, Edit{561, 5, 0, false}) && x.decal_paint == 1 && x.decal_red == 30 && x.decal_green == 90 && x.decal_blue == 225);
+    CHECK(apply_edit(x, Edit{570 + 3 * 2 + 1, 3, 0, false}) && x.wheel_green == 45 && x.wheel_paint == 0);
+    CHECK(apply_edit(x, Edit{562, 12 - 1, 0, false}) && x.wheel_paint == 1);   // Custom: the colour as it is
+    CHECK(apply_edit(x, Edit{567, 1, 0, false}) && x.p2_flame_paint == 1 && x.p2_flame_red == 225 && x.flame_paint == 0);
+    CHECK(apply_edit(x, Edit{560, 10, 0, false}) && x.car_paint == 1 && x.paint_red == 15);
+    CHECK(apply_edit(x, Edit{560, 0, 0, false}) && x.car_paint == 0 && x.paint_red == 15);   // Game: the colour kept for later
+    x.car_decals = false;
+    CHECK(apply_edit(x, Edit{596, 0, 0, true}) && x.decal_paint == 0 && x.wheel_paint == 0 && x.car_decals && x.p2_flame_paint == 1);
+    CHECK(apply_edit(x, Edit{597, 0, 0, true}) && x.p2_flame_paint == 0);
+    CHECK(from_ini(to_ini(x)) == x);
+    Settings y;
+    y.wheel_paint = 1;
+    y.p2_decal_blue = 7;
+    CHECK(from_ini(to_ini(y)) == y && to_ini(y).find("wheel_paint = 1") != std::string::npos);
+    // the menu model drives it (LAYER is the host's: the panel keeps the layer)
+    Menu m;
+    m.open(0);
+    Settings z;
+    int layer = 0;
+    const auto poll = [&](Input in) {
+        in.seconds = 1.0f / 60.0f;
+        const Frame f = m.update(paint_panel_content(z, 0, layer), in);
+        for (const Edit& e : f.edits) {
+            if (e.id == kRowPaintLayer) layer = int(e.value);
+            else CHECK(apply_edit(z, e));
+        }
+        m.update(paint_panel_content(z, 0, layer), Input{});   // released
+        return f;
+    };
+    Input right, left, down, up, back;
+    right.right = true;
+    left.left = true;
+    down.down = true;
+    up.up = true;
+    back.back = true;
+    m.update(c, Input{});
+    poll(down);                                                         // COLOUR
+    CHECK(poll(right).edits.size() == 1 && z.car_paint == 1 && z.paint_red == 225);   // Red
+    poll(down);
+    poll(down);                                                         // PAINT RED
+    CHECK(poll(left).edits.size() == 1 && z.paint_red == 210);
+    poll(up);
+    poll(up);                                                           // COLOUR: Custom (210, 30, 30)
+    CHECK(poll(left).edits.size() == 1 && z.paint_red == 15 && z.paint_green == 15);   // Black
+    poll(up);                                                           // LAYER
+    poll(right);
+    poll(right);
+    CHECK(layer == kLayerWheels);
+    poll(down);
+    CHECK(poll(right).edits.size() == 1 && z.wheel_paint == 1 && z.wheel_red == 225 && z.car_paint == 1);   // the wheels Red
+    CHECK(poll(back).close);
+    // drawn as a panel: no backdrop, every item in the box at the left (the slant of a bar's top edge aside)
+    m.open(0);
+    for (int k = 0; k < 30; ++k) {   // past the opening fade
+        Input idle;
+        idle.seconds = 1.0f / 60.0f;
+        m.update(c, idle);
+    }
+    const auto in_box = [](const std::vector<Item>& items, bool& title, bool& glyph_tri, bool& chips) {
+        for (const Item& i : items) {
+            if (i.kind == ItemKind::kFontDirectory) continue;
+            CHECK(i.x >= Menu::kPanelX0 - 4 && i.x + i.w <= Menu::kPanelX1 + 4 && i.y >= Menu::kPanelY0 - 1 && i.y + i.h <= 404);
+            title = title || (i.kind == ItemKind::kText && i.text == "CAR PAINT");
+            glyph_tri = glyph_tri || (i.kind == ItemKind::kImage && i.text == std::string(kGlyphPrefix) + "triangle");
+            chips = chips || (i.kind == ItemKind::kRect && i.colour == 0xFF1E1EE1u);   // Red's chip (RGBA, red in the low byte)
+        }
+    };
+    bool title = false, glyphs = false, chips = false;
+    in_box(m.panel_items("", "", nullptr), title, glyphs, chips);
+    CHECK(title && glyphs && chips);
+    // the picker drawn in the description's place, its prompts (L1 HUE ... TRIANGLE CANCEL), still inside the box
+    Content cp = paint_panel_content(s, 0, kLayerBody, Content::Picker{true, 120.0f, 0.5f, 0.75f, true});
+    m.update(cp, Input{});
+    const std::vector<Item> pitems = m.panel_items("", "", nullptr);
+    title = glyphs = chips = false;
+    in_box(pitems, title, glyphs, chips);
+    std::size_t cells = 0;
+    bool hue_prompt = false;
+    for (const Item& i : pitems) {
+        cells += i.kind == ItemKind::kRect && i.w <= 8.0f && i.h <= 6.0f ? 1 : 0;
+        hue_prompt = hue_prompt || (i.kind == ItemKind::kImage && i.text == std::string(kGlyphPrefix) + "l1");
+    }
+    CHECK(glyphs && hue_prompt && cells >= 24 * 12);
+    // every word of both panels in the six languages (the hex colour is data)
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"})
+        for (int p = 0; p < 2; ++p)
+            for (int l = 0; l < kPaintLayers; ++l) {
+                Settings v;
+                v.car_paint = v.p2_car_paint = 1;
+                for (const std::string& miss : untranslated(paint_panel_content(v, p, l), code)) {
+                    if (miss.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") == std::string::npos || miss[0] == '#') continue;
+                    std::printf("  %s lacks: %s\n", code, miss.c_str());
+                    CHECK(false);
+                }
+            }
+    for (const char* code : {"FR", "GE", "IT", "SP", "DU", "SW"})
+        for (const char* wd : {"HUE", "SHADE", "CANCEL", "Paint", "CAR PAINT PANEL"})   // (OK, FINE: the same word in some)
+            if (translate_text(wd, code) == wd) {
+                std::printf("  %s lacks: %s\n", code, wd);
+                CHECK(false);
+            }
+}
+
+TEST(paint_colour_picker) {
+    // paint2: HSV both ways, and the picker's model: held directions move saturation / brightness, L1 / R1 the hue, FINE
+    // a quarter of the speed, a pointer held on the square or the bar, CROSS keeps, BACK puts the colour before back
+    for (const std::array<int, 3>& c : std::vector<std::array<int, 3>>{{255, 0, 0}, {30, 90, 225}, {240, 90, 165}, {15, 15, 15}, {0, 0, 0},
+                                                                       {255, 255, 255}, {123, 45, 67}}) {
+        float h, s, v;
+        rgb_to_hsv(c.data(), h, s, v);
+        int o[3];
+        hsv_to_rgb(h, s, v, o);
+        for (int k = 0; k < 3; ++k) CHECK(std::abs(o[k] - c[std::size_t(k)]) <= 1);
+    }
+    ColourPicker p;
+    const int red[3] = {255, 0, 0};
+    p.open(red);
+    CHECK(p.on() && p.view().h == 0.0f && p.view().s == 1.0f && p.view().v == 1.0f);
+    PickerInput in;
+    in.accept = true;   // the press that opened it, still held: not taken
+    CHECK(p.step(in) == ColourPicker::Result::kNone && p.on());
+    in = PickerInput{};
+    in.down = true;
+    for (int k = 0; k < 30; ++k) p.step(in);   // half a second down: brightness 1 -> 0.6
+    CHECK(std::abs(p.view().v - 0.6f) < 0.02f && p.rgb()[0] > 145 && p.rgb()[0] < 160 && p.rgb()[1] == 0);
+    in = PickerInput{};
+    in.hue_up = true;
+    for (int k = 0; k < 40; ++k) p.step(in);   // 2/3 s of R1: hue 0 -> 120 (green)
+    CHECK(std::abs(p.view().h - 120.0f) < 4.0f && p.rgb()[1] > p.rgb()[0] && p.rgb()[1] > p.rgb()[2]);
+    in = PickerInput{};
+    in.fine = true;
+    p.step(in);   // FINE on
+    in.fine = false;
+    in.left = true;
+    for (int k = 0; k < 60; ++k) p.step(in);   // a second of left, fine: saturation 1 -> 0.8
+    CHECK(p.view().fine && std::abs(p.view().s - 0.8f) < 0.02f);
+    in = PickerInput{};   // the pointer held on the square's middle, then on the bar's bottom quarter (hue 270)
+    const float sq[4] = {30, 310, 150, 56}, bar[4] = {188, 310, 14, 56};
+    std::copy(std::begin(sq), std::end(sq), in.sq);
+    std::copy(std::begin(bar), std::end(bar), in.bar);
+    in.pointer = std::array<float, 2>{105.0f, 338.0f};
+    in.pointer_held = true;
+    CHECK(p.step(in) == ColourPicker::Result::kChanged && std::abs(p.view().s - 0.5f) < 0.01f && std::abs(p.view().v - 0.5f) < 0.01f);
+    in.pointer = std::array<float, 2>{195.0f, 352.0f};
+    p.step(in);
+    CHECK(std::abs(p.view().h - 270.0f) < 1.0f);
+    in.pointer_held = false;
+    in.accept = true;
+    CHECK(p.step(in) == ColourPicker::Result::kAccepted && !p.on());
+    p.open(red);   // BACK: the colour before
+    in = PickerInput{};
+    in.up = in.left = true;
+    p.step(in);
+    in = PickerInput{};
+    in.cancel = true;
+    p.step(PickerInput{});
+    CHECK(p.step(in) == ColourPicker::Result::kCancelled && p.rgb()[0] == 255 && p.rgb()[1] == 0 && p.rgb()[2] == 0);
+}
+
+// uploadbatch: the ini-only key upload_batch (on by default; off = one submit per route upload, a troubleshooting switch)
+// slowcpu (issue #15): FRAME RATE LIMIT Auto (the default): unlimited, or 60 on a CPU of 4 logical processors or fewer;
+// the row lists Auto first, then Unlimited; the ini keeps -1; BATTERY SAVER holds Auto to 60 as Unlimited
+TEST(frame_rate_limit_auto) {
+    using b3settings::effective_frame_cap;
+    CHECK(Settings{}.frame_cap == b3settings::kFrameCapAuto);
+    CHECK(effective_frame_cap(-1, 4) == 60 && effective_frame_cap(-1, 2) == 60 && effective_frame_cap(-1, 8) == 0 && effective_frame_cap(-1, 0) == 0);
+    CHECK(effective_frame_cap(0, 4) == 0 && effective_frame_cap(144, 4) == 144 && effective_frame_cap(30, 32) == 30);
+    CHECK(from_ini("frame_cap = -1\n").frame_cap == -1 && from_ini("frame_cap = 0\n").frame_cap == 0);
+    // the version step (Fable): an older file's 0 (written because Unlimited was the default) reads as Auto; an explicit
+    // limit is kept; a version-3 file's 0 is the player's Unlimited
+    CHECK(from_ini("version = 1\nframe_cap = 0\n").frame_cap == -1 && from_ini("version = 2\nframe_cap = 0\n").frame_cap == -1);
+    CHECK(from_ini("version = 2\nframe_cap = 144\n").frame_cap == 144 && from_ini("version = 1\nframe_cap = 60\n").frame_cap == 60);
+    CHECK(from_ini("version = 3\nframe_cap = 0\n").frame_cap == 0);
+    Settings un;
+    un.frame_cap = 0;
+    CHECK(from_ini(to_ini(un)).frame_cap == 0);   // saved now (version 3): Unlimited stays Unlimited
+    CHECK(to_ini(Settings{}).find("frame_cap = -1") != std::string::npos);
+    Settings b;
+    b.battery_saver = true;
+    CHECK(on_battery(b).frame_cap == 60);
+    const Content c = build_content(Settings{}, Env{true});
+    const Row* r = nullptr;
+    for (const Tab& t : c.tabs)
+        for (const Row& x : t.rows)
+            if (x.label == "FRAME RATE LIMIT") r = &x;
+    CHECK(r && r->values.size() >= 3 && r->values[0] == "Auto" && r->values[1] == "Unlimited" && r->value == 0);
+    Settings e;
+    CHECK(r && apply_edit(e, Edit{r->id, 1, 0, false}) && e.frame_cap == 0);
+    CHECK(r && apply_edit(e, Edit{r->id, 0, 0, false}) && e.frame_cap == -1);
+}
+
+TEST(upload_batch_ini_key) {
+    CHECK(Settings{}.upload_batch);
+    CHECK(!from_ini("upload_batch = false\n").upload_batch);
+    CHECK(!from_ini("upload_batch = 0\n").upload_batch);
+    CHECK(from_ini("upload_batch = true\n").upload_batch);
+    Settings s;
+    s.upload_batch = false;
+    CHECK(!from_ini(to_ini(s)).upload_batch);
+    CHECK(to_ini(Settings{}).find("upload_batch = true") != std::string::npos);
+}
+
+// d3d12: GRAPHICS API (Windows: Env::graphics_api): Auto / Vulkan / D3D12 in GRAPHICS > IMAGE, the ini key graphics_api
+TEST(graphics_api_row_and_key) {
+    const auto find = [](const Content& c, std::uint32_t id) -> const Row* {
+        for (const Tab& t : c.tabs)
+            for (const Row& r : t.rows)
+                if (r.id == id) return &r;
+        return nullptr;
+    };
+    Settings s;
+    CHECK(s.graphics_api == 0);
+    Env off{true};
+    CHECK(!find(build_content(s, off), kRowGraphicsApi));   // not on Linux / macOS
+    Env on{true};
+    on.graphics_api = true;
+    const Content c = build_content(s, on);
+    const Row* r = find(c, kRowGraphicsApi);
+    CHECK(r && r->label == "GRAPHICS API" && r->values.size() == 3 && r->values[2] == "D3D12" && r->value == 0);
+    Settings x;
+    CHECK(apply_edit(x, Edit{kRowGraphicsApi, 2, 0, false}) && x.graphics_api == 2);
+    CHECK(!apply_edit(x, Edit{kRowGraphicsApi, 3, 0, false}) && x.graphics_api == 2);
+    CHECK(from_ini(to_ini(x)).graphics_api == 2);
+    CHECK(from_ini("graphics_api = 7\n").graphics_api == 0);   // out of range: the default
+}
+
+// scenedepth: the ini-only key scene_depth (-1 the renderer's choice per backend, 0 the depth pre-pass, 1 the scene's own)
+TEST(scene_depth_ini_key) {
+    CHECK(Settings{}.scene_depth == -1);
+    CHECK(from_ini("scene_depth = 1\n").scene_depth == 1);
+    CHECK(from_ini("scene_depth = 0\n").scene_depth == 0);
+    CHECK(from_ini("scene_depth = 7\n").scene_depth == -1);   // out of -1..1: ignored (the default kept)
+    CHECK(from_ini("scene_depth = -5\n").scene_depth == -1);
+    Settings s;
+    s.scene_depth = 1;
+    CHECK(from_ini(to_ini(s)).scene_depth == 1);
 }
 
 TEST_MAIN("b3settings (settings1)")

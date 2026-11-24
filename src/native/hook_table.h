@@ -155,7 +155,10 @@ public:
     static constexpr ArenaRegion kOnlineMessage{0x000C1200u, 0x100u, "port:online_message (the ONLINE dialog's text)"};
     static constexpr ArenaRegion kEaTraxSongs{0x000C1400u, 0x1800u, "port:eatrax_songs (the EA TRAX song table with the custom songs)"};
     static constexpr ArenaRegion kEaTraxText{0x000C2C00u, 0x800u, "port:eatrax_text (the custom songs' titles, artists, albums)"};
-    static constexpr ArenaRegion kPort[] = {kPcMenu, kDateFormat, kCustomSoundtrack, kNowPlaying, kOnlineMessage, kEaTraxSongs, kEaTraxText};
+    static constexpr ArenaRegion kRaceOptions{0x000C3400u, 0x2000u, "port:race_options (SELECT OPTIONS' rows, labels and values)"};
+    static constexpr ArenaRegion kTrafficCheck{0x000C7E00u, 0x200u, "port:traffic_check (the chains' score categories, the caption and the sign)"};
+    static constexpr ArenaRegion kPort[] = {kPcMenu, kDateFormat, kCustomSoundtrack, kNowPlaying, kOnlineMessage, kEaTraxSongs, kEaTraxText,
+                                            kRaceOptions, kTrafficCheck};
 
     // `bytes` for `owner` at a multiple of `align` (a power of two, 1..4096), zero-length refused; 0 when it does not
     // fit (error says why). Deterministic: the n-th call gets the same address in every run with the same calls.

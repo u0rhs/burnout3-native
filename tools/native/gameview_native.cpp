@@ -6,6 +6,7 @@
 #include "b3gameview/gameview.h"
 #include "b3host/native_backend.h"
 #include "b3live/menu_input.h"
+#include "b3live/sched_stamp.h"   // stutter: the stamp's late mark
 #include "b3mod/codemod.h"   // sdk2b: the code mods' overlay record
 
 #include <algorithm>
@@ -44,10 +45,16 @@ b3gv::Memory arena() {
 // The schedule stamp: the host time the poll's input was latched, which natively is now (the poll is the latch).
 // fastload1: none (0) while a load runs unpaced (set_unstamped): its ticks are not on the 1/60 s clock, so the
 // renderer's schedule clock (src/b3replay/clock.h step_sched: the rate over the last 30 stamps) starts afresh after it.
+// stutter: a paced game stamps with its VBlank's place on the pacer's schedule (set_vblank_stamp; fast_load.h
+// Pacer::stamp_ns), steady by construction, bit 0 set when that VBlank started late (include/b3live/sched_stamp.h);
+// unpaced (0) the time of the poll, as before (bit 0 clear).
 bool g_unstamped = false;
+std::uint64_t g_vblank_stamp = 0;
 std::uint64_t stamp(std::uint64_t) {
     if (g_unstamped) return 0;
-    return std::uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+    if (g_vblank_stamp) return g_vblank_stamp;
+    return b3live::sched_stamp(
+        std::uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()), false);
 }
 
 // b3host's watch hook: entries of the HUD's functions (before: result null) and UpdatePort's return.
@@ -135,16 +142,84 @@ void publish_skip_hint() {
 }
 
 // todrace (race_time.h): the race's DAY / NIGHT choice and the track page's label for the renderer (src/b3replay/hud.h
-// kHostRaceTimeBase, 'HTD1': {u32 'HTD1', u32 serial, u32 race 0..2, u32 label: choice | opacity << 8}), set per VBlank
+// kHostRaceTimeBase, 'HTD1': {u32 'HTD1', u32 serial, u32 race 0..2, u32 label: choice | opacity << 8, options3: u32 the
+// records word's bits 32..63, u32 0}), set per VBlank
 // by native_play, published at the poll when it changed. Host bytes only; none before the first set_race_time.
 constexpr std::uint32_t kHostRaceTimeBase = 0x41112200u;
 std::uint32_t g_race_time = 0, g_race_label = 0, g_race_serial = 0;
+std::uint64_t g_race_options = 0;   // raceopts: the records word (low 16 bits in the label word's high half, 16..31 in the race word's, 32..63 in word 4)
+std::uint32_t g_game_options = 0;   // gameopts: the race word's bits 9..10
 bool g_race_set = false, g_race_dirty = false;
 void publish_race_time() {
     if (!g_race_dirty) return;
     g_race_dirty = false;
-    const std::uint32_t r[4] = {0x31445448u, ++g_race_serial, g_race_time, g_race_label};   // 'HTD1'
-    b3scene_grab_host(kHostRaceTimeBase, reinterpret_cast<const std::uint8_t*>(r), 16);
+    // (options3: the records word's bits 16..31 in the race word's 16..31 (gameopts' in 9..10, the race 0..2 in 0..7), its
+    // bits 32..63 in word 4; every field's owner: tests/test_bit_owners.cpp)
+    const std::uint32_t r[6] = {0x31445448u, ++g_race_serial,
+                                g_race_time | g_game_options | std::uint32_t(g_race_options >> 16 & 0xFFFFu) << 16,
+                                g_race_label | std::uint32_t(g_race_options & 0xFFFFu) << 16, std::uint32_t(g_race_options >> 32), 0};   // 'HTD1'
+    b3scene_grab_host(kHostRaceTimeBase, reinterpret_cast<const std::uint8_t*>(r), 24);
+}
+
+// paintsel (paint_select.h): the PAINT prompt on SELECT CAR (src/b3replay/hud.h kHostPaintSelBase, 'HPS1': {u32 'HPS1', u32
+// serial, u32 opacity 0..255, u32 player}), set per VBlank by native_play, published at the poll when it changed. Host
+// bytes only; none before the prompt first shows.
+constexpr std::uint32_t kHostPaintSelBase = 0x41112300u;
+std::uint32_t g_paint_opacity = 0, g_paint_player = 0, g_paint_serial = 0;
+bool g_paint_dirty = false;
+// elim1 (single_eliminator.h): TIMED ELIMINATION's countdown (src/b3replay/hud.h kHostElimTimerBase, 'HEL1': {u32 'HEL1',
+// u32 serial, u32 the whole seconds left (0xFFFFFFFF: none), u32 0, u32 colours[8] as RGBA bytes (red in the low byte):
+// the race HUD's +0x30, +0x40, +0x50, +0x60, then the HUD captions' style 1 ramp c0..c3}), published when it changes
+std::uint32_t g_elim_seconds = 0xFFFFFFFFu, g_elim_serial = 0, g_elim_colours[8] = {};
+bool g_elim_dirty = false;
+void publish_elim_timer() {
+    if (!g_elim_dirty) return;
+    g_elim_dirty = false;
+    std::uint32_t r[12] = {0x314C4548u, ++g_elim_serial, g_elim_seconds, 0};   // 'HEL1'
+    for (int i = 0; i < 8; ++i) r[4 + i] = g_elim_colours[i];
+    b3scene_grab_host(0x41112400u, reinterpret_cast<const std::uint8_t*>(r), 48);
+}
+// gearbox (gearbox.h): the manual gearbox's gear for the HUD (src/b3replay/hud.h kHostGearBase, 'HGB1': {u32 'HGB1', u32
+// serial, s32 the gear (-1 reverse, 0 neutral, 1..; -2 none), u32 0, u32 the race HUD's colours as the 'HEL1' record's}),
+// published when it changes
+std::int32_t g_gear = -2;
+std::uint32_t g_gear_serial = 0, g_gear_colours[8] = {};
+bool g_gear_dirty = false;
+void publish_gear() {
+    if (!g_gear_dirty) return;
+    g_gear_dirty = false;
+    std::uint32_t r[12] = {0x31424748u, ++g_gear_serial, std::uint32_t(g_gear), 0};   // 'HGB1'
+    for (int i = 0; i < 8; ++i) r[4 + i] = g_gear_colours[i];
+    b3scene_grab_host(0x41112500u, reinterpret_cast<const std::uint8_t*>(r), 48);
+}
+// replayview (replay_view.h): the race replay's state for the renderer (src/b3replay/hud.h kHostReplayBase, 'HRV1': {u32
+// 'HRV1', u32 serial, u32 state: 0 none, 1 REPLAY offered (a results page), 2 the replay playing, u32 0}), set per VBlank
+// by native_play, published when it changes
+std::uint32_t g_replay_state = 0, g_replay_serial = 0;
+bool g_replay_dirty = false;
+void publish_replay() {
+    if (!g_replay_dirty) return;
+    g_replay_dirty = false;
+    const std::uint32_t r[4] = {0x31565248u, ++g_replay_serial, g_replay_state, 0};   // 'HRV1'
+    b3scene_grab_host(0x41112800u, reinterpret_cast<const std::uint8_t*>(r), 16);
+}
+void publish_paint_sel() {
+    if (!g_paint_dirty) return;
+    g_paint_dirty = false;
+    const std::uint32_t r[4] = {0x31535048u, ++g_paint_serial, g_paint_opacity, g_paint_player};   // 'HPS1'
+    b3scene_grab_host(kHostPaintSelBase, reinterpret_cast<const std::uint8_t*>(r), 16);
+}
+
+// paint3 (carousel_models.h): the carousel slots whose model is not their picture's (src/b3replay/hud.h kHostCarouselBase)
+constexpr std::uint32_t kHostCarouselBase = 0x41112600u;
+std::vector<std::uint8_t> g_carousel;
+bool g_carousel_dirty = false;
+void publish_carousel() {
+    if (!g_carousel_dirty || g_carousel.empty() || g_carousel.size() > 0x200u) return;
+    g_carousel_dirty = false;
+    std::vector<std::uint8_t> b = g_carousel;
+    b.resize((b.size() + 15) & ~std::size_t(15), 0);   // (16-byte rows)
+    b3scene_grab_host(kHostCarouselBase, b.data(), std::uint32_t(b.size()));
 }
 
 // mac5: the menus on screen for the renderer's mouse (include/b3live/menu_input.h 'HMN1' at kHostMenuBase), set by
@@ -185,6 +260,11 @@ void publish_host() {   // the poll's host records (b3gv::Host::extra_publish)
     publish_fonts();
     publish_skip_hint();
     publish_race_time();
+    publish_paint_sel();   // paintsel
+    publish_carousel();    // paint3
+    publish_elim_timer();  // elim1
+    publish_gear();        // gearbox
+    publish_replay();      // replayview
     publish_hold();
     publish_menu();
     publish_mod_overlay();
@@ -290,6 +370,8 @@ bool b3gv_native::active() { return g_on; }
 void b3gv_native::set_hold_probe(bool (*probe)()) { g_hold_probe = probe; }
 void b3gv_native::set_skip_hint(std::uint8_t opacity) { g_skip_level = opacity; }
 void b3gv_native::set_unstamped(bool on) { g_unstamped = on; }
+void b3gv_native::set_vblank_stamp(std::uint64_t ns, bool late) { g_vblank_stamp = b3live::sched_stamp(ns, late); }
+void b3gv_native::set_ticker_text(std::uint32_t text, const std::u16string& display) { b3gv::set_ticker_text(text, display); }
 void b3gv_native::set_race_time(std::uint8_t race, std::uint8_t label_choice, std::uint8_t label_opacity) {   // todrace
     const std::uint32_t label = std::uint32_t(label_choice) | std::uint32_t(label_opacity) << 8;
     if (g_race_set && race == g_race_time && label == g_race_label) return;
@@ -297,6 +379,53 @@ void b3gv_native::set_race_time(std::uint8_t race, std::uint8_t label_choice, st
     g_race_time = race;
     g_race_label = label;
     g_race_dirty = true;
+}
+void b3gv_native::set_game_options(std::uint32_t latched) {   // gameopts
+    const std::uint32_t w = std::uint32_t(latched & 3u) << 9;
+    if (g_game_options == w) return;
+    g_game_options = w;
+    g_race_dirty = true;
+}
+void b3gv_native::set_race_options(std::uint64_t word) {   // raceopts
+    if (g_race_options == word) return;
+    g_race_options = word;
+    g_race_dirty = true;
+}
+void b3gv_native::set_replay_state(int state) {   // replayview
+    const std::uint32_t st = std::uint32_t(state < 0 ? 0 : state > 2 ? 2 : state);
+    if (st == g_replay_state) return;
+    g_replay_state = st;
+    g_replay_dirty = true;
+}
+void b3gv_native::set_paint_prompt(std::uint8_t opacity, std::uint8_t player) {   // paintsel
+    if (g_paint_opacity == opacity && g_paint_player == player) return;
+    if (!g_paint_serial && !g_paint_dirty && opacity == 0) return;   // nothing before it first shows
+    g_paint_opacity = opacity;
+    g_paint_player = player;
+    g_paint_dirty = true;
+}
+void b3gv_native::set_gear(int gear, const std::uint32_t colours[8]) {   // gearbox
+    bool same = gear == g_gear;
+    for (int i = 0; i < 8 && colours; ++i) same = same && g_gear_colours[i] == colours[i];
+    if (same) return;
+    if (!g_gear_serial && !g_gear_dirty && gear < -1) return;   // nothing before it first shows
+    g_gear = gear;
+    for (int i = 0; i < 8 && colours; ++i) g_gear_colours[i] = colours[i];
+    g_gear_dirty = true;
+}
+void b3gv_native::set_elim_timer(int seconds, const std::uint32_t colours[8]) {   // elim1
+    const std::uint32_t v = seconds < 0 ? 0xFFFFFFFFu : std::uint32_t(seconds);
+    bool same = v == g_elim_seconds;
+    for (int i = 0; i < 8 && colours; ++i) same = same && g_elim_colours[i] == colours[i];
+    if (same) return;
+    g_elim_seconds = v;
+    for (int i = 0; i < 8 && colours; ++i) g_elim_colours[i] = colours[i];
+    g_elim_dirty = true;
+}
+void b3gv_native::set_carousel_models(const std::vector<std::uint8_t>& record) {   // paint3
+    if (record.size() < 16 || record == g_carousel) return;
+    g_carousel = record;
+    g_carousel_dirty = true;
 }
 void b3gv_native::set_menu_record(const std::vector<std::uint8_t>& bytes) { g_menu_record = bytes; g_menu_dirty = true; }
 void b3gv_native::set_frame_hook(void (*fn)()) { g_frame_hook = fn; }

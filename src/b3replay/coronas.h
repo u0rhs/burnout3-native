@@ -38,7 +38,9 @@ struct CoronaArrays {
 // optional): per vehicle, the fade its car is drawn with (view.h traffic_fade); a traffic / crashed vehicle's lights
 // are scaled by it, so they come and go with the car.
 void build_coronas(const CoronaInputs& in, const std::vector<Vehicle>& vehicles, const float cam_point[3], const float cam_pos[3],
-                   CoronaArrays& out, const std::vector<float>* fades = nullptr);
+                   CoronaArrays& out, const std::vector<float>* fades = nullptr, const std::int64_t* flame = nullptr);
+// (paint2: `flame`, optional, two entries: player 1's and player 2's boost glow colour, 0xRRGGBB, or -1 the game's; the
+// glow keeps the game's brightness in that colour)
 
 // The VU program's sprite for a slot seen from `cam`, as a world-space quad the GPU projects with the frame's camera
 // (float model of b3asset::corona_sprites; §16 compares the two): false when the program drops the slot.
@@ -46,6 +48,7 @@ struct CoronaQuad {
     float corner[4][3] = {};      // top left, top right, bottom right, bottom left (UV (0,0), (1,0), (1,1), (0,1))
     std::uint8_t rgb[3] = {};     // FTOI0 of the faded colour, low 8 bits
     float depth = 0;              // view depth of the slot
+    std::uint8_t alpha = 0x80;    // weather (rain.h QuadLayer's mist: the spray): the blend's As (0x80 = 1)
 };
 // `aspect` > 0: the render's width / height when it is wider than the game's view window (Hor+): the program's window
 // test (the screen plus 32 of 640 pixels each side) then spans the wider screen; K (the fade distance scale) stays the
@@ -61,9 +64,14 @@ public:
     void clear() { for (auto& b : vb_) b = b3gfx::kNone; for (auto& b : ib_) b = b3gfx::kNone; }   // (draw also drops them after a clear_resources)
     void draw(b3gfx::Device& dev, const Camera& cam, const CoronaArrays& arrays, const b3gfx::TextureId tex[3],
               std::vector<b3gfx::DrawItem>& out, CoronaStats* stats = nullptr, float aspect = 0);
+    // nightfix (night only): more sprites drawn as array 0's are (the same texture and state, night_glow), from quads
+    // made by the caller (View::night_lamp_coronas: the street lamps' heads, the billboards' floodlights)
+    void draw_quads(b3gfx::Device& dev, const std::vector<CoronaQuad>& quads, b3gfx::TextureId tex, std::vector<b3gfx::DrawItem>& out);
 
 private:
-    b3gfx::BufferId vb_[3] = {b3gfx::kNone, b3gfx::kNone, b3gfx::kNone}, ib_[3] = {b3gfx::kNone, b3gfx::kNone, b3gfx::kNone};
+    void emit(b3gfx::Device& dev, int slot, b3gfx::TextureId tex, std::vector<b3gfx::DrawItem>& out);
+    // [3]: draw_quads' buffers
+    b3gfx::BufferId vb_[4] = {b3gfx::kNone, b3gfx::kNone, b3gfx::kNone, b3gfx::kNone}, ib_[4] = {b3gfx::kNone, b3gfx::kNone, b3gfx::kNone, b3gfx::kNone};
     unsigned epoch_ = 0;   // Device::resource_epoch the buffer ids belong to
     std::vector<b3gfx::Vertex> verts_;
     std::vector<std::uint32_t> idx_;

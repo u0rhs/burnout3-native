@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <system_error>
@@ -630,6 +632,358 @@ void Limiter::run(float* lr, std::size_t frames) {
             min_gain_ = std::min(min_gain_, g);
         }
     }
+}
+
+// ---- loudness (musicloud) ----
+
+namespace {
+// The whole of `text` to `file` through `file`.tmp and a rename
+bool write_atomic(const std::string& file, const std::string& text, std::string* why) {
+    namespace fs = std::filesystem;
+    const fs::path to = upath(file), tmp = upath(file + ".tmp");
+    std::error_code ec;
+    if (to.has_parent_path()) fs::create_directories(to.parent_path(), ec);
+#if defined(_WIN32)
+    std::FILE* f = _wfopen(tmp.c_str(), L"wb");
+#else
+    std::FILE* f = std::fopen(tmp.c_str(), "wb");
+#endif
+    if (!f) {
+        if (why) *why = "cannot write " + file + ".tmp";
+        return false;
+    }
+    const bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+    if (std::fclose(f) != 0 || !ok) {
+        if (why) *why = "cannot write " + file + ".tmp";
+        fs::remove(tmp, ec);
+        return false;
+    }
+    fs::rename(tmp, to, ec);
+    if (ec) {
+        if (why) *why = ec.message();
+        fs::remove(tmp, ec);
+        return false;
+    }
+    return true;
+}
+}  // namespace
+
+double LoudnessMeter::Biquad::run(double x, int c) {   // transposed direct form II
+    const double y = b0 * x + z1[c];
+    z1[c] = b1 * x - a1 * y + z2[c];
+    z2[c] = b2 * x - a2 * y;
+    return y;
+}
+
+LoudnessMeter::LoudnessMeter(unsigned rate) {
+    const double fs = rate ? double(rate) : 48000.0, pi = 3.14159265358979323846;
+    {   // stage 1: the head's high shelf (+4 dB above ~1.7 kHz)
+        const double f0 = 1681.974450955533, g = 3.999843853973347, q = 0.7071752369554196;
+        const double k = std::tan(pi * f0 / fs), vh = std::pow(10.0, g / 20.0), vb = std::pow(vh, 0.4996667741545416);
+        const double a0 = 1.0 + k / q + k * k;
+        shelf_.b0 = (vh + vb * k / q + k * k) / a0;
+        shelf_.b1 = 2.0 * (k * k - vh) / a0;
+        shelf_.b2 = (vh - vb * k / q + k * k) / a0;
+        shelf_.a1 = 2.0 * (k * k - 1.0) / a0;
+        shelf_.a2 = (1.0 - k / q + k * k) / a0;
+    }
+    {   // stage 2: the RLB high pass (~38 Hz)
+        const double f0 = 38.13547087602444, q = 0.5003270373238773;
+        const double k = std::tan(pi * f0 / fs), a0 = 1.0 + k / q + k * k;
+        pass_.b0 = 1.0;
+        pass_.b1 = -2.0;
+        pass_.b2 = 1.0;
+        pass_.a1 = 2.0 * (k * k - 1.0) / a0;
+        pass_.a2 = (1.0 - k / q + k * k) / a0;
+    }
+    sub_len_ = std::size_t(std::lround(fs / 10.0));
+}
+
+void LoudnessMeter::add(const float* lr, std::size_t frames) {
+    for (std::size_t i = 0; i < frames; ++i) {
+        for (int c = 0; c < 2; ++c) {
+            const double x = std::isfinite(lr[2 * i + std::size_t(c)]) ? double(lr[2 * i + std::size_t(c)]) : 0.0;
+            peak_ = std::max(peak_, std::fabs(x));
+            const double y = pass_.run(shelf_.run(x, c), c);
+            sub_sum_ += y * y;
+        }
+        if (++sub_at_ == sub_len_) {   // a 100 ms step: the 400 ms block ending here
+            sub_[subs_ % 4] = sub_sum_;
+            ++subs_;
+            sub_sum_ = 0.0;
+            sub_at_ = 0;
+            if (subs_ >= 4) blocks_.push_back((sub_[0] + sub_[1] + sub_[2] + sub_[3]) / double(4 * sub_len_));
+        }
+    }
+}
+
+double LoudnessMeter::integrated() const {
+    const auto lufs = [](double ms) { return -0.691 + 10.0 * std::log10(ms); };
+    const double abs_gate = std::pow(10.0, (-70.0 + 0.691) / 10.0);
+    double sum = 0.0;
+    std::size_t n = 0;
+    for (double b : blocks_)
+        if (b > abs_gate) sum += b, ++n;
+    if (n == 0) return -HUGE_VAL;
+    const double rel_gate = std::pow(10.0, (lufs(sum / double(n)) - 10.0 + 0.691) / 10.0);
+    sum = 0.0;
+    n = 0;
+    for (double b : blocks_)
+        if (b > abs_gate && b > rel_gate) sum += b, ++n;
+    return n ? lufs(sum / double(n)) : -HUGE_VAL;
+}
+
+bool measure_loudness(const std::string& path, double& lufs, double& peak, std::string* why, const std::atomic<bool>* stop,
+                      bool* stopped) {
+    if (stopped) *stopped = false;
+    std::unique_ptr<Decoder> d = Decoder::open(path, why);
+    if (!d) return false;
+    LoudnessMeter m(d->rate());
+    std::vector<float> buf(2 * 4096);
+    for (std::size_t got; (got = d->read(buf.data(), 4096)) > 0;) {
+        if (stop && stop->load(std::memory_order_relaxed)) {
+            if (stopped) *stopped = true;
+            if (why) *why = "stopped";
+            return false;
+        }
+        m.add(buf.data(), got);
+    }
+    lufs = m.integrated();
+    peak = m.peak();
+    return true;
+}
+
+float loudness_gain(double lufs, double peak) {
+    if (!std::isfinite(lufs)) return 1.0f;
+    double db = std::clamp(kLoudnessTarget - lufs, -kMaxCut, kMaxBoost);
+    if (db > 0.0 && peak > 0.0) {   // the boost: as far as the peaks go over the Limiter's ceiling by kLimitAllowance
+        const double room = 20.0 * std::log10(double(Limiter::kCeiling) / peak) + kLimitAllowance;
+        db = std::min(db, std::max(0.0, room));
+    }
+    return float(std::pow(10.0, db / 20.0));
+}
+
+double LoudnessCache::quantize(double v, int decimals) {
+    char b[64];
+    std::snprintf(b, sizeof b, "%.*f", decimals, v);
+    return std::strtod(b, nullptr);
+}
+
+bool LoudnessCache::stat(const std::string& path, std::uint64_t& size, std::int64_t& time) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path p = upath(path);
+    const std::uintmax_t sz = fs::file_size(p, ec);
+    if (ec) return false;
+    const fs::file_time_type t = fs::last_write_time(p, ec);
+    if (ec) return false;
+    size = std::uint64_t(sz);
+    time = std::int64_t(t.time_since_epoch().count());   // the system's own file time (a key, compared only)
+    return true;
+}
+
+void LoudnessCache::set_file(const std::string& file) {
+    std::lock_guard<std::mutex> l(m_);
+    file_ = file;
+}
+
+bool LoudnessCache::load(const std::string& file) {
+    set_file(file);
+    std::FILE* f = file.empty() ? nullptr : open_file(file);
+    if (!f) return false;
+    std::string text;
+    char buf[4096];
+    for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) text.append(buf, n);
+    std::fclose(f);
+    const bool ok = parse(text);
+    std::lock_guard<std::mutex> l(m_);   // the songs no longer there dropped (saved with the next change)
+    for (auto it = recs_.begin(); it != recs_.end();) {
+        std::error_code ec;
+        if (!std::filesystem::exists(upath(it->first), ec) && !ec) it = recs_.erase(it), dirty_ = true;
+        else ++it;
+    }
+    return ok;
+}
+
+bool LoudnessCache::parse(const std::string& text) {
+    std::lock_guard<std::mutex> l(m_);
+    std::size_t at = 0;
+    bool ok = true;
+    while (at < text.size()) {
+        std::size_t end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(at, end - at);
+        at = end + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        std::size_t tabs[4], from = 0;
+        bool good = true;
+        for (std::size_t& t : tabs) {
+            t = line.find('\t', from);
+            if (t == std::string::npos) { good = false; break; }
+            from = t + 1;
+        }
+        if (!good || from >= line.size()) { ok = false; continue; }
+        Rec r;
+        r.e.lufs = std::strtod(line.c_str(), nullptr);
+        r.e.peak = std::strtod(line.c_str() + tabs[0] + 1, nullptr);
+        r.size = std::strtoull(line.c_str() + tabs[1] + 1, nullptr, 10);
+        r.time = std::strtoll(line.c_str() + tabs[2] + 1, nullptr, 10);
+        if (line.compare(0, 4, "-inf") == 0) r.e.lufs = -HUGE_VAL;
+        recs_[line.substr(tabs[3] + 1)] = r;
+    }
+    return ok;
+}
+
+std::string LoudnessCache::text() const {
+    std::lock_guard<std::mutex> l(m_);
+    std::string t = "# Burnout 3 port: CUSTOM MUSIC LOUDNESS, the songs measured (EBU R128 LUFS, sample peak, size, time, path)\n";
+    char b[96];
+    for (const auto& [path, r] : recs_) {
+        if (std::isfinite(r.e.lufs)) std::snprintf(b, sizeof b, "%.2f\t%.5f\t%llu\t%lld\t", r.e.lufs, r.e.peak,
+                                                   static_cast<unsigned long long>(r.size), static_cast<long long>(r.time));
+        else std::snprintf(b, sizeof b, "-inf\t%.5f\t%llu\t%lld\t", r.e.peak, static_cast<unsigned long long>(r.size), static_cast<long long>(r.time));
+        t += b;
+        t += path;
+        t += '\n';
+    }
+    return t;
+}
+
+bool LoudnessCache::get(const std::string& path, Entry& e) const {
+    std::uint64_t size = 0;
+    std::int64_t time = 0;
+    if (!stat(path, size, time)) return false;
+    std::lock_guard<std::mutex> l(m_);
+    const auto it = recs_.find(path);
+    if (it == recs_.end() || it->second.size != size || it->second.time != time) return false;
+    e = it->second.e;
+    return true;
+}
+
+void LoudnessCache::put(const std::string& path, double lufs, double peak) {
+    Rec r;
+    if (!stat(path, r.size, r.time)) return;
+    r.e.lufs = std::isfinite(lufs) ? quantize(lufs, 2) : -HUGE_VAL;   // the file's precision (the class comment)
+    r.e.peak = quantize(peak, 5);
+    std::lock_guard<std::mutex> l(m_);
+    recs_[path] = r;
+    dirty_ = true;
+}
+
+bool LoudnessCache::save(std::string* why) {
+    std::lock_guard<std::mutex> one(save_m_);
+    std::string file;
+    {
+        std::lock_guard<std::mutex> l(m_);
+        if (!dirty_) return true;
+        if (file_.empty()) {
+            if (why) *why = "no file";
+            return false;
+        }
+        file = file_;
+        dirty_ = false;
+    }
+    return write_atomic(file, text(), why);
+}
+
+void LoudnessService::set_cache_file(const std::string& file) {
+    std::lock_guard<std::mutex> l(m_);
+    if (file == cache_file_) return;
+    cache_file_ = file;
+    cache_.load(file);
+}
+
+void LoudnessService::start(const std::vector<std::string>& paths) {
+    stop();
+    std::lock_guard<std::mutex> l(m_);
+    todo_ = paths;
+    stop_ = false;
+    running_ = true;
+    worker_ = std::thread([this] { run(); });
+}
+
+void LoudnessService::stop() {
+    stop_ = true;
+    if (worker_.joinable()) worker_.join();
+    std::lock_guard<std::mutex> l(m_);
+    running_ = false;
+    first_.clear();
+}
+
+void LoudnessService::finish() {
+    if (worker_.joinable()) worker_.join();
+}
+
+void LoudnessService::run() {
+    std::size_t next = 0, since_save = 0;
+    for (;;) {
+        std::string p;
+        {
+            std::lock_guard<std::mutex> l(m_);
+            if (stop_) {
+                running_ = false;
+                break;
+            }
+            if (!first_.empty()) p.swap(first_);
+            else if (next < todo_.size()) p = todo_[next++];
+            else {
+                running_ = false;   // (under m_: a need() after this starts a new worker)
+                break;
+            }
+        }
+        LoudnessCache::Entry e;
+        if (cache_.get(p, e)) continue;
+        double lufs = 0.0, peak = 0.0;
+        bool stopped = false;
+        if (!measure_loudness(p, lufs, peak, nullptr, &stop_, &stopped)) {
+            if (stopped) continue;
+            lufs = -HUGE_VAL;   // unreadable: kept as such (gain 1) until the file changes
+            peak = 0.0;
+        }
+        cache_.put(p, lufs, peak);
+        ++measured_;
+        if (++since_save >= 8) {   // the cache saved as it goes (a quit loses at most a few songs' work)
+            cache_.save();
+            since_save = 0;
+        }
+    }
+    cache_.save();
+}
+
+bool LoudnessService::lookup(const std::string& path, float& gain) {
+    LoudnessCache::Entry e;
+    if (!cache_.get(path, e)) return false;
+    gain = loudness_gain(e.lufs, e.peak);
+    return true;
+}
+
+bool LoudnessService::need(const std::string& path, float& gain) {
+    gain = 1.0f;
+    if (lookup(path, gain)) return true;
+    std::uint64_t size = 0;
+    std::int64_t time = 0;
+    if (!LoudnessCache::stat(path, size, time)) return true;   // gone: as the file is
+    std::string ext = path.substr(path.find_last_of('.') == std::string::npos ? path.size() : path.find_last_of('.'));
+    for (char& ch : ext) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+    const std::uint64_t limit = (ext == ".flac" || ext == ".wav") ? 5 * now_bytes : now_bytes;
+    if (size > limit) {   // big: the worker's next (a new worker when it is done with its list)
+        bool idle = false;
+        {
+            std::lock_guard<std::mutex> l(m_);
+            if (running_) first_ = path;
+            else idle = true;
+        }
+        if (idle) start({path});
+        return false;
+    }
+    double lufs = 0.0, peak = 0.0;
+    if (!measure_loudness(path, lufs, peak)) lufs = -HUGE_VAL, peak = 0.0;
+    cache_.put(path, lufs, peak);
+    ++measured_;
+    cache_.save();
+    if (!lookup(path, gain)) gain = 1.0f;
+    return true;
 }
 
 }  // namespace b3music

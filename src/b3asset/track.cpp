@@ -56,7 +56,7 @@ struct Reader {
             std::string err;
             if (!decode_raster(st, at, gs, r, 0, &err)) return fail(why, "track texture " + std::to_string(k) + ": " + err);
             tex_index[at] = int(out.textures.size());
-            out.textures.push_back(Texture{r.hdr.name, std::move(r.levels), r.translucent, std::move(r.original)});
+            out.textures.push_back(Texture{r.hdr.name, std::move(r.levels), r.translucent, std::move(r.original), r.hd});
         }
         const int nmat = s16(st, 0x0C);
         const std::size_t mat0 = st.u32(0x08);

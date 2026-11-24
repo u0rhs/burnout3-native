@@ -1,4 +1,5 @@
 #include "capture.h"
+#include "b3gameview/gameview.h"   // b3gv::race_car_slot (MORE RIVALS: cars 7 and 8)
 
 #include <zlib.h>
 
@@ -138,6 +139,42 @@ Mat34 axis_rotation(const float axis[3], float s, float c) {
     return m;
 }
 
+// payloads1: RenderVehicle's payload draws for VehicleParams `vp` whose variant is `pl` (+0x1024) [C draft 0x21E6F0]
+void decode_payload(const Image& im, std::uint32_t vp, std::uint32_t pl, bool released, Vehicle& v) {
+    v.npay = 0;
+    v.pay_released = released;
+    if (!ram(v.data) || !im.has(v.data + 0x16C0, 4) || im.u32(v.data + 0x16C0) == 0 || !ram(pl) || !im.has(pl, 0xC)) return;
+    const std::uint32_t items = im.u32(pl + 8);
+    const int n = std::int8_t(im.u8(pl));
+    if (released) {
+        // CB3PhysicsManager 0x55EF70: body parts +0xD2900 (64 of 0x4E0), the 64-bit use mask +0xE9218; host +0x2B0 (its
+        // VehicleParams at +0xCC4), part index +0x2B8, type +0x2BA, physics matrix pointer +0x204
+        constexpr std::uint32_t kPhys = 0x55EF70;
+        if (!im.has(kPhys + 0xE9218, 8)) return;
+        const std::uint64_t mask = std::uint64_t(im.u32(kPhys + 0xE9218)) | std::uint64_t(im.u32(kPhys + 0xE921C)) << 32;
+        for (int k = 0; k < 64 && v.npay < Vehicle::kMaxPayload; ++k) {
+            if (!((mask >> k) & 1u)) continue;
+            const std::uint32_t part = kPhys + 0xD2900 + 0x4E0 * std::uint32_t(k);
+            if (!im.has(part + 0x2B0, 0xC) || im.u8(part + 0x2BA) != 2) continue;
+            const std::uint32_t host = im.u32(part + 0x2B0);
+            if (!ram(host) || !im.has(host + 0xCC4, 4) || im.u32(host + 0xCC4) != vp) continue;
+            const int idx = std::int16_t(im.u16(part + 0x2B8));
+            const std::uint32_t m = im.u32(part + 0x204);
+            if (idx < 0 || idx >= n || !im.has(items + 0x50 * std::uint32_t(idx), 0x50) || !ram(m) || !im.mat(m, v.pay[v.npay])) continue;
+            v.pay_list[v.npay++] = std::int8_t(im.u8(items + 0x50 * std::uint32_t(idx) + 0xC));
+        }
+        return;
+    }
+    if (v.frustum == 0) return;
+    for (int i = 0; i < n && v.npay < Vehicle::kMaxPayload; ++i) {
+        const std::uint32_t it = items + 0x50 * std::uint32_t(i);
+        Mat34 local;
+        if (!im.has(it, 0x50) || !im.mat(it + 0x10, local)) break;
+        v.pay[v.npay] = local;   // (x the main matrix at draw time: View::vehicle_draws)
+        v.pay_list[v.npay++] = std::int8_t(im.u8(it + 0xC));
+    }
+}
+
 bool decode_vehicle(const Image& im, std::uint32_t ep, std::uint32_t vp, std::uint32_t id, VehicleKind kind, Vehicle& v) {
     v.id = id;
     v.kind = kind;
@@ -156,6 +193,12 @@ bool decode_vehicle(const Image& im, std::uint32_t ep, std::uint32_t vp, std::ui
     if (kind == VehicleKind::kRaceCar && im.has(id + 0x1914, 4) && im.has(id + 0x27C0, 4) && im.u32(id + 0x1914) == 0 &&
         im.u32(id + 0x27C0) < 2)
         v.player = std::int8_t(im.u32(id + 0x27C0));   // carpaint
+    if (kind == VehicleKind::kRaceCar && im.has(id + 0x1974, 0x20))   // options3: the driver's name
+        for (std::uint32_t k = 0; k < 16; ++k) {
+            const std::uint16_t c = std::uint16_t(im.u8(id + 0x1974 + 2 * k) | im.u8(id + 0x1975 + 2 * k) << 8);
+            if (c == 0) break;
+            v.name.push_back(char16_t(c));
+        }
     v.frustum = std::int8_t(im.u8(ep + 0x5B));
     v.radius = im.f32(v.data + 0x14);
     for (int k = 0; k < 9 && im.has(ep + 0x5C + 4 * std::uint32_t(k), 4); ++k) { v.sh[k] = im.f32(ep + 0x5C + 4 * std::uint32_t(k)); v.sh_count = k + 1; }
@@ -199,6 +242,9 @@ bool decode_vehicle(const Image& im, std::uint32_t ep, std::uint32_t vp, std::ui
     v.exploded = (im.u8(vp + 0x1015) & 0x10) != 0;
     v.explode_time = im.f32(kWorld + 0x20) - im.f32(vp + 0x100C);
     for (int w = 0; w < v.nwheel; ++w) v.wheel_speed[w] = im.f32(vp + 0x4E8 + 4 * std::uint32_t(w));
+    // (RenderVehicle returns before any of it when +0x5B is 0 and +0x1022 clear)
+    if (im.has(vp + 0x1022, 8) && (v.frustum != 0 || im.u8(vp + 0x1022) != 0))
+        decode_payload(im, vp, im.u32(vp + 0x1024), im.u8(vp + 0x1023) == 1 || im.u8(vp + 0x1022) != 0, v);
     return true;
 }
 
@@ -289,7 +335,7 @@ void decode_tick(const Image& im, Tick& t, Capture& cap) {
     if (im.has(0x665F20, 1)) t.env_track = im.u8(0x665F20);   // reflect-tunnel: RenderBeforeVehicles' env-camera switch
     if (im.has(kWorld + 0x12AD50 + 0x19AC, 1)) {   // reflect-tunnel: BuildCustomCameraData's car (player 1's view)
         const int car = std::int8_t(im.u8(kWorld + 0x12AD50 + 0x19AC));
-        if (car >= 0 && car < 6 && im.has(kWorld + 0x12AD28 + 4 * std::uint32_t(car), 4)) t.env_car = im.u32(kWorld + 0x12AD28 + 4 * std::uint32_t(car));
+        if (car >= 0 && car < int(b3gv::kMaxRaceCars) && im.has(b3gv::race_car_slot(std::uint32_t(car)), 4)) t.env_car = im.u32(b3gv::race_car_slot(std::uint32_t(car)));
     }
     if (const std::uint32_t cur = im.u32(st + 0x1C4); ram(cur) && im.has(cur, 8)) t.current_unit = int(im.u32(cur + 4));
     if (im.has(0x665F10, 0x10)) t.water_on = im.u8(0x665F1D) != 0;
@@ -309,7 +355,7 @@ void decode_tick(const Image& im, Tick& t, Capture& cap) {
         }
         if (constexpr std::uint32_t p2 = kWorld + 0x12AD50 + 0x27D0 + 0x19AC; im.has(p2, 1)) {   // reflect-tunnel: player 2's car
             const int car = std::int8_t(im.u8(p2));
-            if (car >= 0 && car < 6 && im.has(kWorld + 0x12AD28 + 4 * std::uint32_t(car), 4)) v.env_car = im.u32(kWorld + 0x12AD28 + 4 * std::uint32_t(car));
+            if (car >= 0 && car < int(b3gv::kMaxRaceCars) && im.has(b3gv::race_car_slot(std::uint32_t(car)), 4)) v.env_car = im.u32(b3gv::race_car_slot(std::uint32_t(car)));
         }
         if (const std::uint32_t cur = im.u32(st1 + 0x1C4); ram(cur) && im.has(cur, 8)) v.current_unit = int(im.u32(cur + 4));
         if (const std::uint32_t bk = im.u32(st1 + 0x1C8); ram(bk) && im.has(bk + 0x64, 8)) im.read(bk + 0x64, v.backdrops, 8);
@@ -363,8 +409,8 @@ void decode_tick(const Image& im, Tick& t, Capture& cap) {
         if (ram(raster) && im.read(raster + 0xA8, name, 32)) cap.model_raster[v.data] = name;
     };
     const std::uint32_t ncars = im.u32(kWorld + 0x12AD1C);
-    for (std::uint32_t i = 0; i < ncars && i < 6; ++i) {
-        const std::uint32_t car = im.u32(kWorld + 0x12AD28 + 4 * i);
+    for (std::uint32_t i = 0; i < ncars && i < b3gv::kMaxRaceCars; ++i) {
+        const std::uint32_t car = im.u32(b3gv::race_car_slot(i));
         if (!ram(car) || im.u8(car + 0x18E8) == 0) continue;   // CB3RaceCar::Draw returns when +0x18E8 is clear
         Vehicle v;
         if (!decode_vehicle(im, car, car + 0x80, car, VehicleKind::kRaceCar, v)) continue;   // (+0x1920 while +0x199B)
@@ -421,6 +467,16 @@ void decode_tick(const Image& im, Tick& t, Capture& cap) {
         v.flags = im.u8(tv + 0x174);
         v.flags2 = im.u8(tv + 0x17A);
         v.unit = std::int8_t(im.u8(tv + 0xCA));
+        // payloads1: Draw's VehicleParams for it: +0x1023 = 0, +0x1024 = variant +0x171 of the data's while +0x16C8 > 0
+        if (const int nvar = std::int8_t(im.u8(v.data + 0x16C8)); im.has(v.data + 0x16C0, 0xC) && nvar > 0) {
+            // (diagnostics: B3_PAYLOAD_VARIANT=cycle shows variant (half seconds of the world timer) mod their count instead,
+            // to look at them all)
+            static const bool cycle = [] { const char* e = std::getenv("B3_PAYLOAD_VARIANT"); return e && std::string(e) == "cycle"; }();
+            const float now = im.f32(kWorld + 0x20);
+            const std::uint32_t var = cycle && now >= 0 ? std::uint32_t(2.0f * now) % std::uint32_t(nvar) : im.u8(tv + 0x171);
+            decode_payload(im, 0, im.u32(v.data + 0x16C0) + 0xC * var, false, v);
+            v.pay_variant = int(var);
+        }
         std::memcpy(v.cull_pos, v.main.r[3], sizeof v.cull_pos);
         v.listed = listed[k];
         v.listed2 = listed2[k];
@@ -757,14 +813,22 @@ bool player_visible(const Image& im, std::uint32_t m) {
 // crash 0x40 (slot 6), the intro slots 17..19; 0x400 (slot 10, CB3BehaviourInterpolate) while the game
 // blends from slot +0x9F0 to slot +0x9F4 over +0x9E8 seconds (IsPlayerVisible's operands). The apply_fov test (a race
 // car near the view axis) also holds on the takedown and crash cameras, which then were pulled back and raised.
-float chase_share(const Image& im, std::uint32_t m) {
-    if (!im.has(m + 0x9E0, 0x30) || !im.has(m + 0xB80, 0x10)) return 1.0f;
-    const auto chase = [](std::uint32_t slot) { return slot == 2 || slot == 3; };
+float behaviour_share(const Image& im, std::uint32_t m, std::uint32_t bits, bool (*slot_of)(std::uint32_t), float none) {
+    if (!im.has(m + 0x9E0, 0x30) || !im.has(m + 0xB80, 0x10)) return none;
     const std::uint32_t f = im.u32(m + 0xB80);
-    if ((f & 1024) == 0) return (f & (4 | 8)) != 0 ? 1.0f : 0.0f;
+    if ((f & 1024) == 0) return (f & bits) != 0 ? 1.0f : 0.0f;
     const float total = im.f32(m + 0x9E8);
     const float p = total > 0.0f ? std::clamp(interp_elapsed(im, m) / total, 0.0f, 1.0f) : 1.0f;
-    return (chase(im.u32(m + 0x9F0)) ? 1.0f - p : 0.0f) + (chase(im.u32(m + 0x9F4)) ? p : 0.0f);
+    return (slot_of(im.u32(m + 0x9F0)) ? 1.0f - p : 0.0f) + (slot_of(im.u32(m + 0x9F4)) ? p : 0.0f);
+}
+float chase_share(const Image& im, std::uint32_t m) {
+    return behaviour_share(im, m, 4 | 8, [](std::uint32_t slot) { return slot == 2 || slot == 3; }, 1.0f);
+}
+// options3 (crashhold.h): the own crash cameras' share, as chase_share: slot 7 (mask 0x80), the crash's first shot the
+// game cuts to, and slot 6 (0x40) it blends into [C: the mask by tick through a crash on US/C2_V2: 4 (chase), then 0x400
+// from 7 to 6 over ~2 s, 0x40, 0x440 7 to 6 again for the next phase, then back to 2 / 3]
+float crash_share(const Image& im, std::uint32_t m) {
+    return behaviour_share(im, m, 0x40 | 0x80, [](std::uint32_t slot) { return slot == 6 || slot == 7; }, 0.0f);
 }
 
 // The shadow box and wheel base of a vehicle data (RenderAmbientShadow 0x303170 [L draft]).
@@ -788,7 +852,10 @@ void decode_effects(const Image& im, Tick& t, Capture& cap) {
     t.shadows_on = im.u8(kGm + 0x67) != 0;   // D_00665F27
     t.effects_on = im.u8(kGm + 0x6C) != 0;   // D_00665F2C
     t.player_visible = player_visible(im, 0x4EE040 + 0x28E00);
+    if (constexpr std::uint32_t m = 0x4EE040 + 0x28E00; im.has(m + 0x4, 4))   // finishcam1: the camera manager's state
+        if (const std::uint32_t st = im.u32(m + 0x4); im.has(st + 0xC, 4)) t.cam_state = im.u32(st + 0xC);
     t.cam.chase = chase_share(im, 0x4EE040 + 0x28E00);   // sigcam
+    t.cam.crash = crash_share(im, 0x4EE040 + 0x28E00);   // options3
     // split2: player 2's camera manager (captured in split frames since split2; not captured: visible)
     if (constexpr std::uint32_t m2 = 0x4EE040 + 0x28E00 + 0xBB0; t.split && im.has(m2 + 0x9E0, 0x30) && im.has(m2 + 0xB80, 0x10))
         t.view2.player_visible = player_visible(im, m2);
@@ -1461,6 +1528,11 @@ void Capture::decode(const Image& im, Tick& t) {
     t.host_hold = host_hold_decode(im);                                         // autosave1: the display holds
     t.skip_hint = host_skip_hint_decode(im);                                    // mac5: the video skip hint
     t.race_time = host_race_time_decode(im);                                    // todrace: DAY / NIGHT per race
+    t.paint_sel = host_paint_sel_decode(im);                                    // paintsel: the PAINT prompt
+    t.carousel = carousel_last = host_carousel_decode(im, carousel_last);       // paint3: the carousel's models
+    t.replay = host_replay_decode(im);                                          // replayview
+    t.elim_timer = host_elim_timer_decode(im);                                  // elim1: TIMED ELIMINATION's countdown
+    t.gear = host_gear_decode(im);                                              // gearbox: the manual gearbox's gear
     t.menu = menu_last = host_menu_decode(im, menu_last);                       // mac5: the menus, for the mouse
     {   // sdk2b: the code mods' overlay (include/b3mod/codemod.h), when its serial changed
         std::uint8_t head[16];
@@ -1498,6 +1570,8 @@ void Capture::decode(const Image& im, Tick& t) {
         }
         if (ok) {
             t.fe_car = car;
+            const std::uint32_t fi = t.hud->fe_cars.back().index;   // gamemods1: the car viewer's (hud_capture.cpp kViewerIndex)
+            t.fe_viewer = fi >= 0x100u ? std::int8_t(fi & 0x7Fu) : std::int8_t(-1);
             const std::uint32_t who = t.hud->fe_cars.back().player;   // padpaint
             t.fe_player = who == 1 || who == 2 ? std::int8_t(who - 1) : std::int8_t(-1);
         }

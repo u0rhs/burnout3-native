@@ -92,6 +92,16 @@ TEST(signed_package_is_fetched_and_written) {
     CHECK(l.ok && l.package.filename() == "burnout3-native-1.2.0-abc-linux-x86_64.tar.gz");
 }
 
+TEST(release_replaces_its_candidate) {   // rcprep: the one-click update from 1.2.0-rc.1 to 1.2.0 (as 1.4.0-rc.1 -> 1.4.0)
+    Server s;
+    const fs::path d = temp_dir("rc");
+    const oneclick::Result r = oneclick::fetch_package(release(), update::Platform::kWindows, "1.2.0-rc.1+1a2b3c4d", key(), s.fetch(), d);
+    CHECK(r.ok && r.why.empty());
+    const fs::path d2 = temp_dir("rcnewer");   // a candidate of a later version is not replaced by this release
+    const oneclick::Result n = oneclick::fetch_package(release(), update::Platform::kWindows, "1.3.0-rc.1+1a2b3c4d", key(), s.fetch(), d2);
+    CHECK(!n.ok && n.why.find("not newer") != std::string::npos && fs::is_empty(d2));
+}
+
 TEST(tampering_is_refused_and_nothing_written) {
     const auto refused = [](Server& s, const char* name, update::Platform p = update::Platform::kWindows, std::array<std::uint8_t, 32> k = key(),
                             update::Release rel = release(), const char* installed = "1.1.0") {
@@ -160,6 +170,8 @@ TEST(package_names_carry_the_version) {
     CHECK(v("burnout3-native-1.2.2-1a2b3c4d-dirty-linux-x86_64.tar.gz") == "1.2.2");
     CHECK(v("burnout3-native-1.2.2-macos-arm64.dmg") == "1.2.2");
     CHECK(v("burnout3-native-1.3.0-rc.1-1a2b3c4d-win64.zip") == "1.3.0|rc|1");
+    CHECK(v("burnout3-native-1.4.0-rc.1-1a2b3c4d-win64.zip") == "1.4.0|rc|1");   // rcprep: 1.4.0's tester candidate
+    CHECK(v("burnout3-native-1.4.0-rc.1-1a2b3c4d-dirty-win64.zip") == "1.4.0|rc|1");
     CHECK(v("burnout3-native-1.2.0-abc-win64.zip") == "1.2.0");
     CHECK(v("burnout3-native-1.2.2-test-1a2b3c4d-win64.zip") == "1.2.2");   // a test build counts as its base version
     CHECK(v("burnout3-native-win64.zip") == "-");

@@ -2,10 +2,12 @@
 #include "b3report/sysinfo.h"
 
 #include "b3report/version.h"
+#include "b3gfx/driver_order.h"   // d3d12: the drivers in the game's order
 
 #include <SDL3/SDL.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -19,6 +21,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <psapi.h>   // hdcache: K32GetProcessMemoryInfo (kernel32)
 #else
 #include <sys/utsname.h>
 #endif
@@ -162,8 +165,16 @@ std::string system_info(const std::string& gpu, bool probe_gpu) {
     line("ram", std::to_string(SDL_GetSystemRAM()) + " MB");
     std::string g = gpu;
     if (g.empty() && probe_gpu) {
-        // the formats b3gfx ships shaders in (SPIR-V, DXIL, MSL): the device the game would get by default
-        if (SDL_GPUDevice* d = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_MSL, false, nullptr)) {
+        // the formats b3gfx ships shaders in (SPIR-V, DXIL, MSL), the drivers in the game's order (d3d12,
+        // include/b3gfx/driver_order.h: Auto = Vulkan, then D3D12 on Windows): the device the game would get by default.
+        // (Unnamed, SDL 3.4.2 takes D3D12 first on Windows: 1.3.0's reports named D3D12 while the game drew with Vulkan.)
+        SDL_GPUDevice* d = nullptr;
+        for (const std::string& name : b3gfx::driver_attempts("", b3gfx::windows_build())) {
+            d = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_MSL, false,
+                                    name.empty() ? nullptr : name.c_str());
+            if (d) break;
+        }
+        if (d) {
             g = gpu_description(d);
             SDL_DestroyGPUDevice(d);
         } else {
@@ -195,6 +206,26 @@ std::string system_info(const std::string& gpu, bool probe_gpu) {
                     " (video " + (SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "off") + ", audio " +
                     (SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "off") + ")");
     return s;
+}
+
+ProcessMemory process_memory() {
+    ProcessMemory m;
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS_EX pmc{};
+    if (K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof pmc)) {
+        m.resident_mb = double(pmc.WorkingSetSize) / 1048576.0;
+        m.private_mb = double(pmc.PrivateUsage) / 1048576.0;
+    }
+#elif defined(__linux__)
+    std::ifstream f("/proc/self/status");
+    std::string line;
+    while (std::getline(f, line)) {
+        const auto kb = [&](const char* key) { return double(std::atoll(line.c_str() + std::strlen(key))) / 1024.0; };
+        if (line.rfind("VmRSS:", 0) == 0) m.resident_mb = kb("VmRSS:");
+        else if (line.rfind("RssAnon:", 0) == 0) m.private_mb = kb("RssAnon:");
+    }
+#endif
+    return m;
 }
 
 }  // namespace b3port

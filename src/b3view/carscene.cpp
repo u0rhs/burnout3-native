@@ -49,6 +49,7 @@ int list_index(const std::string& part) {
     if (part[0] == 'L') return 0;
     if (part[0] == 'A') return 1 + k;
     if (part[0] == 'B') return 7 + k;
+    if (part[0] == 'C' && k <= 7) return 10 + k;   // payloads1: the payload objects
     return -1;
 }
 
@@ -222,7 +223,11 @@ void add_car_draws(const CarModel& car, const CarGlobals& g, const CarPose& pose
                 colour = (colour & 0xFFFF00FFu) | fix << 8;
             }
             const b3asset::CarMeshInput mi = b3asset::car_mesh_input(material, colour, pose.lit);
-            const b3asset::CarMeshConstants mc = b3asset::car_mesh_constants(sc, mi);
+            b3asset::CarMeshConstants mc = b3asset::car_mesh_constants(sc, mi);
+            if (pose.tail >= 0.0f) {   // taillights: the rear lamps glow at the tail level, up to full while braking
+                const float level = b3asset::rear_lamp_level(mi.mask, pose.tail, pose.brake);
+                if (level >= 0.0f) mc = b3asset::car_mesh_constants_level(sc, mi, level);
+            }
             b3gfx::CarParams& c = it.car_mut();
             std::memcpy(c.sh, sh, sizeof sh);
             to_colmajor(light, c.light);
@@ -280,8 +285,14 @@ void add_car_draws(const CarModel& car, const CarGlobals& g, const CarPose& pose
         auto has = [&](int l) { for (const auto& d : car.draws) if (d.list == l) return true; return false; };
         if (s > 50.0f && has(9)) list = 9;
         else if (s > 25.0f && has(8)) list = 8;
+        const std::size_t w0 = out.size();
         part(list, 0x3FF, m, m);
+        for (std::size_t k = w0; k < out.size(); ++k) out[k].car_mut().wheel = true;   // paint2: the wheels' tint
     }
+    // payloads1: the payload objects after the wheels, each at its own matrix, lit through it (func_0021FBB0 with mask 0x3FF,
+    // as the wheels) [C draft 0x21E6F0]
+    for (int i = 0; i < pose.npay && i < CarPose::kMaxPayload; ++i)
+        if (pose.pay_list[i] >= 0 && pose.pay_list[i] < 8) part(10 + pose.pay_list[i], 0x3FF, pose.pay[i], pose.pay[i]);
 }
 
 }  // namespace b3view

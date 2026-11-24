@@ -6,7 +6,9 @@
 #ifndef B3REPLAY_LIVE_H
 #define B3REPLAY_LIVE_H
 
+#include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <deque>
 #include <functional>
 #include <map>
@@ -45,6 +47,13 @@ private:
 
 // The ring reader: keeps the decoded ticks of the last ~30 s with absolute indices (one per received poll) and the
 // current race segment.
+// trafmem: set while an offscreen shot runner's hold keeps more than LiveFeed::kHoldWaitBytes of ticks (b3r_feed_full)
+std::atomic<bool>& feed_hold_full();
+// trafmem: the hold's poll (UINT32_MAX: none) and the kept ticks' mean bytes, published at each trim, so b3r_feed_full can
+// also count the ticks the game has pushed that the renderer has not decoded yet (they join the hold as it decodes them)
+std::atomic<std::uint32_t>& feed_hold_poll();
+std::atomic<std::size_t>& feed_tick_bytes();
+
 class LiveFeed : public Timeline {
 public:
     explicit LiveFeed(std::string name) : name_(std::move(name)) {}
@@ -87,6 +96,11 @@ public:
         std::size_t race_ticks = 0;
     };
     const Seg& segment() const { return seg_; }
+    // The segment holding tick `idx` (the current one or one of the last kPastSegments ended ones, up to its last race
+    // tick and the gap after it); none for a tick outside every race (offscreen shots: a poll the renderer reaches
+    // after the next segment began, e.g. a Crash junction's retry)
+    static constexpr std::size_t kPastSegments = 8;
+    std::optional<Seg> segment_at(std::size_t idx) const;
 
     const Capture& models() const { return cap_; }
     std::uint64_t records = 0, keyframes = 0, resyncs = 0, ticks_total = 0;
@@ -112,10 +126,63 @@ private:
     Capture cap_;   // model table (heads) and counters; its ticks stay empty
     std::deque<Tick> ticks_;
     std::deque<std::uint64_t> ns_, sched_;
+    std::deque<std::size_t> bytes_of_;   // trafmem: each kept tick's bytes (tick_bytes), and their sum
+    std::size_t bytes_ = 0;
     std::size_t base_ = 0;
+public:
+    // the decoded ticks kept (the live window: 1200, 20 s); the offscreen shot runner keeps more race ticks (front-end ones
+    // stay at 1200: they carry movie pictures) (live.cpp: nightfix, a
+    // split-screen shot's 24 bloom warm-up frames at ~0.45 s each in the software rasteriser let the game run past the
+    // next shot's poll before it was taken)
+    std::size_t keep_ticks = 1200;
+    // sparkdet (2026-11-22): the offscreen shot runner's hold -- race ticks from this poll on are not dropped while a shot
+    // still needs them (its bloom warm-up: the ticks before the shot), so a shot's warm-up is the same ticks however far
+    // the game has run ahead (an unpaced replay could pass keep_ticks before a slow shot was taken: a shortened warm-up,
+    // a different bloom trail in the sparks). kHoldCap bounds it. UINT32_MAX: no hold.
+    std::atomic<std::uint32_t> hold_poll{0xFFFFFFFFu};
+    static constexpr std::size_t kHoldCap = 20000;
+    // trafmem (TRAFFIC Extreme: 70-130 vehicles of 4 KB, up to ~0.55 MB a tick; the hold piled up toward 20000 of them,
+    // and even 3600 were ~1.9 GB, over the checks' 10 GB address-space cap with the ~8 GB the process maps besides): the
+    // kept ticks are bounded by bytes too. Past the window's own 1200 ticks, keep_ticks' longer window keeps ticks
+    // within kHoldWaitBytes; the hold keeps its ticks past that up to kHoldBytes, and from kHoldWaitBytes on, while the
+    // hold is what keeps them, feed_hold_full() is set and native_play holds the game (unpaced, offscreen: wall time
+    // only, b3r_feed_full) until the shot is taken and the hold moves on; past kHoldBytes the oldest go anyway (a later
+    // shot's warm-up may then be short: logged once). A window's 1200 ticks are never cut for bytes.
+    static constexpr std::size_t kHoldWaitBytes = std::size_t(1) << 30, kHoldBytes = std::size_t(5) << 28;   // 1 GiB, 1.25 GiB
+    static constexpr std::size_t kWindowTicks = 1200;
+    // (checks only: $B3_FEED_HOLD_MB=<n> sets the wait's bound to n MB, the drop's a quarter above it)
+    static std::size_t hold_wait_bytes() {
+        static const std::size_t v = [] {
+            const char* e = std::getenv("B3_FEED_HOLD_MB");
+            const unsigned long long mb = e && *e ? std::strtoull(e, nullptr, 10) : 0;
+            return mb ? std::size_t(mb) << 20 : kHoldWaitBytes;
+        }();
+        return v;
+    }
+    static std::size_t hold_bytes() { return hold_wait_bytes() == kHoldWaitBytes ? kHoldBytes : hold_wait_bytes() + hold_wait_bytes() / 4; }
+    static std::size_t tick_bytes(const Tick& t);
+    // The hold's rule for the oldest kept tick (a race tick past the window): kept while it is at or after hold_poll and
+    // the hold is within kHoldCap ticks and kHoldBytes; the game waits (feed_hold_full) once a kept hold reaches
+    // kHoldWaitBytes
+    static bool hold_keeps(std::uint32_t front_poll, std::uint32_t hold_poll, std::size_t ticks, std::size_t bytes) {
+        return front_poll >= hold_poll && ticks <= kHoldCap && bytes <= hold_bytes();
+    }
+    static bool hold_full(bool held, std::size_t bytes) { return held && bytes >= hold_wait_bytes(); }
+    // b3r_feed_full's look ahead: the ticks from the hold to the game's newest poll, decoded or not, at the kept ticks'
+    // mean size, reach the wait's bound
+    static bool hold_ahead_full(std::uint32_t hold, std::uint32_t game_poll, std::size_t tick_bytes) {
+        return hold != 0xFFFFFFFFu && game_poll > hold && std::uint64_t(game_poll - hold) * tick_bytes >= hold_wait_bytes();
+    }
+    std::size_t kept_bytes() const { return bytes_; }
+    // The window's trim (after each tick; the shot runner calls it again when it moves the hold, so a game waiting on
+    // feed_hold_full() goes on without a new tick)
+    void trim();
+private:
     Seg seg_;
+    std::deque<Seg> past_;   // the last kPastSegments ended segments, oldest first
     std::string body_;
     bool warned_unbound_ = false;
+    bool warned_hold_ = false;   // sparkdet
     VehicleMotion motion_;   // photoblur
     b3live::InprocRecord* pending_ = nullptr;   // inproc: taken, not yet decoded (oldest first)
 };

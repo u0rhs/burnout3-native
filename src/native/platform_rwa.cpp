@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstring>
 #include <vector>
 #include <memory>
@@ -32,6 +33,8 @@ namespace b3native::platform {
 namespace {
 
 std::unique_ptr<b3audio::Spu2Mixer> g_mixer;
+std::atomic<int> g_sound_original{-1};   // audioq: SOUND OUTPUT as last set (-1: not yet; the mixer's own default)
+int g_sound_applied = -1;
 // mac5 (the Mac's looping DJ voice-over and music): sound-RAM uploads take the IRX's time, 0x18C0 bytes less 0x80 a
 // job per channel per IRQ wake-up [docs/audio-irx.md §5], instead of completing at once. With instant uploads the
 // 0x47 completion of an op-0x46 upload was ready during the send itself, and a reply delivery point inside
@@ -226,6 +229,8 @@ void (*g_music_overlay)(std::int16_t*, std::size_t) = nullptr;   // set_music_ov
 
 }  // namespace
 
+void set_sound_output_original(bool original) { g_sound_original.store(original ? 1 : 0); }
+
 void install_rwa_iop(b3audio::AudioSink* sink) {
     g_sink = sink;
     // boot2 (2026-11-07): the SPU2-equivalent mixer by default -- the stub answered ENVX / NAX reads (RW Audio's voice
@@ -276,6 +281,10 @@ void install_rwa_iop(b3audio::AudioSink* sink) {
         [] { rwa_catch_up(At::time_check); });
     add_vblank_hook([] {
         if (!g_rwa) return;
+        if (const int o = g_sound_original.load(); o != g_sound_applied && o >= 0) {   // audioq: SOUND OUTPUT
+            if (auto* mi = dynamic_cast<b3audio::Spu2MixerImpl*>(g_mixer.get())) mi->set_hard_clip(o != 0);
+            g_sound_applied = o;
+        }
         rwa_catch_up(At::vblank);
         std::int16_t buf[2 * 2048];
         for (std::size_t n; (n = g_mixer->read_output(buf, 2048)) > 0;) {

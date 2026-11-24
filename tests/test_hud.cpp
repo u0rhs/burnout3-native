@@ -946,4 +946,25 @@ TEST(host_ui_window_extent) {
     CHECK_NEAR(e.left, 0, 1e-3); CHECK_NEAR(e.right, 640, 1e-3); CHECK(e.top < -300 && e.bottom > 750);
 }
 
+TEST(picture_from_two_backgrounds) {
+    // paint3: a pixel's coverage from a render on black and on white; its colour un-premultiplied (x gain)
+    const std::uint8_t black[16] = {0, 0, 0, 255, 100, 50, 20, 255, 40, 20, 10, 255, 0, 0, 0, 255};
+    const std::uint8_t white[16] = {255, 255, 255, 255, 100, 50, 20, 255, 167, 147, 137, 255, 0, 0, 0, 255};
+    std::vector<std::uint8_t> out;
+    b3replay::picture_from_backgrounds(black, white, 4, 1.0f, out);
+    CHECK(out.size() == 16 && out[3] == 0 && out[0] == 0);                            // nothing there
+    CHECK(out[7] == 255 && out[4] == 100 && out[5] == 50 && out[6] == 20);           // opaque: as drawn
+    CHECK(out[11] == 128 && out[8] >= 79 && out[8] <= 81 && out[9] >= 39 && out[9] <= 41);   // half covered: colour / 0.5
+    CHECK(out[15] == 255 && out[12] == 0);                                           // opaque black (a black car)
+    b3replay::picture_from_backgrounds(black, white, 4, 1.5f, out);
+    CHECK(out[4] == 150 && out[7] == 255);
+}
+
+TEST(thumbnail_names) {
+    // paint2: the car pages' thumbnails ("<CLASS>CAR<n>") take the player's paint; nothing else does
+    for (const char* n : {"COMPCAR1", "CUPECAR3", "MSCLCAR2", "SPRTCAR5", "COMPCAR10", "HEVYCAR36"}) CHECK(b3replay::hud_thumbnail_name(n));
+    for (const char* n : {"CarArrow", "COMPCAR", "COMPCAR100", "COMPCAR0", "compcar1", "GlobalFont", "CUPEBAR3", "LOADCAR1x", ""})
+        CHECK(!b3replay::hud_thumbnail_name(n));
+}
+
 TEST_MAIN("test_hud")

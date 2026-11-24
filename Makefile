@@ -240,9 +240,9 @@ $(BUILD)/test_script_mods: tests/test_script_mods.cpp tests/test.h $(SCRIPT_MODS
 $(BUILD)/test_ipu_model: tests/test_ipu_model.cpp tests/test.h src/native/ipu_model.h src/native/ipu_vlc.h src/native/hw_model.h src/native/hw_model_dev.h src/native/mpeg_dsp.h
 	@mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
-$(BUILD)/test_native_platform: tests/test_native_platform.cpp tests/test.h tests/r5900_mini.h src/native/platform.h src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp include/b3asset/discfs.h $(CHD_OBJ) src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) $(wildcard include/b3host/*.h)
+$(BUILD)/test_native_platform: tests/test_native_platform.cpp tests/test.h tests/r5900_mini.h src/native/platform.h src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp include/b3asset/discfs.h $(CHD_OBJ) src/native/platform_threads.cpp src/native/sampler.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) $(wildcard include/b3host/*.h)
 	@mkdir -p $(BUILD)
-	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $(LIBM_DEFS) $(VU_DEFS) -DB3_PS2_FLOAT=1 -DB3_VU0_INTERP=1 $< src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp $(CHD_OBJ) src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) -pthread -o $@
+	$(CXX) $(CPPFLAGS) -Isrc/native $(REQFLAGS) $(CXXFLAGS) $(LIBM_DEFS) $(VU_DEFS) -DB3_PS2_FLOAT=1 -DB3_VU0_INTERP=1 $< src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/b3asset/discfs.cpp $(CHD_OBJ) src/native/platform_threads.cpp src/native/sampler.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/vu1.cpp src/b3host/native_backend.cpp $(HOST_SRC) -pthread -o $@
 # The native memory card (boot2, src/native/save_card.h); reads the kit's 100% profile ($B3_SAVES_ROOT: make test passes
 # SAVES; its checks of that profile are SKIPPED without it)
 TESTS += $(BUILD)/test_save_card
@@ -320,6 +320,8 @@ endif
 $(BUILD)/render/%.o: %.cpp $(wildcard include/b3asset/*.h include/b3gfx/*.h src/b3view/*.h src/b3gfx/shaders_gen.h)
 	@mkdir -p $(dir $@)
 	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $(RENDER_CPPFLAGS) -c $< -o $@
+# betabytes: betaimport.cpp reads trafficseries' table (a traffic vehicle's donor)
+$(BUILD)/render/src/b3asset/betaimport.o: tools/native/traffic_series.h
 TESTS += $(BUILD)/test_b3asset $(BUILD)/test_hdpack $(BUILD)/test_discfs
 # iso1: the disc's files from a folder or a disc image (include/b3asset/discfs.h): synthetic ISO 9660 images under build/
 # (the real image against the extracted folder: B3_TEST_ISO=<.iso> B3_TEST_ISO_DIR=<folder> build/test_discfs)
@@ -387,8 +389,8 @@ $(BUILD)/test_effect_levels: tests/test_effect_levels.cpp tests/test.h src/b3rep
 # Device::resource_epoch: the 2D panels make their buffers and textures again after a track load (notice, skip hint, speedrun timer,
 # car look panel, photo plates, mod overlay)
 TESTS += $(BUILD)/test_panel_epoch
-$(BUILD)/test_panel_epoch: tests/test_panel_epoch.cpp tests/test.h $(PHOTO_SRC) src/b3replay/skiphint.cpp src/b3replay/speedrunpanel.cpp src/b3replay/carlookpanel.cpp src/b3replay/carlook.cpp src/b3replay/modoverlay.cpp src/b3replay/nativepad.cpp src/b3replay/menumouse.cpp include/b3gfx/b3gfx.h
-	$(CXX) -Iinclude -Isrc/b3replay -Isrc/native $(SDL3_CFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(PHOTO_SRC) src/b3replay/skiphint.cpp src/b3replay/speedrunpanel.cpp src/b3replay/carlookpanel.cpp src/b3replay/carlook.cpp src/b3replay/modoverlay.cpp src/b3replay/nativepad.cpp src/b3replay/menumouse.cpp $(SDL3_LIBS) -o $@
+$(BUILD)/test_panel_epoch: tests/test_panel_epoch.cpp tests/test.h $(PHOTO_SRC) src/b3replay/skiphint.cpp src/b3replay/speedrunpanel.cpp src/b3replay/carlookpanel.cpp src/b3replay/carlook.cpp src/b3replay/modoverlay.cpp src/b3replay/nativepad.cpp src/b3replay/replaycams.cpp src/b3replay/finishcam.cpp $(B3ASSET_OBJ) src/b3replay/menumouse.cpp include/b3gfx/b3gfx.h
+	$(CXX) -Iinclude -Isrc/b3replay -Isrc/native $(SDL3_CFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(PHOTO_SRC) src/b3replay/skiphint.cpp src/b3replay/speedrunpanel.cpp src/b3replay/carlookpanel.cpp src/b3replay/carlook.cpp src/b3replay/modoverlay.cpp src/b3replay/nativepad.cpp src/b3replay/replaycams.cpp src/b3replay/finishcam.cpp $(B3ASSET_OBJ) src/b3replay/menumouse.cpp $(SDL3_LIBS) -lz -pthread -o $@
 # reflect2: the enhanced car look's live values (docs/car-look.md)
 TESTS += $(BUILD)/test_carlook
 $(BUILD)/test_carlook: tests/test_carlook.cpp tests/test.h src/b3replay/carlook.h src/b3replay/carlook.cpp include/b3gfx/b3gfx.h
@@ -411,13 +413,33 @@ $(BUILD)/test_prompts: tests/test_prompts.cpp tests/test.h $(PROMPTS_DEP)
 	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< $(PROMPTS_SRC) -o $@
 # photo mode (remaster-features §5): the free camera, its controls, entering / leaving, the pad withheld (photomode.h)
 TESTS += $(BUILD)/test_photomode
-PHOTO_SRC := src/b3replay/photomode.cpp src/b3replay/garagecam.cpp src/b3replay/photohud.cpp src/b3replay/notice.cpp src/b3replay/a11y.cpp $(PROMPTS_SRC) src/native/input_bindings.cpp
+PHOTO_SRC := src/b3replay/photomode.cpp src/b3replay/garagecam.cpp src/b3replay/orbitcam.cpp src/b3replay/trackrays.cpp src/b3replay/photohud.cpp src/b3replay/notice.cpp src/b3replay/a11y.cpp $(PROMPTS_SRC) src/native/input_bindings.cpp
 $(BUILD)/test_photomode: tests/test_photomode.cpp tests/test.h $(PHOTO_SRC) src/b3replay/photomode.h src/b3replay/photohud.h src/b3replay/prompts.h src/b3replay/notice.h src/b3replay/glyphdraw.h src/b3replay/capture.h
 	$(CXX) -Iinclude -Isrc/b3replay -Isrc/native $(SDL3_CFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(PHOTO_SRC) -o $@
 # garagecam1: the car pages' view round the car (src/b3replay/garagecam.h): hold / resume, clamps, the orbit, stamped input
 TESTS += $(BUILD)/test_garagecam
 $(BUILD)/test_garagecam: tests/test_garagecam.cpp tests/test.h src/b3replay/garagecam.cpp src/b3replay/garagecam.h src/b3replay/capture.h
 	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/garagecam.cpp -pthread -o $@
+# orbitcam1: the race chase camera's look round the car (src/b3replay/orbitcam.h): the swing, the return, the turn, stamped input
+TESTS += $(BUILD)/test_orbitcam
+$(BUILD)/test_orbitcam: tests/test_orbitcam.cpp tests/test.h src/b3replay/orbitcam.cpp src/b3replay/trackrays.cpp src/b3replay/orbitcam.h src/b3replay/garagecam.cpp src/b3replay/garagecam.h src/b3replay/capture.h
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/orbitcam.cpp src/b3replay/trackrays.cpp src/b3replay/garagecam.cpp -pthread -o $@
+# weather: the falling rain (src/b3replay/rain.h): deterministic, world-anchored drops, roofs, streaks at speed
+TESTS += $(BUILD)/test_rain
+$(BUILD)/test_rain: tests/test_rain.cpp tests/test.h src/b3replay/rain.h src/b3replay/coronas.h src/b3replay/capture.h
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< -pthread -o $@
+# weather: the rain's sound (src/b3replay/rain_audio.h): off untouched, fades, tunnels, speed, saturation
+TESTS += $(BUILD)/test_rain_audio
+$(BUILD)/test_rain_audio: tests/test_rain_audio.cpp tests/test.h src/b3replay/rain_audio.h
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< -pthread -o $@
+# finishcam1: the set pieces after the finish (src/b3replay/finishcam.h): VDB.XML's offsets, the shot timeline, the camera
+TESTS += $(BUILD)/test_finishcam
+# replaycams: the replay viewer's cameras (their maths)
+TESTS += $(BUILD)/test_replaycams
+$(BUILD)/test_replaycams: tests/test_replaycams.cpp tests/test.h src/b3replay/replaycams.cpp src/b3replay/replaycams.h src/b3replay/finishcam.cpp src/b3replay/finishcam.h src/b3replay/trackrays.cpp src/b3replay/trackrays.h src/b3replay/capture.h $(B3ASSET_OBJ)
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/replaycams.cpp src/b3replay/finishcam.cpp src/b3replay/trackrays.cpp $(B3ASSET_OBJ) -lz -pthread -o $@
+$(BUILD)/test_finishcam: tests/test_finishcam.cpp tests/test.h src/b3replay/finishcam.cpp src/b3replay/finishcam.h src/b3replay/capture.h $(B3ASSET_OBJ)
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/finishcam.cpp $(B3ASSET_OBJ) -lz -pthread -o $@
 # photohud1: photo mode's UI rendered over a picture into a PNG, offscreen (tools/native/photohud_preview.cpp); not a test
 $(BUILD)/photohud_preview: tools/native/photohud_preview.cpp $(PHOTO_SRC) src/b3replay/photohud.h src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ)
 	$(CXX) -Iinclude -Isrc/b3replay -Isrc/native $(RENDER_FLAGS) $(SDL3_CFLAGS) $(CXXFLAGS) $< $(PHOTO_SRC) src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ) -lz -o $@
@@ -443,13 +465,132 @@ $(BUILD)/test_pause_rows: tests/test_pause_rows.cpp tests/test.h tools/native/pa
 TESTS += $(BUILD)/test_render_load
 $(BUILD)/test_render_load: tests/test_render_load.cpp tests/test.h tools/native/render_load.h
 	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# wreckguard: the 64 crashed-traffic slots bounded -- which wreck is released (wreck_slots.h)
+TESTS += $(BUILD)/test_wreck_slots
+$(BUILD)/test_wreck_slots: tests/test_wreck_slots.cpp tests/test.h tools/native/wreck_slots.h
+	$(CXX) -Itools/native -Iinclude -Isrc/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
 # fastload1: FAST LOADING -- the loading detector, the pacer with a fake clock, the muted sound (fast_load.h)
 TESTS += $(BUILD)/test_fast_load
-$(BUILD)/test_fast_load: tests/test_fast_load.cpp tests/test.h tools/native/fast_load.h tools/native/save_screens.h
+$(BUILD)/test_fast_load: tests/test_fast_load.cpp tests/test.h tools/native/fast_load.h tools/native/save_screens.h src/b3replay/game_behind.h src/b3replay/fastforward.h
 	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
 # todrace: DAY / NIGHT per race on SINGLE EVENT's track page -- the choice's lifetime rules (race_time.h)
 TESTS += $(BUILD)/test_race_time
 $(BUILD)/test_race_time: tests/test_race_time.cpp tests/test.h tools/native/race_time.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# elim1: ELIMINATOR in SINGLE EVENT's SELECT MODE -- the rows and the modes they stand for (eliminator_rows.h)
+TESTS += $(BUILD)/test_eliminator_rows
+$(BUILD)/test_eliminator_rows: tests/test_eliminator_rows.cpp tests/test.h tools/native/eliminator_rows.h src/b3replay/records.h tools/native/race_choice.h
+	$(CXX) -Itools/native -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# raceopts: SELECT OPTIONS' TRAFFIC / LAPS / RIVALS rows -- values, limits, lifetime, records kept apart (race_choice.h)
+TESTS += $(BUILD)/test_stats_signals
+$(BUILD)/test_stats_signals: tests/test_stats_signals.cpp tests/test.h tools/native/stats_signals_logic.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+TESTS += $(BUILD)/test_race_options
+$(BUILD)/test_race_options: tests/test_race_options.cpp tests/test.h tools/native/race_choice.h src/b3replay/records.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# MORE RIVALS: the start spots for cars 7 and 8, the record word (more_rivals_grid.h)
+TESTS += $(BUILD)/test_more_rivals
+$(BUILD)/test_more_rivals: tests/test_more_rivals.cpp tests/test.h tools/native/more_rivals_grid.h src/b3replay/records.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# trafficcheck: GAMEPLAY's TRAFFIC CHECKING -- stages, latch, the check's rules, the push, the chain, records apart
+TESTS += $(BUILD)/test_traffic_check
+$(BUILD)/test_traffic_check: tests/test_traffic_check.cpp tests/test.h tools/native/traffic_check_rules.h src/b3replay/records.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# options3: every owner of the shared fixed spaces (arena regions, records word bits, HTD1 fields): a merge that takes the
+# same bits or bytes twice fails here
+# options3: DRIVER LABELS' layout (src/b3replay/driverlabels.h), CRASH CAMERA Off's held view (crashhold.h)
+TESTS += $(BUILD)/test_driver_labels
+$(BUILD)/test_driver_labels: tests/test_driver_labels.cpp tests/test.h src/b3replay/driverlabels.h src/b3replay/crashhold.h src/b3replay/capture.h
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# booststart (tools/native/boost_start.h): the game's BOOST START on a standing start
+TESTS += $(BUILD)/test_boost_start
+$(BUILD)/test_boost_start: tests/test_boost_start.cpp tests/test.h tools/native/boost_start.h
+	@mkdir -p $(BUILD)
+	$(CXX) -Iinclude -Isrc/native -Igen/native/table -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# padskip (tools/native/pad_context.h, issue #14): the pad's context, not driving in the game's replays and films
+TESTS += $(BUILD)/test_pad_context
+$(BUILD)/test_pad_context: tests/test_pad_context.cpp tests/test.h tools/native/pad_context.h tools/native/movie_skip.h
+	@mkdir -p $(BUILD)
+	$(CXX) -Iinclude -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# taillights (src/b3replay/taillights.h, b3asset carshade): night / rain tail lights and the brake light's rise
+TESTS += $(BUILD)/test_taillights
+$(BUILD)/test_taillights: tests/test_taillights.cpp tests/test.h src/b3replay/taillights.h include/b3asset/carshade.h src/b3asset/carshade.cpp src/b3asset/vif.cpp
+	@mkdir -p $(BUILD)
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3asset/carshade.cpp src/b3asset/vif.cpp -o $@
+# settingsback (tools/native/settings_back.h): Back on the game's SETTINGS pages keeps the changes
+TESTS += $(BUILD)/test_settings_back
+$(BUILD)/test_settings_back: tests/test_settings_back.cpp tests/test.h tools/native/settings_back.h
+	@mkdir -p $(BUILD)
+	$(CXX) -Iinclude -Isrc/native -Igen/native/table -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+TESTS += $(BUILD)/test_bit_owners
+$(BUILD)/test_bit_owners: tests/test_bit_owners.cpp tests/test.h src/native/hook_table.h tools/native/race_choice.h tools/native/eliminator_rows.h tools/native/heavy_series.h tools/native/game_option_rules.h tools/native/game_mods.h src/b3replay/records.h tools/native/road_rage_parts.h tools/native/traffic_check_rules.h tools/native/traffic_series.h tools/native/extra_series.h
+	$(CXX) -Iinclude -Isrc/native -Igen/native/table -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# nextstart: the game started again after APPLY AND RESTART (relaunch.h): the arguments, START AT, the Windows quoting
+TESTS += $(BUILD)/test_relaunch
+$(BUILD)/test_relaunch: tests/test_relaunch.cpp tests/test.h tools/native/relaunch.h
+	@mkdir -p $(BUILD)
+	$(CXX) -Iinclude -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# paintsel: the car paint panel on SELECT CAR -- the page's player, the colour-row rule, the prompt's fade (paint_select.h)
+TESTS += $(BUILD)/test_paint_select
+$(BUILD)/test_paint_select: tests/test_paint_select.cpp tests/test.h tools/native/paint_select.h tools/native/car_select.h tools/native/race_time.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# xboxglow: TUNNEL LIGHTS' Xbox looks -- the setting's value, the lamps, the glow masks (src/b3replay/xboxglow.h)
+TESTS += $(BUILD)/test_xboxglow
+$(BUILD)/test_xboxglow: tests/test_xboxglow.cpp tests/test.h src/b3replay/xboxglow.h include/b3asset/model.h
+	@mkdir -p $(BUILD)
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# paint3: the carousel's cars whose picture is not their own -- the slots read, the resolver's, the host record (carousel_models.h)
+TESTS += $(BUILD)/test_carousel_models
+$(BUILD)/test_carousel_models: tests/test_carousel_models.cpp tests/test.h tools/native/carousel_models.h tools/native/car_select.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# paint3: the GPU ids a thumbnail-only car model gives back, the picture jobs' tick limit (src/b3replay/thumb_release.h)
+TESTS += $(BUILD)/test_thumb_release
+$(BUILD)/test_thumb_release: tests/test_thumb_release.cpp tests/test.h src/b3replay/thumb_release.h include/b3gfx/b3gfx.h
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# taxihead: a vehicle's car file by its header's relocated words (src/b3replay/carmatch.h: the taxis share 0x00..0x4C)
+TESTS += $(BUILD)/test_carmatch
+$(BUILD)/test_carmatch: tests/test_carmatch.cpp tests/test.h src/b3replay/carmatch.h
+	@mkdir -p $(BUILD)
+	$(CXX) -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# hudmods: RPM METER / BOOST BAR SHAKE on synthetic HUD frames (src/b3replay/hudmods.h)
+TESTS += $(BUILD)/test_hudmods
+$(BUILD)/test_hudmods: tests/test_hudmods.cpp tests/test.h src/b3replay/hudmods.cpp src/b3replay/hudmods.h src/b3replay/hud.h
+	@mkdir -p $(BUILD)
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/hudmods.cpp -o $@
+# hudmods: TAKEDOWN STREAK PITCH's rule (tools/native/takedown_pitch.h)
+TESTS += $(BUILD)/test_takedown_pitch
+$(BUILD)/test_takedown_pitch: tests/test_takedown_pitch.cpp tests/test.h tools/native/takedown_pitch.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# heavyseries: the HEAVYWEIGHTS series on SELECT CAR -- which events, which race, the replay's entry, records kept apart
+# titlefast: the title's prompt and Start without the game's two-second wait (title_fast.h)
+TESTS += $(BUILD)/test_title_fast
+$(BUILD)/test_title_fast: tests/test_title_fast.cpp tests/test.h tools/native/title_fast.h $(wildcard include/b3host/*.h) src/native/hook_table.h
+	$(CXX) -Iinclude -Itools/native -Isrc/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# trafficseries: traffic vehicles as race cars, the TRAFFIC series (traffic_series.h)
+TESTS += $(BUILD)/test_traffic_series
+$(BUILD)/test_traffic_series: tests/test_traffic_series.cpp tests/test.h tools/native/traffic_series.h src/b3replay/records.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# customseries: players' car mods as extra cars, the CUSTOM series (extra_series.h)
+TESTS += $(BUILD)/test_extra_series
+$(BUILD)/test_extra_series: tests/test_extra_series.cpp tests/test.h tools/native/extra_series.h tools/native/traffic_series.h src/b3replay/records.h include/b3port/fileio.h src/native/disc_alias.h include/b3asset/car_layout.h
+	$(CXX) -Iinclude -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+TESTS += $(BUILD)/test_heavy_series
+$(BUILD)/test_heavy_series: tests/test_heavy_series.cpp tests/test.h tools/native/heavy_series.h src/b3replay/records.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# gamemods1: START AT's rules (boot_boost.h) and END VERY LONG EVENTS' checks (game_limits.h)
+TESTS += $(BUILD)/test_boot_boost
+$(BUILD)/test_boot_boost: tests/test_boot_boost.cpp tests/test.h tools/native/boot_boost.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+TESTS += $(BUILD)/test_game_limits
+$(BUILD)/test_game_limits: tests/test_game_limits.cpp tests/test.h tools/native/game_limits.h
+	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
+# gameopts: GAMEPLAY's MIRROR MODE / CRASHBREAKER IN EVERY MODE -- stages, latch, record word, replay entry, folders
+TESTS += $(BUILD)/test_game_options
+# integfix: the records call without kinds (tools/native/records_guard.h): the game's own kinds-0 call untouched
+TESTS += $(BUILD)/test_records_guard
+$(BUILD)/test_records_guard: tests/test_records_guard.cpp tests/test.h tools/native/records_guard.h $(HOST_OBJ)
+	$(CXX) $(CPPFLAGS) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< $(HOST_OBJ) -o $@
+$(BUILD)/test_game_options: tests/test_game_options.cpp tests/test.h tools/native/game_option_rules.h src/b3replay/records.h
 	$(CXX) -Itools/native $(REQFLAGS) $(CXXFLAGS) $< -o $@
 # ghost1 (Time Attack ghosts, remaster-features §5): the .b3ghost format, the time sync, the recorder (src/b3replay/ghost.h)
 TESTS += $(BUILD)/test_ghost
@@ -511,8 +652,8 @@ save_tool: $(BUILD)/save_tool
 # mac5: the mouse and typed text in the game's menus (remaster-features §8; include/b3live/menu_input.h,
 # src/b3replay/menumouse.h): records, actions, the presses' closed loop, the text mapping, hit bands, prompts, events
 TESTS += $(BUILD)/test_menu_input
-$(BUILD)/test_menu_input: tests/test_menu_input.cpp tests/test.h include/b3live/menu_input.h src/b3replay/menumouse.h src/b3replay/menumouse.cpp src/b3replay/garagecam.cpp src/b3replay/garagecam.h $(PROMPTS_DEP)
-	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/menumouse.cpp src/b3replay/garagecam.cpp $(PROMPTS_SRC) -pthread -o $@
+$(BUILD)/test_menu_input: tests/test_menu_input.cpp tests/test.h include/b3live/menu_input.h src/b3replay/menumouse.h src/b3replay/menumouse.cpp src/b3replay/garagecam.cpp src/b3replay/garagecam.h src/b3replay/orbitcam.cpp src/b3replay/trackrays.cpp src/b3replay/orbitcam.h $(PROMPTS_DEP)
+	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< src/b3replay/menumouse.cpp src/b3replay/garagecam.cpp src/b3replay/orbitcam.cpp src/b3replay/trackrays.cpp $(PROMPTS_SRC) -pthread -o $@
 # mac5 (remaster-features §8): the launcher / setup program beside the game (src/b3launcher; Windows:
 # Burnout3Launcher.exe from tools/render/build_win.sh). `make launcher` (SDL3, not part of `make test`); its logic
 # without SDL is test_launcher.
@@ -524,7 +665,7 @@ LAUNCHER_CORE_SRC := $(SHOWROOM_SRC) src/b3launcher/core.cpp src/b3launcher/spaw
                      src/b3settings/safemode.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/input_bindings.cpp $(SAVE_SRC) $(MUSIC_SRC) $(NOW_PLAYING_SRC) src/b3mod/mods.cpp src/b3mod/codemod.cpp
 LAUNCHER_SRC := $(LAUNCHER_CORE_SRC) src/b3mod/archive.cpp src/b3launcher/font.cpp src/b3launcher/draw.cpp src/b3launcher/main.cpp src/b3replay/prompts.cpp src/b3replay/glyphdraw.cpp \
                 $(REPORT_SRC) src/b3report/sysinfo.cpp $(SHOWROOM_VIEW_SRC)
-LAUNCHER_DEP := $(wildcard include/b3port/app_icon*.h) include/b3port/file_url.h $(wildcard src/b3launcher/*.h src/b3launcher/third_party/*.h include/b3settings/*.h include/b3mod/*.h) src/native/input_keys.h src/native/input_bindings.h src/native/pad_gyro.h src/native/pad_triggers.h \
+LAUNCHER_DEP := tools/native/extra_series.h tools/native/traffic_series.h $(wildcard include/b3port/app_icon*.h) include/b3port/file_url.h $(wildcard src/b3launcher/*.h src/b3launcher/third_party/*.h include/b3settings/*.h include/b3mod/*.h) src/native/input_keys.h src/native/input_bindings.h src/native/pad_gyro.h src/native/pad_triggers.h \
                 src/native/input_keys_sdl.h src/native/save_card.h src/native/save_formats.h src/native/save_store.h src/native/save_stats.h src/native/pcsx2_cards.h \
                 src/native/custom_music.h src/native/now_playing.h src/native/dbus_dl.h src/native/replay_file.h $(wildcard src/b3view/*.h include/b3gfx/*.h) src/b3gfx/shaders_gen.h
 # update1: the update check (src/b3launcher/update.h: versions, the API's JSON, launcher.ini's update_* keys; the
@@ -596,7 +737,7 @@ $(BUILD)/test_report: tests/test_report.cpp tests/test.h $(REPORT_SRC) $(REPORT_
 TESTS += $(BUILD)/test_mods
 # modkit1b: [requires], file conflicts, installing from crafted zips (zip-slip, links, sizes), the disc layer's overlay
 MODS_TEST_SRC := src/b3mod/mods.cpp src/b3mod/archive.cpp src/b3asset/discfs.cpp src/b3report/zip.cpp
-$(BUILD)/test_mods: tests/test_mods.cpp tests/test.h include/b3mod/mods.h include/b3mod/archive.h include/b3asset/discfs.h $(MODS_TEST_SRC) $(CHD_OBJ)
+$(BUILD)/test_mods: tests/test_mods.cpp tests/test.h include/b3mod/mods.h include/b3mod/archive.h include/b3asset/discfs.h include/b3asset/car_layout.h $(MODS_TEST_SRC) $(CHD_OBJ)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(MODS_TEST_SRC) $(CHD_OBJ) -lz -o $@
 # modtool1 (the mod kit's asset tool, docs/modding/DESIGN.md §3, docs/modding/b3modtool.md): `make modtool` builds
@@ -617,6 +758,20 @@ $(BUILD)/asan/%.o: %.cpp $(MODTOOL_DEP) tests/test.h
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(ASAN_FLAGS) -c $< -o $@
 $(BUILD)/test_car_truncation: $(CAR_TRUNC_OBJ) $(CHD_OBJ)
 	$(CXX) $(CXXFLAGS) $(ASAN_FLAGS) $(CAR_TRUNC_OBJ) $(CHD_OBJ) -lz -o $@
+# betaimport: b3asset::convert_prototype_car on synthetic prototype / donor files, every cut input (AddressSanitizer)
+TESTS += $(BUILD)/test_carconvert
+CARCONVERT_OBJ := $(patsubst %.cpp,$(BUILD)/asan/%.o,tests/test_carconvert.cpp $(B3ASSET_SRC))
+$(BUILD)/asan/tests/test_carconvert.o $(BUILD)/asan/tests/test_car_truncation.o: tests/synthetic_car.h
+$(BUILD)/test_carconvert: $(CARCONVERT_OBJ) $(CHD_OBJ)
+	$(CXX) $(CXXFLAGS) $(ASAN_FLAGS) $(CARCONVERT_OBJ) $(CHD_OBJ) -lz -pthread -o $@
+# betaimport: b3asset::beta (the BETA SERIES import) on synthetic ISO images and a synthetic game folder
+TESTS += $(BUILD)/test_betaimport
+$(BUILD)/test_betaimport: tests/test_betaimport.cpp tests/test.h tests/iso_writer.h tests/synthetic_car.h $(B3ASSET_OBJ)
+	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(B3ASSET_OBJ) -lz -pthread -o $@
+# carpacks: Import car pack (src/b3launcher/carpack.h), synthetic cars
+TESTS += $(BUILD)/test_carpack
+$(BUILD)/test_carpack: tests/test_carpack.cpp tests/test.h tests/synthetic_car.h src/b3launcher/carpack.h include/b3asset/carprint.h tools/native/extra_series.h $(B3ASSET_OBJ)
+	$(CXX) -Iinclude -Itools/native $(RENDER_FLAGS) $(CXXFLAGS) $< $(B3ASSET_OBJ) -lz -pthread -o $@
 $(BUILD)/b3modtool: tools/modding/b3modtool.cpp $(MODTOOL_SRC) $(MODTOOL_DEP) $(B3ASSET_RT_OBJ)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(MODTOOL_SRC) $(B3ASSET_RT_OBJ) -lz -o $@
@@ -665,17 +820,17 @@ $(BUILD)/track_import_check: tools/modding/track_import_check.cpp $(MODTOOL_SRC)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $< $(MODTOOL_SRC) $(B3ASSET_OBJ) -lz -o $@
 # perf4: FRAMES IN FLIGHT Auto, the warm-up list's file, RENDER SCALE's supersampling cap
 TESTS += $(BUILD)/test_perf4
-$(BUILD)/test_perf4: tests/test_perf4.cpp tests/test.h include/b3gfx/frames_auto.h include/b3gfx/render_scale.h src/b3replay/warmcache.h
+$(BUILD)/test_perf4: tests/test_perf4.cpp tests/test.h include/b3gfx/frames_auto.h include/b3gfx/render_scale.h include/b3gfx/upload_batch.h include/b3gfx/driver_order.h include/b3gfx/b3gfx.h src/b3replay/warmcache.h src/b3replay/perfbisect.h
 	$(CXX) -Iinclude -Isrc/b3replay $(REQFLAGS) $(CXXFLAGS) $< -o $@
 # lat1: the display clock's schedule mode (src/b3replay/clock.h) on synthetic feeds
 TESTS += $(BUILD)/test_clock
 # mac3: with REQFLAGS (C++20): Apple clang's own default standard has no std::clamp (the M1's NOT BUILT)
-$(BUILD)/test_clock: tests/test_clock.cpp tests/test.h src/b3replay/clock.h
+$(BUILD)/test_clock: tests/test_clock.cpp tests/test.h src/b3replay/clock.h src/b3replay/motion_stats.h include/b3live/sched_stamp.h
 	$(CXX) -Iinclude $(REQFLAGS) $(CXXFLAGS) $< -o $@
 # inproc1 (§23): the in-process feed (include/b3live/inproc.h) into LiveFeed, against the file reader, with and without drops
 TESTS += $(BUILD)/test_inproc
-$(BUILD)/test_inproc: tests/test_inproc.cpp tests/test.h include/b3live/inproc.h include/b3live/ring.h src/b3replay/livefeed.cpp src/b3replay/garagecam.cpp src/b3replay/garagecam.h src/b3replay/live.h src/b3replay/hud.cpp src/b3replay/hud.h src/b3replay/capture.cpp src/b3replay/capture.h src/b3replay/globe.cpp src/b3replay/globe.h $(B3ASSET_OBJ)
-	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $(SDL3_CFLAGS) -Isrc/b3gfx $< src/b3replay/livefeed.cpp src/b3replay/garagecam.cpp src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ) -lz -lpthread -o $@
+$(BUILD)/test_inproc: tests/test_inproc.cpp tests/test.h include/b3live/inproc.h include/b3live/ring.h src/b3replay/livefeed.cpp src/b3replay/garagecam.cpp src/b3replay/garagecam.h src/b3replay/orbitcam.cpp src/b3replay/trackrays.cpp src/b3replay/orbitcam.h src/b3replay/finishcam.cpp src/b3replay/finishcam.h src/b3replay/replaycams.cpp src/b3replay/replaycams.h src/b3replay/live.h src/b3replay/hud.cpp src/b3replay/hud.h src/b3replay/capture.cpp src/b3replay/capture.h src/b3replay/globe.cpp src/b3replay/globe.h $(B3ASSET_OBJ)
+	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $(SDL3_CFLAGS) -Isrc/b3gfx $< src/b3replay/livefeed.cpp src/b3replay/garagecam.cpp src/b3replay/orbitcam.cpp src/b3replay/trackrays.cpp src/b3replay/finishcam.cpp src/b3replay/replaycams.cpp src/b3replay/hud.cpp src/b3replay/capture.cpp src/b3replay/globe.cpp $(B3ASSET_OBJ) -lz -lpthread -o $@
 $(BUILD)/b3assetdump: tools/render/b3assetdump.cpp $(B3ASSET_OBJ)
 	$(CXX) -Iinclude $(RENDER_FLAGS) $(CXXFLAGS) $< $(B3ASSET_OBJ) -o $@
 $(BUILD)/b3vucheck: tools/render/b3vucheck.cpp $(B3ASSET_OBJ)
@@ -742,9 +897,14 @@ endif
 # The standalone's audio output (audio1, src/native/audio_device.*) on SDL3's dummy driver (no sound device needed);
 # linked with SDL3 like test_panel_epoch
 TESTS += $(BUILD)/test_audio_device
-$(BUILD)/test_audio_device: tests/test_audio_device.cpp tests/test.h src/native/audio_device.cpp src/native/audio_device.h $(RWA_IOP_DEP)
+$(BUILD)/test_audio_device: tests/test_audio_device.cpp tests/test.h src/native/audio_device.cpp src/native/audio_device.h src/native/audio_queue.h $(RWA_IOP_DEP)
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(SDL3_CFLAGS) $< src/native/audio_device.cpp $(RWA_IOP_SRC) $(SDL3_LIBS) -o $@
+# audioq: a captured mix through the old drift guard and the output queue on a simulated timeline (WAVs and counts;
+# tools/native/audio_sim.cpp); a tool, not a test
+$(BUILD)/audio_sim: tools/native/audio_sim.cpp src/native/audio_queue.h
+	@mkdir -p $(BUILD)
+	$(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS) $(SDL3_CFLAGS) $< $(SDL3_LIBS) -o $@
 test_audio_device: $(BUILD)/test_audio_device
 	LD_LIBRARY_PATH=$(SDL3_LIBDIR)/pulseaudio$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH} $(BUILD)/test_audio_device   # libpulse's RUNPATH hides the exe's RPATH for its own deps
 .PHONY: test_audio_device
@@ -754,7 +914,7 @@ $(B3VIEW_OBJ): RENDER_CPPFLAGS = $(SDL3_CFLAGS) -Isrc/b3gfx
 $(BUILD)/b3view: $(B3VIEW_OBJ) $(B3ASSET_OBJ)
 	$(CXX) $(CXXFLAGS) $^ $(SDL3_LIBS) -o $@
 # b3replay (docs/native-renderer.md §12): a recorded race from a scene capture in the native renderer.
-B3REPLAY_SRC := src/b3gfx/b3gfx_sdl.cpp src/b3view/scene.cpp src/b3view/carscene.cpp src/b3view/crashscene.cpp src/b3view/sun.cpp src/b3replay/capture.cpp src/b3replay/hud.cpp src/b3replay/effects.cpp src/b3replay/coronas.cpp src/b3replay/sparks.cpp src/b3replay/globe.cpp src/b3replay/view.cpp src/b3replay/trafficfade.cpp src/b3replay/splitlayout.cpp src/b3replay/live.cpp src/b3replay/livefeed.cpp src/b3replay/nativepad.cpp src/b3replay/pcpage.cpp src/b3replay/nativeaudio.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/input_bindings.cpp src/b3replay/fpspanel.cpp src/b3replay/skiphint.cpp src/b3replay/racetime.cpp src/b3replay/prompts.cpp src/b3replay/glyphdraw.cpp src/b3replay/menumouse.cpp src/b3replay/pcsettings.cpp src/b3settings/settings.cpp src/b3settings/safemode.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3replay/notice.cpp src/b3replay/photomode.cpp src/b3replay/garagecam.cpp src/b3replay/photohud.cpp src/b3replay/a11y.cpp src/b3replay/ghost.cpp src/b3replay/speedrun.cpp src/b3replay/speedrunpanel.cpp src/b3replay/tuneconsole.cpp src/b3replay/carlook.cpp src/b3replay/carlookpanel.cpp $(REPORT_SRC) src/b3report/sysinfo.cpp src/b3mod/mods.cpp src/b3mod/codemod.cpp src/b3replay/modoverlay.cpp src/b3replay/main.cpp
+B3REPLAY_SRC := src/b3gfx/b3gfx_sdl.cpp src/b3view/scene.cpp src/b3view/carscene.cpp src/b3view/crashscene.cpp src/b3view/sun.cpp src/b3replay/capture.cpp src/b3replay/hud.cpp src/b3replay/effects.cpp src/b3replay/coronas.cpp src/b3replay/sparks.cpp src/b3replay/globe.cpp src/b3replay/view.cpp src/b3replay/trafficfade.cpp src/b3replay/splitlayout.cpp src/b3replay/live.cpp src/b3replay/livefeed.cpp src/b3replay/nativepad.cpp src/b3replay/pcpage.cpp src/b3replay/nativeaudio.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/input_bindings.cpp src/b3replay/fpspanel.cpp src/b3replay/skiphint.cpp src/b3replay/racetime.cpp src/b3replay/paintsel.cpp src/b3replay/hudmods.cpp src/b3replay/prompts.cpp src/b3replay/glyphdraw.cpp src/b3replay/menumouse.cpp src/b3replay/pcsettings.cpp src/b3settings/settings.cpp src/b3settings/safemode.cpp src/b3settings/page.cpp src/b3settings/menu.cpp src/b3replay/notice.cpp src/b3replay/photomode.cpp src/b3replay/garagecam.cpp src/b3replay/orbitcam.cpp src/b3replay/trackrays.cpp src/b3replay/finishcam.cpp src/b3replay/replaycams.cpp src/b3replay/photohud.cpp src/b3replay/a11y.cpp src/b3replay/ghost.cpp src/b3replay/speedrun.cpp src/b3replay/speedrunpanel.cpp src/b3replay/tuneconsole.cpp src/b3replay/carlook.cpp src/b3replay/carlookpanel.cpp $(REPORT_SRC) src/b3report/sysinfo.cpp src/b3mod/mods.cpp src/b3mod/codemod.cpp src/b3replay/modoverlay.cpp src/b3replay/main.cpp
 B3REPLAY_OBJ := $(B3REPLAY_SRC:%.cpp=$(BUILD)/render/%.o)
 $(B3REPLAY_OBJ): RENDER_CPPFLAGS = $(SDL3_CFLAGS) -Isrc/b3gfx
 $(B3REPLAY_OBJ): $(wildcard src/b3replay/*.h include/b3settings/*.h include/b3report/*.h include/b3mod/*.h include/b3tune/*.h include/b3asset/discfs.h) src/native/input_keys.h src/native/input_keys_sdl.h src/native/input_bindings.h src/native/pad_gyro.h src/native/pad_triggers.h   # explicit targets: a recipe-less pattern rule cancels the implicit rule instead of adding prerequisites
@@ -816,8 +976,7 @@ MAC_TESTS_EXACT := test_ps2float test_fenv test_vufloat test_gtmath_ps2 test_gtm
                    test_libm_cost test_eeasm_ps2 test_eeasm_fast test_b3host test_abi
 MAC_TESTS_OTHER := test_b3asset test_hdpack test_xboximport test_carpaint test_sparkshade test_popcornshade test_hud test_capture test_livelap \
                    test_settings test_effect_levels test_carlook test_clock test_perf4 test_inproc test_rwa_iop test_spu2_mixer test_b3route \
-                   test_native_backend test_native_platform test_gameview_native test_save_card \
-                   test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_garagecam test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_render_load test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_launcher_installer test_portable test_launcher_steam test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load test_race_time
+                   test_native_backend test_native_platform test_gameview_native test_save_card test_relaunch test_input_keys test_input_bindings test_pad_motion test_a11y test_skip_hint test_prompts test_photomode test_garagecam test_orbitcam test_rain test_rain_audio test_fpspanel test_panel_epoch test_page_hold test_pause_rows test_paint_select test_carousel_models test_thumb_release test_render_load test_ghost test_speedrun test_traffic_fade test_split_layout test_menu_input test_save_formats test_save_stats test_launcher test_launcher_installer test_portable test_launcher_steam test_discfs test_report test_mods test_modtool test_replay_file test_showroom test_fast_load test_race_time test_race_options test_hudmods test_xboxglow test_takedown_pitch test_eliminator_rows test_more_rivals test_heavy_series test_game_options test_title_fast test_finishcam test_bit_owners test_driver_labels test_stats_signals test_traffic_check test_traffic_series test_betaimport test_carpack test_boot_boost test_game_limits test_carmatch test_settings_back test_boost_start test_extra_series test_taillights test_replaycams test_pad_context
 MAC_TESTS := $(MAC_TESTS_EXACT) $(MAC_TESTS_OTHER)
 RUN ?=
 mac-tests-build:
@@ -852,6 +1011,7 @@ test:
 	@echo "== compile-fail"; tests/compile_fail/check.sh $(CXX) $(CPPFLAGS) $(REQFLAGS)
 	@echo "== eeasm.py --selftest"; python3 -I tools/decomp2host/eeasm.py --selftest > $(BUILD)/eeasm_selftest.log
 	@echo "== tests/test_decomp2host.py"; python3 -I tests/test_decomp2host.py
+	@echo "== tests/test_vu0_aot.py (vu0flags: the kept flag pushes, the census rules)"; python3 -I tests/test_vu0_aot.py
 	@echo "== tools/native/check_returns.py --selftest (a fall-off is caught with -w in the flags)"; python3 -I tools/native/check_returns.py --selftest --cache $(BUILD)/check_returns/selftest -- $(CXX) $(CPPFLAGS) $(REQFLAGS) $(CXXFLAGS)
 	@echo "== tools/release/make_icons.py --check (the icon files match the drawing)"; python3 -I tools/release/make_icons.py --check
 	@echo "== tools/release/make_steam_logo.py --check (the launcher's built-in logo matches docs/logo.png)"; python3 -I tools/release/make_steam_logo.py --check
@@ -920,7 +1080,7 @@ VU0_INTERP ?= 0
 VU0_INTERP_SRC := src/b3asset/vu1.cpp
 VU0_INTERP_STAMP := $(BUILD)/native/vu0_interp.txt
 $(shell python3 -c "import os, sys; p, v = sys.argv[1], sys.argv[2]; os.makedirs(os.path.dirname(p), exist_ok=True); (os.path.exists(p) and open(p).read() == v) or open(p, 'w').write(v)" '$(VU0_INTERP_STAMP)' '$(VU0_INTERP)')
-NATIVE_SRC := src/b3host/native_backend.cpp src/native/native_table.cpp src/native/hook_table.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_disc.cpp src/native/platform_gtfs.cpp src/native/platform_distortion.cpp src/native/platform_devices.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/native/platform_threads.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/platform_rwa.cpp src/native/custom_music.cpp src/native/music_decoders.cpp src/native/now_playing.cpp src/native/now_playing_mpris.cpp src/native/now_playing_win.cpp src/audio/rwa_iop.cpp src/audio/b3route.cpp src/audio/spu2_stub_mixer.cpp src/audio/spu2_mixer_impl.cpp src/native/platform_movie.cpp src/native/mpeg2_decoder.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/discfs.cpp src/b3mod/mods.cpp src/b3mod/codemod.cpp src/native/code_mods.cpp src/native/script_mods.cpp src/native/script_lua.cpp src/b3settings/settings.cpp src/b3settings/safemode.cpp $(VU0_AOT_GEN) $(if $(filter 1,$(VU0_INTERP)),$(VU0_INTERP_SRC))
+NATIVE_SRC := src/b3host/native_backend.cpp src/native/native_table.cpp src/native/hook_table.cpp src/native/input_keys.cpp src/native/input_report.cpp src/native/platform.cpp src/native/platform_crt.cpp src/native/platform_printf.cpp src/native/platform_iop.cpp src/native/platform_kernel.cpp src/native/platform_time.cpp src/native/platform_malloc.cpp src/native/platform_hw.cpp src/native/platform_sif.cpp src/native/platform_disc.cpp src/native/platform_gtfs.cpp src/native/platform_distortion.cpp src/native/platform_devices.cpp src/native/platform_dbc.cpp src/native/platform_charge.cpp src/native/platform_threads.cpp src/native/sampler.cpp src/native/save_card.cpp src/native/save_formats.cpp src/native/save_store.cpp src/native/save_stats.cpp src/native/platform_rwa.cpp src/native/custom_music.cpp src/native/music_decoders.cpp src/native/now_playing.cpp src/native/now_playing_mpris.cpp src/native/now_playing_win.cpp src/audio/rwa_iop.cpp src/audio/b3route.cpp src/audio/spu2_stub_mixer.cpp src/audio/spu2_mixer_impl.cpp src/native/platform_movie.cpp src/native/mpeg2_decoder.cpp src/native/platform_vu0.cpp src/native/vu0_unit.cpp src/b3asset/discfs.cpp src/b3mod/mods.cpp src/b3mod/codemod.cpp src/native/code_mods.cpp src/native/script_mods.cpp src/native/script_lua.cpp src/b3settings/settings.cpp src/b3settings/safemode.cpp $(VU0_AOT_GEN) $(if $(filter 1,$(VU0_INTERP)),$(VU0_INTERP_SRC))
 NATIVE_FLAGS = -Isrc/native -I$(NATIVE_GEN) -Itests -Itools/native -DB3_BOUNCE_CANARY=1 $(NATIVE_OPT)
 # mac4 (boot2's condition): a stale bundle is loud -- a decomp-mode build of the native programs warns when gen/native
 # was generated from another decomp commit than $(DECOMP)'s (refresh: make native-bundle, then commit gen/native)
@@ -970,9 +1130,12 @@ $(NATIVE_SELECT_ALL): $(NATIVE_SELECT) tools/native/native_select.py $(PORT_LIB_
 # native3: the VU0 register binding baked into the native generation only (DECOMP2HOST_VUBIND, eeasm.VuBinding;
 # gen/decomp never: there the host VU state is not the guest's without VU0 sync). NATIVE_VUBIND= turns it off.
 NATIVE_VUBIND ?= config/vubind_native.txt
+# MORE RIVALS: the game's per-car arrays as b3host::split_array in the native generation (decomp2host's last pass,
+# tools/decomp2host/split_arrays.py; flat memory unless a race has more than 6 cars). SPLIT_ARRAYS= turns it off.
+SPLIT_ARRAYS ?= config/split_arrays.tsv
 # boot2: $(DECOMP)/SNAPSHOT too -- a new snapshot regenerates (switching DECOMP alone did not)
-$(NGEN)/manifest.tsv: $(NATIVE_SELECT_ALL) tools/decomp2host/decomp2host.py tools/decomp2host/eeasm.py $(NATIVE_VUBIND) config/mod_hooks.txt $(wildcard $(DECOMP)/SNAPSHOT)
-	DECOMP2HOST_CXX="$(CXX)" DECOMP2HOST_NATIVE_ROWS=1 DECOMP2HOST_T31C=1 DECOMP2HOST_VUBIND=$(NATIVE_VUBIND) DECOMP2HOST_CACHE=$(BUILD)/d2h_cache python3 -I tools/decomp2host/decomp2host.py --decomp $(DECOMP) --out $(NGEN).new --select $(NATIVE_SELECT_ALL) --keep-going --objects $(BUILD)/gen_native_ps2
+$(NGEN)/manifest.tsv: $(NATIVE_SELECT_ALL) tools/decomp2host/decomp2host.py tools/decomp2host/eeasm.py $(NATIVE_VUBIND) config/mod_hooks.txt $(SPLIT_ARRAYS) config/split_arrays_left.txt tools/decomp2host/split_arrays.py tools/decomp2host/split_census.py $(wildcard $(DECOMP)/SNAPSHOT)
+	DECOMP2HOST_CXX="$(CXX)" DECOMP2HOST_SPLIT_ARRAYS=$(SPLIT_ARRAYS) DECOMP2HOST_NATIVE_ROWS=1 DECOMP2HOST_T31C=1 DECOMP2HOST_VUBIND=$(NATIVE_VUBIND) DECOMP2HOST_CACHE=$(BUILD)/d2h_cache python3 -I tools/decomp2host/decomp2host.py --decomp $(DECOMP) --out $(NGEN).new --select $(NATIVE_SELECT_ALL) --keep-going --objects $(BUILD)/gen_native_ps2
 	rsync -rc --delete --out-format='gen_native: %n' $(NGEN).new/ $(NGEN)/
 	$(call check_returns_native,$(NGEN)/units)
 	touch $@
@@ -987,7 +1150,7 @@ native-bundle:
 	python3 -c "import shutil; shutil.rmtree('$(NATIVE_BUNDLE).new', ignore_errors=True); shutil.rmtree('$(BUILD)/native_bundle', ignore_errors=True)"
 	@mkdir -p $(BUILD)/native_bundle
 	python3 -I tools/native/native_select.py --base $(NATIVE_SELECT) --out $(BUILD)/native_bundle/select.txt
-	env -u DECOMP2HOST_CACHE DECOMP2HOST_CXX="$(CXX)" DECOMP2HOST_NATIVE_ROWS=1 DECOMP2HOST_T31C=1 DECOMP2HOST_VUBIND=$(NATIVE_VUBIND) python3 -I tools/decomp2host/decomp2host.py --decomp $(DECOMP) --out $(NATIVE_BUNDLE).new --select $(BUILD)/native_bundle/select.txt --keep-going
+	env -u DECOMP2HOST_CACHE DECOMP2HOST_CXX="$(CXX)" DECOMP2HOST_SPLIT_ARRAYS=$(SPLIT_ARRAYS) DECOMP2HOST_NATIVE_ROWS=1 DECOMP2HOST_T31C=1 DECOMP2HOST_VUBIND=$(NATIVE_VUBIND) python3 -I tools/decomp2host/decomp2host.py --decomp $(DECOMP) --out $(NATIVE_BUNDLE).new --select $(BUILD)/native_bundle/select.txt --keep-going
 	python3 -I tools/native/gen_table.py --decomp $(NATIVE_SNAP) --out $(NATIVE_BUNDLE).new/table
 	@# vu0n: retail's VU0 microprograms as C++ (as make vu0-aot), from the same snapshot
 	@mkdir -p $(NATIVE_BUNDLE).new/vu0

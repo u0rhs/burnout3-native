@@ -35,6 +35,9 @@ struct Row {
     bool disabled = false;
     // padpaint: a colour swatch drawn in the row, left of its control (0xRRGGBB); none when negative
     std::int32_t swatch = -1;
+    // paintsel: a colour per value (0xRRGGBB; the paint panel draws the value bar as a row of these colours, the value's
+    // own larger); empty: the bar as usual. Only the paint panel's rows have them (paint_panel_content).
+    std::vector<std::int32_t> chips;
 };
 
 struct Tab {
@@ -47,8 +50,12 @@ struct Content {
     std::string popup;
     // 1.1: the page's own words around the rows (Menu::items draws them), translated with the rows (translate below)
     std::string title = "SETTINGS";
+    bool title_menu_face = false;   // nextstart: the title in the menu face (the heading face lacks letters: X, accents)
     std::string footer_keys = "UP / DOWN  SELECT     LEFT / RIGHT  CHANGE     CONFIRM  CHOOSE";
     std::string footer_back = "BACK  CLOSE AND SAVE";
+    // paint2: the paint panel's colour picker (Menu::panel_items draws it in place of the description while `on`): the
+    // colour as hue (0..360), saturation and brightness (0..1), and FINE (the slow steps)
+    struct Picker { bool on = false; float h = 0, s = 0, v = 0; bool fine = false; } picker;
     // settingsui: the prompt bar under the description (Menu::items): each prompt a glyph (or two) and its words, the
     // glyphs drawn by the host (Item kImage, kGlyphPrefix + the button's name, measured with kGlyph). `prompt_device`:
     // what the last input came from (the bar shows its buttons; the mouse: its own words, no glyphs).
@@ -58,6 +65,8 @@ struct Content {
         std::string move = "MOVE", change = "CHANGE", choose = "CHOOSE", close = "CLOSE AND SAVE", section = "SECTION",
                     rebind = "REBIND", add = "ADD", remove = "REMOVE", reset = "DEFAULT", click = "CLICK", wheel = "WHEEL",
                     scroll = "SCROLL", right_click = "RIGHT CLICK", close_short = "CLOSE";
+        // paint2: the colour picker's prompts
+        std::string hue = "HUE", shade = "SHADE", fine = "FINE", accept = "OK", cancel = "CANCEL";
     } words;
 };
 
@@ -102,6 +111,7 @@ struct Env {
     // settingsui: the launcher's Settings page (its own pages hold the controls, the music folder and the HD pack: a row
     // that opens that page stands in for their rows, kActionOpen* below)
     bool launcher = false;
+    bool graphics_api = false;         // d3d12: the GRAPHICS API row (Windows: Vulkan / Direct3D 12)
     // remap1 (src/native/input_bindings.h): the CONTROLS section, filled by a host that remaps (native_play's page).
     // The host makes the texts; the rows' edits (ids below) are the host's to act on (apply_edit leaves them).
     struct Controls {
@@ -160,11 +170,19 @@ enum : std::uint32_t { kRowCtlPlayer = 300, kRowCtlDevice = 301, kRowCtlView = 3
                        kRowCtlLayout = 351 /* padlayout: CONTROLLER LAYOUT (Edit::value: 0 Auto .. 3 Custom) */ };
 // photoblur (1.3.0): a second block of CONTROLS action rows, 410-419, for photo mode's shortcuts added after the
 // 310-349 block (its rows are positional and nearly full): 410-412 the motion blur's MOTION, FASTER / SLOWER SHUTTER;
-// 413 todrace's TIME OF DAY PER RACE; 414-419 reserved for later shortcuts. The host gives these rows their ids
-// (Env::Controls::Action::id).
-enum : std::uint32_t { kActionCtlPhotoFirst = 410, kActionCtlRaceTime = 413, kActionCtlPhotoLast = 419 };
+// 413 todrace's TIME OF DAY PER RACE; 414 paintsel's CAR PAINT PANEL; 415 / 416 gearbox's SHIFT UP / SHIFT DOWN;
+// 417-419 party1's MOON JUMP / CRASH / AI DRIVER (kActionCtlPartyFirst). The host gives these rows their ids (Env::Controls::Action::id).
+enum : std::uint32_t { kActionCtlPhotoFirst = 410, kActionCtlRaceTime = 413, kActionCtlPaint = 414, kActionCtlShiftUp = 415,
+                       kActionCtlShiftDown = 416, kActionCtlPhotoLast = 419,
+                       kActionCtlReplay = 622 };   // replayview (620-629 its rows)
+// party1: PARTY MODES' buttons, MOON JUMP 417, CRASH 418, AI DRIVER 419
+enum : std::uint32_t { kActionCtlPartyFirst = 417 };
+// replaycams: the replay viewer's REPLAY CAMERA - / +, REPLAY CAR - / +, FREE CAMERA (660-669 are replaycams'; 660 is
+// REPLAY CAMERA CUTS)
+enum : std::uint32_t { kActionCtlReplayFirst = 661, kActionCtlReplayLast = 665 };
 inline bool is_ctl_action(std::uint32_t id) {
-    return (id >= kActionCtlFirst && id <= kActionCtlLast) || (id >= kActionCtlPhotoFirst && id <= kActionCtlPhotoLast);
+    return (id >= kActionCtlFirst && id <= kActionCtlLast) || (id >= kActionCtlPhotoFirst && id <= kActionCtlPhotoLast) ||
+           (id >= kActionCtlReplayFirst && id <= kActionCtlReplayLast);
 }
 // rebind2: Edit::direction 2 on an action row is "put this one back to its default" (Input::reset: SQUARE)
 // pad1: the CONTROLS section's gyro steering rows (the controller device; Edit::value = the value index: mode 0 off /
@@ -179,6 +197,57 @@ enum : std::uint32_t { kRowPortable = 405 };
 Row portable_row(const Env::Portable& p, bool launcher);
 
 Content build_content(const Settings& s, const Env& env);
+// paintsel (tools/native/paint_select.h): the car paint panel on SELECT CAR -- one tab with the CAR tab's paint rows of
+// `player` (0: CAR PAINT, COLOUR, PAINT RED / GREEN / BLUE, FINISH, DECALS; 1: player 2's, labelled as player 1's, under
+// the title PLAYER 2 CAR PAINT; FINISH is both players'). The rows' ids, values and edits are the CAR tab's (apply_edit
+// takes them); the COLOUR row carries its ready colours as chips. Untranslated (translate() as the page's).
+Content paint_panel_content(const Settings& s, int player);   // (paintsel's: the body layer, no picker)
+// paint2 (2026-11-22): the panel's layers -- BODY (CAR PAINT and its RGB), DECALS, WHEELS, BOOST GLOW (settings.h
+// decal_* / wheel_* / flame_*), per player, one set for every car -- and its rows: LAYER (which layer the colour rows
+// edit), COLOUR (Game, the ready colours, Custom), COLOUR PICKER, PAINT RED / GREEN / BLUE, FINISH, DECALS, FACTORY
+// COLOURS. `picker`: the picker's state to draw (Content::picker).
+enum : int { kLayerBody = 0, kLayerDecals = 1, kLayerWheels = 2, kLayerFlame = 3, kPaintLayers = 4 };
+Content paint_panel_content(const Settings& s, int player, int layer, const Content::Picker& picker = {});
+// paint2 row ids (560-599 are paint2's): a layer's COLOUR row kRowLayerColour + 4 x player + layer (560-567; PC SETTINGS
+// shows the decals', wheels' and flame's: 561-563, 565-567); its RGB rows kRowLayerRgb + 3 x (4 x player + layer) +
+// channel (570-593); the panel's LAYER row (its edit is the host's), the picker's action (the host's) and FACTORY
+// COLOURS (kActionPaintFactory + player, 596-597: apply_edit runs paint_factory)
+enum : std::uint32_t { kRowLayerColour = 560, kRowLayerRgb = 570, kRowPaintLayer = 594, kActionPaintPicker = 595, kActionPaintFactory = 596 };
+// A player's layer as settings fields: the custom switch (0 the game's, 1 custom) and the colour (0..255 each)
+struct PaintLayerRef { int* custom = nullptr; int* rgb[3] = {}; };
+PaintLayerRef paint_layer(Settings& s, int player, int layer);
+// FACTORY COLOURS: every layer of `player` back to the game's and DECALS on (FINISH, both players', stays)
+void paint_factory(Settings& s, int player);
+// HSV <-> RGB (h 0..360, s / v 0..1; rgb 0..255)
+void rgb_to_hsv(const int rgb[3], float& h, float& s, float& v);
+void hsv_to_rgb(float h, float s, float v, int rgb[3]);
+// paint2: the colour picker's model (the paint panel; pure: tests). D-pad / left stick left-right the saturation, up-down
+// the brightness, L1 / R1 the hue (held: they keep going), SQUARE FINE (a quarter of the speed), CROSS keeps the colour,
+// BACK puts the one before back; a pointer on the square or the bar (Menu::kPicker*) sets them where it is held.
+struct PickerInput {
+    bool left = false, right = false, up = false, down = false, hue_down = false, hue_up = false;
+    bool fine = false, accept = false, cancel = false;   // held states (the model takes their presses)
+    std::optional<std::array<float, 2>> pointer;         // picture pixels
+    bool pointer_held = false;
+    float sq[4] = {}, bar[4] = {};                       // where the square and the bar are (Menu::picker_boxes)
+    float seconds = 1.0f / 60.0f;
+};
+class ColourPicker {
+public:
+    void open(const int rgb[3]);                 // from the layer's colour (its held buttons act only after release)
+    bool on() const { return on_; }
+    enum class Result : std::uint8_t { kNone, kChanged, kAccepted, kCancelled };
+    Result step(const PickerInput& in);          // kChanged: rgb() moved; kCancelled: put saved() back
+    const int* rgb() const { return rgb_; }
+    const int* saved() const { return saved_; }
+    Content::Picker view() const { return Content::Picker{on_, h_, s_, v_, fine_}; }
+private:
+    bool on_ = false, fine_ = false, was_fine_ = true, was_accept_ = true, was_cancel_ = true;
+    float h_ = 0, s_ = 0, v_ = 0;
+    int rgb_[3] = {}, saved_[3] = {};
+};
+// paintsel: the ready colours of the COLOUR rows (0xRRGGBB, in the row's order)
+std::vector<std::int32_t> paint_preset_colours();
 // settingsui: OPEN THE LAUNCHER AT START (GAME > STARTING AND LOADING in the game; the launcher's own LAUNCHER tab, so
 // build_content leaves it out with Env::launcher). An edit goes through apply_edit as any row's.
 Row launcher_at_start_row(const Settings& s);
@@ -193,6 +262,8 @@ enum : std::uint32_t { kRowLanguage = 270, kActionImportLanguages = 271 };
 // 1.3.0: VOICES (INTERFACE, after LANGUAGE: a setting, apply_edit takes it) and the launcher's import rows (actions:
 // kActionDjFirst / kActionTrainingFirst + the language's index in b3asset::language::dj_codes(); the host imports,
 // cancels or removes)
+// d3d12: GRAPHICS API (GRAPHICS > IMAGE, last; Windows only: Env::graphics_api; 670-679 are d3d12's)
+enum : std::uint32_t { kRowGraphicsApi = 670 };
 enum : std::uint32_t { kRowDjVoice = 384, kActionDjFirst = 385, kActionDjLast = 388, kActionTrainingFirst = 420, kActionTrainingLast = 423 };
 
 // 1.1: the port's own text in the player's language (include/b3settings/i18n.h). `language` is Settings::language (a
@@ -209,6 +280,28 @@ std::string translate_text(const std::string& text, const std::string& language)
 // A `{}` entry's text: `pattern` (the table's key as it is, "(NOT SAVED: {})") translated, then `arg` put in its `{}`.
 // The argument never takes part in the lookup (a reason or a number that happens to read as other text).
 std::string translate_format(const std::string& pattern, const std::string& arg, const std::string& language);
+
+// nextstart: the rows read only at the game's start (their help: "Applies at the next start"). When PC SETTINGS closes
+// with one of them changed since it opened, a question box (a panel: Menu::panel_items) asks KEEP (the default: applies
+// at the next start), APPLY AND RESTART (saved, then the game started again by native_play) or REVERT (the old values
+// back); a row whose value differs from the game's start shows it is pending (mark_pending). 640-649 are nextstart's.
+enum : std::uint32_t { kActionAskKeep = 640, kActionAskRestart = 641, kActionAskRevert = 642, kRowAskChange = 643 };
+bool next_start_row(std::uint32_t id);
+struct PendingChange {
+    std::uint32_t id = 0;
+    std::string label, before, after;   // the row's label and its value then and now, as the page shows them
+};
+// The next-start rows whose shown value differs between (`from`, `env_from`) and (`to`, `env_to`), in the page's order
+// (SAVE FILE AT START: Env::next_profile, a file; the rest: Settings)
+std::vector<PendingChange> next_start_changes(const Settings& from, const Env& env_from, const Settings& to, const Env& env_to);
+// The next-start rows' settings as `from` has them (SAVE FILE AT START is the caller's: a file)
+void revert_next_start(Settings& s, const Settings& from);
+// The question box's content: the changes (translated by the caller with the rest), `in_race`: a line that a race in
+// progress ends with a restart; `can_restart` false (a replay file's playback): no APPLY AND RESTART
+Content restart_ask_content(const std::vector<PendingChange>& changes, bool in_race, bool can_restart);
+// The page's next-start rows whose value differs from the game's start (`started`, `env_started`): their value marked
+// " *" and a sentence before the help, in `language` (after translate: the value's own text is translated first)
+void mark_pending(Content& c, const Settings& started, const Env& env_started, const std::string& language);
 
 struct Edit {
     std::uint32_t id = 0;
@@ -290,8 +383,23 @@ public:
     // settingsui: every button and direction held now acts only after it is released (as the press that opened the
     // page): the host calls it when a rebind took an input, so that the input taken does not also act on the page
     void hold_until_released();
+    // nextstart: the pointer on the rows as panel_items lays them out (a menu shown as a panel: the question box)
+    void set_panel_pointer(bool on) { panel_pointer_ = on; }
     // The page's items; images are named relative to `art`, fonts are in `fonts` (a FontDirectory item first).
     std::vector<Item> items(const std::string& fonts, const std::string& art, const Measure& measure) const;
+    // paintsel: the content as a small panel over a game page (the car paint panel on SELECT CAR): no backdrop and no
+    // tabs, the first tab's rows in a box at the picture's left (kPanelBox), its title, the focused row's description and
+    // the prompt bar below. The rows must fit (no scrolling: at most kVisible); the pointer is not used (Input::pointer
+    // left empty). The page's look: the same faces, colours and slanted bars, smaller.
+    std::vector<Item> panel_items(const std::string& fonts, const std::string& art, const Measure& measure) const;
+    static constexpr float kPanelX0 = 20.0f, kPanelX1 = 292.0f, kPanelY0 = 84.0f;   // the panel's box (640 x 448 picture)
+    static constexpr float kPanelRowH = 20.0f;
+    // paint2: the colour picker's square (saturation left to right, brightness bottom to top) and hue bar, laid out under
+    // the rows at `y` (the description's place): Menu::picker_boxes
+    struct PickerBoxes { float sq[4], bar[4]; };   // x, y, w, h
+    static PickerBoxes picker_boxes(float y);
+    // the y the description (or the picker) starts at for `rows` rows
+    static float panel_detail_y(std::size_t rows) { return kPanelY0 + 32.0f + kPanelRowH * float(rows) + 8.0f; }
 
 private:
     // One held direction: acts on the press, then after the repeat delay at the repeat interval. Blocked (no action)
@@ -325,6 +433,7 @@ private:
     bool was_confirm_ = true, was_back_ = true, was_previous_ = true, was_next_ = true, was_reset_ = true;
     Repeat up_, down_, left_, right_, section_up_, section_down_;
     bool dragging_ = false;
+    bool panel_pointer_ = false;   // nextstart (set_panel_pointer)
     std::uint32_t drag_id_ = 0;
     float open_time_ = 0, tab_time_ = 0, clock_ = 0;   // since open / the last tab switch / running (animation)
     int tab_from_ = 0;                    // the last tab switch's direction (-1 left, +1 right)

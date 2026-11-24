@@ -544,6 +544,18 @@ const PortInfo kPort[kPortActions] = {
     {"car_look", "CAR LOOK PANEL", "Open or close the live car reflection tuner (needs DEVELOPER MODS on).", false, false, false},
     {"hd_textures", "HD TEXTURES ON / OFF", "Switch between the HD texture pack and the original textures at once, to compare (this run only).", false, true, false},
     {"race_time", "TIME OF DAY PER RACE", "The track pages (Single Event, Multiplayer): Default, Day or Night for the next race.", false, true, false},
+    {"paint_panel", "CAR PAINT PANEL", "SELECT CAR: open or close the car paint panel (a controller: the menus' Circle button, Y on the Xbox and Nintendo layouts).", false, false, false},
+    {"shift_up", "SHIFT UP", "A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear up.", false, true, false},
+    {"shift_down", "SHIFT DOWN", "A race with TRANSMISSION Manual (SELECT OPTIONS): the next gear down.", false, true, false},
+    {"party_moon_jump", "MOON JUMP", "Held in a race: lifts your car into the air (GAME > PARTY MODES > MOON JUMP on).", false, true, false},
+    {"party_crash", "CRASH", "In a race: crashes your car at once (GAME > PARTY MODES > CRASH ON DEMAND on).", false, true, false},
+    {"party_ai_driver", "AI DRIVER", "In a race: the game's AI drives your car, and you again on the next press (GAME > PARTY MODES > AI DRIVER BUTTON on).", false, true, false},
+    {"replay", "REPLAY", "A race's results page, with RACE REPLAY on (GAME > MODES): watch the race again; while it plays: back to the results.", false, true, false},
+    {"replay_camera_prev", "REPLAY: PREVIOUS CAMERA", "While a race replay plays: the previous camera angle.", false, true, false},
+    {"replay_camera_next", "REPLAY: NEXT CAMERA", "While a race replay plays: the next camera angle.", false, true, false},
+    {"replay_car_prev", "REPLAY: PREVIOUS CAR", "While a race replay plays: watch the previous car.", false, true, false},
+    {"replay_car_next", "REPLAY: NEXT CAR", "While a race replay plays: watch the next car.", false, true, false},
+    {"replay_free_camera", "REPLAY: FREE CAMERA", "While a race replay plays: a free camera (photo mode's controls), and back.", false, true, false},
 };
 
 PortControls make_default_port() {
@@ -561,6 +573,18 @@ PortControls make_default_port() {
     set(PortAction::CarLook, {65}, {});                            // F8
     set(PortAction::HdTextures, {61}, {});                         // F4 (hdkey; a gamepad binding can be added)
     set(PortAction::RaceTime, {23}, {P::LeftShoulder});            // T; LB / L1 (todrace: the track page reads neither)
+    set(PortAction::PaintPanel, {19}, {});                         // P (paintsel; photo mode's P too: never on SELECT CAR)
+    set(PortAction::ShiftUp, {24}, {P::RightPaddle1});             // U; the right paddle (gearbox: no layout binds the paddles)
+    set(PortAction::ShiftDown, {28}, {P::LeftPaddle1});            // Y; the left paddle
+    set(PortAction::PartyMoonJump, {33}, {});                      // 4 (party1: no controller button of its own: bindable)
+    set(PortAction::PartyCrash, {34}, {});                         // 5
+    set(PortAction::PartyAiDriver, {35}, {});                      // 6
+    set(PortAction::Replay, {63}, {P::West});                      // F6; Square / X (replayview: the results pages read neither)
+    set(PortAction::ReplayCameraPrev, {47}, {P::DpadDown});        // [ ; replaycams (the replay only)
+    set(PortAction::ReplayCameraNext, {48}, {P::DpadUp});          // ]
+    set(PortAction::ReplayCarPrev, {54}, {P::DpadLeft});           // ,
+    set(PortAction::ReplayCarNext, {55}, {P::DpadRight});          // .
+    set(PortAction::ReplayFreeCamera, {12}, {P::Start});           // I
     set(PortAction::PhotoMode, {19}, {P::LeftStick, P::RightStick});   // P; L3 + R3
     set(PortAction::SectionPrev, {75}, {});                        // Page Up
     set(PortAction::SectionNext, {78}, {});                        // Page Down
@@ -609,7 +633,10 @@ const char* port_key(PortAction a) { return std::size_t(a) < std::size_t(kPortAc
 const char* port_label(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) ? kPort[std::size_t(a)].label : "?"; }
 const char* port_use(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) ? kPort[std::size_t(a)].use : ""; }
 bool port_photo(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) && kPort[std::size_t(a)].photo; }
-bool port_page(PortAction a) { return a == PortAction::RaceTime; }
+bool port_replay(PortAction a) { return a >= PortAction::ReplayCameraPrev && a <= PortAction::ReplayFreeCamera; }
+bool port_page(PortAction a) {
+    return a == PortAction::RaceTime || a == PortAction::PaintPanel || a == PortAction::Replay || port_replay(a);
+}
 bool port_has_pad(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) && kPort[std::size_t(a)].pad; }
 bool port_analog(PortAction a) { return std::size_t(a) < std::size_t(kPortActions) && kPort[std::size_t(a)].analog; }
 
@@ -679,12 +706,18 @@ bool take_port_chord(GamepadState& g, const PortControls& p, PortAction a, float
     return true;
 }
 
-bool page_reads_input(const Controls& c, const PhysInput& in) {
+bool page_reads_input(const Controls& c, const PhysInput& in) { return page_reads_input(c, in, PortAction::RaceTime); }
+
+bool page_reads_input(const Controls& c, const PhysInput& in, PortAction a) {
+    if (port_replay(a)) return false;   // replaycams: the game reads no input while its replay plays
     static constexpr Ds2 kRead[] = {Ds2::Cross, Ds2::Triangle, Ds2::Up, Ds2::Down, Ds2::Left, Ds2::Right,
-                                    Ds2::SteerLeft, Ds2::SteerRight, Ds2::StickUp, Ds2::StickDown};
+                                    Ds2::SteerLeft, Ds2::SteerRight, Ds2::StickUp, Ds2::StickDown, Ds2::Square};
+    // paintsel: SELECT CAR reads Square too (the colour: car_select.h), the track pages do not
+    const std::size_t n = std::size(kRead) - (a == PortAction::PaintPanel ? 0 : 1);
     for (int p = 0; p < kPlayers; ++p) {
         const PlayerControls& pc = c.player[std::size_t(p)];
-        for (Ds2 g : kRead) {
+        for (std::size_t gi = 0; gi < n; ++gi) {
+            const Ds2 g = kRead[gi];
             if (in.device == Device::Keyboard) {
                 for (const KeyBind& k : pc.keys[idx(g)])
                     if (k.scancode == in.key && overlap(k.ctx, KeyCtx::Menu)) return true;
@@ -699,7 +732,7 @@ bool page_reads_input(const Controls& c, const PhysInput& in) {
 
 bool port_page_safe(const Controls& c, PortAction a, Device d) {
     for (const PhysInput& in : bound_port(c, a, d))
-        if (page_reads_input(c, in)) return false;
+        if (page_reads_input(c, in, a)) return false;
     return true;
 }
 
@@ -728,6 +761,8 @@ std::vector<Use> uses_port(const Controls& c, PortAction a, Device d, const Phys
         if (PortAction(b) == a) continue;
         // todrace: a page's action and photo mode's are never active together
         if ((port_page(a) && port_photo(PortAction(b))) || (port_photo(a) && port_page(PortAction(b)))) continue;
+        // paintsel: photo mode is entered from the race's pause menu only, never on a page action's page (P is both)
+        if ((port_page(a) && PortAction(b) == PortAction::PhotoMode) || (a == PortAction::PhotoMode && port_page(PortAction(b)))) continue;
         if (d == Device::Keyboard) {
             const auto& l = c.port.keys[std::size_t(b)];
             if (std::find(l.begin(), l.end(), in.key) != l.end()) o.push_back({0, Ds2::Cross, true, PortAction(b)});
@@ -901,6 +936,20 @@ const PadBindings& pad_bindings(const PlayerControls& p, PadStyle family) {
 
 const PadBindings& pad_default(const PlayerControls& p, PadStyle family) {
     return layout_bindings(resolved_layout(p.layout == PadLayout::Custom ? PadLayout::Auto : p.layout, family));
+}
+
+bool right_stick_bound(const PadBindings& b, KeyCtx ctx, const PortControls* port) {
+    const auto axis = [](PadInput in) { return in == PadInput::RightXNeg || in == PadInput::RightXPos || in == PadInput::RightYNeg || in == PadInput::RightYPos; };
+    for (const auto& binds : b)
+        for (const PadBind& k : binds)
+            if (axis(k.in) && (k.ctx == KeyCtx::Any || ctx == KeyCtx::Any || k.ctx == ctx)) return true;
+    if (port)
+        for (int a = 0; a < kPortActions; ++a) {
+            const auto pa = PortAction(a);
+            if ((port_photo(pa) && pa != PortAction::PhotoMode) || port_page(pa)) continue;
+            for (PadInput in : port->pad[std::size_t(a)]) if (axis(in)) return true;
+        }
+    return false;
 }
 
 void set_page_family(Controls& c, int player, PadStyle family) { c.family[std::size_t(player & 1)] = family; }
@@ -1485,7 +1534,7 @@ RebindFlow::State RebindFlow::input(Controls& c, const PhysInput& in) {
     if (state_ != State::Waiting || in.device != device_) return state_;
     if (in.device == Device::Keyboard && key_reserved(in.key)) return state_;
     if (in.device == Device::Gamepad && (in.pad == PadInput::None || in.pad >= PadInput::Count)) return state_;
-    if (port_ && port_page(port_action_) && page_reads_input(c, in)) {   // todrace: the page would lose it: wait for another
+    if (port_ && port_page(port_action_) && page_reads_input(c, in, port_action_)) {   // todrace: the page would lose it: wait for another
         refused_ = in;
         waited_ = 0;
         return state_;
@@ -1531,8 +1580,11 @@ std::string RebindFlow::message(PadStyle style) const {
     const std::string who = port_ ? std::string() : "PLAYER " + std::to_string(player_ + 1) + " ";
     if (state_ == State::Waiting) {
         const int left = std::max(1, int(std::ceil(remaining())));
-        const std::string refused = refused_ ? input_label(*refused_, style) + " IS ONE THE TRACK PAGES USE THEMSELVES (CONFIRM, BACK, "
-                                               "THE D-PAD): CHOOSE ANOTHER.  " : std::string();
+        const std::string refused = !refused_ ? std::string()
+                                    : port_action_ == PortAction::PaintPanel   // paintsel
+                                        ? input_label(*refused_, style) + " IS ONE SELECT CAR USES ITSELF (CONFIRM, BACK, COLOUR, THE D-PAD): CHOOSE ANOTHER.  "
+                                        : input_label(*refused_, style) + " IS ONE THE TRACK PAGES USE THEMSELVES (CONFIRM, BACK, "
+                                                                          "THE D-PAD): CHOOSE ANOTHER.  ";
         return refused + std::string(device_ == Device::Keyboard ? (add_ ? "PRESS ANOTHER KEY FOR " : "PRESS A KEY FOR ")
                                                        : (add_ ? "PRESS ANOTHER CONTROLLER INPUT FOR " : "PRESS A BUTTON, STICK OR TRIGGER FOR ")) +
                who + act + where + ".  ESCAPE CANCELS (" + std::to_string(left) + ")";

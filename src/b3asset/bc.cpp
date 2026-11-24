@@ -132,7 +132,145 @@ void write_colour(u16 c0, u16 c1, const u8 idx[16], u8 out[8]) {
 }
 }  // namespace
 
+
+// ---- BC7 (texpack), from ARB_texture_compression_bptc (Khronos): Table.M, Table.P2 / P3, Table.A2 / A3a / A3b ----
+namespace {
+struct Bc7Mode { int ns, pb, rb, isb, cb, ab, epb, spb, ib, ib2; };
+constexpr Bc7Mode kBc7Modes[8] = {
+    {3, 4, 0, 0, 4, 0, 1, 0, 3, 0}, {2, 6, 0, 0, 6, 0, 0, 1, 3, 0}, {3, 6, 0, 0, 5, 0, 0, 0, 2, 0}, {2, 6, 0, 0, 7, 0, 1, 0, 2, 0},
+    {1, 0, 2, 1, 5, 6, 0, 0, 2, 3}, {1, 0, 2, 0, 7, 8, 0, 0, 2, 2}, {1, 0, 0, 0, 7, 7, 1, 0, 4, 0}, {2, 6, 0, 0, 5, 5, 1, 0, 2, 0}};
+// Table.P2 / Table.P3: the subset of each texel (raster order) per partition, 2 bits a texel, texel 0 lowest
+constexpr u8 kP2[64][16] = {
+    {0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1},{0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1},{0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1},{0,0,0,1,0,0,1,1,0,0,1,1,0,1,1,1},
+    {0,0,0,0,0,0,0,1,0,0,0,1,0,0,1,1},{0,0,1,1,0,1,1,1,0,1,1,1,1,1,1,1},{0,0,0,1,0,0,1,1,0,1,1,1,1,1,1,1},{0,0,0,0,0,0,0,1,0,0,1,1,0,1,1,1},
+    {0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1},{0,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1},{0,0,0,0,0,0,0,1,0,1,1,1,1,1,1,1},{0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1},
+    {0,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1},{0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1},{0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1},{0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1},
+    {0,0,0,0,1,0,0,0,1,1,1,0,1,1,1,1},{0,1,1,1,0,0,0,1,0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0,1,0,0,0,1,1,1,0},{0,1,1,1,0,0,1,1,0,0,0,1,0,0,0,0},
+    {0,0,1,1,0,0,0,1,0,0,0,0,0,0,0,0},{0,0,0,0,1,0,0,0,1,1,0,0,1,1,1,0},{0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0},{0,1,1,1,0,0,1,1,0,0,1,1,0,0,0,1},
+    {0,0,1,1,0,0,0,1,0,0,0,1,0,0,0,0},{0,0,0,0,1,0,0,0,1,0,0,0,1,1,0,0},{0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0},{0,0,1,1,0,1,1,0,0,1,1,0,1,1,0,0},
+    {0,0,0,1,0,1,1,1,1,1,1,0,1,0,0,0},{0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0},{0,1,1,1,0,0,0,1,1,0,0,0,1,1,1,0},{0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0},
+    {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1},{0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1},{0,1,0,1,1,0,1,0,0,1,0,1,1,0,1,0},{0,0,1,1,0,0,1,1,1,1,0,0,1,1,0,0},
+    {0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0},{0,1,0,1,0,1,0,1,1,0,1,0,1,0,1,0},{0,1,1,0,1,0,0,1,0,1,1,0,1,0,0,1},{0,1,0,1,1,0,1,0,1,0,1,0,0,1,0,1},
+    {0,1,1,1,0,0,1,1,1,1,0,0,1,1,1,0},{0,0,0,1,0,0,1,1,1,1,0,0,1,0,0,0},{0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0},{0,0,1,1,1,0,1,1,1,1,0,1,1,1,0,0},
+    {0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0},{0,0,1,1,1,1,0,0,1,1,0,0,0,0,1,1},{0,1,1,0,0,1,1,0,1,0,0,1,1,0,0,1},{0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0},
+    {0,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0},{0,0,1,0,0,1,1,1,0,0,1,0,0,0,0,0},{0,0,0,0,0,0,1,0,0,1,1,1,0,0,1,0},{0,0,0,0,0,1,0,0,1,1,1,0,0,1,0,0},
+    {0,1,1,0,1,1,0,0,1,0,0,1,0,0,1,1},{0,0,1,1,0,1,1,0,1,1,0,0,1,0,0,1},{0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0},{0,0,1,1,1,0,0,1,1,1,0,0,0,1,1,0},
+    {0,1,1,0,1,1,0,0,1,1,0,0,1,0,0,1},{0,1,1,0,0,0,1,1,0,0,1,1,1,0,0,1},{0,1,1,1,1,1,1,0,1,0,0,0,0,0,0,1},{0,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1},
+    {0,0,0,0,1,1,1,1,0,0,1,1,0,0,1,1},{0,0,1,1,0,0,1,1,1,1,1,1,0,0,0,0},{0,0,1,0,0,0,1,0,1,1,1,0,1,1,1,0},{0,1,0,0,0,1,0,0,0,1,1,1,0,1,1,1}};
+constexpr u8 kP3[64][16] = {
+    {0,0,1,1,0,0,1,1,0,2,2,1,2,2,2,2},{0,0,0,1,0,0,1,1,2,2,1,1,2,2,2,1},{0,0,0,0,2,0,0,1,2,2,1,1,2,2,1,1},{0,2,2,2,0,0,2,2,0,0,1,1,0,1,1,1},
+    {0,0,0,0,0,0,0,0,1,1,2,2,1,1,2,2},{0,0,1,1,0,0,1,1,0,0,2,2,0,0,2,2},{0,0,2,2,0,0,2,2,1,1,1,1,1,1,1,1},{0,0,1,1,0,0,1,1,2,2,1,1,2,2,1,1},
+    {0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2},{0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2},{0,0,0,0,1,1,1,1,2,2,2,2,2,2,2,2},{0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2},
+    {0,1,1,2,0,1,1,2,0,1,1,2,0,1,1,2},{0,1,2,2,0,1,2,2,0,1,2,2,0,1,2,2},{0,0,1,1,0,1,1,2,1,1,2,2,1,2,2,2},{0,0,1,1,2,0,0,1,2,2,0,0,2,2,2,0},
+    {0,0,0,1,0,0,1,1,0,1,1,2,1,1,2,2},{0,1,1,1,0,0,1,1,2,0,0,1,2,2,0,0},{0,0,0,0,1,1,2,2,1,1,2,2,1,1,2,2},{0,0,2,2,0,0,2,2,0,0,2,2,1,1,1,1},
+    {0,1,1,1,0,1,1,1,0,2,2,2,0,2,2,2},{0,0,0,1,0,0,0,1,2,2,2,1,2,2,2,1},{0,0,0,0,0,0,1,1,0,1,2,2,0,1,2,2},{0,0,0,0,1,1,0,0,2,2,1,0,2,2,1,0},
+    {0,1,2,2,0,1,2,2,0,0,1,1,0,0,0,0},{0,0,1,2,0,0,1,2,1,1,2,2,2,2,2,2},{0,1,1,0,1,2,2,1,1,2,2,1,0,1,1,0},{0,0,0,0,0,1,1,0,1,2,2,1,1,2,2,1},
+    {0,0,2,2,1,1,0,2,1,1,0,2,0,0,2,2},{0,1,1,0,0,1,1,0,2,0,0,2,2,2,2,2},{0,0,1,1,0,1,2,2,0,1,2,2,0,0,1,1},{0,0,0,0,2,0,0,0,2,2,1,1,2,2,2,1},
+    {0,0,0,0,0,0,0,2,1,1,2,2,1,2,2,2},{0,2,2,2,0,0,2,2,0,0,1,2,0,0,1,1},{0,0,1,1,0,0,1,2,0,0,2,2,0,2,2,2},{0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0},
+    {0,0,0,0,1,1,1,1,2,2,2,2,0,0,0,0},{0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0},{0,1,2,0,2,0,1,2,1,2,0,1,0,1,2,0},{0,0,1,1,2,2,0,0,1,1,2,2,0,0,1,1},
+    {0,0,1,1,1,1,2,2,2,2,0,0,0,0,1,1},{0,1,0,1,0,1,0,1,2,2,2,2,2,2,2,2},{0,0,0,0,0,0,0,0,2,1,2,1,2,1,2,1},{0,0,2,2,1,1,2,2,0,0,2,2,1,1,2,2},
+    {0,0,2,2,0,0,1,1,0,0,2,2,0,0,1,1},{0,2,2,0,1,2,2,1,0,2,2,0,1,2,2,1},{0,1,0,1,2,2,2,2,2,2,2,2,0,1,0,1},{0,0,0,0,2,1,2,1,2,1,2,1,2,1,2,1},
+    {0,1,0,1,0,1,0,1,0,1,0,1,2,2,2,2},{0,2,2,2,0,1,1,1,0,2,2,2,0,1,1,1},{0,0,0,2,1,1,1,2,0,0,0,2,1,1,1,2},{0,0,0,0,2,1,1,2,2,1,1,2,2,1,1,2},
+    {0,2,2,2,0,1,1,1,0,1,1,1,0,2,2,2},{0,0,0,2,1,1,1,2,1,1,1,2,0,0,0,2},{0,1,1,0,0,1,1,0,0,1,1,0,2,2,2,2},{0,0,0,0,0,0,0,0,2,1,1,2,2,1,1,2},
+    {0,1,1,0,0,1,1,0,2,2,2,2,2,2,2,2},{0,0,2,2,0,0,1,1,0,0,1,1,0,0,2,2},{0,0,2,2,1,1,2,2,1,1,2,2,0,0,2,2},{0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,2},
+    {0,0,0,2,0,0,0,1,0,0,0,2,0,0,0,1},{0,2,2,2,1,2,2,2,0,2,2,2,1,2,2,2},{0,1,0,1,2,2,2,2,2,2,2,2,2,2,2,2},{0,1,1,1,2,0,1,1,2,2,0,1,2,2,2,0}};
+constexpr u8 kA2[64] = {15,15,15,15,15,15,15,15, 15,15,15,15,15,15,15,15, 15, 2, 8, 2, 2, 8, 8,15,  2, 8, 2, 2, 8, 8, 2, 2,
+                        15,15, 6, 8, 2, 8,15,15,  2, 8, 2, 2, 2,15,15, 6,  6, 2, 6, 8,15,15, 2, 2, 15,15,15,15,15, 2, 2,15};
+constexpr u8 kA3a[64] = { 3, 3,15,15, 8, 3,15,15,  8, 8, 6, 6, 6, 5, 3, 3,  3, 3, 8,15, 3, 3, 6,10,  5, 8, 8, 6, 8, 5,15,15,
+                          8,15, 3, 5, 6,10, 8,15, 15, 3,15, 5,15,15,15,15,  3,15, 5, 5, 5, 8, 5,10,  5,10, 8,13,15,12, 3, 3};
+constexpr u8 kA3b[64] = {15, 8, 8, 3,15,15, 3, 8, 15,15,15,15,15,15,15, 8, 15, 8,15, 3,15, 8,15, 8,  3,15, 6,10,15,15,10, 8,
+                         15, 3,15,10,10, 8, 9,10,  6,15, 8,15, 3, 6, 6, 8, 15, 3,15,15,15,15,15,15, 15,15,15,15, 3,15,15, 8};
+constexpr u8 kW2[4] = {0, 21, 43, 64}, kW3[8] = {0, 9, 18, 27, 37, 46, 55, 64};
+constexpr u8 kW4[16] = {0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64};
+struct Bits {   // the block's 128 bits read lowest first
+    const u8* b;
+    int at = 0;
+    unsigned take(int n) {
+        unsigned v = 0;
+        for (int i = 0; i < n; ++i, ++at) v |= unsigned((b[at >> 3] >> (at & 7)) & 1) << i;
+        return v;
+    }
+};
+int bc7_weight(int bits, unsigned i) { return bits == 2 ? kW2[i] : bits == 3 ? kW3[i] : kW4[i]; }
+u8 bc7_lerp(int e0, int e1, int w) { return u8(((64 - w) * e0 + w * e1 + 32) >> 6); }
+}  // namespace
+
+bool bc7_tables_check() {   // (tests) the tables agree: texel 0 in subset 0, each anchor in its own subset
+    for (int p = 0; p < 64; ++p) {
+        if (kP2[p][0] || kP3[p][0] || kP2[p][kA2[p]] != 1 || kP3[p][kA3a[p]] != 1 || kP3[p][kA3b[p]] != 2) return false;
+        for (int i = 0; i < 16; ++i) if (kP2[p][i] > 1 || kP3[p][i] > 2) return false;
+    }
+    return true;
+}
+
+void bc7_decode_block(const std::uint8_t* b, std::uint8_t px[16][4]) {
+    int mode = 0;
+    while (mode < 8 && !((b[0] >> mode) & 1)) ++mode;
+    if (mode == 8) {   // reserved: transparent black
+        std::memset(px, 0, 16 * 4);
+        return;
+    }
+    const Bc7Mode& m = kBc7Modes[mode];
+    Bits r{b, mode + 1};
+    const unsigned part = r.take(m.pb), rot = r.take(m.rb), isel = r.take(m.isb);
+    int ep[3][2][4] = {};   // [subset][endpoint][channel], the stored bits first
+    for (int c = 0; c < 3; ++c)
+        for (int s = 0; s < m.ns; ++s)
+            for (int e = 0; e < 2; ++e) ep[s][e][c] = int(r.take(m.cb));
+    for (int s = 0; s < m.ns; ++s)
+        for (int e = 0; e < 2; ++e) ep[s][e][3] = m.ab ? int(r.take(m.ab)) : 255;
+    int pbit[3][2] = {};
+    if (m.epb)
+        for (int s = 0; s < m.ns; ++s)
+            for (int e = 0; e < 2; ++e) pbit[s][e] = int(r.take(1));
+    if (m.spb)
+        for (int s = 0; s < m.ns; ++s) pbit[s][0] = pbit[s][1] = int(r.take(1));
+    const bool has_p = m.epb || m.spb;
+    // to 8 bits: the P-bit below the stored bits, then the top bits repeated into the rest
+    for (int s = 0; s < m.ns; ++s)
+        for (int e = 0; e < 2; ++e)
+            for (int c = 0; c < 4; ++c) {
+                const int bits = c < 3 ? m.cb : m.ab;
+                if (c == 3 && !m.ab) continue;
+                int v = ep[s][e][c], n = bits;
+                if (has_p) { v = v << 1 | pbit[s][e]; ++n; }
+                v <<= 8 - n;
+                ep[s][e][c] = v | (v >> n);
+            }
+    // subsets and anchors
+    u8 subset[16] = {};
+    if (m.ns == 2) std::memcpy(subset, kP2[part], 16);
+    if (m.ns == 3) std::memcpy(subset, kP3[part], 16);
+    auto anchor = [&](int i) {
+        if (i == 0) return true;
+        if (m.ns == 2) return i == kA2[part];
+        if (m.ns == 3) return i == kA3a[part] || i == kA3b[part];
+        return false;
+    };
+    unsigned idx[16], idx2[16] = {};
+    for (int i = 0; i < 16; ++i) idx[i] = r.take(m.ib - (anchor(i) ? 1 : 0));
+    if (m.ib2)
+        for (int i = 0; i < 16; ++i) idx2[i] = r.take(m.ib2 - (i == 0 ? 1 : 0));
+    for (int i = 0; i < 16; ++i) {
+        const int s = subset[i];
+        // colour from the secondary indices when the selection bit says so; alpha from the secondary ones when there are
+        // any and no selection bit says otherwise
+        const bool col2 = m.ib2 && isel, alp2 = m.ib2 && !isel;
+        const int cbits = col2 ? m.ib2 : m.ib, abits = alp2 ? m.ib2 : m.ib;
+        const int cw = bc7_weight(cbits, col2 ? idx2[i] : idx[i]), aw = bc7_weight(abits, alp2 ? idx2[i] : idx[i]);
+        u8 o[4];
+        for (int c = 0; c < 3; ++c) o[c] = bc7_lerp(ep[s][0][c], ep[s][1][c], cw);
+        o[3] = m.ab ? bc7_lerp(ep[s][0][3], ep[s][1][3], aw) : 255;
+        if (rot) std::swap(o[3], o[rot - 1]);
+        std::memcpy(px[i], o, 4);
+    }
+}
+
 void bc_decode_block(int fmt, const std::uint8_t* b, std::uint8_t px[16][4]) {
+    if (fmt == kBC7) {
+        bc7_decode_block(b, px);
+        return;
+    }
     if (fmt == kBC1) {
         colour_block(b, px, true);
         return;
@@ -388,6 +526,44 @@ void mip_down(const Image& src, Image& dst) {
             }
         }
     }
+}
+
+// hdmips (bc.h)
+std::size_t bc_consistent_levels(const std::vector<Image>& chain, bool alpha) {
+    if (chain.empty()) return 0;
+    double prev[4] = {0, 0, 0, 0};
+    for (std::size_t l = 0; l < chain.size(); ++l) {
+        const Image& lv = chain[l];
+        const int bw = (lv.w + 3) / 4, bh = (lv.h + 3) / 4;
+        const std::size_t n = std::size_t(bw) * bh, bsz = bc_block_bytes(lv.bc);
+        // a level this check cannot read (not BC1-3, no blocks, too few bytes): nothing to judge, the chain kept as it is
+        if (!lv.blocks || lv.bc < kBC1 || lv.bc > kBC3 || lv.w < 1 || lv.h < 1 || lv.blocks->size() < n * bsz) return chain.size();
+        // the blocks sampled: all of them up to 4096, else 4096 at golden-ratio positions over the block index (spread over
+        // every column whatever the row width: a fixed stride that divides the row would see only a few columns)
+        const std::size_t samples = std::min<std::size_t>(n, 4096);
+        double sum[4] = {0, 0, 0, 0}, texels = 0;
+        u8 px[16][4];
+        for (std::size_t j = 0; j < samples; ++j) {
+            const std::size_t i = samples == n ? j : std::min(n - 1, std::size_t(std::fmod(double(j) * 0.6180339887498949, 1.0) * double(n)));
+            bc_decode_block(lv.bc, lv.blocks->data() + i * bsz, px);
+            const int bx = int(i % std::size_t(bw)), by = int(i / std::size_t(bw));
+            for (int t = 0; t < 16; ++t) {
+                if (bx * 4 + (t & 3) >= lv.w || by * 4 + (t >> 2) >= lv.h) continue;   // only the texels inside w x h (1 x 1, 2 x 2)
+                for (int c = 0; c < 4; ++c) sum[c] += px[t][c];
+                texels += 1;
+            }
+        }
+        double m[4];
+        for (int c = 0; c < 4; ++c) m[c] = texels > 0 ? sum[c] / texels : 0.0;
+        if (l > 0) {
+            // tolerance: BC's own error and sampling, plus a quarter of the parent's level (dark textures keep a floor)
+            for (int c = 0; c < 3; ++c)
+                if (std::fabs(m[c] - prev[c]) > 24.0 + 0.25 * prev[c]) return l;
+            if (alpha && std::fabs(m[3] - prev[3]) > 40.0) return l;
+        }
+        for (int c = 0; c < 4; ++c) prev[c] = m[c];
+    }
+    return chain.size();
 }
 
 }  // namespace b3asset

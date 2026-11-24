@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../src/b3replay/clock.h"
+#include "../src/b3replay/motion_stats.h"
 #include "test.h"
 
 namespace {
@@ -66,8 +67,21 @@ TEST(schedule_clock_follows_the_stamps_without_starving) {
     CHECK(c.margin_ms > 5.0 && c.margin_ms < 7.5);   // p95 of 2..6 ms, + 1 ms
 }
 
+// stutter: native_play's stamps are the pacer's schedule, so a 2-tick frame's two polls (back to back in one VBlank)
+// carry the same stamp, the frame's VBlank, and arrive together soon after it. (lat1's first model, the pair stamped a
+// tick apart and both arriving after the second, is not produced any more: its first tick's lag of more than a VBlank
+// would be clamped to one, step_sched.)
 TEST(schedule_clock_two_tick_frames) {
-    Feed f = steady(600, 1000000000ull, true, 2);
+    Feed f;
+    {
+        std::mt19937 r(7);
+        std::uniform_int_distribution<int> lag(2000000, 6000000);
+        for (std::size_t i = 0; i < 600; ++i) {
+            const std::uint64_t s = 1000000000ull + (i - i % 2) * kT, a = s + std::uint64_t(lag(r));
+            f.sched.push_back(s);
+            f.arrive.push_back(i % 2 ? std::max(a, f.arrive.back()) : a);
+        }
+    }
     b3replay::DisplayClockT<Feed> c;
     std::uint64_t starved = 0, frames = 0, backwards = 0;
     double prev = -1;
@@ -81,7 +95,49 @@ TEST(schedule_clock_two_tick_frames) {
     CHECK(starved * 100 < frames * 3);
     CHECK(backwards == 0);
     CHECK_NEAR(c.rate, 60.0, 0.1);
-    CHECK(c.margin_ms > 16.7 && c.margin_ms < 25.0);   // the pair's first tick arrives a tick after its stamp
+    CHECK(c.margin_ms > 5.0 && c.margin_ms < 8.0);   // p95 of the 2..6 ms lags, + 1 ms
+}
+
+// stutter (Fable): a hitch must not keep the delay up. A 200 ms stop of the game thread right after tick 300's VBlank:
+// tick 300 arrives 200 ms late, the 12 VBlanks after it start late (marked, b3live::sched_late) and catch up back to
+// back, then all is on time again. The margin stays at most a VBlank over the floor throughout and is back to normal
+// within a second; without the late marks (the clamp and the cap only) it is back once the clamped lags have left the
+// 2 s window and the margin has eased back (5 % a tick): within 3.5 s.
+TEST(stall_does_not_keep_the_margin) {
+    const auto run = [](bool marks, double& before, double& peak, double& after_1s, double& after_2s) {
+        Feed f;
+        std::mt19937 r(5);
+        std::uniform_int_distribution<int> lag(500000, 1500000);
+        const std::uint64_t t0 = 1000000000ull, stall = 200000000ull;
+        const std::uint64_t back = t0 + 300 * kT + stall;   // when the game thread goes on
+        for (std::size_t i = 0; i < 900; ++i) {
+            const std::uint64_t due = t0 + i * kT;
+            const bool late = i > 300 && due < back;
+            const std::uint64_t start = i == 300 ? due + stall : late ? back + (i - 300) * 300000ull : due;
+            f.sched.push_back(b3live::sched_stamp(due, marks && late));
+            f.arrive.push_back(start + std::uint64_t(lag(r)));
+        }
+        b3replay::DisplayClockT<Feed> c;
+        const std::uint64_t caught = f.arrive[313];
+        before = peak = after_1s = after_2s = 0;
+        for (std::uint64_t now = f.arrive[3]; now < f.arrive.back(); now += 2100000) {
+            f.receive_until(now);
+            c.step_sched(f, 1.0, 1.5, now);
+            if (now < t0 + 300 * kT) before = c.margin_ms;
+            else peak = std::max(peak, c.margin_ms);
+            if (now <= caught + 1000000000ull) after_1s = c.margin_ms;
+            if (now <= caught + 3500000000ull) after_2s = c.margin_ms;
+        }
+    };
+    double before, peak, a1, a2;
+    run(true, before, peak, a1, a2);
+    CHECK(before > 1.5 && before < 3.0);
+    CHECK(peak <= 1.0 + 1e3 / 59.94 + 1e-9);
+    CHECK(a1 < before + 0.5);
+    std::printf("  (stall: margin before %.2f ms, at most %.2f, a second after %.2f)\n", before, peak, a1);
+    run(false, before, peak, a1, a2);
+    CHECK(peak <= 1.0 + 1e3 / 59.94 + 1e-9);
+    CHECK(a2 < before + 0.5);
 }
 
 // split2p (a report: split screen choppy at 150-200 FPS): native_play's 2-tick frames (split screen, crashes) latch their
@@ -194,6 +250,62 @@ TEST(fast_load_newest_then_no_step_back) {
                 if (low) CHECK(r.sched_after);
                 CHECK(r.rate_after > 55.0 && r.rate_after < 65.0);
             }
+}
+
+// stutter (a report: "a weird stutter throughout play", clean frame times): the same game, its ticks stamped on the
+// pacer's schedule (fast_load.h Pacer::stamp_ns, what the polls carry now) or at the moment the game thread reached the
+// poll (the old steady_clock::now(): the schedule plus 0..4 ms of wake-up and work), shown at ~476 fps. On the schedule:
+// no step back, every frame's game-time step within a few % of the ideal. At the poll's time: the shown game time steps
+// back and forth at the ticks (the judder).
+TEST(schedule_stamps_steady_poll_stamps_judder) {
+    const auto run = [](bool at_poll) {
+        Feed f;
+        std::mt19937 r(11);
+        std::uniform_int_distribution<int> work(0, 4000000), lag(500000, 1500000);
+        const std::uint64_t t0 = 1000000000ull;
+        for (std::size_t i = 0; i < 900; ++i) {
+            const std::uint64_t due = t0 + i * kT, poll = due + std::uint64_t(work(r));
+            f.sched.push_back(at_poll ? poll : due);
+            f.arrive.push_back(poll + std::uint64_t(lag(r)));
+        }
+        b3replay::DisplayClockT<Feed> c;
+        b3replay::MotionStats m;
+        for (std::uint64_t now = f.arrive[3]; now < f.arrive.back(); now += 2100000) {
+            f.receive_until(now);
+            const double x = c.step_sched(f, 1.0, 1.5, now);
+            if (now > f.arrive[120]) m.frame(now, x, 1e9 / double(kT));
+        }
+        return m;
+    };
+    const b3replay::MotionStats sched = run(false), poll = run(true);
+    CHECK(sched.frames > 1500 && poll.frames > 1500);
+    CHECK(sched.back == 0);
+    CHECK(b3replay::MotionStats::pct(sched.err, 95) < 0.05);
+    CHECK(poll.back > 0 || b3replay::MotionStats::pct(poll.err, 95) > 0.25);   // the judder the schedule stamps remove
+}
+
+// stutter (src/b3replay/motion_stats.h): steady motion has no error; a held stretch and a step back are counted
+TEST(motion_stats_counts_holds_and_steps_back) {
+    b3replay::MotionStats m;
+    std::uint64_t t = 1000000000ull;
+    double x = 0;
+    for (int k = 0; k < 100; ++k) { m.frame(t, x, 60.0); t += 4000000; x += 0.24; }
+    CHECK(m.frames == 99 && m.held == 0 && m.back == 0 && b3replay::MotionStats::pct(m.err, 99) < 1e-4);
+    m.frame(t, x - 0.24, 60.0);   // shown where it was: held
+    t += 4000000;
+    m.frame(t, x - 0.5, 60.0);    // back
+    CHECK(m.held == 1 && m.back == 1);
+    m.reset_run();
+    m.frame(t + 500000000ull, 100.0, 60.0);   // after a load: no step counted
+    CHECK(m.frames == 101);
+    // motionend: at ~670 fps a still stretch is frames 1.5 ms apart: its frames past the first 2 ms count as held
+    std::uint64_t u = t + 500000000ull;
+    for (int k = 0; k < 10; ++k) { u += 1500000; m.frame(u, 100.0, 60.0); }
+    CHECK(m.held == 1 + 9 && m.held_s > 0.0174 && m.held_s < 0.0176);   // (the 4 ms one above, then 9 x 1.5 ms)
+    m.stamp(16.68);
+    m.stamp(500.0);   // (a pause: not a stamp interval)
+    CHECK(m.stamp_ms.size() == 1);
+    CHECK(m.summary("test").find("race motion: 111 frames") != std::string::npos);
 }
 
 TEST_MAIN("display clock (lat1 schedule mode)")

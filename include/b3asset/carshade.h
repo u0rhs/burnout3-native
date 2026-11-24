@@ -88,6 +88,12 @@ struct CarMeshConstants {
     std::uint32_t no_env;     // 1013.y: non-zero = no env pass [C]
 };
 CarMeshConstants car_mesh_constants(const CarScene& sc, const CarMeshInput& in);
+// taillights (night, rain; b3replay/taillights.h): a rear lamp mesh's level (0 off, 1 lit) from its material mask, the
+// tail level and the brake level: a brake mesh (0x10) max(tail, brake), a tail mesh (0x08) tail; -1 not a rear lamp
+float rear_lamp_level(std::uint16_t mask, float tail, float brake);
+// The constants of a rear lamp mesh at `level`: the unlit constants (its rear bits off) mixed towards the lit ones (on);
+// level 1 is car_mesh_constants with the bits on, level 0 with them off.
+CarMeshConstants car_mesh_constants_level(const CarScene& sc, const CarMeshInput& in, float level);
 
 // Per-vertex GS output of VU1 0x46BB80: pass 1 (context 1, the car atlas) and, unless no_env, pass 2 (context 2: the
 // sphere map TEX0_2, ALPHA_2, TEST_2 FB_ONLY) with the same positions.

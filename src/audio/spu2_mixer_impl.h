@@ -93,6 +93,31 @@ public:
     static const int16_t* gauss_table();   // 512 entries [spx]
     static int32_t gauss(uint32_t i, int32_t oldest, int32_t older, int32_t old, int32_t newest);
     static const int16_t* reverb_fir();    // 39 taps [spx]
+    // audioq: the host's final output from the unclamped mix (Core::host_l / host_r) through a peak limiter instead of
+    // the hardware's clamp (a race's loud moments sum far past full scale, which the clamp held at 32767 for up to a
+    // millisecond, heard as crackle): the output is kLookahead + 1 frames (1 ms) behind the mix, and both channels' gain
+    // ramps down within that time to keep the louder at kSoftKnee when its peak comes (no flat top, not even the first
+    // crest's), then comes back over kReleaseSeconds. Never over the knee it is the identity: the hardware's values,
+    // 1 ms later. soft_limit is the last safety (the identity up to the knee, a tanh curve above). With
+    // B3_AUDIO_HARD_CLIP=1 (or set_hard_clip) the output is the hardware's clamped value, as before, with no delay.
+    static constexpr int32_t kSoftKnee = 29000;
+    static constexpr double kReleaseSeconds = 0.08;
+    static int16_t soft_limit(int64_t v);
+    struct Limiter {
+        static constexpr int kLookahead = 48;
+        int64_t ring[kLookahead + 1][2] = {};
+        double need[kLookahead + 1] = {};
+        int pos = 0;
+        double g = 1.0;
+        Limiter() { for (double& n : need) n = 1.0; }
+        // one frame of the mix in; the frame kLookahead + 1 earlier out, limited
+        void step(int64_t l, int64_t r, int16_t& out_l, int16_t& out_r);
+    };
+    void set_hard_clip(bool on) {   // (B3_AUDIO_HARD_CLIP=1 keeps it on)
+        const bool h = on || hard_env_;
+        if (h != hard_clip_) limiter_ = Limiter{};   // audioq2: a switch starts the limiter afresh (no old frames played)
+        hard_clip_ = h;
+    }
 
     // ---- inspection ----
     uint64_t time() const { return t_; }
@@ -141,6 +166,9 @@ private:
         int32_t noise_timer = 0;
         uint16_t noise_level = 0;
         int32_t out_l = 0, out_r = 0;      // this sample's core output (after MVOL)
+        // audioq: the same without the clamps of the dry sums and the output (host only: the sound the player hears;
+        // no game-visible state comes from it), for the soft limit of the final output (soft_limit)
+        int64_t host_l = 0, host_r = 0;
     };
 
     void advance(uint64_t t);   // render samples up to t; IRQs on the way are latched into pending_
@@ -162,6 +190,9 @@ private:
     void key_off(int c, uint32_t mask);
 
     std::vector<uint8_t> ram_;
+    bool hard_clip_ = false;   // audioq (limit)
+    bool hard_env_ = false;    // audioq: B3_AUDIO_HARD_CLIP=1
+    Limiter limiter_;          // audioq
     // mac5 diagnostics (B3_SPU_STALE_LOG=1): a voice entering a 16-byte block it (or another voice) already played since
     // that block was last uploaded, in a region uploaded more than once (a stream's ring, not a sound bank): the music
     // looping over stale ring data. Per block: uploads, and the upload count at its last play (+1; 0 never played).

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Writes a C++ header embedding compiled shaders: <name>_spv (uint8 SPIR-V) and <name>_msl (MSL source) per shader,
+and (d3d12) <name>_dxil (a signed DXIL container, Windows builds only: #if defined(_WIN32)) with kDxil, the table from
+each SPIR-V array to its DXIL (b3gfx_sdl.cpp shader() takes the DXIL for the SPIR-V it is given on a D3D12 device),
 with each GLSL source's SHA-256 in a "// source sha256 <name> <hex>" line (the header's link to its sources): every .vert,
 .frag and .glsl file of the source dir (an embedded variant such as mesh_shadow.frag, built from mesh.frag with a define,
 and an included .glsl are covered through the files they come from).
@@ -71,6 +73,20 @@ def main(argv):
             lines.append("    " + ", ".join("0x%02x" % b for b in spv[i:i + 20]) + ",")
         lines.append("};")
         lines.append("inline const char %s_msl[] = R\"MSL(%s)MSL\";" % (ident(n), msl))
+    # d3d12: the DXIL, on Windows only (the other platforms have no D3D12: nothing in their binaries)
+    lines.append("#if defined(_WIN32)")
+    for n in names:
+        dxil = open(os.path.join(built, n + ".dxil"), "rb").read()
+        lines.append("alignas(4) inline const std::uint8_t %s_dxil[] = {" % ident(n))
+        for i in range(0, len(dxil), 20):
+            lines.append("    " + ", ".join("0x%02x" % b for b in dxil[i:i + 20]) + ",")
+        lines.append("};")
+    lines.append("struct Dxil { const std::uint8_t* spv; const std::uint8_t* code; std::size_t size; };")
+    lines.append("inline const Dxil kDxil[] = {")
+    for n in names:
+        lines.append("    {%s_spv, %s_dxil, sizeof %s_dxil}," % (ident(n), ident(n), ident(n)))
+    lines.append("};")
+    lines.append("#endif")
     lines.append("}  // namespace b3gfx::shaders")
     open(out, "w").write("\n".join(lines) + "\n")
     return 0

@@ -10,7 +10,9 @@
 #   No developer tools (b3view, b3replay, b3assetdump, gameview_replay, native_boot), no game data, no saves.
 #
 #   tools/release/package_win.sh              builds first: tools/native/build_win.sh RENDER=1 STRIP=1 into
-#                                             $WIN/release-build (the ~40-minute native build; JOBS as there)
+#                                             $WIN/release-build (the ~40-minute native build the first time, then
+#                                             only what changed: build_win.sh's staging by content and ccache,
+#                                             tools/toolchain/wincc.sh; JOBS / CCACHE as there)
 #   OUT=<folder> tools/release/package_win.sh packages a finished build (native_play.exe beside b3render.dll,
 #                                             SDL3.dll, Burnout3Launcher.exe, b3-icon.png); the copies are stripped
 #                                             here with the toolchain's strip.exe (SDL3.dll is left as shipped)

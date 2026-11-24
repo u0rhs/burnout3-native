@@ -47,7 +47,10 @@ struct GuestBytes {
 // is allocated alone with no guards (guard() == 0). Not copyable; the memory lives as long as the object.
 class GuardedRegion {
 public:
-    GuardedRegion(std::size_t size, std::size_t guard, const char* name);
+    // `growable`: that many bytes more reserved right after `size`, no-access (a guard) until grow() commits them
+    GuardedRegion(std::size_t size, std::size_t guard, const char* name, std::size_t growable = 0);
+    // MORE RIVALS: the growable bytes read-write and part of the region (zeroed); false when there are none
+    bool grow();
     ~GuardedRegion();
     GuardedRegion(const GuardedRegion&) = delete;
     GuardedRegion& operator=(const GuardedRegion&) = delete;
@@ -58,7 +61,7 @@ public:
 private:
     std::uint8_t* base_ = nullptr;   // the start of the reservation
     std::uint8_t* data_ = nullptr;
-    std::size_t size_ = 0, guard_ = 0;
+    std::size_t size_ = 0, guard_ = 0, growable_ = 0, total_ = 0;
     int slot_ = -1;
 };
 // hostfix: if host address `p` lies in a guard of a live GuardedRegion, writes "guest memory overrun: ..." (which
@@ -154,6 +157,7 @@ public:
     void clear();
 
     Windows windows() override;
+    bool grow_ram() override;   // MORE RIVALS: the reserved 33 MB after guest RAM committed, the windows re-bound
     [[noreturn]] void read_slow(gaddr address, void* dst, std::uint32_t len) override;
     [[noreturn]] void write_slow(gaddr address, const void* src, std::uint32_t len) override;
     void record_store(gaddr, std::uint32_t) override {}

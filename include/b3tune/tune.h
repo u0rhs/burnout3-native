@@ -617,7 +617,7 @@ struct State {
 template <class Mem>
 bool race_on(Mem& m) {
     const std::uint32_t n = m.load32(kRaceCarCount);
-    return n >= 1 && n <= 6 && m.load32(kRaceCarList) == kPlayerCar;
+    return n >= 1 && n <= 8 && m.load32(kRaceCarList) == kPlayerCar;   // (8: MORE RIVALS' races)
 }
 // One event: what it did, for the log ("boost = 240.0"; `wrote` false: no race now, nothing written)
 template <class Mem>

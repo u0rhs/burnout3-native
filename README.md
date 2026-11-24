@@ -40,7 +40,7 @@ with the PS2's physics unchanged. **No emulator, no PS2 code.**
 </div>
 
 <!-- stats:start -->
-| 🧬 **0** | 🎯 **4,655 / 5,652** | 🔁 **20 / 20** | ⚡ **Uncapped** |
+| 🧬 **0** | 🎯 **4,655 / 5,652** | 🔁 **21 / 21** | ⚡ **Uncapped** |
 |:-:|:-:|:-:|:-:|
 | <sub>chips emulated: no EE, VU, IOP, GS, SPU2 or IPU; the game binary has no interpreter</sub> | <sub>game functions rebuilt byte for byte; the other 997 as complete C, audited against retail</sub> | <sub>test scenarios with no PS2 code at all, identical run to run</sub> | <sub>frame rate: set your own limit; the game's 60 Hz simulation never changes</sub> |
 <!-- stats:end -->
@@ -66,7 +66,7 @@ layer and a renderer of our own. Nothing pretends to be a PS2 and no PS2 code ru
 | **Loading** | The PS2's load times | Fast loading (on by default) |
 | **Online** | Gone with EA's servers | Coming in a future release |
 
-> **Version 1.3.0.** Found a problem? Please [report it](#reporting-a-bug).
+> **Version 1.4.0.** Found a problem? Please [report it](#reporting-a-bug).
 
 ## Screenshots
 
@@ -103,6 +103,7 @@ of view, roll, depth of field and focus. Hide the display for a clean shot; F12 
   <img src="docs/screenshots/launcher-settings.jpg" alt="The launcher's settings" width="49%">
   <img src="docs/screenshots/launcher-showroom.jpg" alt="The launcher's car showroom" width="49%">
   <img src="docs/screenshots/settings-graphics.jpg" alt="The in-game SETTINGS, graphics tab" width="49%">
+  <img src="docs/screenshots/settings-extras.jpg" alt="The in-game SETTINGS, extras tab: everything the port adds, each with its own switch" width="49%">
   <img src="docs/screenshots/tuning-console.jpg" alt="The F9 tuning console over a race" width="49%">
 </p>
 
@@ -225,6 +226,7 @@ the game sees are marked ⚙️ in the feature list and start off.
 | **CONTROLS** | Rumble, adaptive triggers, analog triggers, boost toggle, instant restart, remapping per player, gyro |
 | **AUDIO** | Your music folder and playlist |
 | **GAME** | Button prompts, FPS counter, language, speed units, ghosts, speedrun timer, replays, accessibility (reduced flashes, colour-blind filters, HUD size), fast loading |
+| **EXTRAS** | What the port adds to the game itself, each with its own switch: Eliminator, race options, more rivals, more car series, traffic checking, mirror mode, party modes, race replays, and night and rain (experimental) |
 | **Launcher** | HD texture pack, your music folder, mods, saves, game data, showroom, update check |
 
 Details and every opt-in: [player guide, section 7](docs/PLAYING.md#7-settings-worth-knowing).
@@ -235,10 +237,12 @@ of field.
 ## Features
 
 Everything on top of the faithful port is a setting, most of them on a **SETTINGS** page added to the game's own
-main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **Defaults never change gameplay.**
+main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **Defaults never change gameplay.** What the
+port adds to the game itself (new modes, SELECT OPTIONS rows, car series, party modes) is on its **EXTRAS** page, each
+part with its own switch, all off until you turn it on but ELIMINATOR, plus night and rain as experimental options ([player guide](docs/PLAYING.md#extras-settings--extras)).
 
 <p align="center">
-✅ in the build &nbsp;·&nbsp; 🚧 built, being checked &nbsp;·&nbsp; 📋 planned &nbsp;·&nbsp; ⚙️ opt-in: off by default, because it changes the game's input or what the game sees
+✅ in the build &nbsp;·&nbsp; 🚧 built, being checked &nbsp;·&nbsp; 📋 planned &nbsp;·&nbsp; ⚙️ opt-in: off by default, because it changes the game's input, what the game sees or how it plays (the gameplay ones are on the EXTRAS page and keep their races' results apart)
 </p>
 
 <details>
@@ -254,10 +258,18 @@ main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **D
 | ✅ | **Field of view** | 60 to 120 (90 is the game's), with FOV correction |
 | ✅ | **Whole-track draw distance** | No streaming pop-in; traffic fades in before the game's draw limit |
 | ✅ | **Image quality** | MSAA up to 8x, anisotropic filtering up to 16x, car detail, shadows, motion blur, boost blur, bloom |
-| ✅ | **HD texture packs** | PCSX2-format replacement packs, picked from a folder dialog; the launcher links to Panda_Venom's HD Remaster pack |
+| ✅ | **HD texture packs** | PCSX2-format replacement packs, picked from a folder dialog; the launcher links to Panda_Venom's HD Remaster pack; converted textures cached on disk, so tracks load faster after the first time |
 | ✅ | **Quality presets** | PS2 original, Low, Medium, High, Ultra |
 | ✅ | **Photo mode** | Pause, then press P (L3 + R3 on a pad), even mid-crash: free camera, HUD off, depth of field, screenshots |
 | ✅ | **Split-screen layout** | Two players top / bottom (the game's) or side by side, each view at its own shape with its own HUD |
+| ✅ | **Car reflections that reach further** | REFLECTION DISTANCE up to 300 m, the roadside props and other cars in the paint, a sharper reflection |
+| ✅ | **Sun and prop shadows** | Real shadows of the cars on the road, and optionally of lamp posts, signs and barriers |
+| ✅ | **Glowing tunnel lights** | Tunnel fittings glow by day (TUNNEL LIGHTS), or as on the Xbox |
+| ✅ | **Camera extras** | Look around your car in a race (right stick or mouse), CAMERA ROLL into corners, FINISH CAMERA set pieces, CRASH CAMERA off |
+| ✅ | **Your own colours** | A paint panel on SELECT CAR (body, decals, wheels, boost glow, colour picker, Chrome finish); the car list's pictures drawn in your paint |
+| ✅ | **Direct3D 12 on Windows** | GRAPHICS API Auto, Vulkan or D3D12 |
+| ✅ | **HD packs in PNG and BC7** | PNG and BC7 replacement files load, with HD TEXTURE MEMORY to keep large packs in check |
+| 🚧 | **Night and rain** ⚙️ | Lit lamps, signs and windows at night; rain, wet roads, puddles and spray. Experimental, for your feedback (EXTRAS) |
 
 ### 🧭 Front end & launcher
 
@@ -270,7 +282,9 @@ main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **D
 | ✅ | **Skip intro movies** | Start or Cross skips a movie, never automatically; a small hint shows how |
 | ✅ | **Saves of your own** | Up to five `.sav` files, each with the game's three profiles and backups; import PS2 saves (`.psu`, `.max`, PCSX2 cards) |
 | ✅ | **Stats and achievements** | Your career read from your save, and 13 local achievements on the launcher's Stats page |
-| ✅ | **Car showroom** | All 67 cars on your disc in 3D on a turntable, with the game's own names, in your HD texture pack and mods' packs |
+| ✅ | **Car showroom** | Every car on your disc in 3D on a turntable, by series (traffic vehicles and your own cars too), with the game's own names, in your HD texture pack and mods' packs |
+| ✅ | **PRESS START at once** | The title takes Start as soon as it shows; START AT can skip the films or go straight to your profile |
+| ✅ | **Car stats** | GRIP and ACCELERATION beside the game's two on the car select |
 | ✅ | **Skip the launcher** | Start the game directly next time; hold Shift or a controller's Back / Select to get the launcher back |
 | ✅ | **Updates** | Each time it starts, the launcher asks GitHub if a newer release is out; **Install update** downloads it, checks its signature and installs it; can be turned off |
 | ✅ | **Safe mode** | After two unclean exits the game starts with safe settings, and says so |
@@ -288,17 +302,21 @@ main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **D
 | ✅ | **Local 2-player** | A second gamepad is player 2 |
 | ✅ | **Rumble** ⚙️ | The game's own vibration on your pads, with a strength slider and trigger rumble on Xbox pads |
 | ✅ | **DualSense adaptive triggers, gyro steering** ⚙️ | Triggers that resist, buzz while boosting and kick at a crash; steer by tilting or turning the pad, per player |
-| ✅ | **Car series on LB / RB** ⚙️ | On the car select the shoulder buttons change the series, with their glyphs beside the arrows |
+| ✅ | **Car series on LB / RB** | On the car select the shoulder buttons change the series, with their glyphs beside the arrows |
 | ✅ | **HUD size** | The race HUD at 100, 115, 130 or 150 %, each part grown from its own corner and kept on screen |
+| ✅ | **Manual gears** ⚙️ | The game's own manual gearbox, with SHIFT UP / DOWN keys and paddles (SELECT OPTIONS: TRANSMISSION) |
 | ✅ | **Accessibility** | Reduced screen flashes, colour-blind HUD filters (deuteranopia, protanopia, tritanopia), boost toggle ⚙️ or hold |
 
-### 🎵 Music
+### 🎵 Music & sound
 
 | | Feature | |
 |:-:|:--|:--|
 | ✅ | **Your own music in EA Trax** | A folder of your songs: EA Trax only, yours only, or mixed; the game's radio plays them |
 | ✅ | **Now-playing popup** | The EA Trax display shows your song's title, artist and album |
 | ✅ | **Other music apps on Linux** ⚙️ | Whatever Spotify, a browser or any player is playing shows in the EA Trax popup (MPRIS) |
+| ✅ | **Even loudness** | Your songs from different sources played at the same loudness |
+| ✅ | **Cleaner sound** | SOUND OUTPUT Clean (the default) evens out loud moments instead of clipping them; Original keeps the PS2's sound |
+| ✅ | **Takedown streak pitch** | Each takedown after your 10th since your last crash sounds higher, as in World Tour (off by default) |
 | 🚧 | **Other music apps on Windows** ⚙️ | The same through Windows media sessions: built, its desktop check pending (macOS has no public interface for it) |
 
 ### 🏁 Play
@@ -309,6 +327,18 @@ main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **D
 | ✅ | **Time Attack ghosts** ⚙️ | Race your best lap |
 | ✅ | **Speedrun timer** | Game time from the start signal in the HUD's own digits, with splits and bests per event and car |
 | ✅ | **Instant restart** ⚙️ | F5 or Select + Start restarts the event through the game's own pause menu |
+| ✅ | **Eliminator in Single Event** | World Tour's Eliminator on any track (on by default), and TIMED ELIMINATION ⚙️ (last car out every 24 s) |
+| ✅ | **Race options** ⚙️ | Single Event's SELECT OPTIONS: traffic amount and pattern, laps, rivals and their cars, standing start with BOOST START, rival style, time limit, Burnout points |
+| ✅ | **Up to eight cars** ⚙️ | RACE's RIVALS up to 7 |
+| ✅ | **More cars to drive** ⚙️ | The Heavyweights in Single Event, every traffic vehicle (cars, taxis, the tuk tuk, buses, big rigs), your car mods as a CUSTOM series and the cut prototype cars as BETA |
+| ✅ | **Mirror mode** ⚙️ | Single Event and two-player races on mirrored tracks |
+| ✅ | **Crashbreaker everywhere** ⚙️ | Blow up your wreck in Race, Time Attack and Road Rage |
+| ✅ | **Traffic checking** ⚙️ | Burnout Revenge's traffic checks (Revenge) or any traffic shoved aside (Extreme), with chains and shots |
+| ✅ | **Deformation and loose parts** ⚙️ | How much cars crumple (None to 200 %); every loose part can come off in Road Rage |
+| ✅ | **Party modes** ⚙️ | Crazy AI physics, moon jump, crash on demand, the AI driving your car, kamikaze traffic, tuk-tuks for everyone |
+| ✅ | **Race replay** ⚙️ | Watch the race you just drove from its results page, with your choice of camera |
+| ✅ | **Car viewer** ⚙️ | The game's own car viewer in YOUR GARAGE |
+| ✅ | **HUD extras** | RPM meter, boost bar shake, rival names and distances over their cars, the rivals' turn signals (off by default) |
 
 ### 🛠️ Modding
 
@@ -327,7 +357,8 @@ main menu, in the game's fonts ([docs/pc-settings.md](docs/pc-settings.md)). **D
 | ✅ | **Track import** | Edited routes back as patch mods; unedited, all 37 routes come back byte for byte (visual only: cars drive on the original surface) |
 | ✅ | **Blender round trip** | An add-on imports a car from your disc and exports a mod in a few clicks; routes go through Blender's own glTF add-on |
 | ✅ | **Ten tutorials** | From replacing a texture to editing a track in Blender |
-| 📋 | **More** | New car slots, events and crash junctions; sky import |
+| ✅ | **Car mods as extra cars** | Car mods and car packs as cars of their own in a CUSTOM series (up to 200), never in place of the game's; car mods from older builds load too |
+| 📋 | **More** | New events and crash junctions; sky import |
 
 ### 🌐 Online
 
@@ -405,8 +436,9 @@ image of your own disc.
 <summary><b>What PC do I need?</b></summary>
 <br>
 
-On Windows and Linux, any graphics card with a **Vulkan 1.0** driver (no newer Vulkan version is needed). There is no
-Direct3D or OpenGL path, so a GPU without any Vulkan driver (for example Intel HD 4000 on Windows) cannot run it. On a
+On Windows and Linux, any graphics card with a **Vulkan 1.0** driver (no newer Vulkan version is needed). On Windows,
+**Direct3D 12** works too (GRAPHICS API in the settings; it is also used by itself when no working Vulkan device can be created). There is no
+OpenGL path, so on Linux a GPU without any Vulkan driver cannot run it. On a
 Mac, an Apple Silicon Mac (Metal). The minimum CPU and memory are not measured yet; see
 [Requirements](#platforms) and the [player guide](docs/PLAYING.md#your-pc).
 </details>
@@ -535,8 +567,10 @@ Nothing is ever sent by itself: you send the report. More: [player guide, sectio
 ## What's next
 
 - **Online play**, coming in a future release.
-- **More than three profiles** per save, **new car slots, events and crash junctions**, and **sky import** for mods.
-- **Renderer switches** such as car and water reflections.
+- **Night and rain**, finished and faster: they are in this version as experimental options (SETTINGS > EXTRAS), for
+  your feedback.
+- **More than three profiles** per save, **new events and crash junctions**, and **sky import** for mods.
+- **Water reflections**, after the car reflections.
 - The now-playing display for **other music apps on Windows** is built and waits for a desktop check.
 - Your reports from other machines: Linux distributions, the Steam Deck and more Macs are the least tested.
 
@@ -590,7 +624,12 @@ Thank you to everyone whose work this port stands on.
   link maps and symbols give the decomp its names, and through it this port's.
 - [The Cutting Room Floor](https://tcrf.net/) for their research into those prototypes and what they contain.
 - [Nahelam](https://github.com/Nahelam) ([PS2-Game-Mods](https://github.com/Nahelam/PS2-Game-Mods), [B3Mod](https://github.com/Nahelam/B3Mod))
-  for the most extensive public reverse engineering of the retail game and its function names.
+  for the most extensive public reverse engineering of the retail game and its function names, and for the PS2 mods
+  that inspired MIRROR MODE, CRASHBREAKER IN EVERY MODE, the PARTY MODES, and the race options: the rivals' names and
+  distances, the rivals' cars, the standing start, the Road Rage time limit and rival style, Burnout points, traffic
+  that changes each race, DEFORMATION, the Chrome finish and the crash camera switch. Also START AT, the idle pause
+  and long-event switches, the Crashbreaker's full blast and the car viewer. Also the replay viewer. The ideas only,
+  none of their code.
 - [Takedawn](https://github.com/xenophobentx/takedawn) (xenophobentx), [sp00nznet/burnout3](https://github.com/sp00nznet/burnout3)
   with [xboxrecomp](https://github.com/sp00nznet/xboxrecomp), and [burnout3-sw](https://github.com/antoxa2584x/burnout3-sw)
   for their research notes on the Xbox version (race clock, crash cameras, effects, HUD, track formats).
@@ -599,6 +638,21 @@ Thank you to everyone whose work this port stands on.
   [support them on Ko-fi](https://ko-fi.com/pandavenom)), which the launcher's HD Textures page links to.
 - [ThirteenAG's WidescreenFixesPack](https://github.com/ThirteenAG/WidescreenFixesPack) and
   [Aero_'s PCSX2 patches](https://github.com/AeroWidescreen/PCSX2-Cheats) for locating the widescreen and HUD code.
+- bryan (Braia), for the PCSX2 mods that inspired:
+  - the HUD: the RPM meter, the boost bar shake and the takedown streak pitch;
+  - the cameras: camera roll and the finish camera's set pieces;
+  - play: manual gears, TIMED ELIMINATION, the traffic presets, traffic checking in two-player races and loose parts
+    in Road Rage;
+  - the car select: car stats, the rivals' turn signals, the paint picker and painted car pictures;
+  - the reflections that reach further.
+
+  The ideas only, none of their code.
+- escape209, for the mod that put the Heavyweights in the garage, the idea behind the Heavyweights in Single Event.
+- Fresh_Burnout3, for the traffic-checking edit behind TRAFFIC CHECK (2 PLAYERS) Extreme.
+- KaylinMajeure, for the Traffic Checking mod restoring Burnout Revenge's code, the reference for
+  TRAFFIC CHECK (2 PLAYERS) Revenge.
+- Remco (SuperType1), for the Revenge-style orbit camera mod behind the orbit camera's feel (stopping at walls, its
+  easing).
 - [librw](https://github.com/aap/librw) (aap) as a reference for RenderWare's PS2 rasters and geometry packets.
 - [Burn3](https://github.com/UwUCammie/Burn3) (UwUCammie), [PS2Recomp](https://github.com/ran-j/PS2Recomp) (ran-j) and
   [burnout3-pc](https://github.com/danielgomesvieira2000/burnout3-pc): other PC projects for the game.

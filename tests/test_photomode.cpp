@@ -126,6 +126,48 @@ TEST(entering_moving_and_leaving) {
     m.key(SDL_SCANCODE_W, false);
 }
 
+// gameopts (MIRROR MODE): over a mirrored race the horizontal controls act reversed in the world (look, move sideways),
+// so they stay right on screen; vertical and forward ones are unchanged
+TEST(mirrored_race_reverses_the_horizontal_controls) {
+    PhotoMode& m = PhotoMode::instance();
+    const float pos[3] = {0, 5, 0}, at[3] = {0, 0, 1};
+    const Camera g = game_camera(pos, at);
+    m.set_game_paused(true);
+    m.set_scene(true);
+    m.set_mirror(true);
+    CHECK(m.key(SDL_SCANCODE_P, true));
+    m.key(SDL_SCANCODE_P, false);
+    m.advance(1.0f / 60.0f, g);
+    Camera c;
+    // Left: in the world the camera turns right (at toward -x), which the mirrored picture shows as left
+    m.key(SDL_SCANCODE_LEFT, true);
+    m.advance(0.25f, g);
+    m.key(SDL_SCANCODE_LEFT, false);
+    CHECK(m.camera(g, c));
+    CHECK(c.m.r[2][0] < -0.1f);
+    m.key(SDL_SCANCODE_R, true);   // back to the game's camera
+    m.key(SDL_SCANCODE_R, false);
+    m.advance(1.0f / 60.0f, g);
+    // A (move left) for a second: the world's right (+x is the camera's left here: right = -x), W forward as before
+    m.key(SDL_SCANCODE_A, true);
+    for (int i = 0; i < 60; ++i) m.advance(1.0f / 60.0f, g);
+    m.key(SDL_SCANCODE_A, false);
+    m.camera(g, c);
+    const float moved_x = c.m.r[3][0];
+    m.set_mirror(false);
+    m.key(SDL_SCANCODE_R, true);
+    m.key(SDL_SCANCODE_R, false);
+    m.advance(1.0f / 60.0f, g);
+    m.key(SDL_SCANCODE_A, true);
+    for (int i = 0; i < 60; ++i) m.advance(1.0f / 60.0f, g);
+    m.key(SDL_SCANCODE_A, false);
+    m.camera(g, c);
+    CHECK(std::fabs(moved_x) > 1.0f && std::fabs(moved_x + c.m.r[3][0]) < 1e-3f);   // the same distance, the other way
+    CHECK(m.key(SDL_SCANCODE_ESCAPE, true));
+    m.key(SDL_SCANCODE_ESCAPE, false);
+    m.set_game_paused(false);
+}
+
 // rebind2: photo mode's keys are the PortAction::Photo* bindings: a rebound key moves the camera, the old one does not
 TEST(photo_keys_follow_the_bindings) {
     using b3native::input::PortAction;

@@ -301,7 +301,7 @@ the ADC bit 0x8000; winding alternates from each restart.
 
 **Cars** (`car.h`) [C `CB3VehicleRenderer::FixUpVehicleData` 0x220B70 + data]: LOD blocks at +0x4C, atlas raster at +0x60, panel frames +0xD00 (count +0x0C), wheel frames +0xB80
 (count +0x0D); per LOD 18 lists (L0 body, A0-A5 panels drawn at their frames, B0-B2 wheels at the wheel frames, C0-C7
-unused); entry = mesh, continuation mesh, material word, colour word. **Car V4-16 (unsigned, @1) = texture coordinates
+payload objects, §12.10); entry = mesh, continuation mesh, material word, colour word. **Car V4-16 (unsigned, @1) = texture coordinates
 and deformation weights interleaved per group of four vertices**: vertex g+j reads its UV (1/4096 of the atlas) from
 slot g + (j odd ? 2 : 0), lanes (j < 2 ? 0,1 : 2,3), and its two influences (u16 = weight << 8 | zone << 2) from slots
 g+1 and g+3, lane j; wheels use STCYCL 6/1, so only the UV slots are written [C decode = correct pictures; L meaning of
@@ -333,8 +333,19 @@ the census (`batch layout <pos>/<@1>/<@2>[/n]`).
   target with read-back.
 - **Shaders**: GLSL 450 -> SPIR-V (glslangValidator 16.2) -> MSL (spirv-cross), embedded in
   `src/b3gfx/shaders_gen.h` by `tools/render/build_shaders.sh` (committed; builds need no shader tools; it records each source's SHA-256 and `make test` checks them: `embed_shaders.py --check`). SDL_GPU
-  backends: Vulkan (Windows, Linux) with SPIR-V, Metal (macOS) with MSL. D3D12 needs DXIL, which is not generated (no
-  DXC here); Windows uses SDL_GPU's Vulkan backend. Adding DXIL later = SDL_shadercross or DXC in `build_shaders.sh`.
+  backends: Vulkan (Windows, Linux) with SPIR-V, Metal (macOS) with MSL, and (d3d12) Direct3D 12 (Windows) with DXIL:
+  the SPIR-V as HLSL by the same spirv-cross (shader model 6.0; its registers are SDL_GPU's D3D12 layout as they come:
+  vertex uniforms b# space1, fragment textures / samplers t# / s# space2, fragment uniforms b# space3, inputs
+  TEXCOORD<location>), compiled and signed by Microsoft's dxc for Linux (v1.9.2609, `../ext/dxc`). D3D12 links the
+  stages by their packed signatures, so each fragment shader's HLSL inputs are its vertex shader's outputs
+  (`tools/render/hlsl_link.py`; without it the night lights' pipelines, which read 3 / 4 of mesh.vert's 6 outputs,
+  failed on D3D12 with E_INVALIDARG, where Vulkan matches by location). The DXIL is in the
+  header for Windows builds only (`#if defined(_WIN32)`; `kDxil` maps each SPIR-V array to its DXIL, so the call sites
+  are unchanged); the SPIR-V and MSL bytes are the same as without it. Which backend: GRAPHICS API (Windows; Auto =
+  Vulkan by name, D3D12 when no working Vulkan device can be created: Device::create tries a whole start-up per driver,
+  the device, the window's claim and swapchain, the shaders and the first pipelines; a named API that fails falls back
+  to the other, logged).
+  SDL 3.4.2 itself would try D3D12 before Vulkan once DXIL is offered: Auto names Vulkan so the default stays as tested.
   Simplest robust route chosen over SDL_shadercross: no runtime shader compiler, two small tools at build time only.
 - **SDL3 3.4.2** from package managers: Ubuntu 26.04 debs (Linux) and the MSYS2 mingw64 package (Windows), unpacked
   into `../ext/` with recorded hashes (`tools/render/README.md`). macOS: Homebrew `sdl3` (not built here).
@@ -709,7 +720,7 @@ walls and barriers whose footprint crosses a road some route drives on, review, 
   with damage deformation, traffic wheels and the game's traffic choice since render6 (§12.8); car shadows and skid
   marks since fx1 (§14); no other effects, no post.
 - Water surfaces are all drawn (live2 §20.3: now only the camera unit's, reflections mirrored). Props: §12.7 (version-1 captures still draw them all the time). Traffic payload
-  objects (VehicleParams +0x1024, the C lists) are not drawn.
+  objects (the C lists) since payloads1 (§12.10).
 - Not captured: environment / time of day / fog (`CB3EnvironmentManager`, `CB3Fog`), particles (skid marks and car
   shadows since capture version 3, §14), the HUD (captured and drawn since hud1, §17),
   split screen (player 2's viewport and streamed track 1: both captured and drawn since gsoff1 / split1, §29), the front end.
@@ -806,7 +817,7 @@ Linux, WSL, Windows); (2) the platform video driver (Cocoa provides Metal_Create
 without a window; (3) the platform driver with a hidden window claimed by the device. On WSL all three give
 byte-identical PNGs (`B3GFX_HEADLESS_STEP=2|3` forces the later steps); the first line of output names the path taken.
 
-**Not done**: payload objects (C lists); the env map's component 5 and sphere-map warp. Done by render6 (§12.8):
+**Not done**: the env map's component 5 and sphere-map warp (payload objects, the C lists: §12.10). Done by render6 (§12.8):
 damage deformation, traffic wheel spin / steer / blur lists, the exact traffic / crashed SH (captures before render6
 still borrow the nearest race car's coefficients scaled to their L00 [G]).
 
@@ -1063,6 +1074,48 @@ stages 6 and 8).
 logic's vfunc 0x44 flags (not checked in crash mode). The pickups' option sets (mode bits 1 / 2) are exact only with a
 crash2 capture. Other Crash-mode visuals (Crashbreaker explosion, debris, popcorn, crash-camera blur) are effects, not
 game data (milestone 2, docs/effects-survey.md).
+
+### 12.10 Payload objects: the flatbed's cargo (payloads1, 2026-11-22)
+
+A car file's LOD block lists C0-C7 after the body (L0), panels (A0-A5) and wheels (B0-B2). They are payload objects: of
+the game's vehicle files only `PVEH/HEVY/CAR27.BTV`, the flatbed truck, has them. Its vehicle data +0x16C0 points to 8
+variants ({s8 count, +8 the items}, 0xC each; their count at +0x16C8), each a list of items of 0x50 bytes (+0xC the
+C list, +0x10 a matrix in the truck's space): crates and barrels, a boat, hay bales, cable reels and others (up to 19
+pieces). Before payloads1 the reader skipped the C lists, so the truck drove with an empty bed (the "boat on the truck"
+missing at a Crash junction).
+
+RenderVehicle 0x21E6F0 [C draft] draws them last, after the wheels, while vehicle data +0x16C0 is set:
+
+- on board (VehicleParams +0x1023 != 1 and +0x1022 clear), when the vehicle is in view (+0x5B): each item of the variant
+  at VehicleParams +0x1024, C list +0xC at item +0x10 x the main matrix (EssentialParams +0x00, not the tilted body);
+- released (+0x1023 == 1 or +0x1022 set: the truck crashed): each of CB3PhysicsManager's body parts (0x55EF70 +0xD2900,
+  64 of 0x4E0, the 64-bit use mask +0xE9218) whose host (+0x2B0) has this VehicleParams at +0xCC4 and whose type (+0x2BA)
+  is 2, C list of item [part index +0x2B8] at the part's physics matrix (*(+0x204)).
+
+CB3TrafficSystem::Draw 0x3078F0 [L draft] fills a traffic vehicle's VehicleParams: +0x1023 = 0 and +0x1024 = data
++0x16C0 + 0xC x the vehicle's +0x171 while +0x16C8 > 0. The capture (`scene_capture.cpp`) grabs vehicle data
++0x16C0..+0x16CC, the vehicle's variant and its items (traffic: from +0x171; race cars and crashed vehicles: VehicleParams
++0x1024), and the body parts' host, index, type and, for type 2, the matrix. `capture.cpp` `decode_payload` turns them
+into `Vehicle::pay` and `pay_list`: on board the items' own matrices, which the renderer multiplies by the vehicle's
+interpolated main matrix at draw time; released the world matrices, interpolated between ticks like the wheels (at 120 fps
+and more the pieces move between ticks with the truck, not in tick-sized steps). `add_car_draws` draws each C list at
+its matrix, mask 0x3FF and lit through it, as a wheel; a model without that C list draws nothing for it. RenderVehicle
+returns before any of it while the vehicle is outside the view (+0x5B 0) and +0x1022 is clear, released pieces included,
+and so does the port. The reader keeps the C lists only with `bake_frames` off (the vehicle renderer); the Showroom and
+the exports leave them out. Captures from before payloads1 hold none of these bytes and draw empty beds. The other trucks have no C lists and no payload
+data. A lorry is two traffic vehicles, its cab (the Big Rigs, HEVY CAR22-23) and its trailer (CAR24-26 the freight
+containers, CAR28 the lumber trailer, CAR29 the tanker, CAR30 the covered trailer: the game's names, GLOBALUS.BIN
+through the traffic name table), each load in its trailer's model; CAR27, the flatbed, the only one with
+payload objects.
+
+Diagnostics: `B3_PAYLOADS=0` leaves them out (the picture before payloads1); `B3_PAYLOAD_SHOT=<metres>` takes the live
+shots from a camera beside the nearest payload vehicle (`B3_PAYLOAD_SHOT_MODEL=<text>`: instead the nearest vehicle
+whose car file's path contains it, e.g. `HEVY/CAR25`); `B3_PAYLOAD_VARIANT=cycle` captures every variant and shows
+variant (half seconds of the world timer) mod 8 on each truck, to look at them all. Checked in a Crash event (AS/C2_V2,
+the `crash` scenario): a flatbed with 12 pieces (crates and barrels) and one with 14, each variant drawn on its bed; steered
+into the junction traffic (Left at VBlank 22060-22140), the 14-piece flatbed crashes and its pieces fly off as body parts
+(the crashed vehicle's log line says "released: body parts"). The golden's takedown 11500 and carselect 13150 shots
+show a flatbed (they match the reference with `B3_PAYLOADS=0`).
 
 ## 13. The native renderer live in a play session (live1, 2026-11-03)
 
@@ -2137,7 +2190,11 @@ chain built by the GPU. Now a BC1 / BC2 / BC3 replacement stays BC from the file
   doubled when both are <= 0x80 (indices kept: within one level of the CPU decode), else that block's alpha encoded
   again; TCC 0: opaque alpha blocks. A BC1 with transparent texels (TCC 1) becomes BC3 (its mips need partial alpha;
   3-colour blocks get their colour fitted again, BC3's colour half having no 3-colour mode).
-- **Mips**: the file's stored levels while the crop is the whole file; the rest built down to 1 x 1 as
+- **Mips**: the file's stored levels while the crop is the whole file, as long as each keeps the mean colour (and,
+  TCC 1, the mean alpha) of the level above (`bc_consistent_levels`: a box-filtered mip keeps its parent's mean). A
+  stored level that does not (a pack's DDS with black or empty mips would draw walls black from the distance that
+  mip is used, a band moving with the camera) is dropped with the ones below it, logged per file ("stored mip level ... built
+  from level ..."), and built as below from the last good level. The rest built down to 1 x 1 as
   SDL_GenerateMipmapsForGPUTexture does (bilinear at the texel centres: an exact 2x2 average for even sizes, `mip_down`)
   from the decoded level above, then encoded (principal-axis colour fit plus a least-squares pass; BC3 alpha in the
   8- or 6-value mode, whichever is closer).
@@ -3956,8 +4013,7 @@ function off to test it.
   build without it).
 - **Sound** (boot2's `install_rwa_iop(b3audio::AudioSink*)`, src/native/audio_sink.h). The platform mixes RW Audio
   on virtual IOP time (SPU2-equivalent mixer, 800 frames per VBlank) and pushes to native_play's sink. The sink hands
-  the bytes to b3render (`b3r_audio_push`), whose SDL plays them through audio1's AudioDevice (drift guard 60 ms ±
-  100 ms; `b3replay --native-audio`, window mode only; `--no-audio` turns it off). Offscreen runs mix the same and stay
+  the bytes to b3render (`b3r_audio_push`), whose SDL plays them through audio1's AudioDevice (audioq: the output queue, docs/audio.md §3.2; `b3replay --native-audio`, window mode only; `--no-audio` turns it off). Offscreen runs mix the same and stay
   silent.
   - Linux window path (SDL offscreen video, dummy audio), 30 s: 1,424,800 frames mixed and pushed, 0 dropped / 0
     padded, 11,702 audible (peak 2759).

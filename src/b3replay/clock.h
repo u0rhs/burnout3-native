@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <deque>
 #include <utility>
+
+#include "b3live/sched_stamp.h"   // stutter: a late VBlank's stamp
 #include <vector>
 
 namespace b3replay {
@@ -125,8 +127,11 @@ struct DisplayClockT {
         for (std::size_t k = lag_seen + 1; k <= latest; ++k)
             if (f.sched_ns(k) != 0) {
                 // split2p: against the stamp the tick is shown by; a frame's later tick is there long before (not counted)
-                const double lag = (double(f.arrival_ns(k)) - double(vstamp(f, k))) * 1e-6;
-                if (lag >= 0 || vstamp(f, k) == f.sched_ns(k)) {
+                // stutter: a stall must not raise the delay for the 2 s the lags are kept: a tick whose VBlank started
+                // a period late (catching up, b3live::sched_late) is left out, and a lag counts at most one VBlank (the tick the
+                // stall itself held up)
+                const double lag = std::min((double(f.arrival_ns(k)) - double(vstamp(f, k))) * 1e-6, kVblankNs * 1e-6);
+                if (!b3live::sched_late(f.sched_ns(k)) && (lag >= 0 || vstamp(f, k) == f.sched_ns(k))) {
                     lags.push_back(lag);
                     if (lags.size() > 120) lags.pop_front();
                 }
@@ -140,7 +145,8 @@ struct DisplayClockT {
             const double pq = 0.95 - 0.15 * std::clamp(lead, 0.0, 1.0);
             const std::size_t q = v.empty() ? 0 : std::min(v.size() - 1, std::size_t(double(v.size()) * pq));
             if (!v.empty()) std::nth_element(v.begin(), v.begin() + std::ptrdiff_t(q), v.end());
-            const double want = std::max(floor_ms, (v.empty() ? 16.7 : v[q]) + 1.0);
+            // stutter: at most a VBlank over the floor (belt and braces with the clamp above)
+            const double want = std::min(std::max(floor_ms, (v.empty() ? 16.7 : v[q]) + 1.0), floor_ms + kVblankNs * 1e-6);
             margin_ms = !sched_on || margin_ms <= 0 ? want : margin_ms + 0.05 * (want - margin_ms);
         }
         // the tick rate from the stamps (they advance one tick of game time per tick, crash frames included)

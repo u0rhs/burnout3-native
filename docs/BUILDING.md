@@ -41,6 +41,10 @@ package and the folder with its `.pkg.tar.zst`. Then:
 RENDER=1 tools/native/build_win.sh        # native_play.exe, b3render.dll, Burnout3Launcher.exe into <WIN>/s0native
 tools/release/package_win.sh              # the tester zip into <WIN>/release (a clean tree only)
 ```
+The first build compiles about 5,000 generated units. After that the scripts compile only what changed: the tree is
+staged by content (an unchanged file keeps its time), and when WSL has `ccache` every compile goes through it, with its
+own cache in `~/.cache/ccache-mingw` (`B3_WIN_CCACHE_DIR`; `CCACHE=0` turns it off), so a build into a new `OUT` folder
+is mostly cache hits (`tools/toolchain/wincc.sh`).
 
 ## macOS
 

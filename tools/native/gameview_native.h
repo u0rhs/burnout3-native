@@ -48,12 +48,43 @@ void set_skip_hint(std::uint8_t opacity);
 // draw) and the track page's label (its choice, its opacity 0..255), from the game thread; the next poll's record carries
 // them to the renderer (src/b3replay/hud.h kHostRaceTimeBase) when they changed. Nothing is published before the first call.
 void set_race_time(std::uint8_t race, std::uint8_t label_choice, std::uint8_t label_opacity);
+// gameopts (tools/native/game_options.h): the race's GAMEPLAY options (bit 0 MIRROR MODE, bit 1 CRASHBREAKER IN EVERY MODE)
+// in the same record's race word (bits 9..10); the renderer draws the mirror. Their records go in set_race_options' word.
+void set_game_options(std::uint32_t latched);
+// raceopts (tools/native/race_options.h): the race's gameplay options as race_choice.h's record word (0: the game's own
+// race), in the same record's label word (bits 16..31); the renderer keeps that race's records apart
+void set_race_options(std::uint64_t word);   // options3: 64 bits (HTD1's race word 16..31 and word 4 for 32..63)
+// replayview (tools/native/replay_view.h): the race replay's state (0 none, 1 REPLAY offered, 2 the replay playing), from
+// the VBlank side; the next poll's record carries it to the renderer (src/b3replay/hud.h kHostReplayBase) when it changes
+void set_replay_state(int state);
+// paintsel (tools/native/paint_select.h): the PAINT prompt on SELECT CAR (its opacity 0..255, the page's player 0 / 1), from
+// the game thread; the next poll's record carries it to the renderer (src/b3replay/hud.h kHostPaintSelBase) when it
+// changed. Nothing is published before the prompt first shows.
+void set_paint_prompt(std::uint8_t opacity, std::uint8_t player);
+// paint3 (tools/native/carousel_models.h): the carousel slots whose model is not their picture's ('HCM1' bytes,
+// carousel_record), from the game thread; the next poll's record carries them to the renderer (src/b3replay/hud.h
+// kHostCarouselBase) when they changed. Nothing is published before the first non-empty set.
+void set_carousel_models(const std::vector<std::uint8_t>& record);
+// elim1 (single_eliminator.h): TIMED ELIMINATION's countdown, whole seconds to the next elimination (-1: none shown), and the
+// colours it is drawn in (RGBA: the race HUD's table 0x0066A4C0 +0x30 / +0x40 / +0x50 / +0x60, then the HUD captions'
+// style 1 ramp 0x004CA500..0x004CA530; null: as before), from the game thread; the next poll's record carries it to the
+// renderer (src/b3replay/hud.h kHostElimTimerBase)
+void set_elim_timer(int seconds, const std::uint32_t colours[8] = nullptr);
+// gearbox (gearbox.h): the manual gearbox's gear (-1 reverse, 0 neutral, 1..; -2 none) and the HUD colours as above, from
+// the game thread; the next poll's record carries it to the renderer (src/b3replay/hud.h kHostGearBase) when it changed
+void set_gear(int gear, const std::uint32_t colours[8] = nullptr);
+// 1.3.1 (tools/native/pc_menu.h): the text the renderer shows for the ticker whose text is at guest address `text`
+// (empty: the game's own; include/b3gameview/gameview.h b3gv::set_ticker_text). From the game thread.
+void set_ticker_text(std::uint32_t text, const std::u16string& display);
 // autosave1 (tools/native/save_screens.h): `probe` is asked at each poll whether the display holds the previous picture (the
 // AUTOSAVE page is up and SAVE SCREENS is Hide); the poll's record carries it to the renderer (src/b3replay/hud.h
 // kHostHoldBase) when it changed. Called from the game thread (null: never).
 void set_hold_probe(bool (*probe)());
 // fastload1 (tools/native/fast_load.h): while on, the polls' records carry no latch stamp (0); from the game thread.
 void set_unstamped(bool on);
+// stutter: the current VBlank's place on the pacer's schedule (steady_clock ns; 0: unpaced, the poll's own time is the
+// stamp) and whether it started late (include/b3live/sched_stamp.h); from the game thread, each VBlank and after a hold
+void set_vblank_stamp(std::uint64_t ns, bool late = false);
 // mac5: the menus on screen ('HMN1', include/b3live/menu_input.h; tools/native/menu_mouse.h), from the game thread when
 // they change; the next poll's record carries them to the renderer (the mouse's rows).
 void set_menu_record(const std::vector<std::uint8_t>& bytes);

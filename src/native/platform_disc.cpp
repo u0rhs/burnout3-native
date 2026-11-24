@@ -1,5 +1,6 @@
 // The game's disc as the platform reads it (src/native/platform_disc.h).
 #include "platform_disc.h"
+#include "disc_alias.h"   // trafficseries / customseries
 #include "b3port/fileio.h"   // fsrobust
 
 #include "platform.h"
@@ -53,6 +54,8 @@ std::string from_overlay(const std::string& p) {
 }  // namespace
 
 void set_overlay(const b3mod::Overlay* overlay) { g_overlay = overlay && !overlay->empty() ? overlay : nullptr; }
+AliasList g_aliases;   // trafficcars, customseries (disc_alias.h: asked in the order set)
+void set_alias(std::string (*alias)(const std::string&)) { g_aliases.add(alias); }
 
 namespace {
 std::string g_lang_global, g_lang_head;   // the language's two files (host paths), empty: the game's own text
@@ -247,6 +250,10 @@ std::string resolve(const std::string& guest_path) {
     while (start < p.size() && (p[start] == '\\' || p[start] == '/')) ++start;
     p.erase(0, start);
     if (p.empty()) return {};
+    if (std::string a = g_aliases.ask(p); !a.empty()) {   // trafficcars / customseries: a vehicle's files under other names
+        if (a.compare(0, 5, "host:") == 0) return a.substr(5);   // ("host:<path>": a host file)
+        p = a;
+    }
     if (g_overlay)   // the mod kit's overlay (mods.h): an active mod's file first
         if (std::string mod = from_overlay(p); !mod.empty()) return mod;
     if (!g_lang_global.empty()) {   // 1.0.1: the chosen language's pair from the player's European disc

@@ -26,7 +26,7 @@ namespace {
 
 enum Kind : std::uint32_t { kEvBegin = 1, kEvState = 2, kEvTexture = 3, kEvResume = 4, kEvSuspend = 5, kEvEnd = 6, kEvBatch = 7,
                             kEvBatchRef = 8, kEvScene = 9, kEvObject = 10, kEvMarker = 11, kEvVideo = 12, kEvFeCar = 13, kEvGlobe = 14,
-                            kEvTicker = 15 };
+                            kEvTicker = 15, kEvGauge = 16 };
 constexpr std::uint32_t kMovieBase = 0x40A00000U, kMovieSlot = 0x00140000U;   // hud_capture.cpp (menu1)
 constexpr std::uint32_t kVideoRender = 0x00326960U;   // CGt2dObjectVideoImage::_Render [C name, decomp tables]
 // fe3: C2dObjectBoostBar::_Render and the two boost bar components (_gBoostBarComponentP1 / P2) [C names, decomp tables]
@@ -595,6 +595,26 @@ std::shared_ptr<const HudFrame> HudDecoder::decode(const Image& im, std::shared_
             marker_switches.emplace_back(off == ~0U ? 0U : off, idx);
             break;
         }
+        case kEvGauge: {   // hudmods: {component, 1, car, revs, limit, low, gear, manual} / {component, 2, score, boosting}
+            if (n < 16) break;
+            HudGauge g;
+            g.component = rd32(p);
+            g.kind = int(rd32(p + 4));
+            g.car = rd32(p + 8);
+            if (g.kind == 1 && n >= 32) {
+                g.revs = f32_of(rd32(p + 12));
+                g.limit = f32_of(rd32(p + 16));
+                g.low = f32_of(rd32(p + 20));
+                g.gear = int(rd32(p + 24));
+                g.manual = rd32(p + 28) != 0;
+            } else if (g.kind == 2) {
+                g.boosting = rd32(p + 12) != 0;
+            } else {
+                break;
+            }
+            hf.gauges.push_back(g);
+            break;
+        }
         case kEvFeCar: {   // menu1: {index, car, viewport 1's RwCamera, 0}
             if (n < 16) break;
             HudFeCar c;
@@ -614,7 +634,8 @@ std::shared_ptr<const HudFrame> HudDecoder::decode(const Image& im, std::shared_
             o.ticker_recip[0] = f32_of(rd32(p + 20));
             o.ticker_recip[1] = f32_of(rd32(p + 24));
             o.ticker_font = rd32(p + 28);
-            const std::uint32_t nc = std::min<std::uint32_t>(rd32(p + 32), (n - 36) / 2);
+            const std::uint32_t nc = std::min<std::uint32_t>(rd32(p + 32) & 0xFFFFU, (n - 36) / 2);
+            o.ticker_port = (rd32(p + 32) & 0x80000000U) != 0;   // 1.3.1: the port's text (the game drew its own)
             o.ticker_text.clear();
             for (std::uint32_t k = 0; k < nc; ++k) o.ticker_text.push_back(char16_t(rd32(p + 36 + 4 * (k / 2)) >> (16 * (k & 1)) & 0xFFFFU));
             break;
@@ -1077,14 +1098,97 @@ std::uint8_t host_skip_hint_decode(const Image& im) {
     return std::uint8_t(std::min<std::uint32_t>(rd32(head + 8), 255U));
 }
 
+void picture_from_backgrounds(const std::uint8_t* on_black, const std::uint8_t* on_white, std::size_t n, float gain,
+                              std::vector<std::uint8_t>& rgba) {   // paint3
+    rgba.assign(n * 4, 0);
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::uint8_t* b = on_black + 4 * i;
+        const std::uint8_t* w = on_white + 4 * i;
+        int d = 0;
+        for (int c = 0; c < 3; ++c) d = std::max(d, int(w[c]) - int(b[c]));
+        const float a = std::clamp(1.0f - float(d) / 255.0f, 0.0f, 1.0f);
+        std::uint8_t* q = rgba.data() + 4 * i;
+        for (int c = 0; c < 3; ++c) q[c] = a > 0.004f ? std::uint8_t(std::clamp(int(std::lround(float(b[c]) / a * gain)), 0, 255)) : 0;
+        q[3] = std::uint8_t(std::lround(a * 255.0f));
+    }
+}
+
+bool hud_thumbnail_name(const std::string& n) {   // paint2 (paint3: one or two digits: COMPCAR10, HEVYCAR36)
+    const auto digit = [](char c) { return c >= '0' && c <= '9'; };
+    return (n.size() == 8 || n.size() == 9) && n.compare(4, 3, "CAR") == 0 && digit(n[7]) && (n.size() == 8 || digit(n[8])) && n[7] != '0' &&
+           std::all_of(n.begin(), n.begin() + 4, [](char c) { return c >= 'A' && c <= 'Z'; });
+}
+
 HostRaceTime host_race_time_decode(const Image& im) {   // todrace
     std::uint8_t head[16];
     HostRaceTime r;
     if (!im.read(kHostRaceTimeBase, head, 16) || rd32(head) != 0x31445448U) return r;   // 'HTD1'
-    r.race = std::uint8_t(std::min<std::uint32_t>(rd32(head + 8), 2U));
+    r.race = std::uint8_t(std::min<std::uint32_t>(rd32(head + 8) & 0xFFU, 4U));   // (weather: 3 rain, 4 night rain)
+    r.game_options = std::uint8_t(rd32(head + 8) >> 9 & 3U);    // gameopts: the race's GAMEPLAY options
     r.label_choice = std::uint8_t(std::min<std::uint32_t>(rd32(head + 12) & 0xFFU, 2U));
     r.label_opacity = std::uint8_t(rd32(head + 12) >> 8 & 0xFFU);
+    r.options = (rd32(head + 12) >> 16) | (rd32(head + 8) >> 16) << 16;   // raceopts (options3: bits 16..31 in the race word)
+    if (std::uint8_t hi[4]; im.read(kHostRaceTimeBase + 16, hi, 4)) r.options |= std::uint64_t(rd32(hi)) << 32;   // options3: 32..63
     return r;
+}
+
+HostGear host_gear_decode(const Image& im) {   // gearbox
+    std::uint8_t head[48];
+    HostGear r;
+    if (!im.read(kHostGearBase, head, 48) || rd32(head) != 0x31424748U) return r;   // 'HGB1'
+    const std::int32_t g = std::int32_t(rd32(head + 8));
+    r.gear = g < -2 || g > 9 ? -2 : g;
+    r.c30 = rd32(head + 16), r.c40 = rd32(head + 20), r.c50 = rd32(head + 24), r.c60 = rd32(head + 28);
+    return r;
+}
+
+HostElimTimer host_elim_timer_decode(const Image& im) {   // elim1
+    std::uint8_t head[48];
+    HostElimTimer r;
+    if (!im.read(kHostElimTimerBase, head, 48) || rd32(head) != 0x314C4548U) return r;   // 'HEL1'
+    const std::uint32_t s = rd32(head + 8);
+    r.seconds = s > 600U ? -1 : int(s);
+    r.c30 = rd32(head + 16), r.c40 = rd32(head + 20), r.c50 = rd32(head + 24), r.c60 = rd32(head + 28);
+    for (int i = 0; i < 4; ++i) r.gold[i] = rd32(head + 32 + 4 * i);
+    return r;
+}
+
+HostPaintSel host_paint_sel_decode(const Image& im) {   // paintsel
+    std::uint8_t head[16];
+    HostPaintSel r;
+    if (!im.read(kHostPaintSelBase, head, 16) || rd32(head) != 0x31535048U) return r;   // 'HPS1'
+    r.opacity = std::uint8_t(std::min<std::uint32_t>(rd32(head + 8), 255U));
+    r.player = std::uint8_t(std::min<std::uint32_t>(rd32(head + 12), 1U));
+    return r;
+}
+
+std::shared_ptr<const HostCarousel> host_carousel_decode(const Image& im, std::shared_ptr<const HostCarousel> prev) {   // paint3
+    std::uint8_t head[16];
+    if (!im.read(kHostCarouselBase, head, 16) || rd32(head) != 0x314D4348U) return prev;   // 'HCM1'
+    const std::uint32_t serial = rd32(head + 4), count = std::min<std::uint32_t>(rd32(head + 8), 4U);
+    if (prev && prev->serial == serial) return prev;
+    auto c = std::make_shared<HostCarousel>();
+    c->serial = serial;
+    for (std::uint32_t k = 0; k < count; ++k) {
+        std::uint8_t e[32];
+        if (!im.read(kHostCarouselBase + 16U + 32U * k, e, 32)) break;
+        HostCarouselSlot s;
+        s.raster = rd32(e);
+        s.cls = e[4];
+        s.index = e[5];
+        s.paint = e[6];
+        s.paintable = (e[7] & 1) != 0;
+        for (int i = 8; i < 27 && e[i]; ++i) s.model += char(e[i]);
+        s.slot = int(rd32(e + 28));
+        c->slots.push_back(std::move(s));
+    }
+    return c;
+}
+
+std::uint8_t host_replay_decode(const Image& im) {   // replayview
+    std::uint8_t head[16];
+    if (!im.read(kHostReplayBase, head, 16) || rd32(head) != 0x31565248U) return 0;   // 'HRV1'
+    return std::uint8_t(std::min<std::uint32_t>(rd32(head + 8), 2U));
 }
 
 bool host_hold_decode(const Image& im) {

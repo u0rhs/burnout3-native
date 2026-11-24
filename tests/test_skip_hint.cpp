@@ -128,4 +128,17 @@ TEST(picture_per_device) {
     CHECK(wk > wp);   // the key cap's name is wider than a face button
 }
 
+// movielog (issue #17): one log line per movie start, however often the game calls Prepare while it waits
+TEST(movie_log_one_line_per_start) {
+    b3native::MovieLog m;
+    std::uint64_t r = 0;
+    CHECK(m.call("tracks\\_FEMain.m2v", 773, &r) && r == 0);
+    CHECK(!m.call("tracks\\_FEMain.m2v", 775, &r));                // the same start (2 VBlanks later)
+    for (int k = 0; k < 2993; ++k) CHECK(!m.call("tracks\\_FEMain.m2v", 775, &r));
+    CHECK(m.call("tracks\\GoldenC5.m2v", 4901, &r) && r == 2995 && m.prev == "tracks\\_FEMain.m2v");   // the next start: the sum
+    CHECK(!m.call("tracks\\GoldenC5.m2v", 4901, &r));
+    CHECK(m.call("tracks\\GoldenC5.m2v", 4910, &r) && r == 0);   // the same movie later: a new start (2 calls: the usual)
+    CHECK(m.call("tracks\\GoldenC4.m2v", 4911, &r) && r == 0);   // (one call: nothing to sum up)
+}
+
 TEST_MAIN("video skip hint (mac5)")

@@ -97,6 +97,7 @@ std::vector<AtlasTriangle> car_atlas_triangles(Bytes f) {
         if (!read_car(f, co, gs, m, nullptr)) continue;
         for (const DrawRange& d : m.draws) {
             if ((d.material >> 24) != 0) continue;   // texture slots 1..4: the underside and the glass (GLOBAL.TXD)
+            if (!d.part.empty() && d.part[0] == 'C') continue;   // payloads1: payload objects (not the car's paint)
             AtlasTriangle::Kind kind = AtlasTriangle::kBody;
             if (!d.part.empty() && d.part[0] == 'B') kind = AtlasTriangle::kWheel;
             else if ((d.material & 0xFCu) != 0) kind = AtlasTriangle::kLight;   // light bits of the entry mask [C car-shading.md §3]
@@ -375,7 +376,7 @@ bool car_paint_map_from(const std::vector<Image>& pal, CarPaintMap& out, std::st
 
 bool car_paint_map(Bytes f, CarPaintMap& out, std::string* why) {
     out = CarPaintMap{};
-    if (!f.has(0, 0x64) || f.u32(0) != 0x17) return fail(why, "not a version 0x17 vehicle file");
+    if (const std::string e = car_file_error(f); !e.empty()) return fail(why, e.c_str());   // carmods1
     const std::uint32_t at = f.u32(0x60);
     if (!at || !f.has(at, 0xC8)) return fail(why, "no texture");
     const int npal = std::min<int>(8, f.p[at + 0xA0]);

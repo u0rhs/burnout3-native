@@ -15,6 +15,7 @@
 # (`make vu0-aot` rewrites it; `make native-bundle` too). It holds the translated programs and each image's hash; no
 # copy of the microcode words (the image is matched by its SHA-256 at run time, src/native/vu0_unit.cpp).
 import os
+import re
 import struct
 import sys
 
@@ -125,9 +126,24 @@ def upper_slot(up):
             sb = "us"
         elif scalar == "I":
             sb = "c.I"
-        for l in lanes:
-            b = sb if scalar else (vf(uft, bc) if bc is not None else vf(uft, l))
-            pre.append("const std::uint32_t u%d = %s;" % (l, fmac(kind, l, vf(ufs, l), b)))
+        if kind in (0, 1, 2, 3, 6) and len(lanes) >= 2:
+            # vu0lanes (1.4.1): the dest lanes at once (b3fp::vufast4, ps2float_hw.h: each lane bit for bit vufast's)
+            name = {0: "add", 1: "sub", 2: "madd", 3: "msub", 6: "mul"}[kind]
+            if scalar:
+                bexpr, shape = sb, "vs"
+            elif bc is not None:
+                bexpr, shape = vf(uft, bc), "vs"
+            else:
+                bexpr, shape = "c.vf[%d]" % uft, "vv"
+            mask = sum(1 << l for l in lanes)
+            pre.append("alignas(16) std::uint32_t uv[4];")
+            pre.append("fr4::%s_%s(uv, %sc.vf[%d], %s, %du);" % (name, shape, "c.acc, " if kind in (2, 3) else "", ufs, bexpr, mask))
+            for l in lanes:
+                pre.append("const std::uint32_t u%d = uv[%d];" % (l, l))
+        else:
+            for l in lanes:
+                b = sb if scalar else (vf(uft, bc) if bc is not None else vf(uft, l))
+                pre.append("const std::uint32_t u%d = %s;" % (l, fmac(kind, l, vf(ufs, l), b)))
         w = []
         for l in lanes:
             w.append("%s = u%d;" % (acc(l) if to_acc else vf(ufd, l), l))
@@ -375,9 +391,120 @@ def lower_slot(pc, lo, up):
     return run, vf_wb + vi_wb, branch
 
 
+# vu0flags (1.4.1, issue #15: VU0 micro mode is ~25% of the game thread on a slow CPU, much of it the flags and the
+# per-pair commit): what each pair needs at run time, decided here from the program's control flow, so the generated
+# code does only that. The results are the interpreter's: the census of the four images (and of the EE code) found
+#   - no STATUS reader: no FSEQ / FSAND / FSOR / FSSET in any image, no EE cfc2 of vi16 (or vi17 / vi18), so STATUS's
+#     flag bits (Z S U O and their sticky copies) are not kept up by pushes nobody can observe;
+#   - MAC read by FMEQ / FMAND / FMOR at 50 pairs in all (811 pushes): a push is kept when it can be the MAC such a read
+#     sees (the newest push at least 4 pairs before it on some path) or the last push before the launch ends (the
+#     settled MAC crosses launches: exact);
+#   - no CLIP in any image: no CLIP slot check in the commit.
+# The commit at a pair checks the flag slot only where a kept push can be exactly 4 pairs back on some path, Q / P only
+# in an image that has DIV / SQRT / RSQRT / EFU ops. A VI write keeps its history entry (Rt::branch_vi) only where a
+# conditional branch can follow within 4 pairs; elsewhere it is a plain register write.
+def _cfg(n, branches, ebits, fatal):
+    """successors of each pair as executed, over-approximated (a safe superset): the pair after a branch's delay slot is
+    the target, or the next pair (taken not, or this pair reached by a jump / as an entry, when the pending branch is
+    not this one's); the pair after an E-bit pair is the launch's last (END = -1); a fatal pair has none"""
+    succ = {}
+    for p in range(n):
+        if p in fatal:
+            succ[p] = []
+        elif p > 0 and ebits.get(p - 1):
+            succ[p] = [-1]
+        elif p > 0 and branches.get(p - 1):
+            succ[p] = [branches[p - 1][2], p + 1]
+        else:
+            succ[p] = [p + 1]
+        succ[p] = [q if q == -1 or q < n else -1 for q in succ[p]]
+    return succ
+
+
+def _live_pushes(n, succ, push, mac_read):
+    """the pushes whose MAC can be observed: as the newest push at least 4 pairs before a MAC read on some path, or as
+    the last push before the launch ends (the settled MAC)"""
+    live = set()
+    for q in range(n):
+        if not push.get(q):
+            continue
+        # a state on arriving at pc (before it runs): s = pairs since q (capped at 4), b = pairs since the first later
+        # push (-1: none); q is the MAC a read at pc sees when s >= 4 and b < 4 (a later push is visible from b == 4)
+        stack = [(x, 1, -1) for x in succ.get(q, [])]
+        seen = set()
+        found = False
+        while stack and not found:
+            pc, s, b = stack.pop()
+            if (pc, s, b) in seen:
+                continue
+            seen.add((pc, s, b))
+            if pc == -1:
+                found = b == -1
+                continue
+            if mac_read.get(pc) and s >= 4 and b < 4:
+                found = True
+                continue
+            nb = b + 1 if b >= 0 else (1 if push.get(pc) else -1)
+            if nb >= 4:
+                continue   # from the next pair on a later push is the visible one: q is gone
+            for x in succ.get(pc, []):
+                stack.append((x, min(s + 1, 4), nb))
+        if found:
+            live.add(q)
+    return live
+
+
+def _reach_exact(start, succ, k):
+    """the pcs reached from `start` in exactly k pairs"""
+    cur = {start}
+    for _ in range(k):
+        nxt = set()
+        for p in cur:
+            if p == -1:
+                continue
+            nxt.update(succ.get(p, []))
+        cur = nxt
+    return cur
+
+
 def gen_image(name, lower, upper, n):
     out = []
     W = out.append
+    # first pass: decode every pair
+    dec, branches, ebits = {}, {}, {}
+    for p in range(n):
+        lo, up = lower[p], upper[p]
+        try:
+            uc, uw = upper_slot(up)
+            lr, lw, br = lower_slot(p, lo, up)
+        except Unsupported as ex:
+            dec[p] = ex
+            branches[p] = None
+            ebits[p] = 0
+            continue
+        dec[p] = (uc, uw, lr, lw, br)
+        branches[p] = br
+        ebits[p] = (up >> 30) & 1
+    succ = _cfg(n, branches, ebits, {p for p, d in dec.items() if not isinstance(d, tuple)})
+    push = {p: isinstance(d, tuple) and any("rt.push_flags" in x for x in d[1]) for p, d in dec.items()}
+    mac_read = {p: isinstance(d, tuple) and any("c.mac" in x for x in d[2]) for p, d in dec.items()}
+    # (Fable) the census as a rule: an image that reads STATUS (FSEQ / FSAND / FSOR / FSSET: its Z S U O bits and their
+    # sticky copies come from every push) keeps every push, so STATUS stays the interpreter's there
+    status_read = any(isinstance(d, tuple) and any("c.status" in x for x in d[2]) for d in dec.values())
+    live = {q for q, v in push.items() if v} if status_read else _live_pushes(n, succ, push, mac_read)
+    flag_slot = set()   # pairs whose commit can find a kept push in its slot
+    for q in live:
+        flag_slot |= _reach_exact(q, succ, 4)
+    has_q = any(isinstance(d, tuple) and any("rt.qn" in x for x in d[2]) for d in dec.values())
+    has_p = any(isinstance(d, tuple) and any("rt.pn" in x for x in d[2]) for d in dec.values())
+    has_clip = any(isinstance(d, tuple) and any("rt.push_clip" in x or "c.clip" in x for x in d[1] + d[2]) for d in dec.values())
+    cond = {p for p, b in branches.items() if b and b[0] == "cond"}   # the branch pairs (they read VI at their own pair)
+    vi_hist = set()   # pairs whose VI writes keep their history entry: a conditional branch within 4 pairs after
+    for p in range(n):
+        for k in range(1, 5):
+            if _reach_exact(p, succ, k) & cond:
+                vi_hist.add(p)
+                break
     W("bool run_%s(Core& c, std::uint32_t* data, std::uint32_t entry) {" % name)
     W("    Rt rt(c, data);")
     W("    const std::uint64_t fb = rt.flag_commits; (void)fb;")
@@ -388,23 +515,29 @@ def gen_image(name, lower, upper, n):
         W("    case %d: goto P%d;" % (p, p))
     W("    default: return false;")
     W("    }")
-    branches = {}
-    ebits = {}
     for p in range(n):
-        lo, up = lower[p], upper[p]
         W("P%d: {" % p)
-        try:
-            uc, uw = upper_slot(up)
-            lr, lw, br = lower_slot(p, lo, up)
-        except Unsupported as ex:
-            W('    b3host::fatal("vu0 aot: %s pair %d: %s (the interpreter refuses it too)");' % (name, p, ex))
+        d = dec[p]
+        if not isinstance(d, tuple):
+            W('    b3host::fatal("vu0 aot: %s pair %d: %s (the interpreter refuses it too)");' % (name, p, d))
             W("}")
-            branches[p] = None
-            ebits[p] = 0
             continue
-        branches[p] = br
-        ebits[p] = (up >> 30) & 1
-        W("    rt.commit();")
+        uc, uw, lr, lw, br = d
+        if push[p] and p not in live:
+            uw = [x for x in uw if "rt.push_flags" not in x]   # a push nobody can observe (see above)
+        if p not in vi_hist:
+            lw = [x.replace("rt.write_vi(", "rt.set_vi(") for x in lw]
+        parts = []
+        if p in flag_slot:
+            parts.append("rt.commit_flags();")
+        if has_clip:
+            parts.append("rt.commit_clip();")
+        if has_q:
+            parts.append("rt.commit_q_due();")
+        if has_p:
+            parts.append("rt.commit_p_due();")
+        for x in parts:
+            W("    " + x)
         if br and br[0] == "cond":
             W("    bool taken = false;")
         for l in uc:
@@ -438,8 +571,34 @@ def gen_image(name, lower, upper, n):
             W('    b3host::fatal("vu0 aot: %s ran past its last pair");' % name)
         W("}")
     W("}")
-    text = "\n".join(out)
-    return text
+    stats = "// %s: %d pairs, %d flag pushes (%d kept%s), flag-slot commits at %d pairs, VI history at %d pairs" % (
+        name, n, sum(1 for v in push.values() if v), len(live), ": it reads STATUS, all kept" if status_read else "",
+        len(flag_slot), len(vi_hist))
+    return stats + "\n" + "\n".join(out)
+
+
+_CFC2_FLAGS = re.compile(r"cfc2(?:\.n?i)?\s+[^,\n]+,\s*\$vi(1[678])\b")
+
+
+def ee_flag_reads(root):
+    """vu0flags (Fable): every EE-side read of VU0's STATUS / MAC / CLIP (cfc2 from $vi16 / $vi17 / $vi18) in the decomp's
+    assembly and C sources under `root` -- all functions, not only the ones a run reaches. -> ["file:line: text"]"""
+    found = []
+    for sub in ("assembly/asm", "src", "include"):
+        top = os.path.join(root, sub)
+        for d, _, files in os.walk(top):
+            for f in files:
+                if not f.endswith((".s", ".c", ".cpp", ".h", ".inc")):
+                    continue
+                path = os.path.join(d, f)
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as h:
+                        for k, line in enumerate(h, 1):
+                            if "cfc2" in line and _CFC2_FLAGS.search(line):
+                                found.append("%s:%d: %s" % (os.path.relpath(path, root), k, line.strip()))
+                except OSError:
+                    pass
+    return found
 
 
 def main():
@@ -451,6 +610,12 @@ def main():
     if len(args) != 2:
         sys.exit("usage: vu0_aot.py <vu dir> <out.cpp>   |   vu0_aot.py --elf <SLUS_210.50> <out.cpp>")
     vu_dir, out_path = args[0], args[1]
+    if elf is None:   # vu0flags: the census the dropped flag pushes rest on (from the decomp's sources: <root>/assembly/assets/vu)
+        root = os.path.abspath(os.path.join(vu_dir, "..", "..", ".."))
+        reads = ee_flag_reads(root)
+        if reads:
+            sys.exit("vu0_aot: EE code reads VU0's flags (cfc2 from $vi16 / $vi17 / $vi18), which the generated programs no longer "
+                     "keep up; nothing written:\n  " + "\n  ".join(reads[:20]))
     parts = ["// GENERATED by tools/native/vu0_aot.py from retail's four VU0 images (tools/native/vu0_aot_images.sha256);",
              "// do not edit. Regenerate: make vu0-aot (from the decomp snapshot, or VU0_AOT_ELF=<SLUS_210.50>).",
              '#include "vu0_aot_rt.h"', "", "namespace b3native::vu0aot {", "namespace {",

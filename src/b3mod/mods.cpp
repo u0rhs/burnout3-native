@@ -1,6 +1,8 @@
 // mods.cpp -- see include/b3mod/mods.h
 #include "b3mod/mods.h"
 
+#include "b3asset/car_layout.h"   // carmods1: the overlay never serves a car file the game cannot take
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -657,6 +659,18 @@ bool get_varint(const std::vector<std::uint8_t>& b, std::size_t& at, std::uint64
     return false;
 }
 bool pfail(std::string* why, std::string what) { if (why) *why = std::move(what); return false; }
+
+// carmods1: a car file the overlay would serve (PVEH/.../*.BGV or *.BTV) that the game cannot take: a header with another
+// version or the prototype disc's old layout (b3asset/car_layout.h; the game would read its fields 16 bytes off). ""
+// when it is fine or not a car file. Reads the header alone.
+std::string car_overlay_error(const std::string& key, const fs::path& host) {
+    const auto ends = [&](const char* x) { const std::size_t n = std::strlen(x); return key.size() >= n && key.compare(key.size() - n, n, x) == 0; };
+    if (key.rfind("PVEH/", 0) != 0 || !(ends(".BGV") || ends(".BTV"))) return "";
+    std::ifstream f(host, std::ios::binary);
+    std::uint8_t h[b3asset::kCarHeaderBytes] = {};
+    f.read(reinterpret_cast<char*>(h), sizeof h);
+    return b3asset::car_header_error(h, std::size_t(f.gcount()));
+}
 // the patch's header and ops; with src and out: the result (sizes and hashes checked)
 bool walk_patch(const std::vector<std::uint8_t>& patch, PatchInfo& info, const std::vector<std::uint8_t>* src, std::vector<std::uint8_t>* out,
                 std::string* why) {
@@ -851,6 +865,11 @@ Overlay Overlay::build(const std::vector<const Mod*>& mods, bool hash_contents, 
                 f.size = static_cast<std::uint64_t>(fs::file_size(p, e2));
             }
             if (f.size > 0xFFFFFFFFull) { a.notes.push_back(key + ": larger than 4 GB (no disc file is): left out"); continue; }
+            // carmods1: the game keeps the disc's car (with hash_contents, as the game's overlay is built: no file is read without it)
+            if (const std::string ce = hash_contents ? car_overlay_error(key, p) : std::string(); !ce.empty()) {
+                a.notes.push_back(key + ": " + ce + ": left out (the game uses its own " + key + ")");
+                continue;
+            }
             a.files.push_back(std::move(f));
         }
         // [files] patches: each applied to the user's own file; any patch that does not apply leaves the whole mod out
@@ -895,6 +914,7 @@ Overlay Overlay::build(const std::vector<const Mod*>& mods, bool hash_contents, 
                     if (!apply_patch(src, patch, result, &why) || !write_atomic(out, result, &why)) { refuse = rel + ": " + why; break; }
                 }
                 f.host = out;
+                if (const std::string ce = car_overlay_error(key, out); !ce.empty()) { refuse = rel + ": the result is " + ce; break; }
             } else if (hash_contents) {
                 refuse = rel + ": patches are applied to the disc's files, and no disc was given";
                 break;

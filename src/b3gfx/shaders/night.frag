@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "hash.glsl"   // d3dhash
 // b3gfx night mode (TIME OF DAY: Night, a remaster feature off by default; docs/remaster-features.md §17): the grade of
 // the frame so far and the night sky, full-screen over the scene pass, reading a single-sample copy of the frame (`src`).
 // Two draws, split by the depth test: mode 0 where something was drawn (the world: desaturated, tinted, a curve), mode 1
@@ -22,16 +24,9 @@ layout(set = 3, binding = 0) uniform NightUniforms {
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-float hash13(vec3 p) {
-    p = fract(p * 0.1031);
-    p += dot(p, p.zyx + 31.32);
-    return fract((p.x + p.y) * p.z);
-}
-vec3 hash33(vec3 p) {
-    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
-    p += dot(p, p.yxz + 33.33);
-    return fract((p.xxy + p.yxx) * p.zyx);
-}
+// d3dhash: integer cells (hash.glsl)
+float hash13(vec3 cell) { return hash3i(cell).x; }
+vec3 hash33(vec3 cell, uint stream) { return hash3i_s(cell, stream); }
 float noise2(vec2 p) {
     vec2 i = floor(p), f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
@@ -75,9 +70,9 @@ void main() {
         const float N = 190.0;
         vec3 p = d * N;
         vec3 cell = floor(p);
-        vec3 r = hash33(cell);
+        vec3 r = hash33(cell, 0u);
         if (r.x > 0.78) {
-            vec3 s = normalize(cell + 0.5 + 0.8 * (hash33(cell + 17.0) - 0.5));
+            vec3 s = normalize(cell + 0.5 + 0.8 * (hash33(cell, 1u) - 0.5));
             vec3 fs = fract(s * N);
             if (all(greaterThan(fs, vec3(0.2))) && all(lessThan(fs, vec3(0.8))) && floor(s * N) == cell) {
                 float da = length(cross(d, s));

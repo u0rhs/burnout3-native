@@ -18,6 +18,7 @@
 //     and its RwCamera (+0x58) [0, 0xA0) with the RwFrame (+0x4) [0, 0x90): modelling matrix +0x10 (the camera's
 //     right/up/at/pos as CGtViewport::Update wrote them), LTM +0x50              [C Update; L RW 3.x layouts]
 //   race cars: count gWorld+0x12AD1C, CB3RaceCar* [6] gWorld+0x12AD28               [C RenderRaceCars 0x199A20]
+//              (MORE RIVALS: cars 7 and 8 at b3gv::kMoreCars, b3gv::race_car_slot)
 //     per car [0, 0x80) (CB3VehicleEssentialParams: matrix, vehicle data +0x40, lit bits +0x58, paint +0x59),
 //     CB3VehicleParams at +0x80: wheels/panels [0, 0x380), states [0x4A0, 0x500), glass/deform [0x1000, 0x1030),
 //     deform matrices [0x500, 0xC80) (body 8 at +0x500, panel p 2 at +0x900 + 0x80 p) while +0x101B or a panel's
@@ -315,6 +316,16 @@ void grab(std::uint32_t a, std::uint32_t n, const std::uint8_t* host = nullptr) 
         if ((b & ~(kPage - 1)) != page_base) { page_base = b & ~(kPage - 1); page = &s.pages[page_base]; }
         Scene::Page& pg = *page;
         const std::uint32_t off = b & (kPage - 1);
+        // scenegrab (issue #15: 3.4% of the game thread on a slow CPU): most of a poll's watched bytes are as they
+        // were. At a 256-byte chunk's start, a chunk inside the range whose blocks are all in the shadow and equal to
+        // it in one compare is passed over at once -- what the block loop below does for each of its blocks (no bytes
+        // written, the open run closed), so the record is the same.
+        if (host == nullptr && s.ram && (off & 0xFFU) == 0 && b + 0x100U <= hi &&
+            std::memchr(pg.valid + off / 16, 0, 16) == nullptr && std::memcmp(pg.bytes + off, s.ram + b, 0x100) == 0) {
+            close();
+            b += 0x100U - 16;   // (the loop adds the last 16)
+            continue;
+        }
         std::uint8_t now[16];
         if (host != nullptr) b3gv::grab_block(host, a, n, b, now);
         else if (s.ram) std::memcpy(now, s.ram + b, 16);
@@ -349,6 +360,15 @@ bool same_except(std::uint32_t a, std::uint32_t n, std::uint32_t skip_lo, std::u
     return true;
 }
 
+// payloads1: one payload variant {s8 count, ..., +8 its items (0x50 each: +0xC the C list, +0x10 a local matrix)}
+// [C draft RenderVehicle 0x21E6F0; CB3TrafficSystem::Draw 0x3078F0]
+void grab_payload(std::uint32_t pl) {
+    if (!ram(pl, 0xC)) return;
+    grab(pl, 0xC);
+    const std::uint32_t n = u8(pl), items = u32(pl + 8);
+    if (n >= 1 && n <= 32 && ram(items, 0x50 * n)) grab(items, 0x50 * n);
+}
+
 // The vehicle renderer's inputs for one EssentialParams + VehicleParams pair.
 void grab_vehicle(std::uint32_t ep, std::uint32_t vp) {
     grab(ep, 0x80);   // [0x5C, 0x80): the 9 SH coefficients (render6; race cars had them, traffic / crashed only L00)
@@ -358,7 +378,9 @@ void grab_vehicle(std::uint32_t ep, std::uint32_t vp) {
         const std::uint32_t raster = u32(vd + 0x60);
         if (ram(raster, 0xC8)) grab(raster + 0xA0, 0x28);
     }
+    if (ram(vd, 0x16CC)) grab(vd + 0x16C0, 0xC);   // payloads1: the payload variants (+0x16C0) and their count (+0x16C8)
     if (vp == 0) return;
+    if (u32(vd + 0x16C0) != 0) grab_payload(u32(vp + 0x1024));   // (VehicleParams +0x1024: the vehicle's own variant)
     grab(vp, 0x380);
     grab(vp + 0x4A0, 0x60);
     grab(vp + 0x1000, 0x30);
@@ -443,8 +465,8 @@ void grab_effects() {
     // shadows: race cars (+0x510 ground normal / distance; +0x60 is in the car's [0x60, 0x80) grab)
     grab(0x4E0FC0U, 4);                                     // krShadowDarkness
     const std::uint32_t ncars = u32(kWorld + 0x12AD1CU);
-    for (std::uint32_t i = 0; i < ncars && i < 6; ++i) {
-        const std::uint32_t car = u32(kWorld + 0x12AD28U + 4 * i);
+    for (std::uint32_t i = 0; i < ncars && i < b3gv::kMaxRaceCars; ++i) {
+        const std::uint32_t car = u32(b3gv::race_car_slot(i));
         if (!ram(car, 0x27D0)) continue;
         grab(car + 0x510, 0x10);
         note_data(u32(car + 0x40));
@@ -454,6 +476,8 @@ void grab_effects() {
     grab(kPcm + 0x9E0, 0x30);
     grab(kPcm + 0xB80, 0x10);
     if (const std::uint32_t o = u32(kPcm + 0x9E0); ram(o, 0xB90)) grab(o + 0xB80, 0x10);
+    grab(kPcm + 0x4, 4);   // finishcam1: its CGtFSM's current state and that state's vtable (+0xC)
+    if (const std::uint32_t st = u32(kPcm + 0x4); ram(st, 0x10)) grab(st + 0xC, 4);
     // traffic: view 0's list
     grab(kWorld + 0x12AD50U + 0x19ACU, 1);
     const std::uint32_t s = u8(kWorld + 0x12AD50U + 0x19ACU);
@@ -556,8 +580,8 @@ void grab_coronas() {
         datas[ndatas++] = vd;
     };
     const std::uint32_t ncars = u32(kWorld + 0x12AD1CU);
-    for (std::uint32_t i = 0; i < ncars && i < 6; ++i) {
-        const std::uint32_t car = u32(kWorld + 0x12AD28U + 4 * i);
+    for (std::uint32_t i = 0; i < ncars && i < b3gv::kMaxRaceCars; ++i) {
+        const std::uint32_t car = u32(b3gv::race_car_slot(i));
         if (!ram(car, 0x27D0)) continue;
         grab(car + 0x118C, 0x20);
         grab(car + 0x580, 0x200);
@@ -759,8 +783,8 @@ void b3gv::on_world_render(int idx, const b3gv::Memory& m) {
         ++n;
     };
     const std::uint32_t ncars = r32(kWorld + 0x12AD1CU);
-    for (std::uint32_t i = 0; i < ncars && i < 6; ++i)
-        if (const std::uint32_t car = r32(kWorld + 0x12AD28U + 4 * i); rd(car, 0x27D0)) put(car, r8(car + 0x5A), r8(car + 0x5B), r8(car + 0x10A2));
+    for (std::uint32_t i = 0; i < ncars && i < b3gv::kMaxRaceCars; ++i)
+        if (const std::uint32_t car = r32(b3gv::race_car_slot(i)); rd(car, 0x27D0)) put(car, r8(car + 0x5A), r8(car + 0x5B), r8(car + 0x10A2));
     for (std::uint32_t k = 0; k < 0xFE; ++k) {
         const std::uint32_t tv = kTraffic + 0x127D0U + 0x180U * k;
         if ((r8(tv + 0x174) & 1) != 0) put(tv, r8(tv + 0xCA), r8(tv + 0xCB), r8(tv + 0x17A));
@@ -820,8 +844,9 @@ void b3gv::on_poll(std::uint64_t poll, std::uint64_t vblank, const b3gv::Memory&
     // race cars
     grab(kWorld + 0x12AD1CU, 0x24);
     const std::uint32_t ncars = u32(kWorld + 0x12AD1CU);
-    for (std::uint32_t i = 0; i < ncars && i < 6; ++i) {
-        const std::uint32_t car = u32(kWorld + 0x12AD28U + 4 * i);
+    if (ncars > 6) grab(b3gv::kMoreCars, 4 * (b3gv::kMaxRaceCars - 6));   // MORE RIVALS: cars 7 and 8
+    for (std::uint32_t i = 0; i < ncars && i < b3gv::kMaxRaceCars; ++i) {
+        const std::uint32_t car = u32(b3gv::race_car_slot(i));
         if (!ram(car, 0x27D0)) continue;
         grab_vehicle(car, car + 0x80);
         grab(car + 0x18E0, 0xC0);
@@ -879,6 +904,13 @@ void b3gv::on_poll(std::uint64_t poll, std::uint64_t vblank, const b3gv::Memory&
         grab(tv + 0x120, 0x50);
         const std::uint32_t vd = u32(tv + 0xB0);
         if (ram(vd, 0x70)) grab(vd, 0x70);
+        // payloads1: Draw's VehicleParams +0x1024 for a traffic vehicle: variant +0x171 of the data's (+0x16C8 > 0)
+        if (ram(vd, 0x16CC)) {
+            grab(vd + 0x16C0, 0xC);
+            static const bool all = std::getenv("B3_PAYLOAD_VARIANT") != nullptr;   // (diagnostics: every variant, b3replay capture.cpp)
+            if (const int nvar = std::int8_t(u8(vd + 0x16C8)); u32(vd + 0x16C0) != 0 && nvar > 0)
+                for (int k = all ? 0 : u8(tv + 0x171); k < (all ? nvar : u8(tv + 0x171) + 1); ++k) grab_payload(u32(vd + 0x16C0) + 0xC * std::uint32_t(k));
+        }
     }
     // crashed (physics) vehicles
     grab(0x64517CU, 4);
@@ -917,6 +949,19 @@ void b3gv::on_poll(std::uint64_t poll, std::uint64_t vblank, const b3gv::Memory&
             if (const std::uint32_t idx = u16(kProps + 0x1C + 4 * q); idx < nplace && ram(place, 0x40 * nplace)) grab(place + 0x40 * idx, 0x40);
     }
     grab(kPhys + 0xE9218U, 0x10);
+    // payloads1: the body parts in use (CB3PhysicsManager +0xD2900, 64 of 0x4E0, the 64-bit use mask +0xE9218): their host
+    // (+0x2B0, its VehicleParams at +0xCC4), part index (+0x2B8), type (+0x2BA: 2 a released payload piece) and, for
+    // those, the physics matrix (+0x204 -> 0x40) RenderVehicle draws them at [C draft 0x21E6F0, AddBodyPart 0x1B86A0]
+    for (std::uint32_t k = 0; k < 64; ++k) {
+        const std::uint32_t word = u32(kPhys + 0xE9218U + 4U * (k >> 5));
+        if (!((word >> (k & 31)) & 1U)) continue;
+        const std::uint32_t part = kPhys + 0xD2900U + 0x4E0U * k;
+        grab(part + 0x2B0, 0x10);
+        if (u8(part + 0x2BA) != 2) continue;
+        grab(part + 0x204, 4);
+        if (const std::uint32_t m = u32(part + 0x204); ram(m, 0x40)) grab(m, 0x40);
+        if (const std::uint32_t host = u32(part + 0x2B0); ram(host + 0xCC4, 4)) grab(host + 0xCC4, 4);
+    }
     if (const std::uint32_t game = u32(0x51BA88U); ram(game, 0x1B8)) {
         grab(game + 0x1B4, 4);
         if (const std::uint32_t logic = u32(game + 0x1B4); ram(logic, 4)) {

@@ -1,5 +1,6 @@
 // The SPU2-equivalent mixer (src/audio/spu2_mixer_impl.cpp): hand-made vectors from the documented formats and
 // formulas (psx-spx, the SPU2 Overview manual, retail LIBSD.IRX; see spu2_mixer_impl.h). No disc data needed.
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include "test.h"
@@ -122,6 +123,59 @@ TEST(gauss_table_and_interpolation) {
     int fs = 0;
     for (int i = 0; i < 39; ++i) fs += f[i];
     CHECK(fs == 0x7FFE && f[19] == 0x4000 && f[18] == 0x2806 && f[0] == -1);   // half-band: centre 0.5, odd taps 0.5
+}
+
+// audioq: the voices' resampling quality (a sound at its own rate played at 48 kHz by the pitch counter): the SPU2's
+// Gaussian 4-tap against linear and nearest, as THD+N of a pure tone (the fundamental fitted out, the rest measured;
+// dB below the tone). The Gaussian is the hardware's (the table and formula above); this records what it gives.
+namespace {
+double thdn_db(int kind, double src_rate, double tone) {
+    const int n_in = 48000;
+    std::vector<int32_t> in(n_in + 8);
+    for (int k = 0; k < n_in + 8; ++k) in[k] = int32_t(std::lround(12000.0 * std::sin(2 * M_PI * tone * k / src_rate)));
+    const uint32_t pitch = uint32_t(std::lround(src_rate / 48000.0 * 4096.0));   // the voice's pitch register
+    std::vector<double> out;
+    uint64_t counter = 0;
+    while (true) {
+        const uint64_t pos = counter >> 12;
+        if (pos + 4 >= uint64_t(n_in)) break;
+        const uint32_t frac = uint32_t(counter & 0xFFF);
+        const int32_t a = in[pos], b = in[pos + 1], c = in[pos + 2], d = in[pos + 3];
+        double y;
+        if (kind == 0) y = Spu2MixerImpl::gauss(frac >> 4, a, b, c, d);   // the newest at pos + 3, as the voice's window
+        else if (kind == 1) y = b + (c - b) * (frac / 4096.0);            // linear between the window's middle two
+        else y = frac < 2048 ? b : c;                                     // nearest
+        out.push_back(y);
+        counter += pitch;
+    }
+    // the tone's frequency at the output: tone x (pitch / 4096) x 48000 / src_rate; fit sin / cos / DC, measure the rest
+    const double f = tone * (pitch / 4096.0) * 48000.0 / src_rate / 48000.0;
+    double ss = 0, sc = 0, cc = 0, ys = 0, yc = 0, y1 = 0, n = double(out.size()), sm = 0, cm = 0;
+    for (size_t k = 0; k < out.size(); ++k) {
+        const double sn = std::sin(2 * M_PI * f * k), cs = std::cos(2 * M_PI * f * k);
+        ss += sn * sn; cc += cs * cs; sc += sn * cs; ys += out[k] * sn; yc += out[k] * cs; y1 += out[k]; sm += sn; cm += cs;
+    }
+    (void)sc; (void)sm; (void)cm;
+    const double A = ys / ss, B = yc / cc, D = y1 / n;
+    double sig = 0, res = 0;
+    for (size_t k = 0; k < out.size(); ++k) {
+        const double fit = A * std::sin(2 * M_PI * f * k) + B * std::cos(2 * M_PI * f * k) + D;
+        sig += fit * fit;
+        res += (out[k] - fit) * (out[k] - fit);
+    }
+    return 10.0 * std::log10(res / sig);
+}
+}  // namespace
+
+TEST(voice_resampling_quality) {
+    struct Case { double rate, tone; };
+    const Case cases[] = {{22050, 1000}, {22050, 5000}, {32000, 1000}, {32000, 8000}, {44100, 1000}, {44100, 12000}};
+    for (const Case& c : cases) {
+        const double g = thdn_db(0, c.rate, c.tone), l = thdn_db(1, c.rate, c.tone), nn = thdn_db(2, c.rate, c.tone);
+        std::printf("  %5.0f Hz source, %5.0f Hz tone: THD+N Gaussian %6.1f dB, linear %6.1f dB, nearest %6.1f dB\n", c.rate, c.tone, g, l, nn);
+        CHECK(g < nn);              // better than nearest everywhere
+        if (c.tone <= 1000) CHECK(g < -60.0);   // a low tone: clean
+    }
 }
 
 // ---- ADSR [psx-spx "Envelope Operation"; SPU2 Overview 4.1] ----
@@ -323,6 +377,7 @@ TEST(pitch_modulation_and_noise) {
 
 TEST(memin_through_both_cores) {
     Spu2MixerImpl m;
+    m.set_hard_clip(true);   // audioq: the hardware's output, sample for sample (the host's limiter is 1 ms behind)
     graph(m);
     const uint8_t s[2] = {0x00, 0x40};   // 0x4000 at MEMIN core 0 left, ring position 5
     m.voice_trans(0, 0, 0x4000 + 2 * 5, s, 2);
@@ -336,16 +391,65 @@ TEST(memin_through_both_cores) {
     x = (x * 0x7FFE) >> 15;
     CHECK(o.size() == 16 && o[10] == x && o[11] == 0 && o[8] == 0 && o[12] == 0);
     // saturation: core 1's own MEMIN (0x7FFF) + core 0's chained 0x7FFF -> 32767 before MVOL1
-    Spu2MixerImpl n;
-    graph(n);
-    const uint8_t f[2] = {0xFF, 0x7F};
-    n.voice_trans(0, 0, 0x4000 + 2 * 3, f, 2);
-    n.voice_trans(0, 0, 0x4800 + 2 * 3, f, 2);
-    n.set_param(0, sd::P_MMIX | 1, 0x0FFC | 0x00F0);
-    n.set_param(0, sd::P_MVOLL | 0, 0x3FFF);
-    run_to(n, 4);
-    o = drain(n);
-    CHECK(o.size() == 8 && o[6] == ((32767 * 0x7FFE) >> 15));
+    for (const bool hard : {true, false}) {
+        Spu2MixerImpl n;
+        n.set_hard_clip(hard);   // audioq: the hardware's clamp, or the host's soft limit of the unclamped sum
+        graph(n);
+        const uint8_t f[2] = {0xFF, 0x7F};
+        n.voice_trans(0, 0, 0x4000 + 2 * 3, f, 2);
+        n.voice_trans(0, 0, 0x4800 + 2 * 3, f, 2);
+        n.set_param(0, sd::P_MMIX | 1, 0x0FFC | 0x00F0);
+        n.set_param(0, sd::P_MVOLL | 0, 0x3FFF);
+        run_to(n, 4);
+        o = drain(n);
+        if (hard) CHECK(o.size() == 8 && o[6] == ((32767 * 0x7FFE) >> 15));
+        else CHECK(o.size() == 8 && o[6] == 0);   // the limiter: 1 ms behind (the saturated sum comes after; output_limiter)
+    }
+}
+
+// audioq: the host's soft limit: the identity up to the knee, smooth and monotonic above, never past full scale
+// audioq: the limiter: in range it is the identity (and stays so after a peak once released); over the knee the gain
+// drops at once (nothing over the knee, no flat top) and comes back over kReleaseSeconds
+TEST(output_limiter) {
+    using L = Spu2MixerImpl::Limiter;
+    L lim;
+    int16_t l, r;
+    std::vector<int> outs;
+    for (int v = -29000; v <= 29000; v += 1013) {   // in range: the identity, kLookahead + 1 frames later
+        lim.step(v, -v, l, r);
+        outs.push_back(l);
+    }
+    for (int k = 0; k <= L::kLookahead; ++k) { lim.step(0, 0, l, r); outs.push_back(l); }
+    bool same = true;
+    for (size_t k = 0; k + L::kLookahead + 1 < outs.size() && k < 58; ++k) same = same && outs[k + L::kLookahead + 1] == -29000 + int(k) * 1013;   // (kLookahead + 1 behind)
+    CHECK(same && lim.g == 1.0);
+    // a burst 2x over full scale: a 440 Hz sine of amplitude 65000 for 20 ms, in silence
+    int maxout = 0, repeated = 0, prev = -1;
+    for (int k = 0; k < 2000; ++k) {
+        const int64_t x = k < 960 ? std::llround(65000.0 * std::sin(2 * M_PI * 440.0 * k / 48000.0)) : 0;
+        lim.step(x, x, l, r);
+        const int a = std::abs(int(l));
+        maxout = std::max(maxout, a);
+        if (a == prev && a > 27000) ++repeated;
+        prev = a;
+    }
+    std::printf("  limiter: 2x over full scale: out at most %d, %d repeated crest samples, gain %.3f\n", maxout, repeated, lim.g);
+    CHECK(maxout <= Spu2MixerImpl::kSoftKnee + 100 && repeated < 6);
+    for (int k = 0; k < 96000; ++k) lim.step(1000, 1000, l, r);   // two seconds of quiet: released
+    CHECK(lim.g == 1.0 && l == 1000);
+}
+
+TEST(soft_limit_curve) {
+    for (int v = -29000; v <= 29000; v += 997) CHECK(Spu2MixerImpl::soft_limit(v) == v);
+    int prev = Spu2MixerImpl::kSoftKnee;
+    for (int64_t v = Spu2MixerImpl::kSoftKnee; v < 200000; v += 50) {
+        const int y = Spu2MixerImpl::soft_limit(v);
+        CHECK(y >= prev && y <= 32767 && y - prev <= 50);
+        CHECK(Spu2MixerImpl::soft_limit(-v) == -y);
+        prev = y;
+    }
+    CHECK(Spu2MixerImpl::soft_limit(32767) < 32767 && Spu2MixerImpl::soft_limit(32767) > 31500);
+    CHECK(Spu2MixerImpl::soft_limit(1000000) == 32767);
 }
 
 // ---- Reverb [psx-spx "SPU Reverb Formula"; LIBSD.IRX presets] ----

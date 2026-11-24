@@ -32,6 +32,11 @@ std::string resolve(const std::string& guest_path);
 // no overlay, the disc exactly as before. The first time a mod supplies a path it is printed ("mods: <path> from
 // <id>").
 void set_overlay(const b3mod::Overlay* overlay);
+// trafficcars (tools/native/traffic_cars.h): a disc path alias, asked first by resolve() with the path as the game names
+// it (device, version and leading separators taken off); a non-empty answer is looked up instead ("host:<path>": that
+// host file itself). None set: no alias. Each call adds one (customseries: tools/native/extra_cars.h), asked in the order
+// added; the first non-empty answer is taken.
+void set_alias(std::string (*alias)(const std::string& disc_path));
 // 1.0.1 (b3asset/language.h): the game's DATA/GLOBALUS.BIN and DATA/HEADUS.BIN from `disc` (the player's European disc,
 // a folder or an image) as DATA/GLOBAL<code>.BIN / HEAD<code>.BIN. An empty code or disc: the game's own text. A mod's
 // file for those paths still wins. Returns false (and leaves the game's text) when the disc has no such pair.

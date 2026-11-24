@@ -22,6 +22,14 @@ class Image;
 
 constexpr std::uint32_t kHudBase = 0x40000000U;   // hud_capture.cpp kHudBase
 
+// paint2 / paint3: a car page's thumbnail car (a class's car n, 128 x 64, one CLUT per paint): View::hud_list draws it
+// from the car's own model in the player's paint
+bool hud_thumbnail_name(const std::string& name);   // "<CLASS>CAR<n>": COMPCAR1, CUPECAR3, COMPCAR10 ...
+// paint3: a picture with its coverage from two renders of it, on black and on white (RGBA8, n pixels each): alpha = 1 -
+// the largest channel difference, colour = the render on black / alpha x `gain` (0 where nothing covers)
+void picture_from_backgrounds(const std::uint8_t* on_black, const std::uint8_t* on_white, std::size_t n, float gain,
+                              std::vector<std::uint8_t>& rgba);
+
 // A guest raster as Gt2dRenderer::SetTexture selected it (raster, palette index), decoded to RGBA8.
 struct HudTexture {
     std::uint32_t raster = 0;       // guest address (CGtTexture* = the RwRaster with the game's tail)
@@ -136,6 +144,9 @@ struct HudObject {
     std::u16string ticker_text;
     float ticker_scroll = 0, ticker_extent = 0, ticker_gap = 0, ticker_recip[2] = {0, 0};
     std::uint32_t ticker_font = 0;  // the font's texture (HudTexture::raster)
+    // 1.3.1 (tools/native/pc_menu.h, b3gv::set_ticker_text): ticker_text is the port's text and the game drew its own
+    // there; the renderer lays it out in place of the game's draws at every size (view.cpp), its extent from its own width
+    bool ticker_port = false;
 };
 
 // A world-anchored marker (hud4, docs/native-renderer.md §17.13): one call of CB3RacePosition::DrawPositionMarker 0x1531C0
@@ -165,6 +176,25 @@ struct HudMarker {
 // A vehicle's position, for anchoring markers (Capture::decode passes the tick's vehicles).
 struct HudAnchorRef { std::uint32_t id = 0; float pos[3] = {}; bool race_car = false; };
 
+// hudmods (hudmods.h): a speedometer's or boost bar's values as the game's HUD read them at the scene (hud_capture.cpp
+// observe_gauge, GAUGE events): the engine revs for the RPM METER, the boosting flag for BOOST BAR SHAKE.
+struct HudGauge {
+    std::uint32_t component = 0;    // _gSpeedoComponentP1 / P2 or _gBoostBarComponentP1 / P2 (HudComponent::addr)
+    int kind = 0;                   // 1 speedometer, 2 boost bar
+    std::uint32_t car = 0;          // speedometer: its car; boost bar: the car's CB3Score
+    float revs = 0, limit = 0, low = 0;   // speedometer: the transmission's +0x54, +0x38, +0x3C
+    int gear = 0;                   // speedometer: -1 reverse, 0 neutral, 1..
+    bool manual = false;            // speedometer: no automatic shifts (+0x70)
+    bool boosting = false;          // boost bar
+    // speedometer: the RPM METER's fill, 0 at the low end, 1 at the rev limit [L hud_capture.cpp observe_gauge]
+    float rpm_fraction() const {
+        const float span = limit - low;
+        if (!(span > 0)) return 0.0f;
+        const float f = (10.0f * revs - low) / span;
+        return f > 1.0f ? 1.0f : f > 0.0f ? f : 0.0f;
+    }
+};
+
 struct HudStats {
     std::uint32_t prims = 0, triangles = 0, sprites = 0, strips = 0, lines = 0, unknown_texture = 0, batches = 0;
     // font1: textured triangles after a TEX0 write that no SetTexture event announced (no raster: they draw as solid
@@ -188,6 +218,7 @@ struct HudFrame {
     std::vector<HudVideo> videos;   // menu1 captures (VIDEO events)
     std::vector<HudFeCar> fe_cars;  // menu1 captures (FECAR events)
     std::vector<HudGlobe> globes;   // menu1 captures (GLOBE events)
+    std::vector<HudGauge> gauges;   // hudmods captures (GAUGE events): the speedometers and boost bars of the HUD scenes
     bool has_objects = false;       // the capture records object events (hud2 captures)
     float hud_rect[4] = {0, 0, 0, 0};   // CB3HUD +0x48 (min x, y), +0x50 (max x, y) of the last HUD scene
     float align_table[18] = {};     // D_004B7650 as captured: (fx, fy) per EHUDAlign 0..8
@@ -286,7 +317,8 @@ inline bool hud_in_clip_region(const HudDraw& d, float right) { return d.scissor
 struct HostUiQuad { float x[4], y[4], u[4], v[4]; std::uint32_t rgba = 0, path = 0;
                    std::uint8_t cover = 0; };   // corners TL, TR, BR, BL; RGBA straight; cover: 1 x, 2 y, 3 both: drawn over the window's whole
                                                 // extent in that axis (not clipped to the 4:3 box; a coordinate at the picture's edge
-                                                // moves out to the window's edge): the page's backdrop on widescreen sides
+                                                // moves out to the window's edge): the page's backdrop on widescreen sides; 4 (options3):
+                                                // not clipped to the 4:3 box, its coordinates as they are (DRIVER LABELS over the wide picture)
 // The 640 x 448 picture units a window of `aspect` shows (the 4:3 box is the part 0..640 x 0..448): where a HostUiQuad::cover
 // coordinate at the picture's edge goes (wide1 / wsmenu1).
 struct HostUiExtent { float left, right, top, bottom; };
@@ -348,11 +380,53 @@ std::uint8_t host_skip_hint_decode(const Image& im);
 constexpr std::uint32_t kHostHoldBase = 0x41112100U;
 bool host_hold_decode(const Image& im);
 // todrace (tools/native/race_time.h): the race's DAY / NIGHT choice and the track page's label ({u32 'HTD1', u32
-// serial, u32 race 0 Default / 1 Day / 2 Night, u32 label: its choice | opacity 0..255 << 8} at kHostRaceTimeBase,
+// serial, u32 race 0 Default / 1 Day / 2 Night (weather: 3 Rain, 4 Night rain), u32 label: its choice | opacity 0..255 << 8} at kHostRaceTimeBase,
 // published when it changes); all 0 when never captured.
 constexpr std::uint32_t kHostRaceTimeBase = 0x41112200U;
-struct HostRaceTime { std::uint8_t race = 0, label_choice = 0, label_opacity = 0; };
+// raceopts: the label word's bits 16..31 are the race's records word's bits 0..15, the race word's bits 16..31 its bits
+// 16..31, and (options3) a fifth word its bits 32..63 (24 bytes; a capture with 16 reads 0 there) (tools/native/race_choice.h
+// record_word, with elim1's, heavyseries', gameopts', gearbox's and game_mods.h's bits: records.h options_folder; 0 the
+// game's own race: its records are the player's). gameopts (tools/native/game_options.h): the race
+// word's bits 9..10 are the race's GAMEPLAY options (bit 0 MIRROR MODE: the 3D drawn mirrored; bit 1 CRASHBREAKER IN EVERY
+// MODE). The race word's bits 0..7 are the race's time of day (every field's owner: tests/test_bit_owners.cpp)
+struct HostRaceTime { std::uint8_t race = 0, label_choice = 0, label_opacity = 0, game_options = 0; std::uint64_t options = 0; };
 HostRaceTime host_race_time_decode(const Image& im);
+// paintsel (tools/native/paint_select.h): the PAINT prompt on SELECT CAR ({u32 'HPS1', u32 serial, u32 opacity 0..255, u32
+// player 0 / 1} at kHostPaintSelBase, published when it changes); opacity 0 when hidden or never captured.
+constexpr std::uint32_t kHostPaintSelBase = 0x41112300U;
+struct HostPaintSel { std::uint8_t opacity = 0, player = 0; };
+HostPaintSel host_paint_sel_decode(const Image& im);
+// paint3 (tools/native/carousel_models.h): the car pages' carousel slots whose model is not their picture's ({u32 'HCM1',
+// u32 serial, u32 count, 0} then 32 bytes a slot at kHostCarouselBase); the record if its serial changed since `prev`
+// (else prev); nullptr: none captured
+constexpr std::uint32_t kHostCarouselBase = 0x41112600U;
+struct HostCarouselSlot {
+    std::uint32_t raster = 0;     // the picture the slot draws (a donor's)
+    int cls = 0, index = 0, paint = 0, slot = 0;
+    bool paintable = false;       // the player's paint applies (else its game colours)
+    std::string model;            // "COMPCAR18": PVEH/COMP/CAR18.BTV / .BGV
+};
+struct HostCarousel {
+    std::uint32_t serial = 0;
+    std::vector<HostCarouselSlot> slots;
+};
+std::shared_ptr<const HostCarousel> host_carousel_decode(const Image& im, std::shared_ptr<const HostCarousel> prev);
+// replayview (tools/native/replay_view.h): the race replay's state ({u32 'HRV1', u32 serial, u32 state, 0} at
+// kHostReplayBase, published when it changes): 0 none (or never captured), 1 REPLAY offered (a results page), 2 the
+// replay playing (the renderer's ghost and best-time recorders take none of it; its cameras: replaycam.h)
+constexpr std::uint32_t kHostReplayBase = 0x41112800U;
+std::uint8_t host_replay_decode(const Image& im);
+// elim1 (tools/native/single_eliminator.h): TIMED ELIMINATION's countdown ('HEL1' {u32 'HEL1', u32 serial, u32 whole
+// seconds left (0xFFFFFFFF none), u32 0, u32 colours (RGBA, red low): the race HUD's +0x30, +0x40, +0x50, +0x60, then the
+// HUD captions' style 1 ramp c0..c3} at kHostElimTimerBase, published when it changes); seconds -1 when none
+constexpr std::uint32_t kHostElimTimerBase = 0x41112400U;
+struct HostElimTimer { int seconds = -1; std::uint32_t c30 = 0, c40 = 0, c50 = 0, c60 = 0, gold[4] = {}; };
+HostElimTimer host_elim_timer_decode(const Image& im);
+// gearbox (tools/native/gearbox.h): the manual gearbox's gear ('HGB1' {u32 'HGB1', u32 serial, s32 gear (-1 reverse, 0
+// neutral, 1..; -2 none), u32 0, u32 colours[8] as 'HEL1'} at kHostGearBase, published when it changes); gear -2: none
+constexpr std::uint32_t kHostGearBase = 0x41112500U;
+struct HostGear { int gear = -2; std::uint32_t c30 = 0, c40 = 0, c50 = 0, c60 = 0; };
+HostGear host_gear_decode(const Image& im);
 std::shared_ptr<const HostSettings> host_settings_decode(const Image& im, std::shared_ptr<const HostSettings> prev);
 // mac5: the game's menus on screen for the mouse (native_play's 'HMN1' record, include/b3live/menu_input.h at
 // b3live::kHostMenuBase): the record if its serial changed since `prev` (else prev); nullptr: none captured.

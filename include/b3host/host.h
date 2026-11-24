@@ -95,6 +95,9 @@ public:
 
     // Memory windows (fast path). Must stay valid while the backend is bound.
     virtual Windows windows() = 0;
+    // MORE RIVALS (b3host/split_array.h): guest RAM grown past the console's 32 MB (the split arrays' shadow); the
+    // backend re-binds its windows. False: it cannot (the default).
+    virtual bool grow_ram() { return false; }
 
     // Slow path: any access the windows don't cover (MMIO, VU memory, an address past RAM). `len` is 1, 2, 4, 8 or
     // 16, naturally aligned. A backend raises HostError for an access the console would fault on.

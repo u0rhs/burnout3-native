@@ -91,6 +91,7 @@ public:
     void button(int b, bool down, double t);
     void wheel(int steps, double t);   // > 0 away from the user (up)
     void other_device(double t);       // a key or a pad was used: the cursor hides, the hover rests
+    void focus_lost();                 // orbitcam1: the window lost the focus (a held right button's drag ends)
 
     // Render thread, once per displayed frame: the events since the last call against the frame on screen.
     // `page_open`: the PC SETTINGS page has the pointer (the game gets nothing).
@@ -129,6 +130,9 @@ private:
     bool drag_held_ = false, drag_moved_ = false;   // garagecam1: a left press on a car page, held; moved past kDragStart
     std::vector<std::uint32_t> drag_page_;          // the press's page: its selects (MenuTargets::current)
     float drag_dx_ = 0, drag_dy_ = 0;               // its travel before it counted as a drag
+    bool orbit_held_ = false;                       // orbitcam1: the right button held while driving (its moves turn the chase view)
+    bool orbit_have_ = false;                       // the last move's position (any thread's events, as they come)
+    float orbit_x_ = 0, orbit_y_ = 0;
 };
 
 }  // namespace b3replay

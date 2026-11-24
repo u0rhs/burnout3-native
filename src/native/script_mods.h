@@ -64,7 +64,8 @@ namespace script_addr {
 constexpr std::uint32_t kWorld = 0x00522660u;                 // gWorld [C src/b3replay/capture.cpp kWorld]
 constexpr std::uint32_t kTimer = kWorld + 0x20;               // the game timer, seconds [C capture.h Tick::now]
 constexpr std::uint32_t kRaceCarCount = kWorld + 0x12AD1C;    // race cars [C capture.cpp decode_tick]
-constexpr std::uint32_t kRaceCarList = kWorld + 0x12AD28;     // their pointers, 6 [C capture.cpp decode_tick]
+constexpr std::uint32_t kRaceCarList = kWorld + 0x12AD28;     // their pointers, 6 [C capture.cpp decode_tick] (MORE
+                                                              // RIVALS: cars 7, 8 at b3gv::kMoreCars, gameview.h)
 constexpr std::uint32_t kPlayerCar = kWorld + 0x12AD50;       // view 0's race car [C capture.h kPlayerRaceCar]
 constexpr std::uint32_t kPlayerScore = kPlayerCar + 0x10C0;   // its CB3Score [C capture.h ScoreState]
 constexpr std::uint32_t kGamePtr = 0x0051BA88u;               // the game; +0x1B4 its stage logic [C capture.cpp decode_lap]

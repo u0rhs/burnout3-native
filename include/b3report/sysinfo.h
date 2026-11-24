@@ -17,6 +17,10 @@ std::string gpu_description(SDL_GPUDevice* dev);
 // The whole text, one "key: value" per line. `gpu`: the game's own device's description; empty: a device is
 // created for a moment to ask (the launcher), when `probe_gpu`.
 std::string system_info(const std::string& gpu, bool probe_gpu);
+// hdcache: this process's memory now, in MB: resident (the working set) and private (its own committed memory; Linux:
+// the anonymous resident part). 0 where the platform does not say (macOS)
+struct ProcessMemory { double resident_mb = 0, private_mb = 0; };
+ProcessMemory process_memory();
 
 }  // namespace b3port
 

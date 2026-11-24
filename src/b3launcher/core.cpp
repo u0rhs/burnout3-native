@@ -1,5 +1,6 @@
 // core.cpp -- see core.h
 #include "core.h"
+#include "b3port/game_program.h"   // ghvariant: the programs accepted
 #include "b3port/fileio.h"   // fsrobust
 #include "b3port/user_dir.h"   // portable mode: folders inside the install kept relative to it
 
@@ -71,6 +72,7 @@ std::string config_to_ini(const Config& c) {
     if (!c.steam_hero.empty()) o << "steam_hero = " << c.steam_hero << "\n";
     if (!c.steam_logo.empty()) o << "steam_logo = " << c.steam_logo << "\n";
     for (const std::string& n : c.unsaved_left) o << "unsaved_left = " << n << "\n";   // saveflow
+    if (c.showroom_series >= 0) o << "showroom_series = " << c.showroom_series << "\n";   // showroom2
     return o.str();
 }
 
@@ -91,6 +93,7 @@ Config config_from_ini(std::string_view text) {
         else if (key == "steam_hero") c.steam_hero = std::string(val);
         else if (key == "steam_logo") c.steam_logo = std::string(val);
         else if (key == "unsaved_left") { if (!val.empty()) c.unsaved_left.emplace_back(val); }   // saveflow
+        else if (key == "showroom_series") c.showroom_series = std::atoi(std::string(val).c_str());   // showroom2
         else update::read_ini_key(c.update, key, val);   // update1
     }
     return c;
@@ -237,7 +240,9 @@ std::string game_data_warning(const fs::path& dir, bool image) {
     const fs::path prog = b3asset::disc::resolve_ci(dir, "SLUS_210.50");
     const std::int64_t size = prog.empty() ? -1 : b3asset::disc::file_size(prog);
     std::vector<std::uint8_t> d;
-    if (size != std::int64_t(kProgramSize) || !b3asset::disc::read_file(prog, d) || d.size() != kProgramSize || fnv1a64(d) != kProgramFnv)
+    // ghvariant: the retail program or a known variant of it (b3port/game_program.h)
+    if (size != std::int64_t(kProgramSize) || !b3asset::disc::read_file(prog, d) || d.size() != kProgramSize ||
+        !b3port::known_program(d.size(), fnv1a64(d)))
         return "SLUS_210.50 is not the US Burnout 3: Takedown program (another version or region, or a damaged copy): the "
                "port runs only the NTSC-U disc (SLUS-21050).";
     return {};
@@ -444,6 +449,12 @@ b3settings::Row playlist_row(const b3settings::Settings& s) {
 b3settings::Row custom_music_volume_row(const b3settings::Settings& s) {
     for (const b3settings::Row& r : music_rows(s))
         if (r.label == "CUSTOM MUSIC VOLUME") return r;
+    return {};
+}
+
+b3settings::Row custom_music_loudness_row(const b3settings::Settings& s) {   // musicloud
+    for (const b3settings::Row& r : music_rows(s))
+        if (r.label == "CUSTOM MUSIC LOUDNESS") return r;
     return {};
 }
 
@@ -745,6 +756,9 @@ b3settings::Content settings_content(const b3settings::Settings& s, const std::s
     env.xbox_textures = xbox_imported;         // xboximport: XBOX TEXTURES
     env.profile = 0;                           // no SAVES tab: the launcher's SAVES page
     env.launcher = true;                       // settingsui: rows that open its Controllers, Music and HD Textures pages
+#if defined(_WIN32)
+    env.graphics_api = true;                   // d3d12: the GRAPHICS API row
+#endif
     b3settings::Content c = b3settings::build_content(s, env);
     b3settings::translate(c, b3settings::ui_language(s, env));   // 1.1: our own text in the player's language
     return c;

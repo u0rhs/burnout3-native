@@ -1,4 +1,5 @@
 #include "coronas.h"
+#include "taillights.h"
 
 #include <algorithm>
 #include <cmath>
@@ -49,6 +50,7 @@ struct Builder {
     const CoronaConsts& k;
     CoronaArrays& out;
     float fade = 1.0f;   // traffic-popin: the vehicle's fade while its lights are added (1: the game's colours as they are)
+    const std::int64_t* flame = nullptr;   // paint2: per player its boost glow's colour (0xRRGGBB; < 0: the game's)
     void push(int a, const V3& p, float w, const V3& c, float size, CoronaSource src) {
         if (int(out.slot[a].size()) >= k.capacity[a]) { ++out.dropped[a]; return; }
         CoronaSlot s;
@@ -87,7 +89,20 @@ struct Builder {
         const std::uint8_t b = v.corona.lights;
         if (b & 0x02) group(0, k.light[0], mul(1.25f, size));
         else if (b & 0x04) group(0, k.light[1], size);
-        if (b & 0x10) group(2, k.light[2], mul(0.75f, size));
+        if (v.corona.tail >= 0.0f) {
+            // taillights (night, rain): the brake lights' colour and size at the tail level, rising to full with the brake
+            // level; where the tail lamps are the brake lamps (or a car has only one of the groups) one glow carries both
+            const bool one = t->group[1].empty() || t->group[2].empty() ||
+                             same_lamps<CoronaTables::Light>(t->group[1], t->group[2]);
+            const RearCoronas r = rear_coronas(one, v.corona.tail, v.corona.brake);
+            auto rear = [&](int g, float level) {
+                if (!(level > 0.0f)) return;
+                const float c[3] = {mul(k.light[2][0], level), mul(k.light[2][1], level), mul(k.light[2][2], level)};
+                group(g, c, mul(0.75f, size));
+            };
+            if (one) rear(t->group[2].empty() ? 1 : 2, r.brake);
+            else { rear(1, r.tail); rear(2, r.brake); }
+        } else if (b & 0x10) group(2, k.light[2], mul(0.75f, size));
         else if (b & 0x08) group(1, k.light[3], mul(0.5f, size));
         for (int g : {5, 6}) {
             if (!(b & (g == 5 ? 0x20 : 0x40))) continue;
@@ -105,6 +120,11 @@ struct Builder {
         const int red = v.corona.red_boost ? 1 : 0;
         const int a = red ? 2 : 1;
         V3 colour = v3(k.boost[red]);
+        if (flame && (v.player == 0 || v.player == 1) && flame[v.player] >= 0) {   // paint2: the player's flame colour, as bright
+            const std::int64_t f = flame[v.player];
+            const float mx = std::max(colour.x, std::max(colour.y, colour.z));
+            colour = V3{mx * float(f >> 16 & 0xFF) / 255.0f, mx * float(f >> 8 & 0xFF) / 255.0f, mx * float(f & 0xFF) / 255.0f};
+        }
         float size = k.boost_size[red];
         if (bt >= 1.0f) size = mul(size, bt);
         else colour = scale(colour, bt);
@@ -163,10 +183,11 @@ void boost_random(u32 n, u32 out[3]) {
 }  // namespace
 
 void build_coronas(const CoronaInputs& in, const std::vector<Vehicle>& vehicles, const float cam_point[3], const float cam_pos[3],
-                   CoronaArrays& out, const std::vector<float>* fades) {
+                   CoronaArrays& out, const std::vector<float>* fades, const std::int64_t* flame) {
     out = CoronaArrays{};
     if (!in.valid || !in.k) return;
     Builder b{in, *in.k, out};
+    b.flame = flame;   // paint2
     // CB3TrafficSystem::Draw: traffic, crashed vehicles (reverse), traffic lights, unassigned coronas
     if (in.traffic_on) {
         auto fade_of = [&](std::size_t n) { return fades && n < fades->size() ? (*fades)[n] : 1.0f; };
@@ -322,14 +343,42 @@ void Coronas::draw(b3gfx::Device& dev, const Camera& cam, const CoronaArrays& ar
             for (std::uint32_t t : {0u, 1u, 2u, 0u, 2u, 3u}) idx_.push_back(base + t);
         }
         if (stats) { stats->slots[a] = int(arrays.slot[a].size()); stats->sprites[a] = int(verts_.size() / 4); }
-        if (idx_.empty() || tex[a] == b3gfx::kNone) continue;
+        emit(dev, a, tex[a], out);
+    }
+}
+
+void Coronas::draw_quads(b3gfx::Device& dev, const std::vector<CoronaQuad>& quads, b3gfx::TextureId tex, std::vector<b3gfx::DrawItem>& out) {
+    if (dev.resource_epoch() != epoch_) { clear(); epoch_ = dev.resource_epoch(); }
+    verts_.clear();
+    idx_.clear();
+    static const float uv[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    for (const CoronaQuad& q : quads) {
+        const std::uint32_t base = std::uint32_t(verts_.size());
+        for (int c = 0; c < 4; ++c) {
+            b3gfx::Vertex o;
+            std::memset(&o, 0, sizeof o);
+            std::memcpy(o.pos, q.corner[c], sizeof o.pos);
+            o.normal[1] = 1;
+            o.uv[0] = uv[c][0];
+            o.uv[1] = uv[c][1];
+            o.rgba = std::uint32_t(q.rgb[0]) | std::uint32_t(q.rgb[1]) << 8 | std::uint32_t(q.rgb[2]) << 16 | 0x80000000u;
+            verts_.push_back(o);
+        }
+        for (std::uint32_t t : {0u, 1u, 2u, 0u, 2u, 3u}) idx_.push_back(base + t);
+    }
+    emit(dev, 3, tex, out);
+}
+
+void Coronas::emit(b3gfx::Device& dev, int a, b3gfx::TextureId tex, std::vector<b3gfx::DrawItem>& out) {
+    {
+        if (idx_.empty() || tex == b3gfx::kNone) return;
         dev.update_vertex_buffer(vb_[a], verts_.data(), verts_.size());
         dev.update_index_buffer(ib_[a], idx_.data(), idx_.size());
         b3gfx::DrawItem d;
         d.vertices = vb_[a];
         d.indices = ib_[a];
         d.index_count = std::uint32_t(idx_.size());
-        d.texture = tex[a];
+        d.texture = tex;
         d.blend = b3gfx::Blend::kAlpha;
         d.shading = b3gfx::Shading::kTrack;   // MODULATE on untransformed GS colours, as the other effects
         d.track_type = 0;

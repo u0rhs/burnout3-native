@@ -56,6 +56,11 @@ public:
     std::function<std::uint8_t(std::uint32_t)> load8;
     std::function<void(std::uint32_t, std::uint8_t)> store8;
 
+    // padskip (pad_context.h): a film is on the front end's decoder (playing, not looping, not a menu background), skip
+    // on or off
+    bool film_playing() const {
+        return !exempt && load8 && load8(kDecoder + kPlaying) != 0 && load8(kDecoder + kLoop) == 0;
+    }
     // mac5: a movie the skip would end is playing (the hint's condition: apply()'s test without the press)
     bool skippable() const {
         return enabled && !exempt && load8 && load8(kDecoder + kPlaying) != 0 && load8(kDecoder + kLoop) == 0 &&
@@ -86,6 +91,14 @@ public:
         return skipped;
     }
     std::uint64_t skips() const { return skips_; }
+    // gamemods1 (boot_boost.h, START AT): end the movie playing now through the same Abort, without a press (the boot's
+    // films, while START AT is not the game's start). True when it ended one.
+    bool abort_now() {
+        if (!store8 || !skippable()) return false;
+        store8(kDecoder + kAbort, 1);   // CGtVideoDecoder::Abort
+        ++skips_;
+        return true;
+    }
 
 private:
     bool was_down_ = false, masking_ = false;
@@ -125,6 +138,36 @@ private:
     }
     int age_ = -1, from_ = 0, until_ = 0, level_ = 0;
     bool was_pressed_ = false;
+};
+
+// movielog (issue #17): the log's movie lines, one per start instead of one per CGtVideoDecoder::Prepare call. The game
+// calls Prepare again until the movie is ready (func_003AB0A0 busy-waits on it; CB3BackgroundComponent::Update once a
+// frame); while the previous movie's file is still open (its close ends at the next VBlank) that is ~3000 calls in one
+// VBlank, and a line and a flush for each made it seconds of wall time (late VBlanks, resyncs, the sound dry). A call
+// for the same movie within kSameStart VBlanks of the last is the same start: counted, and summed up once
+// (retried()) when the next start comes.
+struct MovieLog {
+    static constexpr std::uint64_t kSameStart = 2;
+    static constexpr std::uint64_t kUsualCalls = 2;   // the open, then its buffer filled: not worth a line
+    std::string last;
+    std::uint64_t last_v = 0, calls = 0;
+    // One Prepare call at VBlank `v`: true = a new start (log its line); `*retried` = the previous start's calls when it
+    // needed more than kUsualCalls (0 = none to report)
+    bool call(const std::string& name, std::uint64_t v, std::uint64_t* retried) {
+        *retried = 0;
+        if (calls && name == last && v >= last_v && v - last_v <= kSameStart) {
+            ++calls;
+            last_v = v;
+            return false;
+        }
+        if (calls > kUsualCalls) *retried = calls;
+        prev = last;
+        last = name;
+        last_v = v;
+        calls = 1;
+        return true;
+    }
+    std::string prev;   // the start *retried was counted for
 };
 
 }  // namespace b3native

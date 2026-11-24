@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "hash.glsl"   // d3dhash
 // Motion blur (photoblur, 1.3.0; photo mode only, FrameParams::Motion): a streak per pixel from a synthetic motion of
 // the camera and the cars over the shutter time, gathered over displayed frames (the frame is frozen).
 //   mode 0  streak, into V (full size): the pixel's world position from the depth pre-pass (reverse-Z; the sky: far
@@ -108,8 +110,10 @@ void main() {
         bool background = own.b < 0.5;
         // the neighbourhood's longest streak, its tile jittered by up to half a tile (a different place each frame: the
         // tiles' edges average out over the accumulation)
-        vec2 hs = vec2(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)), dot(gl_FragCoord.xy, vec2(39.3468, 11.1351)));
-        vec2 jit = fract(sin(hs) * 43758.5453 + a.z * 7.0) - 0.5;
+        // (d3dhash: an integer hash of the pixel, the frame's sub-step its stream: the same on every backend; the
+        // sin() hash it replaces depended on each GPU's sin precision. float -> int -> uint: a float to uint is undefined
+        // for a negative value on every backend)
+        vec2 jit = hash3i_s(vec3(floor(gl_FragCoord.xy), 0.0), uint(int(floor(a.z * 1024.0 + 0.5)))).xy - 0.5;
         ivec2 tile = clamp(ivec2((gl_FragCoord.xy + jit * c.x) / c.x), ivec2(0), ivec2(c.zw) - 1);
         vec2 vn = texelFetch(depth, tile, 0).rg;
         if (px_len(vn) < px_len(own.rg)) vn = own.rg;

@@ -24,6 +24,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "b3asset/raster.h"
@@ -70,11 +71,14 @@ std::vector<HdCandidate> hd_candidate_keys(const GsMemory& gs, const RasterHeade
 const std::string* hd_lookup(const struct HdPack& pack, const GsMemory& gs, const RasterHeader& h, std::uint32_t cbp_add,
                              HdCandidate* which = nullptr);
 
-// A pack folder indexed by file name (recursive, as PCSX2 scans it); nothing is read until load_dds.
+// A pack folder indexed by file name (recursive, as PCSX2 scans it; texpack: .dds and .png, in path order, the first of a
+// name used); nothing is read until load_dds.
 struct HdPack {
     std::string dir;
     std::unordered_map<HdKey, std::string, HdKeyHash> files;   // key -> path
     std::size_t skipped = 0;                                   // files whose names are not replacement names
+    std::size_t dds_files = 0, png_files = 0;                  // texpack: the replacements by kind (.dds, .png)
+    std::size_t repeats_ = 0;                                  // texpack: names found again in the same folder (not used)
     bool open(const std::string& folder, std::string* why = nullptr);
     // patches3: several folders as one pack, in priority order: a name the first folder has wins over the same name in a
     // later one (the mods' [textures] packs in load order, then the player's own pack). `dir` is the first folder.
@@ -98,6 +102,9 @@ struct HdPack {
 // original alpha below 1/4 somewhere or a maximum below 0x80) goes through the same alpha rule on RGBA8; when the rule
 // changes texels the result is encoded as BC3, else the file's blocks are used as they are. RGBA32 files, crops that are
 // not whole blocks and $B3_HD_RGBA stay on the RGBA8 path.
+// texpack: a PNG without alpha (RGB or grey, no tRNS: it carries no alpha at all) takes the original's alpha, bilinear,
+// under the same cut and clamp: community packs saved without their alpha (car atlases, whose alpha is the reflection
+// mask) keep the game's look. $B3_HD_RAW_ALPHA: opaque, as PCSX2.
 class HdTextures {
 public:
     bool open(const std::string& folder, std::string* why = nullptr);
@@ -130,7 +137,12 @@ public:
     static bool crop(const Job& job, int w, int h, int min_w, int min_h, int& cw, int& ch);
     // The BC chain of the file's blocks for `job` with the alpha as the RGBA8 path maps it (no alpha rule); empty: not
     // possible (not BC, or the crop is not whole blocks)
-    static std::shared_ptr<const std::vector<Image>> bc_chain(const Source& src, const Job& job, int threads = 1);
+    // `path` (hdmips): named in the log when the file's stored mips are not used
+    static std::shared_ptr<const std::vector<Image>> bc_chain(const Source& src, const Job& job, int threads = 1,
+                                                              const std::string* path = nullptr);
+    // hdmips: files (this process) whose stored mip levels did not match their level 0 and were built from it instead
+    static std::size_t mips_rebuilt();
+    static std::size_t bc7_mips_unused();   // texpack: BC7 files whose stored mip levels were not used (level 0 only)
     // The alpha rule's result `level0` (RGBA8: the crop decoded, only its alpha changed) as a BC3 chain: the colour halves
     // of `plain` (bc_chain of the same crop: the rule leaves colour alone), the alpha of `level0` and its mips (built like
     // the GPU's blit) encoded
@@ -154,10 +166,31 @@ private:
     // hdgpu: BC chains by path and job (and, for the alpha rule, the original's alpha)
     struct Prepared { std::shared_ptr<const std::vector<Image>> chain; bool masked = false; };
     std::unordered_map<std::string, Prepared> prepared_;
+    // hdcache (hdcache.h): the disk key of `r`'s replacement by the file at `path` (false: no cache, or the file's identity
+    // unknown); a hit installs the entry's levels as replace_ would; a miss's result is queued for the disk
+    bool disk_key(const std::string& path, const DecodedRaster& r, bool compress, std::uint64_t& key, std::uint64_t& check);
+    bool disk_hit(const std::string& path, std::uint64_t key, std::uint64_t check, DecodedRaster& r);
+    void disk_store(std::uint64_t key, std::uint64_t check, const DecodedRaster& r, bool masked);
+    // hdcache: guarded by mu_, as cache_ and prepared_ (apply holds it for the whole call, from any thread: the render
+    // thread, the route worker, the paint-map worker; prefetch_data takes it around its own uses)
+    std::unordered_map<std::string, std::string> ident_;      // a replacement file's identity (size, time, head / tail hash)
+    std::unordered_map<std::uint64_t, Prepared> disk_mem_;      // BC chains read from the disk this run (shared)
+    std::unordered_map<std::uint64_t, bool> touched_;           // entries read this run (touched once: the LRU's age)
+public:
+    // hdcache: the prefetch of car files' rasters from their bytes (a car file read from a disc image has no path):
+    // `files` (name, bytes); as prefetch otherwise. It takes no new raster once `go` says no or `budget_ms` (> 0) has
+    // passed (`stopped` then true): what it did not convert is converted at its first draw, and cached, as before.
+    std::size_t prefetch_data(const std::vector<std::pair<std::string, Bytes>>& files, int threads = 8,
+                              const std::function<bool()>& go = {}, double budget_ms = 0, bool* stopped = nullptr);
+private:
 };
 // hdgpu: the renderer's device samples BC1 / BC2 / BC3 (b3gfx::Device::supports_bc): set once it exists
 void set_hd_compressed(bool on);
 bool hd_compressed();
+// texpack (HD TEXTURE MEMORY): PNG and BC7 replacements encoded to BC1 (opaque) / BC3 when they are read, on the loader's
+// threads, and then used as BC files (with set_hd_compressed: the device samples BC); off: RGBA8 (full quality, as PCSX2)
+void set_hd_encode(bool on);
+bool hd_encode();
 // hdgpu: while one is alive on a thread, the hook may hand that thread's decodes BC levels (their consumer uploads them
 // and reads no texels: read_track's and read_car's textures)
 struct HdCompressScope {
@@ -188,7 +221,21 @@ std::vector<std::string> hd_folders(const std::string& dir, bool off, const std:
 // XBOX TEXTURES row); set by the program at start
 void set_hd_xbox_folder(const std::string& dir);
 const std::string& hd_xbox_folder();
+// vpreload: the decoded pictures held for re-use (their bytes, the budget, the decodes dropped for it so far)
+struct HdDecodedStats { std::size_t bytes = 0, budget = 0; std::uint64_t evicted = 0; };
+HdDecodedStats hd_decoded_stats();
 void hd_report();   // one stderr line: lookups, hits, files decoded, time (nothing when off)
+// hdcache (hdcache.h): the converted replacements kept in `dir` (UTF-8; <user data folder>/cache/hd), under a cap of
+// `cap_mb` (0: hdcache::kDefaultCapMB; $B3_HD_CACHE_MB wins); "" or $B3_HD_CACHE=0: none (the default)
+void set_hd_cache_dir(const std::string& dir, std::uint64_t cap_mb = 0);
+std::string hd_cache_dir();
+// Waits until the queued writes are on the disk (at most `max_ms`; tests, the end of a run); true when all are
+bool hd_cache_flush(int max_ms = 2000);
+struct HdCacheStats { std::uint64_t hits = 0, misses = 0, written = 0, written_bytes = 0, corrupt = 0, evicted = 0, failed = 0, read_bytes = 0, total = 0; double read_ms = 0; };
+HdCacheStats hd_cache_stats();
+// hdcache: hd_prefetch for files in memory (HdTextures::prefetch_data) when on
+void hd_prefetch_data(const std::vector<std::pair<std::string, Bytes>>& files, const std::function<bool()>& go = {},
+                      double budget_ms = 0, bool* stopped = nullptr);
 void hd_prefetch(const std::vector<std::string>& files);   // HdTextures::prefetch when on
 void hd_trim();                                            // HdTextures::trim when on
 
@@ -228,6 +275,12 @@ struct HdNoHookScope {
 // with PS2 alpha mapped like GS alpha (0x80 and above -> 255, a -> 2a). Only the top level is read.
 bool load_dds(const std::string& path, Image& out, std::string* why = nullptr);
 bool decode_dds(const std::uint8_t* data, std::size_t size, Image& out, std::string* why = nullptr);
+// texpack: a replacement file of either kind PCSX2 loads, DDS or PNG (by its signature), to RGBA8 with the PS2 alpha
+// mapping a DDS gets (PNG: b3asset/png.h decode_png)
+// `opaque_file` (optional): a PNG without alpha (colour type 0 / 2, no tRNS): it says nothing about alpha (HdTextures takes
+// the game's own alpha for it)
+bool decode_replacement(const std::uint8_t* data, std::size_t size, Image& out, std::string* why = nullptr, bool* opaque_file = nullptr);
+bool load_replacement(const std::string& path, Image& out, std::string* why = nullptr);
 // hdgpu: the header: format (kBC1..kBC3 from bc.h, kDdsRGBA / kDdsBGRA), size, the levels stored (1 without a mip
 // count; only the ones the data holds whole) and where the top level starts
 enum : int { kDdsRGBA = 4, kDdsBGRA = 5 };

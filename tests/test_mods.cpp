@@ -48,6 +48,16 @@ bool has(const std::vector<std::string>& v, const std::string& part) {
     return false;
 }
 
+// carmods1: a vehicle file's header (b3asset/car_layout.h: the overlay serves PVEH .BGV / .BTV files only when it
+// reads as one the game takes): `version`, the first LOD block at `lod`, then `tail` (the rest, any bytes)
+std::string car_file(std::uint32_t version = 0x17, std::uint32_t lod = 0x16F0, const std::string& tail = "") {
+    std::string b(0x80, '\0');
+    auto put = [&](std::size_t at, std::uint32_t v) { for (int i = 0; i < 4; ++i) b[at + std::size_t(i)] = char(v >> (8 * i) & 0xFF); };
+    put(0, version);
+    put(0x4C + 4 * 3, lod);
+    return b + tail;
+}
+
 std::string manifest(const std::string& id, int priority = 0, const std::string& extra = "") {
     return "[mod]\nid = " + id + "\nname = The " + id + "\nversion = 1.0\napi = 1\npriority = " + std::to_string(priority) + "\n" + extra;
 }
@@ -275,6 +285,36 @@ TEST(overlay_refusals) {
     const Mod* n = find_mod(found, "n");
     CHECK(n && !n->usable() && has(n->errors, "leads out"));
 #endif
+}
+
+// carmods1: the overlay never serves the game a car file it cannot take (b3asset/car_layout.h): the prototype disc's
+// old layout (a first LOD block below 0x16F0) or another version is left out with a note, the game keeping its own car;
+// a car mod in the retail layout (0x15 .. 0x17) and other PVEH files are served
+TEST(overlay_refuses_old_layout_cars) {
+    const fs::path root = kRoot / "cars";
+    fs::remove_all(root);
+    const auto car = [](std::uint32_t version, std::uint32_t lod) { return car_file(version, lod); };
+    write(root / "m" / "mod.ini", manifest("m"));
+    write(root / "m" / "data" / "PVEH" / "COMP" / "CAR1.BGV", car(0x15, 0x16E0));   // the prototype disc's layout
+    write(root / "m" / "data" / "PVEH" / "COMP" / "CAR2.BGV", car(0x15, 0x16F0));   // a players' 0x15 mod
+    write(root / "m" / "data" / "PVEH" / "HEVY" / "CAR27.BTV", car(0x17, 0x1000));  // any first block below 0x16F0
+    write(root / "m" / "data" / "PVEH" / "COMP" / "CAR3.BGV", car(0x18, 0x16F0));   // another version
+    write(root / "m" / "data" / "PVEH" / "COMP" / "CAR4.BGV", "short");             // not even a header
+    write(root / "m" / "data" / "PVEH" / "VLIST.BIN", "not a car file");
+    const std::vector<Mod> found = discover(root);
+    const Mod* m = find_mod(found, "m");
+    CHECK(m && m->usable());
+    const Overlay o = Overlay::build({m});
+    CHECK(o.find("PVEH/COMP/CAR1.BGV") == nullptr);
+    CHECK(o.find("PVEH/COMP/CAR2.BGV") != nullptr);
+    CHECK(o.find("PVEH/HEVY/CAR27.BTV") == nullptr);
+    CHECK(o.find("PVEH/COMP/CAR3.BGV") == nullptr);
+    CHECK(o.find("PVEH/COMP/CAR4.BGV") == nullptr);
+    CHECK(o.find("PVEH/VLIST.BIN") != nullptr);
+    CHECK(has(o.mods()[0].notes, "PVEH/COMP/CAR1.BGV: a prototype-disc car file (old layout: its first LOD block at 0x16E0"));
+    CHECK(has(o.mods()[0].notes, "at 0x1000"));
+    CHECK(has(o.mods()[0].notes, "version 0x18"));
+    CHECK(has(o.mods()[0].notes, "the game uses its own PVEH/COMP/CAR1.BGV"));
 }
 
 TEST(hashes) {
@@ -721,7 +761,7 @@ TEST(a_pack_of_game_files_without_mod_ini) {   // item 11: a community pack of r
     fs::remove_all(root);
     const fs::path mods = root / "mods";
     // the game's folders at the top, any case, and a readme: offered, then installed as a file-replacement mod
-    write_zip(root / "Cool Cars #2.zip", {{"Pveh/Muscle/CAR1.BGV", "car bytes", true}, {"pveh/MUSCLE/CAR2.BGV", "car two"}, {"readme.txt", "by someone"}});
+    write_zip(root / "Cool Cars #2.zip", {{"Pveh/Muscle/CAR1.BGV", car_file(0x17, 0x16F0, "car bytes"), true}, {"pveh/MUSCLE/CAR2.BGV", car_file(0x17, 0x16F0, "car two")}, {"readme.txt", "by someone"}});
     InstallResult r = install_archive(root / "Cool Cars #2.zip", mods);
     CHECK(!r.ok && r.files_pack && has(r.errors, "file-replacement mod") && !fs::exists(mods / "cool-cars-2"));
     InstallOptions o;

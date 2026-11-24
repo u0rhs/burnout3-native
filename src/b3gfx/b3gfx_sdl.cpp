@@ -1,8 +1,21 @@
 // b3gfx on SDL3 SDL_GPU (see include/b3gfx/b3gfx.h).
 #include "b3gfx/b3gfx.h"
 
+#include <mutex>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>   // perf4: vulkan_device_local_mb
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <dxgi.h>   // texpack review: the D3D12 adapter's memory (dxgi_device_local_mb; dxgi.dll loaded at run time)
+#undef far    // (windows.h's old 16-bit pointer words: this file has locals of those names)
+#undef near
+#endif
 #include <cstdio>
 
 #include <array>
@@ -11,24 +24,190 @@
 #include <cstring>
 #include <map>
 #include <new>
+#include <unordered_map>
+#include <vector>
 
 #include "b3gfx/perf.h"
 #include "b3gfx/render_scale.h"   // perf4: supersampling
+#include "b3gfx/scene_depth.h"
+#include "b3gfx/upload_batch.h"   // uploadbatch
+#include "b3gfx/driver_order.h"   // d3d12
 #include "shaders_gen.h"
 
 // perf3 (include/b3gfx/perf.h): frame timing capture. The SDL_GPU calls that matter are wrapped here, so a pass, a draw, a
 // submit and the waits are counted / timed (B3_PERF_LOG; off: a plain bool test) without touching the code around them.
 namespace {
+// scenedepth: the scene pass keeps its depth in a second colour target (R32F at the scene's sample count, cleared to 0:
+// reverse-Z far; each fragment of a draw the depth is made of writes gl_FragCoord.z, blended MAX: the nearest whatever the
+// draw order), resolved at each end of the pass, for the night lights, the AO, the depth of field and the motion blur to
+// read instead of a depth pre-pass (the scene's MSAA depth cannot be resolved or sampled through SDL GPU). The scene
+// code is not changed for it: while `scene` is set (a frame that reads the depth), every pass begun on `scene` gets the
+// target (cleared at the first begin, loaded at the later ones), and every pipeline bound in such a pass is swapped for
+// its two-target form, made on first use from its create info (kept for every pipeline drawing into a kSceneFormat
+// target): the depth-writing fragment shader (depth_fs) with the target written, any other with it masked off.
+struct ScenePipeInfo {
+    SDL_GPUGraphicsPipelineCreateInfo pi{};
+    std::vector<SDL_GPUVertexBufferDescription> vb;
+    std::vector<SDL_GPUVertexAttribute> at;
+    SDL_GPUColorTargetDescription ct{};
+};
+struct SceneDepthState {
+    SDL_GPUTexture* scene = nullptr;     // the frame's colour target 0 (null: no scene depth this frame)
+    SDL_GPUTexture* target = nullptr;    // attachment 1
+    SDL_GPUTexture* resolve = nullptr;   // its single-sample resolve (MSAA), else null
+    bool begun = false, in_pass = false;
+    SDL_GPUDevice* dev = nullptr;
+    std::unordered_map<SDL_GPUGraphicsPipeline*, ScenePipeInfo> info;
+    std::unordered_map<SDL_GPUGraphicsPipeline*, SDL_GPUGraphicsPipeline*> mrt, mrt_off;   // the target written / masked off
+    // the depth-only forms (the frame and the Z buffer untouched, no depth test: the MAX keeps the nearest), for the
+    // post-fog draws' depth at the AO's break (they are drawn later, but the depth the AO reads has them, as the pre-pass)
+    std::unordered_map<SDL_GPUGraphicsPipeline*, SDL_GPUGraphicsPipeline*> only;
+    bool depth_only = false;   // binds take the depth-only form
+    // the draw being bound writes the depth (draw_item / draw_car set it: the target is written unblended, the draws that
+    // write it also write Z, so the last fragment written is the nearest; the others have it masked off)
+    bool mask_on = false, bound_mask = false;
+    bool keep = true;          // the scene pass's samples of it stored at this segment's end (a later reader needs them)
+    // with the scene depth on (the device's choice), a scene pipeline's two-target forms are made with it, not at a frame's
+    // first use; `samples`: the scene's sample count
+    bool eager = false, forming = false;
+    int late = 0;
+    SDL_GPUSampleCount samples = SDL_GPU_SAMPLECOUNT_1;
+    std::unordered_map<SDL_GPUShader*, SDL_GPUShader*> depth_fs;   // a fragment shader -> its SCENE_DEPTH variant
+    int failed = 0;
+    bool on = false;      // the device's switch (Device::scene_depth_on_): create infos are kept only then
+    bool blend = false;   // R32F blends (MAX) on this device: the depth-only forms (the AO's break) can be made
+    // a two-target form could not be made: no later frame takes the scene depth (the pre-pass, as off); `skip`: the bound
+    // form is missing, so the scene pass's draws until the next bind are left out (never a single-target pipeline in it)
+    bool broken = false, skip = false;
+};
+// One per device (Device::sd_; a process can hold two: the launcher's previews and showroom, b3view and a headless
+// renderer). Pipeline creation finds its device's by the SDL device; the binds and begins of a frame's scene pass use
+// t_sd, the state of the device drawing it on this thread (set by render_scene around its scene pass, else null)
+std::mutex g_sd_mu;
+std::unordered_map<SDL_GPUDevice*, SceneDepthState*> g_sd_dev;
+thread_local SceneDepthState* t_sd = nullptr;
+constexpr SDL_GPUTextureFormat kSceneDepthFormat = SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
+
+SDL_GPUGraphicsPipeline* scene_depth_variant(SceneDepthState& g_sd, SDL_GPUGraphicsPipeline* p);
+// every two-target form of `p` (the masked one; the depth-writing one when its shader has a SCENE_DEPTH form, and the
+// depth-only one too where R32F blends); the number made
+int scene_depth_forms(SceneDepthState& g_sd, SDL_GPUGraphicsPipeline* p) {
+    const auto i = g_sd.info.find(p);
+    if (i == g_sd.info.end()) return 0;
+    const bool depth = g_sd.depth_fs.count(i->second.pi.fragment_shader) != 0;
+    const bool mask = g_sd.mask_on, only = g_sd.depth_only;
+    g_sd.forming = true;
+    int n = 0;
+    for (int form = 0; form < (depth ? (g_sd.blend ? 3 : 2) : 1); ++form) {
+        g_sd.mask_on = form == 1;
+        g_sd.depth_only = form == 2;
+        if (scene_depth_variant(g_sd, p)) ++n;
+    }
+    g_sd.mask_on = mask;
+    g_sd.depth_only = only;
+    g_sd.forming = false;
+    return n;
+}
+void scene_depth_keep(SceneDepthState& g_sd, SDL_GPUGraphicsPipeline* p, const SDL_GPUGraphicsPipelineCreateInfo* pi) {
+    if (!p || pi->target_info.num_color_targets != 1 || pi->target_info.color_target_descriptions[0].format != SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT)
+        return;
+    ScenePipeInfo k;
+    k.pi = *pi;
+    k.vb.assign(pi->vertex_input_state.vertex_buffer_descriptions, pi->vertex_input_state.vertex_buffer_descriptions + pi->vertex_input_state.num_vertex_buffers);
+    k.at.assign(pi->vertex_input_state.vertex_attributes, pi->vertex_input_state.vertex_attributes + pi->vertex_input_state.num_vertex_attributes);
+    k.ct = pi->target_info.color_target_descriptions[0];
+    g_sd.info[p] = std::move(k);
+    if (g_sd.eager && pi->multisample_state.sample_count == g_sd.samples) scene_depth_forms(g_sd, p);
+}
+// `p`'s two-target form for the draw being bound (null when it cannot be made: the state is then broken)
+SDL_GPUGraphicsPipeline* scene_depth_variant(SceneDepthState& g_sd, SDL_GPUGraphicsPipeline* p) {
+    if (!p) return p;
+    const auto dfs = g_sd.depth_fs.find(g_sd.info.count(p) ? g_sd.info[p].pi.fragment_shader : nullptr);
+    const bool writes = dfs != g_sd.depth_fs.end() && (g_sd.depth_only || g_sd.mask_on);
+    auto& cache = g_sd.depth_only ? g_sd.only : writes ? g_sd.mrt : g_sd.mrt_off;
+    if (const auto f = cache.find(p); f != cache.end()) return f->second;
+    const auto i = g_sd.info.find(p);
+    if (i == g_sd.info.end() || (g_sd.depth_only && !g_sd.blend)) {
+        if (++g_sd.failed <= 4) SDL_Log("b3gfx: scene depth: no two-target form for a pipeline bound in the scene pass: the pre-pass from the next frame");
+        g_sd.broken = true;
+        return nullptr;
+    }
+    SDL_GPUGraphicsPipelineCreateInfo pi = i->second.pi;
+    pi.vertex_input_state.vertex_buffer_descriptions = i->second.vb.data();
+    pi.vertex_input_state.vertex_attributes = i->second.at.data();
+    SDL_GPUColorTargetDescription ct[2] = {i->second.ct, {}};
+    ct[1].format = kSceneDepthFormat;
+    if (g_sd.depth_only) {   // (no depth test there: the MAX keeps the nearest)
+        ct[1].blend_state.enable_blend = true;
+        ct[1].blend_state.src_color_blendfactor = ct[1].blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        ct[1].blend_state.src_alpha_blendfactor = ct[1].blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        ct[1].blend_state.color_blend_op = ct[1].blend_state.alpha_blend_op = SDL_GPU_BLENDOP_MAX;
+    }
+    ct[1].blend_state.enable_color_write_mask = true;
+    ct[1].blend_state.color_write_mask = writes ? SDL_GPU_COLORCOMPONENT_R : SDL_GPUColorComponentFlags(0);
+    if (dfs != g_sd.depth_fs.end()) pi.fragment_shader = dfs->second;
+    if (g_sd.depth_only) {
+        ct[0].blend_state.enable_color_write_mask = true;
+        ct[0].blend_state.color_write_mask = SDL_GPUColorComponentFlags(0);
+        pi.depth_stencil_state.enable_depth_test = false;
+        pi.depth_stencil_state.enable_depth_write = false;
+        pi.depth_stencil_state.enable_stencil_test = false;
+    }
+    pi.target_info.color_target_descriptions = ct;
+    pi.target_info.num_color_targets = 2;
+    SDL_GPUGraphicsPipeline* m = SDL_CreateGPUGraphicsPipeline(g_sd.dev, &pi);
+    if (!m) {
+        if (++g_sd.failed <= 4) SDL_Log("b3gfx: scene depth pipeline: %s (the pre-pass from the next frame)", SDL_GetError());
+        g_sd.broken = true;
+        return nullptr;   // (not cached: nothing to release)
+    }
+    cache[p] = m;
+    if (g_sd.eager && !g_sd.forming && ++g_sd.late <= 8)   // (with the switch on: one not made with its pipeline, a hitch)
+        SDL_Log("b3gfx: scene depth: a two-target pipeline made at a draw (%d so far)", g_sd.late);
+    return m;
+}
+
 inline SDL_GPURenderPass* perf_begin_pass(SDL_GPUCommandBuffer* cmd, const SDL_GPUColorTargetInfo* ci, Uint32 n,
                                           const SDL_GPUDepthStencilTargetInfo* di) {
     b3perf::count(b3perf::kPasses);
+    SceneDepthState* const g = t_sd;
+    if (g && g->scene && n == 1 && ci[0].texture == g->scene) {   // scenedepth: the scene pass, with its depth target
+        SDL_GPUColorTargetInfo two[2] = {ci[0], {}};
+        SDL_GPUColorTargetInfo& d = two[1];
+        d.texture = g->target;
+        d.clear_color = SDL_FColor{0, 0, 0, 0};
+        d.load_op = g->begun ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
+        d.store_op = !g->resolve ? SDL_GPU_STOREOP_STORE : g->keep ? SDL_GPU_STOREOP_RESOLVE_AND_STORE : SDL_GPU_STOREOP_RESOLVE;
+        d.resolve_texture = g->resolve;
+        g->begun = g->in_pass = true;
+        g->skip = false;
+        return SDL_BeginGPURenderPass(cmd, two, 2, di);
+    }
+    if (g) g->in_pass = false;
     return SDL_BeginGPURenderPass(cmd, ci, n, di);
 }
+inline void perf_end_pass(SDL_GPURenderPass* pass) {
+    if (t_sd) t_sd->in_pass = false;
+    SDL_EndGPURenderPass(pass);
+}
+inline void perf_bind(SDL_GPURenderPass* pass, SDL_GPUGraphicsPipeline* p) {
+    SceneDepthState* const g = t_sd;
+    if (g && g->in_pass) {
+        SDL_GPUGraphicsPipeline* const v = scene_depth_variant(*g, p);
+        g->skip = !v;   // (none: its draws are left out, not drawn with a single-target pipeline in a two-target pass)
+        if (v) SDL_BindGPUGraphicsPipeline(pass, v);
+        return;
+    }
+    SDL_BindGPUGraphicsPipeline(pass, p);
+}
+inline bool scene_depth_skip() { return t_sd && t_sd->in_pass && t_sd->skip; }
 inline void perf_draw(SDL_GPURenderPass* pass, Uint32 vertices, Uint32 first) {
+    if (scene_depth_skip()) return;
     b3perf::count(b3perf::kDraws);
     SDL_DrawGPUPrimitives(pass, vertices, 1, first, 0);
 }
 inline void perf_draw_indexed(SDL_GPURenderPass* pass, Uint32 n, Uint32 first) {
+    if (scene_depth_skip()) return;
     b3perf::count(b3perf::kDraws);
     SDL_DrawGPUIndexedPrimitives(pass, n, 1, first, 0, 0);
 }
@@ -63,6 +242,10 @@ double g_pipe_late_ms = 0;
 inline SDL_GPUGraphicsPipeline* perf_create_pipeline(SDL_GPUDevice* d, const SDL_GPUGraphicsPipelineCreateInfo* pi) {
     const Uint64 t0 = SDL_GetTicksNS();
     SDL_GPUGraphicsPipeline* p = SDL_CreateGPUGraphicsPipeline(d, pi);
+    {   // scenedepth: with the device's scene depth on, the create info kept (its two-target forms made from it)
+        std::lock_guard<std::mutex> lk(g_sd_mu);
+        if (const auto f = g_sd_dev.find(d); f != g_sd_dev.end() && f->second->on) scene_depth_keep(*f->second, p, pi);
+    }
     if (g_pipe_log) {
         const double ms = double(SDL_GetTicksNS() - t0) * 1e-6;
         g_pipe_late_ms += ms;
@@ -73,6 +256,8 @@ inline SDL_GPUGraphicsPipeline* perf_create_pipeline(SDL_GPUDevice* d, const SDL
 }  // namespace
 #define SDL_CreateGPUGraphicsPipeline(d, pi) perf_create_pipeline(d, pi)
 #define SDL_BeginGPURenderPass(cmd, ci, n, di) perf_begin_pass(cmd, ci, n, di)
+#define SDL_EndGPURenderPass(pass) perf_end_pass(pass)
+#define SDL_BindGPUGraphicsPipeline(pass, p) perf_bind(pass, p)
 #define SDL_DrawGPUPrimitives(pass, nv, ninst, fv, fi) perf_draw(pass, nv, fv)
 #define SDL_DrawGPUIndexedPrimitives(pass, ni, ninst, fi, vo, fii) perf_draw_indexed(pass, ni, fi)
 #define SDL_SubmitGPUCommandBuffer(cmd) perf_submit(cmd)
@@ -175,7 +360,7 @@ struct ShadowFragmentUniforms { FragmentUniforms base; float sun_vp[16]; float s
 // car.vert / car.frag (std140: mat4 and vec4 members only)
 struct CarVertexUniforms { float view_proj[16], model[16], light[16], sh[16]; float eye[4], view_dir[4], base[4], full[4];
                            float zone[8][16]; float deform[4]; };
-struct CarFragmentUniforms { float env_colour[4], mode[4], to_sun[4], sun_colour[4], fog[4], fog_colour[4], refl[4], look0[4], look1[4], look2[4], look3[4], paint[4], paint2[4], night[4], moon[4]; };
+struct CarFragmentUniforms { float env_colour[4], mode[4], to_sun[4], sun_colour[4], fog[4], fog_colour[4], refl[4], look0[4], look1[4], look2[4], look3[4], paint[4], paint2[4], night[4], moon[4], paint3[4], paint4[4]; };
 // The GS frame: half intensity like the PS2's render buffer, float so the frame alpha (As / 128, read by the
 // full-screen specular pass) is not clamped at 1.
 // bloom2: the SOFT level's share of the game's bloom intensity (before the screen blend)
@@ -188,7 +373,45 @@ constexpr int kMaxTextureSide = 16384;   // create_texture: the largest image si
 // report it, so a throwaway Vulkan instance asks: the physical device whose name is SDL's SDL_PROP_GPU_DEVICE_NAME_STRING (or
 // the only one), its largest DEVICE_LOCAL heap. The few Vulkan types are declared here (no Vulkan headers in the build); the
 // properties struct is read only up to deviceName, into a buffer larger than the whole struct (824 bytes in Vulkan 1.x).
-double vulkan_device_local_mb(SDL_GPUDevice* dev) {
+#ifdef _WIN32
+// texpack review (HD TEXTURE MEMORY's Auto on Direct3D 12): the DXGI adapter SDL renders with (its description is SDL's
+// SDL_PROP_GPU_DEVICE_NAME_STRING; with one hardware adapter, that one), its dedicated video memory (MB) and its kind as
+// Vulkan names them (2 discrete: 512 MB or more of its own; 1 integrated; 4 the software adapter). 0: not known.
+double dxgi_device_local_mb(SDL_GPUDevice* dev, int* kind) {
+    const char* want = SDL_GetStringProperty(SDL_GetGPUDeviceProperties(dev), SDL_PROP_GPU_DEVICE_NAME_STRING, nullptr);
+    HMODULE lib = LoadLibraryW(L"dxgi.dll");
+    if (!lib) return 0;
+    using Create = HRESULT(WINAPI*)(REFIID, void**);
+    auto create = reinterpret_cast<Create>(reinterpret_cast<void*>(GetProcAddress(lib, "CreateDXGIFactory1")));
+    double mb = 0;
+    IDXGIFactory1* f = nullptr;
+    if (create && SUCCEEDED(create(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&f))) && f) {
+        int hardware = 0, match = -1, only = -1;
+        DXGI_ADAPTER_DESC1 descs[16] = {};
+        for (UINT i = 0; i < 16; ++i) {
+            IDXGIAdapter1* a = nullptr;
+            if (f->EnumAdapters1(i, &a) == DXGI_ERROR_NOT_FOUND || !a) break;
+            a->GetDesc1(&descs[i]);
+            a->Release();
+            if (!(descs[i].Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) { ++hardware; only = int(i); }
+            char name[256] = {};
+            WideCharToMultiByte(CP_UTF8, 0, descs[i].Description, -1, name, sizeof name - 1, nullptr, nullptr);
+            if (match < 0 && want && std::strncmp(name, want, 255) == 0) match = int(i);
+        }
+        const int use = match >= 0 ? match : hardware == 1 ? only : -1;
+        if (use >= 0) {
+            const DXGI_ADAPTER_DESC1& d = descs[use];
+            mb = double(d.DedicatedVideoMemory) / 1048576.0;
+            if (kind) *kind = (d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) ? 4 : mb >= 512.0 ? 2 : 1;
+        }
+        f->Release();
+    }
+    FreeLibrary(lib);
+    return mb;
+}
+#endif
+
+double vulkan_device_local_mb(SDL_GPUDevice* dev, int* kind = nullptr) {   // texpack: `kind` the VkPhysicalDeviceType
     const char* drv = SDL_GetGPUDeviceDriver(dev);
     if (!drv || std::strcmp(drv, "vulkan") != 0) return 0;
     const char* want = SDL_GetStringProperty(SDL_GetGPUDeviceProperties(dev), SDL_PROP_GPU_DEVICE_NAME_STRING, nullptr);
@@ -224,6 +447,7 @@ double vulkan_device_local_mb(SDL_GPUDevice* dev) {
                         props(pd[i], pp);
                         const char* name = reinterpret_cast<const char*>(pp + 20);   // after apiVersion .. deviceType
                         if (n > 1 && !(want && std::strncmp(name, want, 255) == 0)) continue;
+                        if (kind) std::memcpy(kind, pp + 16, 4);   // deviceType (after apiVersion, driverVersion, vendorID, deviceID)
                         MemProps mp{};
                         mem(pd[i], &mp);
                         for (std::uint32_t h = 0; h < mp.nheaps && h < 16; ++h)
@@ -247,6 +471,8 @@ public:
                     double(occ_drawn_) / double(occ_frames_), double(occ_skipped_) / double(occ_frames_));
         flush_uploads();
         SDL_WaitForGPUIdle(dev_);
+        release_pictures();   // paint3
+        if (last_fence_) SDL_ReleaseGPUFence(dev_, last_fence_);   // fifauto
         if (up_.tb) SDL_ReleaseGPUTransferBuffer(dev_, up_.tb);
         if (bat_.tb) SDL_ReleaseGPUTransferBuffer(dev_, bat_.tb);
         for (auto* b : buffers_) SDL_ReleaseGPUBuffer(dev_, b);
@@ -254,20 +480,37 @@ public:
         for (auto& kv : pipelines_) for (auto* p : kv.second) if (p) SDL_ReleaseGPUGraphicsPipeline(dev_, p);
         release_targets(win_targets_);
         release_targets(off_targets_);
+        release_targets(pic_targets_);
         release_targets(scaled_win_);   // effects2
         release_targets(scaled_off_);
         for (auto* v : {&win_views_, &off_views_}) for (Targets& t : *v) release_targets(t);   // gsoff1
         if (sampler_) SDL_ReleaseGPUSampler(dev_, sampler_);
         if (white_) SDL_ReleaseGPUTexture(dev_, white_);
         for (auto* p : {night_pipe_[0], night_pipe_[1], light_pipe_, beam_pipe_, emissive_pipe_}) if (p) SDL_ReleaseGPUGraphicsPipeline(dev_, p);
-        for (auto* sh : {vs_, fs_, fsq_vs_, spec_fs_, present_fs_, car_vs_, car_fs_, sun_vs_, sun_fs_, blur_fs_, post_fs_, post_lean_fs_, dof_fs_, light_fs_, night_fs_, beam_fs_, emissive_fs_, motion_fs_}) if (sh) SDL_ReleaseGPUShader(dev_, sh);
+        for (auto* sh : {vs_, fs_, fsq_vs_, spec_fs_, present_fs_, car_vs_, car_fs_, sun_vs_, sun_fs_, blur_fs_, post_fs_, post_lean_fs_, dof_fs_, light_fs_, night_fs_, beam_fs_, emissive_fs_, motion_fs_, drops_fs_}) if (sh) SDL_ReleaseGPUShader(dev_, sh);
+        if (drops_pipe_) SDL_ReleaseGPUGraphicsPipeline(dev_, drops_pipe_);
         for (auto* p : {occ_pipe_[0], occ_pipe_[1], sun_pipe_, blur_pipe_[0], blur_pipe_[1], post_pipe_[0], post_pipe_[1], post_pipe_[2], post_pipe_[3]}) if (p) SDL_ReleaseGPUGraphicsPipeline(dev_, p);
         for (auto* p : {dof_depth_pipe_[0], dof_depth_pipe_[1], dof_depth_pipe_[2], dof_pipe_[0], dof_pipe_[1], motion_pipe_[0], motion_pipe_[1], motion_pipe_[2]}) if (p) SDL_ReleaseGPUGraphicsPipeline(dev_, p);
         for (auto* p : ao_pipe_) if (p) SDL_ReleaseGPUGraphicsPipeline(dev_, p);
+        if (sdfix_pipe_) SDL_ReleaseGPUGraphicsPipeline(dev_, sdfix_pipe_);   // scenedepth
+        if (sdfix_fs_) SDL_ReleaseGPUShader(dev_, sdfix_fs_);
         if (ao_fs_) SDL_ReleaseGPUShader(dev_, ao_fs_);
         for (auto* p : sh_recv_pipe_) if (p) SDL_ReleaseGPUGraphicsPipeline(dev_, p);   // SUN SHADOWS
         if (sh_pipe_) SDL_ReleaseGPUGraphicsPipeline(dev_, sh_pipe_);
-        for (auto* sh : {sh_fs_, sh_recv_fs_}) if (sh) SDL_ReleaseGPUShader(dev_, sh);
+        if (sh_prop_pipe_) SDL_ReleaseGPUGraphicsPipeline(dev_, sh_prop_pipe_);   // propshadow1
+        for (auto* sh : {sh_fs_, sh_recv_fs_, sh_prop_fs_}) if (sh) SDL_ReleaseGPUShader(dev_, sh);
+        // scenedepth: the two-target forms (every pipeline is released here, with the device, never before: so the forms
+        // cached by their pipeline need no erasing elsewhere)
+        for (auto* m : {&sd_.mrt, &sd_.mrt_off, &sd_.only})
+            for (auto& kv : *m) if (kv.second) SDL_ReleaseGPUGraphicsPipeline(dev_, kv.second);
+        for (auto& kv : sd_.depth_fs) if (kv.second) SDL_ReleaseGPUShader(dev_, kv.second);
+        {
+            std::lock_guard<std::mutex> lk(g_sd_mu);
+            g_sd_dev.erase(dev_);
+        }
+        sd_ = SceneDepthState{};
+        if (env_glow_src_) SDL_ReleaseGPUTexture(dev_, env_glow_src_);   // reflect2 G
+        env_glow_src_ = nullptr;
         release_sun_shadow_map();
         if (occ_) SDL_ReleaseGPUTexture(dev_, occ_);
         for (EnvTarget& e : env_) release_env(e);   // reflect-tunnel
@@ -287,35 +530,44 @@ public:
         render_scale_ = std::clamp(opt.render_scale, 0.25f, 2.0f);   // effects2; perf4: above 1 supersampled
         warm_sun_shadows_ = opt.warm_sun_shadows;   // finalfix: warm_pipelines, effective_scale
         warm_ao_ = opt.warm_ambient_occlusion;
+        upload_batch_opt_ = opt.upload_batch;   // uploadbatch (pc_settings upload_batch)
         sun_shadow_side_opt_ = std::uint32_t(std::clamp(opt.sun_shadow_side, 0, 4096));
-        SDL_PropertiesID p = SDL_CreateProperties();
-        SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
-        SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN, true);
-        SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, opt.debug);
-        if (!opt.driver.empty()) SDL_SetStringProperty(p, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, opt.driver.c_str());
         // B3GFX_TRACE=1: each start-up call on stdout (the live window's first test hung inside this function)
         const bool trace = SDL_getenv("B3GFX_TRACE") != nullptr;
         auto step = [&](const char* what) { if (trace) { std::printf("[b3gfx] %s\n", what); std::fflush(stdout); } };
-        step("SDL_CreateGPUDevice");
-        dev_ = SDL_CreateGPUDeviceWithProperties(p);
-        SDL_DestroyProperties(p);
+        auto create = [&](const std::string& name) {
+            SDL_PropertiesID p = SDL_CreateProperties();
+            SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
+            SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN, true);
+#if defined(_WIN32)
+            SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXIL_BOOLEAN, true);   // d3d12: shaders_gen.h kDxil
+#endif
+            SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, opt.debug);
+            if (!name.empty()) SDL_SetStringProperty(p, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, name.c_str());
+            step("SDL_CreateGPUDevice");
+            SDL_GPUDevice* d = SDL_CreateGPUDeviceWithProperties(p);
+            SDL_DestroyProperties(p);
+            return d;
+        };
+        // d3d12: exactly the driver asked for ("": SDL's choice); Device::create tries the GRAPHICS API's drivers in order
+        dev_ = create(opt.driver);
         if (!dev_) return fail(err, "SDL_CreateGPUDevice");
+        // scenedepth: $B3_SCENE_DEPTH, else pc_settings scene_depth, else the backend's default
+        // (nightdepth: the default prepares it, for night's frames only: scene_depth_mode_)
+        scene_depth_mode_ = scene_depth_mode(std::getenv("B3_SCENE_DEPTH"), opt.scene_depth, SDL_GetGPUDeviceDriver(dev_));
+        scene_depth_on_ = scene_depth_mode_ != SceneDepthMode::kOff;
         if (window) {
             step("SDL_ClaimWindowForGPUDevice");
             if (!SDL_ClaimWindowForGPUDevice(dev_, window)) return fail(err, "SDL_ClaimWindowForGPUDevice");
             step("swapchain parameters");
             window_ = window;
-            SDL_GPUPresentMode mode = SDL_GPU_PRESENTMODE_VSYNC;
-            if (opt.present == PresentMode::kUncapped) {
-                if (SDL_WindowSupportsGPUPresentMode(dev_, window, SDL_GPU_PRESENTMODE_IMMEDIATE)) mode = SDL_GPU_PRESENTMODE_IMMEDIATE;
-                else if (SDL_WindowSupportsGPUPresentMode(dev_, window, SDL_GPU_PRESENTMODE_MAILBOX)) mode = SDL_GPU_PRESENTMODE_MAILBOX;
-            }
-            if (!SDL_SetGPUSwapchainParameters(dev_, window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, mode))
-                return fail(err, "SDL_SetGPUSwapchainParameters");
-            present_ = mode == SDL_GPU_PRESENTMODE_IMMEDIATE ? "immediate" : mode == SDL_GPU_PRESENTMODE_MAILBOX ? "mailbox" : "vsync";
+            if (!apply_present(opt.present)) return fail(err, "SDL_SetGPUSwapchainParameters");
             // lat1: the GPU's frame queue (SDL's default 2: the CPU may build a frame while the previous one renders,
             // which holds a GPU-bound frame back by up to one more frame)
-            if (opt.frames_in_flight > 0 && SDL_SetGPUAllowedFramesInFlight(dev_, std::uint32_t(std::clamp(opt.frames_in_flight, 1, 3))))
+            if (opt.frames_soft) {   // fifauto: SDL keeps its 2; the device holds 1 itself (wait_swapchain)
+                soft_ = true;
+                frames_in_flight_ = std::clamp(opt.frames_in_flight, 1, 2);
+            } else if (opt.frames_in_flight > 0 && SDL_SetGPUAllowedFramesInFlight(dev_, std::uint32_t(std::clamp(opt.frames_in_flight, 1, 3))))
                 frames_in_flight_ = std::clamp(opt.frames_in_flight, 1, 3);
             else frames_in_flight_ = 2;
             swap_format_ = SDL_GetGPUSwapchainTextureFormat(dev_, window);
@@ -333,6 +585,31 @@ public:
                 SDL_GPUTextureSupportsSampleCount(dev_, kSceneFormat, sc) &&
                 SDL_GPUTextureSupportsSampleCount(dev_, depth_format_, sc)) { msaa_ = s; break; }
         }
+        // scenedepth: its target at the scene's sample count (else the pre-pass, as off)
+        if (scene_depth_on_ && !(SDL_GPUTextureSupportsFormat(dev_, kSceneDepthFormat, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET) &&
+                                 (msaa_ == 1 || SDL_GPUTextureSupportsSampleCount(dev_, kSceneDepthFormat, sample_count(msaa_))))) {
+            scene_depth_on_ = false;
+            SDL_Log("b3gfx: scene depth: R32F at MSAA %d not available: the depth pre-pass", msaa_);
+        }
+        // MAX blending of R32F (the AO break's depth-only forms): not queryable through SDL 3.4, the backend's rule
+        // (scene_depth.h scene_depth_blend); without it a frame with the AO keeps the pre-pass
+        sd_.blend = scene_depth_on_ && scene_depth_blend(SDL_GetGPUDeviceDriver(dev_), SDL_GetStringProperty(SDL_GetGPUDeviceProperties(dev_), SDL_PROP_GPU_DEVICE_NAME_STRING, ""));
+        // (nightdepth: the forms at start for every frame's scene depth, or night's when night can be on from the start;
+        // else at the first night race's load, prepare_scene_depth; sd_.on keeps the create infos for that)
+        sd_.on = scene_depth_on_;
+        sd_.eager = scene_depth_on_ && scene_depth_forms_at_start(scene_depth_mode_, opt.scene_depth_warm_night);
+        sd_.samples = sample_count(msaa_);
+        sd_.dev = dev_;
+        {
+            std::lock_guard<std::mutex> lk(g_sd_mu);
+            g_sd_dev[dev_] = &sd_;
+        }
+        SDL_Log("b3gfx: scene depth %s%s", !scene_depth_on_ ? "off (the depth pre-pass)"
+                                           : sd_.blend ? "on (the scene pass keeps its depth)"
+                                                       : "on (the scene pass keeps its depth; the AO's frames the pre-pass: R32F does not blend here)",
+                !scene_depth_on_ || scene_depth_mode_ != SceneDepthMode::kNight ? ""
+                : sd_.eager ? ", for night's frames (by day the pre-pass; its pipelines at start: NIGHT on)"
+                            : ", for night's frames (by day the pre-pass; its pipelines at the first night race's load)");
         if (!make_shaders(err)) return false;
         SDL_GPUSamplerCreateInfo si{};
         si.min_filter = si.mag_filter = opt.point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;   // settings1
@@ -384,6 +661,12 @@ public:
         textures_[w] = nullptr;
         textures_.pop_back();
         warm_pipelines();
+        // d3d12: a driver that makes a device but not the track's own pipeline (an old, broken Vulkan driver) fails here,
+        // so Device::create tries the next GRAPHICS API (D3D12) instead of a window with nothing in it
+        if (!pipeline(kSceneFormat, Blend::kOpaque, false)) return fail(err, "the first pipelines (the track's opaque pipeline)");
+        // test aid: B3GFX_FAIL_DRIVER=<driver> fails the start-up of that driver here, after its device, window claim,
+        // shaders and pipelines exist (Device::create's destroy-and-retry path, run on a working PC)
+        if (const char* f = SDL_getenv("B3GFX_FAIL_DRIVER"); f && *f && opt.driver == f) return fail(err, "B3GFX_FAIL_DRIVER (test aid)");
         g_pipe_log = true;
         return true;
     }
@@ -399,6 +682,7 @@ public:
         for (Blend b : {Blend::kOpaque, Blend::kAlphaTest, Blend::kAlpha})
             for (bool cull : {false, true}) pipeline(kSceneFormat, b, cull);
         for (bool cull : {false, true}) pipeline(kSceneFormat, Blend::kAlpha, cull, false, true);   // the post-fog stage (Z written)
+        for (bool cull : {false, true}) pipeline(kSceneFormat, Blend::kAlpha, cull, false, false, nullptr, true);   // whitesky: the clouds
         pipeline(kSceneFormat, Blend::kOpaque, false, true);   // cars
         for (int m = 0; m < 3; ++m) effect_pipeline(m);
         line_pipeline();
@@ -423,6 +707,7 @@ public:
         if (dof_ready()) for (int k = 0; k < 3; ++k) dof_depth_pipeline(k);
         if (warm_sun_shadows_ && sun_shadow_ready()) {
             sun_caster_pipeline();
+            sun_prop_pipeline();   // propshadow1 (made with the rest: PROP SHADOWS may turn on in a race)
             for (Blend b : {Blend::kOpaque, Blend::kAlphaTest, Blend::kAlpha})
                 for (bool cull : {false, true}) recv_pipeline(b, cull);
         }
@@ -433,6 +718,7 @@ public:
         if (window_ && !present_pipe_win_) present_pipe_win_ = fullscreen_pipeline(swap_format_, false);
         if (!present_pipe_off_ && swap_format_ != SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM)
             present_pipe_off_ = fullscreen_pipeline(SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, false);   // offscreen and F12 shots
+        if (sd_.eager) scene_depth_warm("at start");   // scenedepth: their two-target forms too (no compile at the first night frame)
         warm_ms_ = double(SDL_GetTicksNS() - t0) * 1e-6;
         SDL_Log("b3gfx: pipelines made at start: %.0f ms", warm_ms_);
     }
@@ -494,37 +780,108 @@ public:
 
     bool supports_bc() const override { return bc_ok_; }
     const char* driver_name() const override { return SDL_GetGPUDeviceDriver(dev_); }
+    // texpack: asked once (a throwaway Vulkan instance; other drivers: not known)
+    double device_local_mb() const override { gpu_info(); return local_mb_; }
+    int gpu_kind() const override { gpu_info(); return gpu_kind_; }
+    void gpu_info() const {
+        if (gpu_asked_) return;
+        gpu_asked_ = true;
+        const char* drv = SDL_GetGPUDeviceDriver(dev_);
+        if (drv && std::strcmp(drv, "vulkan") == 0) {
+            local_mb_ = vulkan_device_local_mb(dev_, &gpu_kind_);
+        } else if (drv && std::strcmp(drv, "direct3d12") == 0) {
+#ifdef _WIN32
+            local_mb_ = dxgi_device_local_mb(dev_, &gpu_kind_);
+#endif
+        } else if (drv && std::strcmp(drv, "metal") == 0) {
+            gpu_kind_ = 1;   // texpack review: Apple's GPUs here share the system's memory (Apple silicon); Auto packs
+        }
+    }
+    mutable bool gpu_asked_ = false;
+    mutable double local_mb_ = 0;
+    mutable int gpu_kind_ = 0;
     void* sdl_gpu_device() const override { return dev_; }
     int msaa() const override { return msaa_; }
     const char* present_mode_name() const override { return present_; }
+    // The swapchain's present mode: vsync, or uncapped (immediate where the window has it, else mailbox)
+    bool apply_present(PresentMode want) {
+        SDL_GPUPresentMode mode = SDL_GPU_PRESENTMODE_VSYNC;
+        if (want == PresentMode::kUncapped) {
+            if (SDL_WindowSupportsGPUPresentMode(dev_, window_, SDL_GPU_PRESENTMODE_IMMEDIATE)) mode = SDL_GPU_PRESENTMODE_IMMEDIATE;
+            else if (SDL_WindowSupportsGPUPresentMode(dev_, window_, SDL_GPU_PRESENTMODE_MAILBOX)) mode = SDL_GPU_PRESENTMODE_MAILBOX;
+        }
+        if (!SDL_SetGPUSwapchainParameters(dev_, window_, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, mode)) return false;
+        present_ = mode == SDL_GPU_PRESENTMODE_IMMEDIATE ? "immediate" : mode == SDL_GPU_PRESENTMODE_MAILBOX ? "mailbox" : "vsync";
+        return true;
+    }
+    bool set_present(PresentMode want) override {   // nextstart: VSYNC live
+        if (!window_ || !dev_) return false;
+        const bool ok = apply_present(want);
+        if (!ok) std::fprintf(stderr, "b3gfx: SDL_SetGPUSwapchainParameters: %s\n", SDL_GetError());
+        return ok;
+    }
     int frames_in_flight() const override { return window_ ? frames_in_flight_ : 0; }
     void wait_swapchain() override {
         if (!window_) return;
         const Uint64 t0 = SDL_GetTicksNS();
+        if (soft_ && frames_in_flight_ == 1 && last_fence_) {   // fifauto: one frame in flight: the last one done first
+            SDL_WaitForGPUFences(dev_, true, &last_fence_, 1);
+            SDL_ReleaseGPUFence(dev_, last_fence_);
+            last_fence_ = nullptr;
+        }
         SDL_WaitForGPUSwapchain(dev_, window_);
         wait_ns_ += SDL_GetTicksNS() - t0;
     }
     // perf4: frames in flight at run time (the adaptive Auto, include/b3gfx/frames_auto.h)
     bool set_frames_in_flight(int n) override {
         if (!window_) return false;
-        n = std::clamp(n, 1, 3);
+        n = std::clamp(n, 1, soft_ ? 2 : 3);
         if (n == frames_in_flight_) return true;
+        if (soft_) {   // fifauto: a flag (the next frame's start waits, or does not wait, for the last frame's fence)
+            frames_in_flight_ = n;
+            return true;
+        }
         flush_uploads();
         if (!SDL_SetGPUAllowedFramesInFlight(dev_, Uint32(n))) return false;
         frames_in_flight_ = n;
         return true;
     }
     std::uint64_t take_wait_ns() override { const std::uint64_t r = wait_ns_; wait_ns_ = 0; return r; }
+    std::uint64_t take_acquire_ns() override { const std::uint64_t r = acquire_ns_; acquire_ns_ = 0; return r; }   // fifauto
+    void set_gpu_timing(int every) override { gpu_every_ = every > 0 ? every : 0; }
+    void set_bloom_lean(int on) override { bloom_lean_ = on < 0 ? -1 : (on ? 1 : 0); }
+    double take_gpu_ms() override { const double r = gpu_ms_; gpu_ms_ = -1.0; return r; }
     // perf4: acquire / submit of a window frame, timed into wait_ns_
     bool acquire_timed(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture** sw, Uint32* w, Uint32* h) {
         const Uint64 t0 = SDL_GetTicksNS();
         const bool ok = SDL_WaitAndAcquireGPUSwapchainTexture(cmd, window_, sw, w, h);
-        wait_ns_ += SDL_GetTicksNS() - t0;
+        const Uint64 dt = SDL_GetTicksNS() - t0;
+        wait_ns_ += dt;
+        acquire_ns_ += dt;   // fifauto: the presentation side's part (a free image / drawable)
         return ok;
     }
     bool submit_timed(SDL_GPUCommandBuffer* cmd) {
         const Uint64 t0 = SDL_GetTicksNS();
-        const bool ok = SDL_SubmitGPUCommandBuffer(cmd);
+        bool ok;
+        const bool timed = gpu_every_ > 0 && ++gpu_frame_ % std::uint64_t(gpu_every_) == 0;   // fifauto: a diagnostic sample
+        if (soft_ || timed) {   // fifauto: the window frame's fence kept for the next frame's start (one frame in flight)
+            SDL_GPUFence* f = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+            ok = f != nullptr;
+            if (last_fence_) SDL_ReleaseGPUFence(dev_, last_fence_);
+            last_fence_ = f;
+            wait_ns_ += SDL_GetTicksNS() - t0;
+            if (timed && f) {   // the GPU's time on this frame: from the submit's start to the fence (the fence wait itself is
+                // not counted as a wait; a driver that renders inside the submit, lavapipe, has it all in the submit)
+                SDL_WaitForGPUFences(dev_, true, &last_fence_, 1);
+                gpu_ms_ = double(SDL_GetTicksNS() - t0) * 1e-6;
+            }
+            if (!soft_ && last_fence_) {
+                SDL_ReleaseGPUFence(dev_, last_fence_);
+                last_fence_ = nullptr;
+            }
+            return ok;
+        }
+        ok = SDL_SubmitGPUCommandBuffer(cmd);
         wait_ns_ += SDL_GetTicksNS() - t0;
         return ok;
     }
@@ -779,6 +1136,99 @@ public:
         return read_back(cmd, w, h, rgba);
     }
 
+    bool draw_picture(int w, int h, const FrameParams& fp, const std::vector<DrawItem>& items, std::vector<std::uint8_t>& rgba) override {
+        const SDL_GPUTextureFormat fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;   // paint3: pic_targets_ (the shots' stay)
+        flush_uploads();
+        if (!ensure_targets(pic_targets_, fmt, std::uint32_t(w), std::uint32_t(h), true)) return false;
+        SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(dev_);
+        // (at 100 %, never the render-scale path: its targets are the shots', and MIRROR MODE's state is the frames')
+        render_scene(cmd, pic_targets_, fp, items, true);
+        present(cmd, pic_targets_, pic_targets_.resolve, fmt, fp);
+        return read_back(cmd, w, h, rgba, pic_targets_.resolve);
+    }
+
+    // paint3: draw_picture's drawing submitted with its read-back; picture_take maps it once its fence has passed
+    int picture_begin(int w, int h, const FrameParams& fp, const std::vector<DrawItem>& items) override {
+        const SDL_GPUTextureFormat fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+        if (w <= 0 || h <= 0 || w > 4096 || h > 4096) return 0;
+        flush_uploads();
+        if (!ensure_targets(pic_targets_, fmt, std::uint32_t(w), std::uint32_t(h), true)) return 0;
+        const std::uint32_t bytes = std::uint32_t(w) * std::uint32_t(h) * 4u;
+        SDL_GPUTransferBufferCreateInfo tbi{SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, bytes, 0};
+        SDL_GPUTransferBuffer* tb = SDL_CreateGPUTransferBuffer(dev_, &tbi);
+        if (!tb) return 0;
+        SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(dev_);
+        if (!cmd) { SDL_ReleaseGPUTransferBuffer(dev_, tb); return 0; }
+        render_scene(cmd, pic_targets_, fp, items, true);
+        present(cmd, pic_targets_, pic_targets_.resolve, fmt, fp);
+        SDL_GPUCopyPass* cp = SDL_BeginGPUCopyPass(cmd);
+        if (!cp) { SDL_SubmitGPUCommandBuffer(cmd); SDL_ReleaseGPUTransferBuffer(dev_, tb); return 0; }
+        SDL_GPUTextureRegion reg{};
+        reg.texture = pic_targets_.resolve;
+        reg.w = std::uint32_t(w);
+        reg.h = std::uint32_t(h);
+        reg.d = 1;
+        SDL_GPUTextureTransferInfo dst{tb, 0, std::uint32_t(w), std::uint32_t(h)};
+        SDL_DownloadFromGPUTexture(cp, &reg, &dst);
+        SDL_EndGPUCopyPass(cp);
+        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+        if (!fence) { SDL_ReleaseGPUTransferBuffer(dev_, tb); return 0; }
+        pictures_[++picture_id_] = PendingPicture{fence, tb, bytes};
+        return picture_id_;
+    }
+    int picture_take(int id, std::vector<std::uint8_t>& rgba, bool wait) override {
+        const auto it = pictures_.find(id);
+        if (it == pictures_.end()) return -1;
+        PendingPicture& p = it->second;
+        if (!wait && !SDL_QueryGPUFence(dev_, p.fence)) return 0;
+        if (wait) SDL_WaitForGPUFences(dev_, true, &p.fence, 1);
+        int r = -1;
+        if (const auto* src = static_cast<const std::uint8_t*>(SDL_MapGPUTransferBuffer(dev_, p.tb, false))) {
+            rgba.assign(src, src + p.bytes);
+            SDL_UnmapGPUTransferBuffer(dev_, p.tb);
+            r = 1;
+        }
+        SDL_ReleaseGPUFence(dev_, p.fence);
+        SDL_ReleaseGPUTransferBuffer(dev_, p.tb);
+        pictures_.erase(it);
+        return r;
+    }
+    void release_pictures() {
+        for (auto& [id, p] : pictures_) {
+            SDL_WaitForGPUFences(dev_, true, &p.fence, 1);
+            SDL_ReleaseGPUFence(dev_, p.fence);
+            SDL_ReleaseGPUTransferBuffer(dev_, p.tb);
+        }
+        pictures_.clear();
+    }
+    void release_buffer(BufferId id) override {   // paint3 (SDL frees it once the GPU is done with it)
+        if (id < buffers_.size() && buffers_[id]) {
+            SDL_ReleaseGPUBuffer(dev_, buffers_[id]);
+            buffers_[id] = nullptr;
+        }
+    }
+    void release_texture(TextureId id) override {   // (and an HD replacement's original: create_texture_hd's pair)
+        if (id < original_.size() && original_[id] != kNone) {
+            const TextureId o = original_[id];
+            original_[id] = kNone;
+            if (o < textures_.size() && textures_[o] && textures_[o] != white_) {
+                SDL_ReleaseGPUTexture(dev_, textures_[o]);
+                textures_[o] = nullptr;
+            }
+        }
+        if (id < textures_.size() && textures_[id] && textures_[id] != white_) {
+            SDL_ReleaseGPUTexture(dev_, textures_[id]);
+            textures_[id] = nullptr;
+        }
+    }
+    void picture_drop(int id) override {   // paint3: given up (its fence never passed): released without waiting
+        const auto it = pictures_.find(id);
+        if (it == pictures_.end()) return;
+        SDL_ReleaseGPUFence(dev_, it->second.fence);
+        SDL_ReleaseGPUTransferBuffer(dev_, it->second.tb);
+        pictures_.erase(it);
+    }
+
     // perf1: the frame drawn and waited for, no read-back
     bool draw_offscreen_wait(int w, int h, const FrameParams& fp, const std::vector<DrawItem>& items) override {
         const SDL_GPUTextureFormat fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
@@ -826,6 +1276,7 @@ public:
         flush_uploads();
         SDL_WaitForGPUIdle(dev_);   // read_back waited for the frame; nothing else reads these
         release_targets(off_targets_);
+        release_targets(pic_targets_);
         release_targets(scaled_off_);
         for (Targets& t : off_views_) release_targets(t);
         off_views_.clear();
@@ -838,7 +1289,9 @@ public:
             for (Targets* t : {&win_targets_, &off_targets_, &scaled_win_, &scaled_off_}) t->bp_valid = false;
             for (auto* v : {&win_views_, &off_views_}) for (Targets& t : *v) t.bp_valid = false;
         }
-        if (std::fabs(render_scale_ - 1.0f) < 1e-3f && (scaled_win_.depth || scaled_off_.depth)) {
+        // gameopts: not while MIRROR MODE draws through them (every settings edit comes here: they would be freed and made
+        // again with a GPU wait each time); render() frees them when the mirrored frames end
+        if (std::fabs(render_scale_ - 1.0f) < 1e-3f && !mirror_held_ && (scaled_win_.depth || scaled_off_.depth)) {
             flush_uploads();
             SDL_WaitForGPUIdle(dev_);
             release_targets(scaled_win_);
@@ -847,7 +1300,7 @@ public:
     }
 
     // offscreen: the resolve target downloaded into `rgba` (submits `cmd` and waits)
-    bool read_back(SDL_GPUCommandBuffer* cmd, int w, int h, std::vector<std::uint8_t>& rgba) {
+    bool read_back(SDL_GPUCommandBuffer* cmd, int w, int h, std::vector<std::uint8_t>& rgba, SDL_GPUTexture* from = nullptr) {
         if (!cmd) return false;
         const std::uint64_t bytes64 = std::uint64_t(std::max(w, 0)) * std::uint64_t(std::max(h, 0)) * 4;
         if (bytes64 == 0 || bytes64 > 0xFFFFFFFFu) { SDL_CancelGPUCommandBuffer(cmd); return false; }
@@ -861,7 +1314,7 @@ public:
             return false;
         }
         SDL_GPUTextureRegion reg{};
-        reg.texture = off_targets_.resolve;
+        reg.texture = from ? from : off_targets_.resolve;   // (paint3: draw_picture's own)
         reg.w = std::uint32_t(w);
         reg.h = std::uint32_t(h);
         reg.d = 1;
@@ -907,12 +1360,16 @@ private:
         // photo2 (FrameParams::Dof): the depth pre-pass (single-sample, sampled), its colour target (writes off), the
         // half-size buffers W (prep) and G (gather); made on first use
         SDL_GPUTexture *dof_depth = nullptr, *dof_colour = nullptr;
+        // scenedepth: the scene pass's depth target (R32F, the scene's sample count) and its single-sample resolve (MSAA)
+        SDL_GPUTexture *sd = nullptr, *sd_res = nullptr, *sd_fix = nullptr;   // sd_fix: the resolve with its edges fixed (sdfix.frag)
         Buf dw, dg;
         Buf ao;   // surface (FrameParams::Surface::ao): the half-size visibility (r) and view distance (g)
+        Buf ao2;  // nightfix: the same after the half-size blur (ao.frag mode 3), what the composite reads
         Buf nc;   // night mode without MSAA: the copy of the frame the grade reads (with MSAA it reads the resolve)
         // photoblur (FrameParams::Motion): the streaks V and the accumulation A (full size), the tile max and the
         // neighbour max (one texel per MotionTile pixels), the frames A holds and what they were drawn from (motion_sig)
         Buf mv, ma, mt, mn;
+        Buf mir;   // gameopts (FrameParams::mirror_x): the 3D picture reversed left to right, what the composite copies
         int ma_frames = 0;
         std::uint64_t ma_sig = 0;
     };
@@ -939,6 +1396,17 @@ private:
             si.code = reinterpret_cast<const Uint8*>(msl);
             si.code_size = std::strlen(msl);
             si.entrypoint = "main0";
+#if defined(_WIN32)
+        } else if (formats & SDL_GPU_SHADERFORMAT_DXIL) {   // d3d12: the DXIL made from this SPIR-V (shaders_gen.h kDxil)
+            const shaders::Dxil* d = nullptr;
+            for (const shaders::Dxil& x : shaders::kDxil)
+                if (x.spv == spv) { d = &x; break; }
+            if (!d) return nullptr;
+            si.format = SDL_GPU_SHADERFORMAT_DXIL;
+            si.code = d->code;
+            si.code_size = d->size;
+            si.entrypoint = "main";
+#endif
         } else {
             return nullptr;
         }
@@ -950,8 +1418,13 @@ private:
 
     bool make_shaders(std::string* err) {
         const SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(dev_);
-        if (!(formats & (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL))) {
-            if (err) *err = "the GPU driver accepts neither SPIR-V nor MSL (D3D12 needs DXIL: not generated yet)";
+#if defined(_WIN32)
+        const SDL_GPUShaderFormat ours = SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL | SDL_GPU_SHADERFORMAT_DXIL;
+#else
+        const SDL_GPUShaderFormat ours = SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL;
+#endif
+        if (!(formats & ours)) {
+            if (err) *err = "the GPU driver accepts none of the shader formats this build has (SPIR-V, MSL, DXIL on Windows)";
             return false;
         }
         using namespace shaders;
@@ -962,6 +1435,12 @@ private:
         present_fs_ = shader(present_frag_spv, sizeof present_frag_spv, present_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
         car_vs_ = shader(car_vert_spv, sizeof car_vert_spv, car_vert_msl, SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
         car_fs_ = shader(car_frag_spv, sizeof car_frag_spv, car_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 4, 1);   // reflect-tunnel: + the world env map; carpaint: + the paint mask
+        // scenedepth: the scene pass's depth-writing forms of the track and car shaders (made now; used only on frames whose
+        // scene pass keeps its depth: sd_)
+        if (SDL_GPUShader* d = fs_ ? shader(mesh_depth_frag_spv, sizeof mesh_depth_frag_spv, mesh_depth_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1) : nullptr)
+            sd_.depth_fs[fs_] = d;
+        if (SDL_GPUShader* d = car_fs_ ? shader(car_depth_frag_spv, sizeof car_depth_frag_spv, car_depth_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 4, 1) : nullptr)
+            sd_.depth_fs[car_fs_] = d;
         sun_vs_ = shader(sun_vert_spv, sizeof sun_vert_spv, sun_vert_msl, SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
         sun_fs_ = shader(sun_frag_spv, sizeof sun_frag_spv, sun_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1);
         blur_fs_ = shader(blur_frag_spv, sizeof blur_frag_spv, blur_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1);
@@ -1212,14 +1691,22 @@ private:
     // is on, or when a beam's hull reaches behind the eye)
     // nightlights (§17.2): the fixtures (DrawItem::night_emissive) drawn again after the grade and the night sky: their
     // bright texels at the pre-grade colour (emissive.frag), over mesh.vert with the same vertex uniforms as draw_item
+    // `day` (TUNNEL LIGHTS, §35.4): the DrawItem::day_glow draws instead, by day (emissive.frag mode 8: no frame copy read)
     void draw_night_emissive(SDL_GPURenderPass* pass, SDL_GPUCommandBuffer* cmd, const FrameParams& fp, const std::vector<DrawItem>& items,
-                             SDL_GPUTexture* src, SDL_GPUGraphicsPipeline*& bound, BufferId& bound_vb, BufferId& bound_ib) {
-        SDL_GPUGraphicsPipeline* p = nullptr;
-        for (const DrawItem& it : items) {
-            if (!it.night_emissive || it.overlay || it.effect || it.post_fog || !it.textured || !it.index_count ||
+                             SDL_GPUTexture* src, SDL_GPUGraphicsPipeline*& bound, BufferId& bound_vb, BufferId& bound_ib, bool day = false) {
+        for (const DrawItem& it : items)
+            if (!draw_emissive_item(pass, cmd, fp, it, src, bound, bound_vb, bound_ib, day)) return;
+    }
+    // one item of draw_night_emissive (skipped when it is not one; false: no pipeline, stop)
+    bool draw_emissive_item(SDL_GPURenderPass* pass, SDL_GPUCommandBuffer* cmd, const FrameParams& fp, const DrawItem& it,
+                            SDL_GPUTexture* src, SDL_GPUGraphicsPipeline*& bound, BufferId& bound_vb, BufferId& bound_ib, bool day) {
+        {
+            // (by day: the tunnels' fittings)
+            if (!(day ? it.day_glow == 1 : it.night_emissive != 0) || it.overlay || it.effect || it.post_fog || !it.textured || !it.index_count ||
                 it.vertices >= buffers_.size() || it.indices >= buffers_.size() || it.shading != Shading::kTrack)
-                continue;
-            if (!p && !(p = emissive_pipeline())) return;
+                return true;
+            SDL_GPUGraphicsPipeline* p = emissive_pipeline();
+            if (!p) return false;
             if (p != bound) { SDL_BindGPUGraphicsPipeline(pass, p); bound = p; }
             bind_buffers(pass, it, bound_vb, bound_ib);
             SDL_GPUTextureSamplerBinding tsb[2] = {{tex_of(it.texture), sampler_}, {src, clamp_sampler_}};
@@ -1244,15 +1731,63 @@ private:
             vu.line[2] = line_width_;
             vu.line[3] = fp.line_far;
             SDL_PushGPUVertexUniformData(cmd, 0, &vu, sizeof vu);
-            const bool whole = it.night_emissive == 2;   // a backlit panel: every texel (the ramp below any texel)
-            const float a[4] = {fp.night.fixture[0], whole ? -2.0f : fp.night.fixture[1], whole ? -1.0f : fp.night.fixture[2],
-                                it.blend == Blend::kAlphaTest ? it.alpha_ref : 0.0f};
+            // 2: a backlit panel, 3: a front-lit billboard (nightfix): every texel (the ramp below any texel)
+            const bool whole = it.night_emissive >= 2, board = it.night_emissive == 3;
+            const float* bt = fp.night.board;
+            const float a[16] = {day ? fp.day_glow : fp.night.fixture[0], whole ? -2.0f : fp.night.fixture[1], whole ? -1.0f : fp.night.fixture[2],
+                                 it.blend == Blend::kAlphaTest ? it.alpha_ref : 0.0f,
+                                 board ? bt[0] : 1.0f, board ? bt[1] : 1.0f, board ? bt[2] : 1.0f, board ? std::clamp(bt[3], 0.0f, 1.0f) : 1.0f,
+                                 // round 3: the mode (4 windows, 5 shop front), the texture's mean light, its windows' grid
+                                 day ? 8.0f : float(it.night_emissive), float(it.night_mean) / 255.0f, float(std::max<int>(it.night_cols, 1)),
+                                 float(std::max<int>(it.night_rows, 1)),
+                                 // round 3b: the camera (retro-reflective signs); xboxglow (§35.5): w 1 the texture's alpha is the
+                                 // glow mask, 2 that and the Xbox look (by day: self-lit, opaque)
+                                 fp.eye[0], fp.eye[1], fp.eye[2],
+                                 it.glow_mask ? (day && fp.day_glow_mode >= 2 ? 2.0f : 1.0f) : (day && fp.day_glow_mode >= 2 ? 3.0f : 0.0f)};
             SDL_PushGPUFragmentUniformData(cmd, 0, a, sizeof a);
             ++stats_.draws;
             SDL_DrawGPUIndexedPrimitives(pass, it.index_count, 1, it.first_index, 0, 0);
         }
+        return true;
     }
-    struct BeamUniforms { float inv[16], eye[4], shape[4], core[4], range[4], tint[4], tun[4], lpos[8][4], ldir[8][4], sun_vp[16], sun_p[4], sshape[4], srange[4], spos[24][4], scol[24][4]; };
+    // reflect2 G: the env pass's lamps at night: the fixtures of `ep` in face `f` through the emissive pipeline (as
+    // draw_night_emissive), their glow from a constant warm source (env_glow_src_, the size of the atlas: emissive.frag
+    // fetches it at the pixel) x ep.night_glow
+    // (before render_env's pass: its upload goes with flush_uploads)
+    void ensure_env_glow(const EnvPass& ep) {
+        const std::uint32_t w = 3u * std::uint32_t(ep.face), h = 2u * std::uint32_t(ep.face);
+        if (env_glow_src_ && env_glow_w_ >= w && env_glow_h_ >= h) return;
+        if (env_glow_src_) SDL_ReleaseGPUTexture(dev_, env_glow_src_);
+        env_glow_src_ = nullptr;
+        std::vector<std::uint8_t> px(std::size_t(w) * h * 4);
+        for (std::size_t i = 0; i < px.size(); i += 4) {
+            for (int c = 0; c < 3; ++c) px[i + std::size_t(c)] = std::uint8_t(std::clamp(ep.glow_colour[c], 0.0f, 1.0f) * 255.0f + 0.5f);
+            px[i + 3] = 255;
+        }
+        const TextureId id = create_texture({TextureLevel{int(w), int(h), px.data()}});
+        if (id == kNone) return;
+        env_glow_src_ = textures_[id];
+        textures_[id] = nullptr;
+        if (std::size_t(id) + 1 == textures_.size()) textures_.pop_back();
+        env_glow_w_ = w;
+        env_glow_h_ = h;
+    }
+    void env_night_glow(SDL_GPURenderPass* pass, SDL_GPUCommandBuffer* cmd, const FrameParams& fp, const EnvPass& ep, int f,
+                        SDL_GPUGraphicsPipeline*& bound, BufferId& bound_vb, BufferId& bound_ib) {
+        if (!env_glow_src_) return;   // (made before the pass: ensure_env_glow)
+        FrameParams g = fp;
+        g.night.fixture[0] = ep.night_glow;
+        g.night.fixture[1] = ep.glow_ramp[0];
+        g.night.fixture[2] = ep.glow_ramp[1];
+        std::memcpy(g.night.board, ep.glow_board, sizeof g.night.board);
+        // (the fixtures, backlit panels and front-lit boards: modes 1-3; the lit windows and shop fronts keep their look)
+        for (std::size_t i = 0; i < ep.items.size(); ++i) {
+            const DrawItem& it = ep.items[i];
+            if (it.night_emissive < 1 || it.night_emissive > 3 || !(ep.faces.empty() || (i < ep.faces.size() && (ep.faces[i] >> f & 1)))) continue;
+            if (!draw_emissive_item(pass, cmd, g, it, env_glow_src_, bound, bound_vb, bound_ib, false)) return;
+        }
+    }
+    struct BeamUniforms { float inv[16], eye[4], shape[4], core[4], range[4], tint[4], tun[4], lpos[8][4], ldir[8][4], sun_vp[16], sun_p[4], sshape[4], srange[4], spos[32][4], scol[32][4], bshape[4], bpos[16][4], bdir[16][4]; };
     // `moon_shadow`: SUN SHADOWS' map is live this frame and its receiver term is this pass's (night: the track draws took none)
     void draw_night_beams(SDL_GPURenderPass* pass, SDL_GPUCommandBuffer* cmd, const Targets& t, const FrameParams& fp, SDL_GPUTexture* src,
                           SDL_GPUGraphicsPipeline*& bound, bool moon_shadow = false) {
@@ -1261,7 +1796,8 @@ private:
         const int lamps = std::clamp(n.lamps, 0, int(FrameParams::Night::kMaxLamps));
         const float tun = std::clamp(n.tunnel[0] * n.enclosed, 0.0f, 1.0f);
         const int streets = std::clamp(n.streets, 0, int(FrameParams::Night::kMaxStreet));
-        if (!p || !src || !t.dof_depth || (lamps == 0 && streets == 0 && tun <= 1e-3f && !moon_shadow)) return;
+        const int boards = std::clamp(n.boards, 0, int(FrameParams::Night::kMaxBoard));
+        if (!p || !src || !depth_src_ || (lamps == 0 && streets == 0 && boards == 0 && tun <= 1e-3f && !moon_shadow)) return;
         BeamUniforms u{};
         if (!mat4_invert(fp.view_proj, u.inv)) return;
         for (int k = 0; k < 3; ++k) {
@@ -1278,6 +1814,7 @@ private:
         u.tun[0] = tun;
         u.tun[1] = n.tunnel[1];
         u.tun[2] = n.tunnel[2];
+        u.tun[3] = std::clamp(fp.surface.wet, 0.0f, 1.0f);   // weather (§38): the wet road's glints in the pools
         if (moon_shadow && sh_map_) {   // SUN SHADOWS at night (as draw_item's receiver uniforms)
             const FrameParams::SunShadow& ss = fp.sun_shadow;
             std::memcpy(u.sun_vp, ss.view_proj, sizeof u.sun_vp);
@@ -1293,12 +1830,28 @@ private:
         u.srange[0] = n.street_range[0];
         u.srange[1] = n.street_range[1];
         u.srange[2] = float(streets);
-        for (int i = 0; i < streets; ++i)
+        for (int i = 0; i < streets; ++i) {
             for (int k = 0; k < 3; ++k) {
                 u.spos[i][k] = n.street[i].pos[k];
                 u.scol[i][k] = n.street[i].colour[k];
             }
-        bool full = tun > 1e-3f || u.sun_p[3] > 0.0f || streets > 0;   // the tunnel fade, the moon shadow, street lights: the whole view
+            u.spos[i][3] = std::clamp(n.street[i].gain, 0.0f, 1.0f);   // nightfix: the fade at the cap
+            u.scol[i][3] = std::clamp(n.street[i].scale, 0.25f, 4.0f);  // nightfix: the pool's size (the lamp's height)
+        }
+        // billboard floodlights (nightfix): position (w: the board's height), axis (w: gain), the cone and the tint
+        u.bshape[0] = n.board_shape[0];
+        u.bshape[1] = n.board_shape[1];
+        u.bshape[2] = n.board_shape[2];
+        u.bshape[3] = float(boards);
+        for (int i = 0; i < boards; ++i) {
+            for (int k = 0; k < 3; ++k) {
+                u.bpos[i][k] = n.board_lamp[i].pos[k];
+                u.bdir[i][k] = n.board_lamp[i].axis[k];
+            }
+            u.bpos[i][3] = std::max(n.board_lamp[i].size, 0.5f);
+            u.bdir[i][3] = std::clamp(n.board_lamp[i].gain, 0.0f, 1.0f);
+        }
+        bool full = tun > 1e-3f || u.sun_p[3] > 0.0f || streets > 0 || boards > 0;   // the tunnel fade, the moon shadow, street lights, boards: the whole view
         const float wide = n.spot_range[1] * std::sqrt(std::max(0.0f, 1.0f - n.spot_shape[1] * n.spot_shape[1])) / std::max(n.spot_shape[1], 0.05f);
         for (int i = 0; i < lamps; ++i) {
             const FrameParams::Night::Lamp& l = n.lamp[i];
@@ -1342,8 +1895,8 @@ private:
         bound = p;
         if (!full) SDL_SetGPUScissor(pass, &r);
         SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof u);
-        SDL_GPUTextureSamplerBinding tsb[3] = {{src, clamp_sampler_}, {t.dof_depth, clamp_sampler_},
-                                               {moon_shadow && sh_map_ ? sh_map_ : t.dof_depth, clamp_sampler_}};
+        SDL_GPUTextureSamplerBinding tsb[3] = {{src, clamp_sampler_}, {depth_src_, clamp_sampler_},
+                                               {moon_shadow && sh_map_ ? sh_map_ : depth_src_, clamp_sampler_}};
         SDL_BindGPUFragmentSamplers(pass, 0, tsb, 3);
         SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
         ++stats_.draws;
@@ -1356,12 +1909,15 @@ private:
     // zwrite: blended draws that write Z (the post-fog stage); slots 6 / 7 (culled)
     // `fs` (SUN SHADOWS: the receivers' mesh.frag variant): a new pipeline with that fragment shader, not cached here
     // (recv_pipeline keeps it)
+    // `keep_alpha` (whitesky, keeps_frame_alpha): a blended draw that leaves the frame alpha as it is (the GS's FBMSK alpha:
+    // the sky's clouds), slots 8 / 9
     SDL_GPUGraphicsPipeline* pipeline(SDL_GPUTextureFormat fmt, Blend blend, bool cull, bool car = false, bool zwrite = false,
-                                      SDL_GPUShader* fs = nullptr) {
+                                      SDL_GPUShader* fs = nullptr, bool keep_alpha = false) {
         auto& slot = pipelines_[fmt];
         zwrite = zwrite && blend == Blend::kAlpha;
+        keep_alpha = keep_alpha && blend == Blend::kAlpha && !zwrite && !car && !fs;
         SDL_GPUGraphicsPipeline* made = nullptr;
-        SDL_GPUGraphicsPipeline*& p = fs ? made : car ? car_pipe_ : slot[zwrite ? 6 + (cull ? 1 : 0) : int(blend) + (cull ? 3 : 0)];
+        SDL_GPUGraphicsPipeline*& p = fs ? made : car ? car_pipe_ : slot[keep_alpha ? 8 + (cull ? 1 : 0) : zwrite ? 6 + (cull ? 1 : 0) : int(blend) + (cull ? 3 : 0)];
         if (p) return p;
         SDL_GPUVertexBufferDescription vb{0, sizeof(Vertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0};
         SDL_GPUVertexAttribute at[5] = {
@@ -1387,9 +1943,10 @@ private:
             ct.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
             ct.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
             ct.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
-            // The GS writes the source alpha into the frame alpha, unblended.
-            ct.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
-            ct.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+            // The GS writes the source alpha into the frame alpha, unblended; with FBMSK alpha (keep_alpha: the clouds)
+            // the frame alpha stays as it is
+            ct.blend_state.src_alpha_blendfactor = keep_alpha ? SDL_GPU_BLENDFACTOR_ZERO : SDL_GPU_BLENDFACTOR_ONE;
+            ct.blend_state.dst_alpha_blendfactor = keep_alpha ? SDL_GPU_BLENDFACTOR_ONE : SDL_GPU_BLENDFACTOR_ZERO;
             ct.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
         }
         SDL_GPUGraphicsPipelineCreateInfo pi{};
@@ -2174,7 +2731,8 @@ private:
     }
     // The pre-pass (before the scene pass): the draws that write Z (as the sun's occlusion pass: not the sky, the blended
     // track, effects or the 2D stage) at the output size, into t.dof_depth
-    bool dof_depth_pass(SDL_GPUCommandBuffer* cmd, Targets& t, const FrameParams& fp, const std::vector<DrawItem>& items) {
+    // (round 3e) the pre-pass's targets (the single-sample depth the passes read, its scratch colour), made once
+    bool ensure_dof_targets(Targets& t) {
         if (!t.dof_depth) {
             SDL_GPUTextureCreateInfo ti{};
             ti.type = SDL_GPU_TEXTURETYPE_2D;
@@ -2191,6 +2749,100 @@ private:
             t.dof_colour = SDL_CreateGPUTexture(dev_, &ti);
             if (!t.dof_depth || !t.dof_colour) return false;
         }
+        return true;
+    }
+    // scenedepth: the two-target forms of every pipeline drawing into the scene's target at its sample count (the masked
+    // form of each; the depth-writing and depth-only forms of those with a SCENE_DEPTH shader), made now instead of at a
+    // frame's first use
+    void scene_depth_warm(const char* when) {
+        const std::uint64_t t0 = SDL_GetTicksNS();
+        std::vector<SDL_GPUGraphicsPipeline*> scene;
+        for (const auto& kv : sd_.info)
+            if (kv.second.pi.multisample_state.sample_count == sample_count(msaa_)) scene.push_back(kv.first);
+        int n = 0;
+        for (SDL_GPUGraphicsPipeline* p : scene) n += scene_depth_forms(sd_, p);
+        SDL_Log("b3gfx: scene depth: %d two-target pipelines made %s (%.0f ms)%s", n, when, double(SDL_GetTicksNS() - t0) * 1e-6,
+                sd_.broken ? "; one could not be made: the depth pre-pass from now on" : "");
+    }
+    // nightdepth: at a night race's load (View::load_prepared), the forms not made at start
+    void prepare_scene_depth() override {
+        if (!scene_depth_on_ || sd_.eager || sd_.broken) return;
+        sd_.eager = true;   // (and the pipelines made from now on get theirs with them, scene_depth_keep)
+        scene_depth_warm("at a night race's load");
+    }
+    // scenedepth: the scene depth's targets, made once (false: not on this device: the pre-pass instead)
+    bool ensure_scene_depth(Targets& t) {
+        if (t.sd) return true;
+        if (sd_failed_) return false;
+        SDL_GPUTextureCreateInfo ti{};
+        ti.type = SDL_GPU_TEXTURETYPE_2D;
+        ti.width = t.w;
+        ti.height = t.h;
+        ti.layer_count_or_depth = 1;
+        ti.num_levels = 1;
+        ti.format = kSceneDepthFormat;
+        ti.sample_count = sample_count(msaa_);
+        ti.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | (msaa_ > 1 ? 0 : SDL_GPU_TEXTUREUSAGE_SAMPLER);
+        if (!SDL_GPUTextureSupportsFormat(dev_, ti.format, ti.type, ti.usage) ||
+            (msaa_ > 1 && !SDL_GPUTextureSupportsSampleCount(dev_, ti.format, ti.sample_count))) {
+            sd_failed_ = true;
+            SDL_Log("b3gfx: scene depth: R32F %s not available: the depth pre-pass instead", msaa_ > 1 ? "with MSAA" : "target");
+            return false;
+        }
+        t.sd = SDL_CreateGPUTexture(dev_, &ti);
+        if (t.sd && msaa_ > 1) {
+            ti.sample_count = SDL_GPU_SAMPLECOUNT_1;
+            ti.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+            t.sd_res = SDL_CreateGPUTexture(dev_, &ti);
+            if (scene_depth_edge() > 0) t.sd_fix = SDL_CreateGPUTexture(dev_, &ti);
+        }
+        if (!t.sd || (msaa_ > 1 && (!t.sd_res || (scene_depth_edge() > 0 && (!t.sd_fix || !sdfix_pipeline()))))) {
+            SDL_Log("b3gfx: scene depth targets: %s (the depth pre-pass instead)", SDL_GetError());
+            sd_failed_ = true;
+            for (auto* x : {t.sd, t.sd_res, t.sd_fix}) if (x) SDL_ReleaseGPUTexture(dev_, x);
+            t.sd = t.sd_res = t.sd_fix = nullptr;
+            return false;
+        }
+        return true;
+    }
+    // scenedepth, MSAA: the resolved depth's edges fixed (sdfix.frag) into t.sd_fix, the depth the passes then read
+    SDL_GPUGraphicsPipeline* sdfix_pipeline() {
+        if (sdfix_pipe_) return sdfix_pipe_;
+        using namespace shaders;
+        if (!sdfix_fs_) sdfix_fs_ = shader(sdfix_frag_spv, sizeof sdfix_frag_spv, sdfix_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+        if (!sdfix_fs_) return nullptr;
+        SDL_GPUColorTargetDescription ct{};
+        ct.format = kSceneDepthFormat;
+        SDL_GPUGraphicsPipelineCreateInfo pi{};
+        pi.vertex_shader = fsq_vs_;
+        pi.fragment_shader = sdfix_fs_;
+        pi.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        pi.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        pi.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        pi.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+        pi.target_info.color_target_descriptions = &ct;
+        pi.target_info.num_color_targets = 1;
+        sdfix_pipe_ = SDL_CreateGPUGraphicsPipeline(dev_, &pi);
+        if (!sdfix_pipe_) SDL_Log("b3gfx: scene depth fix pipeline: %s", SDL_GetError());
+        return sdfix_pipe_;
+    }
+    // (opt-in, $B3_SCENE_DEPTH_EDGE=<share>: measured against the pre-pass's pictures at MSAA 4, every form of this fix --
+    // the nearest, or the closer of the nearest and farthest, at 2 % .. 25 % -- differed more than the plain resolve, which
+    // the passes read by default: their own filtering smooths the averaged edge, a snapped one jumps)
+    static float scene_depth_edge() {
+        static const float edge = [] { const char* e = std::getenv("B3_SCENE_DEPTH_EDGE"); return e ? float(std::atof(e)) : 0.0f; }();
+        return edge;
+    }
+    void scene_depth_fix(SDL_GPUCommandBuffer* cmd, Targets& t) {
+        if (msaa_ <= 1 || scene_depth_edge() <= 0 || !t.sd_res || !t.sd_fix || !sdfix_pipeline()) return;
+        const float edge = scene_depth_edge();
+        static const float nearest = [] { const char* e = std::getenv("B3_SCENE_DEPTH_NEAREST"); return e && *e == '1' ? 1.0f : 0.0f; }();
+        const float u[4] = {1.0f / float(t.w), 1.0f / float(t.h), edge, nearest};
+        post_pass(cmd, sdfix_pipe_, t.sd_fix, t.sd_res, nullptr, u, sizeof u, clamp_sampler_);
+    }
+    bool dof_depth_pass(SDL_GPUCommandBuffer* cmd, Targets& t, const FrameParams& fp, const std::vector<DrawItem>& items) {
+        if (!ensure_dof_targets(t)) return false;
+        depth_src_ = t.dof_depth;
         SDL_GPUColorTargetInfo ci{};
         ci.texture = t.dof_colour;
         ci.load_op = SDL_GPU_LOADOP_DONT_CARE;
@@ -2226,6 +2878,9 @@ private:
         if (fmt) {
             sh_fs_ = shader(shadow_frag_spv, sizeof shadow_frag_spv, shadow_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 1);
             sh_recv_fs_ = shader(mesh_shadow_frag_spv, sizeof mesh_shadow_frag_spv, mesh_shadow_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1);
+            if (SDL_GPUShader* d = sh_recv_fs_ ? shader(mesh_shadow_depth_frag_spv, sizeof mesh_shadow_depth_frag_spv, mesh_shadow_depth_frag_msl,
+                                                        SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1) : nullptr)
+                sd_.depth_fs[sh_recv_fs_] = d;   // scenedepth
         }
         if (!sh_fs_ || !sh_recv_fs_) {
             SDL_Log("b3gfx: sun shadows unavailable: %s", fmt ? SDL_GetError() : "no R32F colour target");
@@ -2304,6 +2959,50 @@ private:
         if (!sh_pipe_) SDL_Log("b3gfx: sun shadow caster pipeline: %s", SDL_GetError());
         return sh_pipe_;
     }
+    // propshadow1: the track casters' pipeline: mesh.vert's simple path (shade.x 0: view_proj x model x pos, the uv and
+    // the vertex colour through) + shadow_mesh.frag, otherwise as the cars' (the same map, depth test and bias)
+    SDL_GPUGraphicsPipeline* sun_prop_pipeline() {
+        if (sh_prop_pipe_ || sh_prop_failed_) return sh_prop_pipe_;
+        using namespace shaders;
+        if (!sh_prop_fs_) sh_prop_fs_ = shader(shadow_mesh_frag_spv, sizeof shadow_mesh_frag_spv, shadow_mesh_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+        SDL_GPUVertexBufferDescription vb{0, sizeof(Vertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0};
+        SDL_GPUVertexAttribute at[5] = {
+            {0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0},
+            {1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 12},
+            {2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 24},
+            {3, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, 32},
+            {4, 0, SDL_GPU_VERTEXELEMENTFORMAT_USHORT2, 36},
+        };
+        SDL_GPUColorTargetDescription ct{};
+        ct.format = SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
+        SDL_GPUGraphicsPipelineCreateInfo pi{};
+        pi.vertex_shader = vs_;
+        pi.fragment_shader = sh_prop_fs_;
+        pi.vertex_input_state.vertex_buffer_descriptions = &vb;
+        pi.vertex_input_state.num_vertex_buffers = 1;
+        pi.vertex_input_state.vertex_attributes = at;
+        pi.vertex_input_state.num_vertex_attributes = 5;
+        pi.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        pi.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        pi.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        pi.rasterizer_state.front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
+        pi.rasterizer_state.enable_depth_bias = true;
+        pi.rasterizer_state.depth_bias_constant_factor = 1.0f;
+        pi.rasterizer_state.depth_bias_slope_factor = 1.5f;
+        pi.depth_stencil_state.enable_depth_test = true;
+        pi.depth_stencil_state.enable_depth_write = true;
+        pi.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+        pi.target_info.color_target_descriptions = &ct;
+        pi.target_info.num_color_targets = 1;
+        pi.target_info.depth_stencil_format = depth_format_;
+        pi.target_info.has_depth_stencil_target = true;
+        if (sh_prop_fs_) sh_prop_pipe_ = SDL_CreateGPUGraphicsPipeline(dev_, &pi);
+        if (!sh_prop_pipe_) {
+            SDL_Log("b3gfx: prop shadow caster pipeline: %s (props cast nothing)", SDL_GetError());
+            sh_prop_failed_ = true;
+        }
+        return sh_prop_pipe_;
+    }
     // A caster's gate (0..255): its sky_open (nothing below 0.18, all from 0.32: a car in a tunnel, ~0.2, casts nothing and
     // the mouth fades; a street between tall buildings, ~0.3, still casts: the baked shadows keep the rest from darkening
     // twice), its traffic fade-in (CarParams::fade < 0); a screen-door ghost (0 < fade < 1) casts nothing
@@ -2353,13 +3052,44 @@ private:
             ++casters;
             SDL_DrawGPUIndexedPrimitives(pass, it.index_count, 1, it.first_index, 0, 0);
         }
+        // propshadow1: the marked track draws (props, instances) whose bounds (DrawItem::sun_radius round the origin) reach
+        // the box, so a long barrier or gantry with its origin outside still casts where it crosses the box
+        int prop_casters = 0;
+        const float kx = std::sqrt(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]), ky = std::sqrt(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
+        if (ss.props && sun_prop_pipeline()) {
+            bool bound = false;
+            for (const DrawItem& it : items) {
+                if (!it.sun_caster || it.shading != Shading::kTrack || it.overlay || it.effect || is_line(it) || !it.index_count ||
+                    it.vertices >= buffers_.size() || it.indices >= buffers_.size())
+                    continue;
+                const float x = m[0] * it.model[12] + m[4] * it.model[13] + m[8] * it.model[14] + m[12];
+                const float y = m[1] * it.model[12] + m[5] * it.model[13] + m[9] * it.model[14] + m[13];
+                if (std::fabs(x) > 1.0f + kx * it.sun_radius || std::fabs(y) > 1.0f + ky * it.sun_radius) continue;
+                if (!bound) { SDL_BindGPUGraphicsPipeline(pass, sh_prop_pipe_); bound = true; }
+                bind_buffers(pass, it, bvb, bib);
+                const SDL_GPUTextureSamplerBinding tsb{tex_of(it.texture), sampler_};
+                SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+                VertexUniforms vu{};
+                std::memcpy(vu.view_proj, ss.view_proj, sizeof vu.view_proj);
+                std::memcpy(vu.model, it.model, sizeof vu.model);
+                vu.inst[3] = -1.0f;   // (not an instance colour: the simple path does not read it)
+                SDL_PushGPUVertexUniformData(cmd, 0, &vu, sizeof vu);
+                const float g[4] = {255.0f, it.blend == Blend::kOpaque ? 0.0f : 1.0f, 0, 0};
+                SDL_PushGPUFragmentUniformData(cmd, 0, g, sizeof g);
+                ++stats_.draws;
+                ++prop_casters;
+                SDL_DrawGPUIndexedPrimitives(pass, it.index_count, 1, it.first_index, 0, 0);
+            }
+        }
         SDL_EndGPURenderPass(pass);
         static bool told = false;   // once, what it works with
         if (!told) {
             told = true;
-            SDL_Log("b3gfx: sun shadows: %u texels, kernel %s, strength %.2f, light (%.2f %.2f %.2f)%s, %d caster draws in the first frame",
+            char props[48] = "";
+            if (ss.props) std::snprintf(props, sizeof props, " and %d prop casters (PROP SHADOWS)", prop_casters);
+            SDL_Log("b3gfx: sun shadows: %u texels, kernel %s, strength %.2f, light (%.2f %.2f %.2f)%s, %d caster draws%s in the first frame",
                     unsigned(side), ss.filter == 1 ? "5x5" : "3x3", double(ss.strength), double(fp.key_light.dir[0]),
-                    double(fp.key_light.dir[1]), double(fp.key_light.dir[2]), fp.key_light.night ? " (the moon)" : "", casters);
+                    double(fp.key_light.dir[1]), double(fp.key_light.dir[2]), fp.key_light.night ? " (the moon)" : "", casters, props);
         }
         return true;
     }
@@ -2429,12 +3159,15 @@ private:
         u.right[3] = u.eye[3] = 0;
         return true;
     }
-    // after the depth pre-pass, before the scene pass: the half-size visibility into t.ao
+    // after the depth pre-pass, before the scene pass: the half-size visibility into t.ao, blurred into t.ao2 (nightfix:
+    // the 4 x 4 box that cancels the disc's ordered rotations)
     bool ao_pass(SDL_GPUCommandBuffer* cmd, Targets& t, const FrameParams& fp) {
         SDL_GPUGraphicsPipeline* p = ao_pipeline(0);
         AoUniforms u{};
         if (!p || !ao_pipeline(fp.surface.debug ? 2 : 1) || !ao_uniforms(t, fp, 0, u)) return false;
-        post_pass(cmd, p, t.ao.t, t.dof_depth, t.dof_depth, &u, sizeof u, clamp_sampler_);
+        post_pass(cmd, p, t.ao.t, depth_src_, depth_src_, &u, sizeof u, clamp_sampler_);
+        u.a[0] = 3.0f;
+        post_pass(cmd, p, t.ao2.t, depth_src_, t.ao.t, &u, sizeof u, clamp_sampler_);
         return true;
     }
     void draw_ao(SDL_GPURenderPass* pass, SDL_GPUCommandBuffer* cmd, Targets& t, const FrameParams& fp, SDL_GPUGraphicsPipeline*& bound) {
@@ -2444,7 +3177,7 @@ private:
         SDL_BindGPUGraphicsPipeline(pass, p);
         bound = p;
         SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof u);
-        SDL_GPUTextureSamplerBinding tsb[2] = {{t.dof_depth, clamp_sampler_}, {t.ao.t, clamp_sampler_}};
+        SDL_GPUTextureSamplerBinding tsb[2] = {{depth_src_, clamp_sampler_}, {t.ao2.t, clamp_sampler_}};
         SDL_BindGPUFragmentSamplers(pass, 0, tsb, 2);
         SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
     }
@@ -2464,7 +3197,7 @@ private:
             SDL_BindGPUGraphicsPipeline(rp, p);
             SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof u);
             SDL_GPUTexture* in = mode == 0 ? src : t.dw.t;
-            SDL_GPUTextureSamplerBinding tsb[3] = {{in, effect_sampler_}, {in, clamp_sampler_}, {t.dof_depth, clamp_sampler_}};
+            SDL_GPUTextureSamplerBinding tsb[3] = {{in, effect_sampler_}, {in, clamp_sampler_}, {depth_src_, clamp_sampler_}};
             SDL_BindGPUFragmentSamplers(rp, 0, tsb, 3);
             SDL_DrawGPUPrimitives(rp, 3, 1, 0, 0);
             SDL_EndGPURenderPass(rp);
@@ -2485,6 +3218,41 @@ private:
             motion_failed_ = true;
         }
         return motion_fs_ != nullptr;
+    }
+    // weather (§38): the lens drops' pipeline: full screen in the resumed scene pass (its depth target attached, not
+    // tested), Cs x As + Cd x (1 - As) on RGB, the frame alpha kept
+    struct DropUniforms { float a[4], g[4], tint[4], d[FrameParams::Drops::kMax][4]; };
+    SDL_GPUGraphicsPipeline* drops_pipeline() {
+        if (drops_pipe_ || drops_failed_) return drops_pipe_;
+        using namespace shaders;
+        if (!drops_fs_) drops_fs_ = shader(drops_frag_spv, sizeof drops_frag_spv, drops_frag_msl, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+        if (!drops_fs_) {
+            SDL_Log("b3gfx: lens drops unavailable: %s", SDL_GetError());
+            drops_failed_ = true;
+            return nullptr;
+        }
+        SDL_GPUColorTargetDescription ct{};
+        ct.format = kSceneFormat;
+        restore_blend(ct);
+        SDL_GPUGraphicsPipelineCreateInfo pi{};
+        pi.vertex_shader = fsq_vs_;
+        pi.fragment_shader = drops_fs_;
+        pi.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        pi.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        pi.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        pi.multisample_state.sample_count = sample_count(msaa_);
+        pi.depth_stencil_state.enable_depth_test = false;
+        pi.depth_stencil_state.enable_depth_write = false;
+        pi.target_info.color_target_descriptions = &ct;
+        pi.target_info.num_color_targets = 1;
+        pi.target_info.depth_stencil_format = depth_format_;
+        pi.target_info.has_depth_stencil_target = true;
+        drops_pipe_ = SDL_CreateGPUGraphicsPipeline(dev_, &pi);
+        if (!drops_pipe_) {
+            SDL_Log("b3gfx: lens drops pipeline: %s", SDL_GetError());
+            drops_failed_ = true;
+        }
+        return drops_pipe_;
     }
     SDL_GPUGraphicsPipeline* motion_pipeline(int k) {
         SDL_GPUGraphicsPipeline*& p = motion_pipe_[k];
@@ -2582,15 +3350,17 @@ private:
             const FrameParams::Night& n = fp.night;
             mixv(n.on); mixa(n.world); mixv(n.sat); mixv(n.gamma); mixv(n.pivot); mixa(n.sky); mixa(n.zenith); mixa(n.horizon);
             mixv(n.cloud); mixv(n.stars); mixa(n.moon_dir); mixa(n.moon_colour); mixv(n.moon_size); mixv(n.halo); mixa(n.moon_light);
-            mixa(n.car); mixv(n.facing);
+            mixa(n.car); mixv(n.facing); mixv(n.lit);   // (weather: the rain's day grade)
             mixv(n.spot); mixv(n.lamps);   // nightlights: the beams, the tunnels, the fixtures' glow
             for (int k = 0; k < std::clamp(n.lamps, 0, FrameParams::Night::kMaxLamps); ++k) {
                 mixa(n.lamp[k].pos); mixa(n.lamp[k].dir); mixv(n.lamp[k].gain);
             }
             mixa(n.lamp_colour); mixa(n.spot_shape); mixa(n.spot_core); mixa(n.spot_range); mixv(n.enclosed); mixa(n.tunnel); mixa(n.fixture);
             mixv(n.streets);   // street lights: their pools restart the blur too
-            for (int k = 0; k < std::clamp(n.streets, 0, FrameParams::Night::kMaxStreet); ++k) { mixa(n.street[k].pos); mixa(n.street[k].colour); }
-            mixa(n.street_shape); mixa(n.street_range);
+            for (int k = 0; k < std::clamp(n.streets, 0, FrameParams::Night::kMaxStreet); ++k) { mixa(n.street[k].pos); mixa(n.street[k].colour); mixv(n.street[k].gain); mixv(n.street[k].scale); }
+            mixa(n.street_shape); mixa(n.street_range); mixv(n.flat); mixa(n.board);   // (nightfix)
+            mixv(n.boards);
+            for (int k = 0; k < std::clamp(n.boards, 0, FrameParams::Night::kMaxBoard); ++k) { mixa(n.board_lamp[k].pos); mixa(n.board_lamp[k].axis); mixv(n.board_lamp[k].gain); }
             mixa(fp.key_light.dir); mixa(fp.key_light.colour); mixv(fp.key_light.night);
             const FrameParams::Surface& sf = fp.surface;
             mixv(sf.relief); mixv(sf.sheen); mixv(sf.fade); mixv(sf.sky); mixv(sf.grazing); mixv(sf.ao); mixv(sf.ao_radius); mixv(sf.debug);
@@ -2605,12 +3375,13 @@ private:
             mixv(it.vertices); mixv(it.indices); mixv(it.texture); mixv(it.first_index); mixv(it.index_count);
             mixv(tex_of(it.texture));
             mixv(it.texture < tex_gen_.size() ? tex_gen_[it.texture] : 0u);
-            mixa(it.tint); mixa(it.instance); mixv(it.uv_scroll); mixv(it.blend); mixv(it.shading); mixv(it.night_emissive);
+            mixa(it.tint); mixa(it.instance); mixv(it.uv_scroll); mixv(it.blend); mixv(it.shading); mixv(it.night_emissive); mixv(it.day_glow); mixv(it.glow_mask); mixv(it.night_mean); mixv(it.night_cols); mixv(it.night_rows);
             if (!it.effect && !it.post_fog) mixa(it.model);
             if (it.car_) {
                 const CarParams& c = *it.car_;
                 mixa(c.sh); mixa(c.base); mixa(c.full); mixa(c.env_colour); mixv(c.fade); mixv(c.reflect); mixv(c.env_texture);
                 mixv(c.env_world); mixv(c.paint_mode); mixa(c.paint); mixa(c.paint2); mixv(c.paint_ref); mixv(c.paint_mask);
+                mixa(c.paint3); mixa(c.paint4);   // paint2
                 mixv(c.zones); mixa(c.zone);
             }
         }
@@ -2636,7 +3407,7 @@ private:
         SDL_GPUTexture* src = msaa_ > 1 ? t.scene_resolve : t.scene;
         // the streaks (V), the tile max (V -> Tm), the neighbour max (Tm -> Tn)
         const struct { int mode; SDL_GPUTexture *dst, *in1, *in2; } prep[3] = {
-            {0, t.mv.t, src, t.dof_depth}, {3, t.mt.t, t.mv.t, t.mv.t}, {4, t.mn.t, t.mt.t, t.mt.t}};
+            {0, t.mv.t, src, depth_src_}, {3, t.mt.t, t.mv.t, t.mv.t}, {4, t.mn.t, t.mt.t, t.mt.t}};
         for (const auto& s : prep) {
             u.a[0] = float(s.mode);
             SDL_GPUColorTargetInfo ci{};
@@ -2691,8 +3462,8 @@ private:
     }
 
     void release_targets(Targets& t) {
-        for (auto* x : {t.scene, t.scene_resolve, t.bloom_src, t.depth, t.resolve, t.dof_depth, t.dof_colour}) if (x) SDL_ReleaseGPUTexture(dev_, x);
-        for (auto* b : {&t.zb[0], &t.zb[1], &t.bh, &t.bq[0], &t.bq[1], &t.bp[0], &t.bp[1], &t.dw, &t.dg, &t.ao, &t.nc, &t.mv, &t.ma, &t.mt, &t.mn}) if (b->t) SDL_ReleaseGPUTexture(dev_, b->t);
+        for (auto* x : {t.scene, t.scene_resolve, t.bloom_src, t.depth, t.resolve, t.dof_depth, t.dof_colour, t.sd, t.sd_res, t.sd_fix}) if (x) SDL_ReleaseGPUTexture(dev_, x);
+        for (auto* b : {&t.zb[0], &t.zb[1], &t.bh, &t.bq[0], &t.bq[1], &t.bp[0], &t.bp[1], &t.dw, &t.dg, &t.ao, &t.ao2, &t.nc, &t.mv, &t.ma, &t.mt, &t.mn, &t.mir}) if (b->t) SDL_ReleaseGPUTexture(dev_, b->t);
         t = Targets{};
     }
 
@@ -2752,8 +3523,16 @@ private:
                                    : it.overlay ? overlay_pipeline(it.gs_alpha | (it.alpha_only ? 0x100 : 0) | (it.overlay_blend ? 0 : 0x200) |
                                                                    (it.overlay_ztest ? 0x400 : 0) | (it.overlay_zwrite ? 0x800 : 0))
                                    : it.effect ? effect_pipeline(effect_mode(it.gs_alpha))
-                                   : is_line(it) ? line_pipeline() : pipeline(kSceneFormat, it.blend, game && it.cull, false, it.post_fog);
+                                   : is_line(it) ? line_pipeline() : pipeline(kSceneFormat, it.blend, game && it.cull, false, it.post_fog, nullptr, keeps_frame_alpha(it));
         if (!p) return;
+        // scenedepth: the draws the scene depth is made of, as the depth pre-pass draws them (dof_depth_pass): not the 2D,
+        // the effects, the sky, or a blended track draw (other than the post-fog stage's)
+        const bool sdw = sd_.scene && !occ && !dof && !env_face_ && !(it.overlay || it.effect || it.shading == Shading::kSky) &&
+                         !(it.blend == Blend::kAlpha && it.shading != Shading::kCar && !it.post_fog);
+        if (sd_.scene) {
+            if (sdw != sd_.bound_mask) bound = nullptr;   // (another form of the same pipeline)
+            sd_.mask_on = sd_.bound_mask = sdw;
+        }
         if (p != bound) { SDL_BindGPUGraphicsPipeline(pass, p); bound = p; }
         if (it.vertices != bound_vb) {
             SDL_GPUBufferBinding b{buffers_[it.vertices], 0};
@@ -2808,7 +3587,7 @@ private:
                             {}, {}, {}};
         // surface: the opaque track draws of the main view only (not the env map, the pre-passes, the effects, lines, 2D)
         const FrameParams::Surface& sf = fp.surface;
-        if ((sf.relief > 0 || sf.sheen > 0) && shading == Shading::kTrack && it.textured && it.blend != Blend::kAlpha && !it.effect &&
+        if ((sf.relief > 0 || sf.sheen > 0 || sf.wet > 0) && shading == Shading::kTrack && it.textured && it.blend != Blend::kAlpha && !it.effect &&
             !it.overlay && !it.post_fog && !occ && !dof && !env_face_ && !is_line(it) && it.track_type != 2) {
             float s[3] = {fp.to_sun[0], fp.to_sun[1], fp.to_sun[2]};
             const float sl = std::sqrt(s[0] * s[0] + s[1] * s[1] + s[2] * s[2]);
@@ -2818,8 +3597,15 @@ private:
                 fu.surf_sun[3] = sf.grazing;
                 fu.surf_eye[3] = sf.debug ? 1.0f : 0.0f;
                 if (fp.night.on) fu.surf_night[0] = fp.night.facing;   // night mode: to_sun is the moon's direction
+                fu.surf_night[2] = sf.wet * (1.0f - std::clamp(it.dry, 0.0f, 1.0f));   // weather (§38): the wet road (dry under a roof)
             }
         }
+        fu.surf_night[3] = it.overcast;   // weather (§38): the rain's grey sky (sky dome, backdrops)
+        // night (nightfix): every track draw of the main view flattens its baked daylight (mesh.frag, surf_night.y)
+        if (fp.night.on && fp.night.flat > 0 && shading == Shading::kTrack && !it.effect && !it.overlay && !it.post_fog && !occ && !dof &&
+            !env_face_ && !is_line(it))
+            fu.surf_night[1] = fp.night.flat;
+        if (sdw) fu.light_dir[3] = -1.0f;   // scenedepth (above; mesh.frag's SCENE_DEPTH variant: never an env-map face's 1)
         if (recv) {   // SUN SHADOWS (surf_eye.xyz: the camera, which the variant reads to orient the face)
             ShadowFragmentUniforms su{};
             su.base = fu;
@@ -2872,6 +3658,10 @@ private:
                   SDL_GPUGraphicsPipeline*& bound, BufferId& bound_vb, BufferId& bound_ib, bool dof = false) {
         SDL_GPUGraphicsPipeline* p = dof ? dof_depth_pipeline(2) : pipeline(kSceneFormat, Blend::kOpaque, false, true);
         if (!p) return;
+        if (sd_.scene && !dof) {   // scenedepth: every car draw writes the depth (as the pre-pass draws them)
+            if (!sd_.bound_mask) bound = nullptr;
+            sd_.mask_on = sd_.bound_mask = true;
+        }
         if (p != bound) { SDL_BindGPUGraphicsPipeline(pass, p); bound = p; }
         bind_buffers(pass, it, bound_vb, bound_ib);
         const CarParams& c = it.car();
@@ -2911,7 +3701,7 @@ private:
         std::memcpy(fu.look2, l2, sizeof l2);
         std::memcpy(fu.look3, l3, sizeof l3);
         if (paint) {   // carpaint: paint.w the mode (0: the texture as is), paint2.w the reference level
-            for (int k = 0; k < 3; ++k) { fu.paint[k] = c.paint[k]; fu.paint2[k] = c.paint2[k]; }
+            for (int k = 0; k < 3; ++k) { fu.paint[k] = c.paint[k]; fu.paint2[k] = c.paint2[k]; fu.paint3[k] = c.paint3[k]; fu.paint4[k] = c.paint4[k]; }
             fu.paint[3] = float(c.paint_mode);
             fu.paint2[3] = c.paint_ref;
         }
@@ -2921,6 +3711,7 @@ private:
             std::memcpy(fu.night, nv, sizeof nv);
             for (int k = 0; k < 3; ++k) fu.moon[k] = n.moon_light[k];
         }
+        fu.moon[3] = std::clamp(fp.surface.wet, 0.0f, 1.0f);   // weather (§38): the wet car (gloss, beads); 0 dry
         SDL_PushGPUFragmentUniformData(cmd, 0, &fu, sizeof fu);
         ++stats_.draws;
         SDL_DrawGPUIndexedPrimitives(pass, it.index_count, 1, it.first_index, 0, 0);
@@ -2969,6 +3760,7 @@ private:
         if (slot < 0 || slot > 1 || ep.face < 8) return kNone;
         EnvTarget& e = env_[slot];
         e.drawn = false;
+        if (ep.night_glow > 0.0f) ensure_env_glow(ep);   // reflect2 G (its upload with this frame's)
         flush_uploads();   // this frame's buffer updates go first (the submission order, as update_texture keeps it)
         const std::uint32_t T = std::uint32_t(ep.face);
         if (!ensure_env(e, 3 * T, 2 * T)) return kNone;
@@ -3033,10 +3825,12 @@ private:
                 for (std::size_t i = 0; i < ep.items.size(); ++i) {
                     const DrawItem& it = ep.items[i];
                     if (!ep.faces.empty() && !(i < ep.faces.size() && (ep.faces[i] >> f & 1))) continue;
-                    if (it.overlay || it.effect || it.shading != Shading::kTrack || is_line(it)) continue;
+                    // (reflect2 C: the View adds car draws too, their env lookup off)
+                    if (it.overlay || it.effect || (it.shading != Shading::kTrack && it.shading != Shading::kCar) || is_line(it)) continue;
                     if ((it.blend == Blend::kAlpha) != (phase == 1)) continue;
                     draw_item(pass, cmd, fp, it, ld, bound, bound_vb, bound_ib);
                 }
+            if (ep.night_glow > 0.0f) env_night_glow(pass, cmd, fp, ep, f, bound, bound_vb, bound_ib);   // reflect2 G
         }
         env_face_ = false;
         SDL_EndGPURenderPass(pass);
@@ -3096,7 +3890,17 @@ private:
     // the present pass into `out` (scale and clamp).
     void render(SDL_GPUCommandBuffer* cmd, Targets& t, SDL_GPUTexture* out, SDL_GPUTextureFormat fmt,
                 const FrameParams& fp, const std::vector<DrawItem>& items) {
-        if (std::fabs(render_scale_ - 1.0f) >= 1e-3f && render_scaled(cmd, t, out, fmt, fp, items)) return;
+        // gameopts: MIRROR MODE takes the render-scale path (the 3D apart from the 2D stage) at any scale, 100 % included
+        mirror_now_ = fp.mirror_x;   // (effective_scale counts its copy in the budget)
+        if (fp.mirror_x) mirror_held_ = true;
+        else if (mirror_held_) {   // the mirrored frames are over: at 100 % their target set goes (SDL frees it once the GPU is done)
+            mirror_held_ = false;
+            if (std::fabs(render_scale_ - 1.0f) < 1e-3f) {
+                release_targets(scaled_win_);
+                release_targets(scaled_off_);
+            }
+        }
+        if ((std::fabs(render_scale_ - 1.0f) >= 1e-3f || fp.mirror_x) && render_scaled(cmd, t, out, fmt, fp, items)) return;
         render_scene(cmd, t, fp, items, true);
         present(cmd, t, out, fmt, fp);
     }
@@ -3104,12 +3908,13 @@ private:
     // effects2: RENDER SCALE. The 3D picture (the scene, the effects, the post passes, the sun) is drawn into targets at the scale
     // (its depth, its kept bloom picture) and copied up into the output-sized frame with a bilinear filter; the 2D stage (the HUD
     // and the menus, DrawItem::overlay) is drawn over that at the output's size. 2D items that test depth against the scene
-    // (overlay_ztest) go with the 3D, which is all the depth there is. false: the targets could not be made (the caller draws as usual)
+    // (overlay_ztest) go with the 3D, which is all the depth there is, and with them the 2D drawn before them (the list's order:
+    // render_scale.h scaled_overlay_end). false: the targets could not be made (the caller draws as usual)
     bool render_scaled(SDL_GPUCommandBuffer* cmd, Targets& t, SDL_GPUTexture* out, SDL_GPUTextureFormat fmt, const FrameParams& fp,
                        const std::vector<DrawItem>& items) {
         Targets& sc = &t == &win_targets_ ? scaled_win_ : scaled_off_;
         const float scale = effective_scale(t);
-        if (std::fabs(scale - 1.0f) < 1e-3f) return false;   // perf4: no supersampled target fits: drawn at 100 %
+        if (std::fabs(scale - 1.0f) < 1e-3f && !fp.mirror_x) return false;   // perf4: no supersampled target fits: drawn at 100 %
         const std::uint32_t sw = scaled_side(t.w, scale), sh = scaled_side(t.h, scale);
         if (!ensure_targets(sc, kSceneFormat, sw, sh, false)) {
             if (scale > 1.0f) {   // perf4: out of GPU memory for the larger set: 100 % for this output size (logged once)
@@ -3122,6 +3927,8 @@ private:
         line_min_ = scale;   // the line width as at 100%: output pixels, so a scaled target may hold less than one of its own
         render_scene(cmd, sc, fp, items, true, float(t.h) * scale, 1);
         line_min_ = 1.0f;   // the 3D picture (and the depth-tested 2D) in sc.scene (sc.scene_resolve with MSAA)
+        SDL_GPUTexture* picture = mirrored(cmd, sc, fp.mirror_x);   // gameopts: reversed when MIRROR MODE's
+        const bool same = sc.w == t.w && sc.h == t.h;   // (MIRROR MODE at 100 %: a plain copy)
         SDL_GPUColorTargetInfo ci{};
         ci.clear_color = SDL_FColor{0, 0, 0, 0};
         ci.load_op = SDL_GPU_LOADOP_CLEAR;
@@ -3145,12 +3952,12 @@ private:
             SDL_BindGPUGraphicsPipeline(pass, cp);
             bound = cp;
             // perf4: above 100% the box filter's downscale (texel-centre taps: the point sampler), below the upscale as before
-            const bool down = scale > 1.0f;
-            const PostUniforms u{{4, 0, down ? 3.0f : sharp_upscale_ ? 2.0f : 0.0f, 0}, {1, kUpscaleSharpen, 0, 0},
+            const bool down = scale > 1.0f && !same;
+            const PostUniforms u{{4, 0, down ? 3.0f : sharp_upscale_ && !same ? 2.0f : 0.0f, 0}, {1, kUpscaleSharpen, 0, 0},
                                  {1.0f / float(t.w), 1.0f / float(t.h), 1.0f / float(sc.w), 1.0f / float(sc.h)}};
             SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof u);
-            SDL_GPUTexture* src = msaa_ > 1 ? sc.scene_resolve : sc.scene;
-            SDL_GPUSampler* smp = down ? clamp_sampler_ : overlay_sampler_;
+            SDL_GPUTexture* src = picture;
+            SDL_GPUSampler* smp = down || same ? clamp_sampler_ : overlay_sampler_;
             SDL_GPUTextureSamplerBinding tsb[2] = {{src, smp}, {src, smp}};
             SDL_BindGPUFragmentSamplers(pass, 0, tsb, 2);
             SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
@@ -3165,6 +3972,26 @@ private:
         return true;
     }
 
+    // gameopts (FrameParams::mirror_x): the picture `t` holds after render_scene (its resolve with MSAA), or with `mirror` its
+    // copy reversed left to right (t.mir, made on first use; a blit outside any pass). The copy failing: the picture as it is
+    SDL_GPUTexture* mirrored(SDL_GPUCommandBuffer* cmd, Targets& t, bool mirror) {
+        SDL_GPUTexture* src = msaa_ > 1 ? t.scene_resolve : t.scene;
+        if (!mirror) return src;
+        if (!ensure_buf(t.mir, t.w, t.h)) {
+            static bool told = false;
+            if (!told) { told = true; SDL_Log("b3gfx: MIRROR MODE: no %ux%u copy (%s): drawn unmirrored", unsigned(t.w), unsigned(t.h), SDL_GetError()); }
+            return src;
+        }
+        SDL_GPUBlitInfo bi{};
+        bi.source = SDL_GPUBlitRegion{src, 0, 0, 0, 0, t.w, t.h};
+        bi.destination = SDL_GPUBlitRegion{t.mir.t, 0, 0, 0, 0, t.w, t.h};
+        bi.load_op = SDL_GPU_LOADOP_DONT_CARE;
+        bi.flip_mode = SDL_FLIP_HORIZONTAL;
+        bi.filter = SDL_GPU_FILTER_NEAREST;
+        SDL_BlitGPUTexture(cmd, &bi);
+        return t.mir.t;
+    }
+
     // perf4: the render scale used for output set `t` (the window's or the offscreen / F12 one): below 1 as set; above 1 capped
     // (b3gfx/render_scale.h) to what keeps the larger set within the side limit and the memory budget (from the card's
     // device-local memory, $B3_SUPERSAMPLE_MB overrides; 1 GB when not known). The offscreen set while the window has a
@@ -3176,7 +4003,7 @@ private:
         if (ss_budget_mb_ < 0) {
             if (const char* e = std::getenv("B3_SUPERSAMPLE_MB"); e && std::atof(e) > 0) ss_budget_mb_ = std::atof(e);
             else {
-                const double vram = vulkan_device_local_mb(dev_);
+                const double vram = device_local_mb();   // texpack: Vulkan's heap, or DXGI's dedicated memory on Direct3D 12
                 ss_budget_mb_ = supersample_budget_mb(vram);
                 SDL_Log("b3gfx: supersampling budget %.0f MB (device-local memory %s)", ss_budget_mb_,
                         vram > 0 ? (std::to_string(int(vram)) + " MB").c_str() : "not known");
@@ -3184,7 +4011,7 @@ private:
         }
         static const bool lean = std::getenv("B3_BLOOM_LEAN") != nullptr;
         // finalfix: photo mode's motion blur (two full-size buffers) while it can run here; the sun-shadow map's fixed size
-        const double bpp = scaled_bytes_per_pixel(msaa_, lean, !motion_failed_);
+        const double bpp = scaled_bytes_per_pixel(msaa_, lean, !motion_failed_, mirror_now_);   // gameopts: Targets::mir
         double budget = ss_budget_mb_;
         if (const std::uint32_t side = std::max(sh_side_, warm_sun_shadows_ ? sun_shadow_side_opt_ : 0u))
             budget = std::max(1.0, budget - sun_shadow_map_mb(side));   // (> 0: capped_scale reads 0 as no budget)
@@ -3223,10 +4050,15 @@ private:
             clamp_frame(pass, cmd, bound);
             neg = false;
         };
-        for (const DrawItem& it : items) {
+        // effects2 (render scale): the depth-tested 2D goes with the 3D (only == 1), the rest over the upscaled picture
+        // (only == 2). The split keeps the list's order (render_scale.h scaled_overlay_end): 1.3.0 drew only the depth-tested
+        // items with the 3D, under the 2D drawn before them in the game's order, so the Crash Nav backdrop hid the globe
+        const std::size_t split = only ? scaled_overlay_end(items) : 0;
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            const DrawItem& it = items[i];
+            if (only == 1 && i >= split) break;
+            if (only == 2 && i < split) continue;
             if (!it.overlay) continue;
-            if (only == 1 && !it.overlay_ztest) continue;    // effects2 (render scale): only the depth-tested 2D, with the 3D
-            if (only == 2 && it.overlay_ztest) continue;     // ... and the rest, over the upscaled picture
             const bool sub = subtracts(it);
             if (neg && !sub) clamp();
 
@@ -3255,6 +4087,8 @@ private:
     bool render_views(SDL_GPUCommandBuffer* cmd, Targets& t, std::vector<Targets>& vt, SDL_GPUTexture* out, SDL_GPUTextureFormat fmt,
                       const std::vector<ViewPass>& views, const FrameParams& ofp, const std::vector<DrawItem>& overlay) {
         if (vt.size() < views.size()) vt.resize(views.size());
+        mirror_now_ = false;   // gameopts: a mirrored view's copy counted in effective_scale's budget
+        for (const ViewPass& v : views) mirror_now_ = mirror_now_ || v.fp.mirror_x;
         struct Px { int x, y, w, h; };
         std::vector<Px> px(views.size());
         float vscale = effective_scale(t);   // perf4: above 1 capped for the whole output's size
@@ -3279,10 +4113,12 @@ private:
                 continue;
             }
         }
+        std::vector<SDL_GPUTexture*> mirror_src(views.size(), nullptr);
         for (std::size_t k = 0; k < views.size(); ++k) {
             line_min_ = scl ? vscale : 1.0f;
             render_scene(cmd, vt[k], views[k].fp, views[k].items, false, scl ? float(t.h) * vscale : float(t.h));
             line_min_ = 1.0f;   // lines1: a GS pixel of the whole output
+            mirror_src[k] = mirrored(cmd, vt[k], views[k].fp.mirror_x);   // gameopts: each view about its own middle
         }
         SDL_GPUColorTargetInfo ci{};
         ci.clear_color = SDL_FColor{0, 0, 0, 0};
@@ -3313,7 +4149,7 @@ private:
                 const PostUniforms u{{4, 0, down ? 3.0f : sharp_upscale_ ? 2.0f : 0.0f, 0}, {1, kUpscaleSharpen, 0, 0},
                                      {1.0f / float(px[k].w), 1.0f / float(px[k].h), 1.0f / float(vt[k].w), 1.0f / float(vt[k].h)}};
                 SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof u);
-                SDL_GPUTexture* src = msaa_ > 1 ? vt[k].scene_resolve : vt[k].scene;
+                SDL_GPUTexture* src = mirror_src[k];   // gameopts: the view's picture, reversed when MIRROR MODE's
                 SDL_GPUSampler* smp = !down && (vt[k].w != std::uint32_t(px[k].w) || vt[k].h != std::uint32_t(px[k].h)) ? overlay_sampler_ : clamp_sampler_;   // effects2: bilinear up
                 SDL_GPUTextureSamplerBinding tsb[2] = {{src, smp}, {src, smp}};
                 SDL_BindGPUFragmentSamplers(pass, 0, tsb, 2);
@@ -3349,10 +4185,23 @@ private:
         const ZoomBlur zb = zoom_blur(fp);
         const bool blur = zb.amount > 0;
         const bool bloom = fp.bloom.on && fp.bloom.intensity > 0;
+        // scenedepth: with scene_depth_on_, a frame with a pass that reads the depth (the depth of field, the AO, the motion
+        // blur, night's lights) keeps the scene pass's own (sd_, set below) instead of drawing the depth pre-pass
+        // (night: what night_lights below needs: the spot pass with something it lights; a rain frame by day has none)
+        const bool sd_night = fp.night.on && fp.night.spot &&
+                              (fp.night.lamps > 0 || fp.night.streets > 0 || fp.night.boards > 0 || fp.night.tunnel[0] * fp.night.enclosed > 1e-3f ||
+                               (fp.sun_shadow.on && fp.sun_shadow.strength > 0));
+        // (the AO's break needs R32F's MAX blend: without it, a frame with the AO takes the pre-pass for all its readers)
+        // (nightdepth: in the default mode only night's frames: scene_depth_frame)
+        const bool sdepth = scene_depth_on_ && scene_depth_frame(scene_depth_mode_, sd_night) && !sd_.broken &&
+                            (fp.dof.on || fp.surface.ao > 0 || fp.motion.on || sd_night) &&
+                            (fp.surface.ao <= 0 || sd_.blend) && dof_ready() && ensure_scene_depth(t);
+        depth_src_ = sdepth ? (msaa_ > 1 ? (scene_depth_edge() > 0 ? t.sd_fix : t.sd_res) : t.sd) : t.dof_depth;
+        const auto depth_fix = [&]() { if (sdepth) scene_depth_fix(cmd, t); };   // (after an end of the scene pass, before a reader)
         // photo2: the depth of field (its pre-pass now, its passes after the zoom blur); off: none of it runs
         DofUniforms dofu{};
         const bool dof = fp.dof.on && fp.dof.radius > 0 && dof_ready() && ensure_buf(t.dw, (t.w + 1) / 2, (t.h + 1) / 2) &&
-                         ensure_buf(t.dg, (t.w + 1) / 2, (t.h + 1) / 2) && dof_uniforms(t, fp, dofu) && dof_depth_pass(cmd, t, fp, items);
+                         ensure_buf(t.dg, (t.w + 1) / 2, (t.h + 1) / 2) && dof_uniforms(t, fp, dofu) && (sdepth || dof_depth_pass(cmd, t, fp, items));
         if (fp.surface.relief > 0 || fp.surface.sheen > 0 || fp.surface.ao > 0) {   // surface: once, what it works with
             static bool told = false;
             if (!told) {
@@ -3364,9 +4213,12 @@ private:
         }
         // surface: the ambient occlusion (the same depth pre-pass, then its half-size pass); off: none of it runs
         bool depth_drawn = dof;   // the depth pre-pass (once for all who read it)
-        const auto depth_pass = [&]() { return depth_drawn || (depth_drawn = dof_depth_pass(cmd, t, fp, items)); };
-        const bool ao = fp.surface.ao > 0 && dof_ready() && ao_ready() && ensure_buf(t.ao, (t.w + 1) / 2, (t.h + 1) / 2) &&
-                        depth_pass() && ao_pass(cmd, t, fp);
+        const auto depth_pass = [&]() { return sdepth || depth_drawn || (depth_drawn = dof_depth_pass(cmd, t, fp, items)); };
+        const bool ao = fp.surface.ao > 0 && dof_ready() && ao_ready() && ensure_buf(t.ao, (t.w + 1) / 2, (t.h + 1) / 2) && ensure_buf(t.ao2, (t.w + 1) / 2, (t.h + 1) / 2) &&
+                        depth_pass() && (sdepth || ao_pass(cmd, t, fp));
+        // scenedepth: the AO's passes read the opaque scene's depth: the scene pass ends after its opaque draws (colour and
+        // depth stored), runs them and resumes
+        const bool ao_split = ao && sdepth;
         // photoblur: photo mode's motion blur (the same depth pre-pass; its passes at the start of the 2D stage's phase)
         const std::uint32_t mtw = (t.w + kMotionTile - 1) / kMotionTile, mth = (t.h + kMotionTile - 1) / kMotionTile;
         // (converged in the window: A is the picture, no pre-pass or streaks needed)
@@ -3391,22 +4243,28 @@ private:
         // Measured in a real window on an RTX 4080 SUPER (5120x1440, MSAA 8): the lean form is SLOWER than the original split
         // (218 fps against 238 in the same race replay), so the split is the default; $B3_BLOOM_LEAN=1 opts into the lean form.
         static const bool lean_env = std::getenv("B3_BLOOM_LEAN") != nullptr;
-        const bool lean = bloom && msaa_ > 1 && !fp.post_game && lean_env && !motion && post_lean_fs_ && ensure_bloom_src(t);
+        const bool lean_on = bloom_lean_ >= 0 ? bloom_lean_ != 0 : lean_env;   // fifauto: B3_PERF_BISECT's step
+        const bool lean = bloom && msaa_ > 1 && !fp.post_game && lean_on && !motion && post_lean_fs_ && ensure_bloom_src(t);
         // night mode (§17): the scene pass ends before the grade (its samples kept, resolved for the grade to read) and
         // resumes with its depth (the grade's sky / world split, the headlight pools, the coronas' depth test)
         const bool night = fp.night.on && night_fs_ && ensure_buf(t.nc, t.w, t.h);
         // nightlights (§17.2): the projected beams and the tunnel's per-pixel fade need the single-sample depth (the DOF's
         // pre-pass: the scene's MSAA depth cannot be sampled through SDL GPU), drawn here unless the DOF, the AO or the motion
         // blur did
-        const bool night_spot = night && fp.night.spot && (fp.night.lamps > 0 || fp.night.streets > 0 || fp.night.tunnel[0] * fp.night.enclosed > 1e-3f || sun_shadow) &&
-                                beam_fs_ && dof_ready() && depth_pass();   // (photoblur: the one pre-pass of the frame)
+        // (round 3e) the floodlights count too (a frame with boards alone drew none); scenedepth: the scene pass's own depth
+        // (with scene_depth_on_)
+        const bool night_lights = night && fp.night.spot &&
+                                  (fp.night.lamps > 0 || fp.night.streets > 0 || fp.night.boards > 0 || fp.night.tunnel[0] * fp.night.enclosed > 1e-3f || sun_shadow) &&
+                                  beam_fs_ && dof_ready();
+        if (night_lights && !sdepth && !depth_drawn) depth_drawn = dof_depth_pass(cmd, t, fp, items);
+        const bool night_spot = night_lights && (sdepth || depth_drawn);   // (photoblur: the one pre-pass of the frame)
         // SUN SHADOWS at night (brief D): with the spot pass the moon shadow's receiver term is that pass's (a beam fills
         // the shadow); the track draws take none, so the pre-grade copy is unshadowed. Without it (LOW, PS2 ORIGINAL) the
         // shadow stays in mesh.frag as by day.
         const bool moon_shadow = sun_shadow && night_spot;
         SDL_GPUTexture* const resolve_to = lean ? t.bloom_src : t.scene_resolve;
         if (msaa_ > 1) {
-            ci.store_op = (!lean && (blur || bloom || dof || motion)) || night ? SDL_GPU_STOREOP_RESOLVE_AND_STORE : SDL_GPU_STOREOP_RESOLVE;
+            ci.store_op = (!lean && (blur || bloom || dof || motion)) || night || ao_split ? SDL_GPU_STOREOP_RESOLVE_AND_STORE : SDL_GPU_STOREOP_RESOLVE;
             ci.resolve_texture = night ? t.nc.t : resolve_to;   // night: the part before the grade resolves into its copy
         } else {
             ci.store_op = SDL_GPU_STOREOP_STORE;
@@ -3419,9 +4277,19 @@ private:
         di.texture = t.depth;
         di.clear_depth = 0.0f;  // reverse-Z: far
         di.load_op = SDL_GPU_LOADOP_CLEAR;
-        di.store_op = night || keep_depth ? SDL_GPU_STOREOP_STORE : SDL_GPU_STOREOP_DONT_CARE;   // night: the grade's sky / world split; rfix: depth-tested 2D
+        di.store_op = night || keep_depth || ao_split ? SDL_GPU_STOREOP_STORE : SDL_GPU_STOREOP_DONT_CARE;   // night: the grade's sky / world split; rfix: depth-tested 2D
         di.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
         di.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+        // scenedepth: every begin of the scene pass below gets the depth target (perf_begin_pass), until the pass is done
+        t_sd = &sd_;   // (this thread's scene pass: perf_begin_pass / perf_bind; cleared after it)
+        sd_.scene = sdepth ? t.scene : nullptr;
+        sd_.target = t.sd;
+        sd_.resolve = msaa_ > 1 ? t.sd_res : nullptr;
+        sd_.begun = false;
+        sd_.mask_on = sd_.bound_mask = false;
+        // the last pass that reads it: the target is not stored at that break and is left out after it
+        const int sd_last = dof || motion ? 6 : night_spot ? 5 : ao_split ? 2 : -1;
+        sd_.keep = !(sd_last == 2 || (sd_last == 5 && !ao_split));
         SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &ci, 1, &di);
         sh_live_ = sun_shadow && !moon_shadow;   // the track draws below take the map (draw_item); at night the spot pass does
         float ld[3] = {fp.light_dir[0], fp.light_dir[1], fp.light_dir[2]};
@@ -3442,6 +4310,7 @@ private:
             if (neg && phase >= 2) { clamp_frame(pass, cmd, bound); neg = false; }   // the specular and on read the frame
             if (phase == 6 && motion) {   // photoblur: after the night grade and its pools, before the bloom and the rest
                 SDL_EndGPURenderPass(pass);
+                depth_fix();
                 SDL_GPUTexture* a = motion_chain(cmd, t, fp, msig);
                 resume();
                 if (SDL_GPUGraphicsPipeline* cp = a ? motion_pipeline(2) : nullptr) {
@@ -3510,6 +4379,7 @@ private:
             }
             if (phase == 6 && dof) {   // photo2: the depth of field, after the zoom blur, before the 2D stage
                 SDL_EndGPURenderPass(pass);
+                depth_fix();
                 SDL_GPUTexture* g = dof_chain(cmd, t, dofu);
                 resume();
                 if (SDL_GPUGraphicsPipeline* cp = g ? dof_pipeline(true) : nullptr) {
@@ -3518,8 +4388,26 @@ private:
                     DofUniforms u = dofu;
                     u.a[0] = 2;
                     SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof u);
-                    SDL_GPUTextureSamplerBinding tsb[3] = {{g, effect_sampler_}, {g, clamp_sampler_}, {t.dof_depth, clamp_sampler_}};
+                    SDL_GPUTextureSamplerBinding tsb[3] = {{g, effect_sampler_}, {g, clamp_sampler_}, {depth_src_, clamp_sampler_}};
                     SDL_BindGPUFragmentSamplers(pass, 0, tsb, 3);
+                    SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+                }
+            }
+            if (phase == 6 && night && fp.drops.count > 0 && t.nc.t) {   // weather (§38): the lens drops, before the 2D stage
+                if (SDL_GPUGraphicsPipeline* dp = drops_pipeline()) {
+                    DropUniforms u{};
+                    const FrameParams::Night& n = fp.night;
+                    const float a[4] = {float(std::min(fp.drops.count, FrameParams::Drops::kMax)), fp.drops.aspect, n.lit ? 1.0f : 0.0f, 0.0f};
+                    const float g[4] = {n.sat, n.gamma, std::max(n.pivot, 0.01f), 0.0f};
+                    std::memcpy(u.a, a, sizeof a);
+                    std::memcpy(u.g, g, sizeof g);
+                    for (int k = 0; k < 3; ++k) u.tint[k] = n.world[k];
+                    std::memcpy(u.d, fp.drops.drop, sizeof u.d);
+                    SDL_BindGPUGraphicsPipeline(pass, dp);
+                    bound = dp;
+                    SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof u);
+                    SDL_GPUTextureSamplerBinding tsb{t.nc.t, clamp_sampler_};
+                    SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
                     SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
                 }
             }
@@ -3527,7 +4415,29 @@ private:
                 if (overlay) draw_overlay(pass, cmd, t, fp, items, ld, bound, bound_vb, bound_ib, overlay_only);
                 continue;
             }
-            if (phase == 2 && ao) draw_ao(pass, cmd, t, fp, bound);   // surface: over the opaque scene, before the specular
+            if (phase == 2 && ao) {   // surface: over the opaque scene, before the specular
+                if (ao_split) {   // scenedepth: its passes now, on the opaque scene's depth (resolved at this end)
+                    // the post-fog draws' depth first (drawn for real later; the pre-pass had them): the depth target only
+                    sd_.depth_only = true;
+                    bound = nullptr;
+                    for (const DrawItem& it : items)
+                        if (it.post_fog && !it.overlay && !it.effect && it.shading != Shading::kSky && !it.night_light)
+                            draw_item(pass, cmd, fp, it, ld, bound, bound_vb, bound_ib);
+                    sd_.depth_only = false;
+                    bound = nullptr;
+                    SDL_EndGPURenderPass(pass);
+                    depth_fix();
+                    ao_pass(cmd, t, fp);
+                    if (sd_last == 2) sd_.scene = nullptr;   // (no later reader)
+                    sd_.keep = sd_last != 5;
+                    ci.load_op = SDL_GPU_LOADOP_LOAD;
+                    di.load_op = SDL_GPU_LOADOP_LOAD;
+                    pass = SDL_BeginGPURenderPass(cmd, &ci, 1, &di);
+                    bound = nullptr;
+                    bound_vb = bound_ib = kNone;
+                }
+                draw_ao(pass, cmd, t, fp, bound);
+            }
             if (phase == 2) {
                 if (fp.specular[0] <= 0 && fp.specular[1] <= 0 && fp.specular[2] <= 0) continue;
                 if (!spec_pipe_) spec_pipe_ = fullscreen_pipeline(kSceneFormat, true);
@@ -3544,6 +4454,8 @@ private:
                 for (const DrawItem& it : items)
                     if (!it.overlay && it.post_fog && !it.night_light && !night_additive(it)) draw_item(pass, cmd, fp, it, ld, bound, bound_vb, bound_ib);
                 SDL_EndGPURenderPass(pass);
+                if (night_spot) depth_fix();
+                if (sd_last == 5) sd_.scene = nullptr;   // scenedepth: no later reader
                 SDL_GPUTexture* src = t.nc.t;   // MSAA: the pass resolved into it; else copied here
                 if (msaa_ > 1) {
                     ci.resolve_texture = resolve_to;
@@ -3566,11 +4478,14 @@ private:
                 if (night_spot) draw_night_beams(pass, cmd, t, fp, src, bound, moon_shadow);
                 else draw_night_lights(pass, cmd, fp, items, src, bound, bound_vb, bound_ib);
                 draw_night_grade(pass, cmd, fp, src, true, bound);   // after the pools: none of their light on the sky
-                draw_night_emissive(pass, cmd, fp, items, src, bound, bound_vb, bound_ib);   // nightlights: the tunnels' fixtures
+                if (fp.night.lit) draw_night_emissive(pass, cmd, fp, items, src, bound, bound_vb, bound_ib);   // nightlights: the tunnels' fixtures
+                else if (fp.day_glow > 0) draw_night_emissive(pass, cmd, fp, items, white_, bound, bound_vb, bound_ib, true);   // weather: rain by day
                 for (const DrawItem& it : items)
                     if (!it.overlay && it.post_fog && !it.night_light && night_additive(it)) draw_item(pass, cmd, fp, it, ld, bound, bound_vb, bound_ib);
                 continue;
             }
+            // TUNNEL LIGHTS by day (§35.4): the fittings' glow over the opaque world, before the post-fog effects
+            if (phase == 5 && !night && fp.day_glow > 0) draw_night_emissive(pass, cmd, fp, items, white_, bound, bound_vb, bound_ib, true);
             for (const DrawItem& it : items) {
                 if (it.overlay || it.night_light) continue;   // (night mode's pools: only in its stage above)
                 // cars (glass too) draw with the opaque ones, before the full-screen specular, as in CB3World::Render
@@ -3594,6 +4509,8 @@ private:
         }
         SDL_EndGPURenderPass(pass);
         sh_live_ = false;
+        sd_.scene = nullptr;   // scenedepth
+        t_sd = nullptr;
     }
 
     // A window frame that could not be drawn (its targets could not be made: out of memory). The swapchain texture is
@@ -3721,13 +4638,25 @@ private:
     // textures created and uploaded in one batch after a route's resources were freed (fragmented memory) came out as noise.
     // A device with a window defragments only in a command buffer that acquired the swapchain (a frame, after the batch
     // went up); one without (offscreen, the golden) at every submit, so there each upload keeps its own submit. Measured with
-    // a standalone SDL test: 20 / 290 of 1500 levels wrong offscreen, 0 with a claimed window. B3_UPLOAD_BATCH=0: off;
-    // B3_UPLOAD_BATCH=offscreen: on without a window too (timing only: the pictures may be wrong).
+    // a standalone SDL test: 20 / 290 of 1500 levels wrong offscreen, 0 with a claimed window.
+    // uploadbatch (2026-11-22, read in SDL 3.4.2's src/gpu/vulkan/SDL_gpu_vulkan.c; SDL's API documents none of this, so the
+    // version check below stays exact and a newer SDL must be read again before it is widened):
+    //   - VULKAN_Submit: performCleanups = (claimedWindowCount > 0 && swapchainRequested) || claimedWindowCount == 0, and
+    //     VULKAN_INTERNAL_DefragmentMemory runs only when performCleanups (and allocations are marked, nothing in flight);
+    //   - allocations are only marked for it when an allocation finds no free region (the sub-allocator), never moved there.
+    // SDL's code, not the driver's: the same on every Vulkan driver (AMD, NVIDIA, Intel, Mesa). And no frame can run while a
+    // batch is open: a window frame's first step (draw_frame / draw_views: flush_uploads, before the swapchain is acquired)
+    // submits it, and the route loads on this thread between
+    // frames, so a frame's defragmentation moves only batch resources whose uploads were submitted before it (SDL's own
+    // barriers, the submission order). B3_UPLOAD_BATCH / pc_settings upload_batch: include/b3gfx/upload_batch.h.
     static constexpr std::uint32_t kBatchBytes = 64u << 20;
     void upload_batch(bool on) override {
-        const char* e = std::getenv("B3_UPLOAD_BATCH");
-        if (e && e[0] == '0') on = false;
-        if (!window_ && !(e && std::strcmp(e, "offscreen") == 0)) on = false;
+        const bool wanted = upload_batch_wanted(std::getenv("B3_UPLOAD_BATCH"), upload_batch_opt_, window_ != nullptr);
+        if (on && !wanted && !bat_.off_logged && window_) {   // (offscreen: never batched, nothing to say)
+            bat_.off_logged = true;
+            SDL_Log("b3gfx: route upload batching off (%s): one submit per upload", std::getenv("B3_UPLOAD_BATCH") ? "B3_UPLOAD_BATCH" : "pc_settings upload_batch = false");
+        }
+        if (!wanted) on = false;
         // only the tested combination (SDL 3.4.2, Vulkan: its defragmentation read in its source, see above); Metal, D3D12 and
         // other SDL versions keep one submit per upload. Not again after a batch's submit failed (flush_batch).
         static const bool tested = SDL_GetVersion() == SDL_VERSIONNUM(3, 4, 2) && std::strcmp(SDL_GetGPUDeviceDriver(dev_), "vulkan") == 0;
@@ -3871,6 +4800,13 @@ private:
     SDL_Window* window_ = nullptr;
     const char* present_ = "none";
     int frames_in_flight_ = 0;   // lat1
+    bool soft_ = false;                     // fifauto: DeviceOptions::frames_soft (1 / 2 held by the device)
+    SDL_GPUFence* last_fence_ = nullptr;    // fifauto: the last window frame's (soft_ only)
+    std::uint64_t acquire_ns_ = 0;          // fifauto: the swapchain acquire's waits (take_acquire_ns)
+    int gpu_every_ = 0;                     // fifauto: GPU timing every n-th window frame (0 off)
+    std::uint64_t gpu_frame_ = 0;
+    double gpu_ms_ = -1.0;
+    int bloom_lean_ = -1;                   // fifauto: set_bloom_lean (-1: $B3_BLOOM_LEAN)
     std::uint64_t wait_ns_ = 0;   // perf4: take_wait_ns
     double warm_ms_ = 0;          // perf4: warm_pipelines' time
     std::uint64_t occ_frames_ = 0, occ_drawn_ = 0, occ_skipped_ = 0;   // perf4: the sun occlusion pass
@@ -3888,6 +4824,8 @@ private:
     SDL_GPUGraphicsPipeline* light_pipe_ = nullptr;
     SDL_GPUShader* beam_fs_ = nullptr;             // nightlights (§17.2): the projected beams, beam_pipeline on first use
     SDL_GPUGraphicsPipeline* beam_pipe_ = nullptr;
+    SDL_GPUTexture* env_glow_src_ = nullptr;       // reflect2 G: env_night_glow's constant source (released with the device)
+    std::uint32_t env_glow_w_ = 0, env_glow_h_ = 0;
     SDL_GPUShader* emissive_fs_ = nullptr;         // nightlights' fixtures (DrawItem::night_emissive), emissive_pipeline on first use
     SDL_GPUGraphicsPipeline* emissive_pipe_ = nullptr;
     SDL_GPUShader *car_vs_ = nullptr, *car_fs_ = nullptr;
@@ -3903,6 +4841,8 @@ private:
     // Bloom (post1): [0] its passes into its buffers (no blend), [1] the composite into the scene (additive, RGB only)
     SDL_GPUShader* post_fs_ = nullptr;
     SDL_GPUShader* post_lean_fs_ = nullptr;   // shaders/post_lean.frag
+    bool mirror_now_ = false;   // gameopts: the frame being drawn has a mirrored view (FrameParams::mirror_x)
+    bool mirror_held_ = false;  // gameopts: the last single-view frame was mirrored (its RENDER SCALE target set is in use)
     SDL_GPUGraphicsPipeline* post_pipe_[4] = {};   // [2]: the SOFT composite (bloom2); [3]: the one-draw composite (mode 5, no blend)
     // photo2 (FrameParams::Dof): dof.frag (made on first use; a failure turns the effect off, nothing else), its pipelines
     // ([0] its passes, [1] the composite), the depth pre-pass's ([0] mesh, [1] culled, [2] cars) and its depth format
@@ -3917,17 +4857,32 @@ private:
     // photoblur (FrameParams::Motion): motion.frag (made on first use; a failure turns the effect off), its pipelines
     // [0] the streaks, [1] the accumulation (blended), [2] the composite into the scene pass
     SDL_GPUShader* motion_fs_ = nullptr;
+    SDL_GPUShader* drops_fs_ = nullptr;           // weather: the lens drops (made on first use)
+    SDL_GPUGraphicsPipeline* drops_pipe_ = nullptr;
+    bool drops_failed_ = false;
     bool motion_failed_ = false;
     bool motion_debug_ = SDL_getenv("B3GFX_MOTION_DEBUG") != nullptr;   // the streaks in false colour (diagnostics)
     std::vector<std::uint32_t> tex_gen_;   // photoblur: update_texture's writes per texture (motion_sig)
     SDL_GPUGraphicsPipeline* motion_pipe_[3] = {};
     SDL_GPUTextureFormat dof_depth_format_ = SDL_GPU_TEXTUREFORMAT_INVALID;
+    // scenedepth: with scene_depth_on_ the scene pass keeps its depth (sd_) instead of the depth pre-pass;
+    // depth_src_: the single-sample depth the frame's passes read (the scene's resolved, or the pre-pass's)
+    bool sd_failed_ = false;
+    bool scene_depth_on_ = false;
+    SceneDepthMode scene_depth_mode_ = SceneDepthMode::kOff;   // nightdepth
+    SceneDepthState sd_;            // (registered in g_sd_dev by its SDL device while it lives)   // include/b3gfx/scene_depth.h scene_depth_wanted (off by default on every backend)
+    SDL_GPUShader* sdfix_fs_ = nullptr;
+    SDL_GPUGraphicsPipeline* sdfix_pipe_ = nullptr;
+    SDL_GPUTexture* depth_src_ = nullptr;
     // SUN SHADOWS (FrameParams::SunShadow): shadow.frag and mesh.frag's SUN_SHADOW variant (made on first use; a failure
     // turns the feature off), the caster pipeline, the receivers' (by pipeline() slot: blend + 3 x culled), the map and
     // its depth target (sh_side_ texels; released by clear_resources), and sh_live_ while a scene pass takes the map
     SDL_GPUShader *sh_fs_ = nullptr, *sh_recv_fs_ = nullptr;
     bool sh_failed_ = false;
     SDL_GPUGraphicsPipeline* sh_pipe_ = nullptr;
+    SDL_GPUShader* sh_prop_fs_ = nullptr;                // propshadow1: shadow_mesh.frag and its caster pipeline (mesh.vert)
+    SDL_GPUGraphicsPipeline* sh_prop_pipe_ = nullptr;
+    bool sh_prop_failed_ = false;
     SDL_GPUGraphicsPipeline* sh_recv_pipe_[6] = {};
     SDL_GPUTexture *sh_map_ = nullptr, *sh_depth_ = nullptr;
     std::uint32_t sh_side_ = 0;
@@ -3952,7 +4907,8 @@ private:
                    // each upload recorded (flush_batch's fallback when the submit fails)
                    struct Op { SDL_GPUTexture* tex; SDL_GPUBuffer* buf; std::uint32_t level, w, h, off, bytes; bool mips; };
                    std::vector<Op> ops;
-                   bool broken = false; } bat_;   // perf4: upload_batch
+                   bool broken = false; bool off_logged = false; } bat_;   // perf4: upload_batch (uploadbatch: off_logged)
+    bool upload_batch_opt_ = true;   // uploadbatch: Options::upload_batch
     Stats stats_;   // perf1: take_stats()
     unsigned texture_failures_ = 0;   // texture_failed
     unsigned texture_refusals_ = 0, refusals_logged_ = 0;   // texture_refused
@@ -3979,8 +4935,11 @@ private:
     bool hd_shown_ = true;
     bool bc_ok_ = false;   // hdgpu: supports_bc
     std::map<TextureId, std::pair<int, int>> dyn_tex_size_;   // update_texture's textures (menu1)
-    std::map<int, std::array<SDL_GPUGraphicsPipeline*, 8>> pipelines_;
-    Targets win_targets_, off_targets_;
+    std::map<int, std::array<SDL_GPUGraphicsPipeline*, 10>> pipelines_;   // (8 / 9: whitesky keep_alpha)
+    Targets win_targets_, off_targets_, pic_targets_;   // (pic_targets_: paint3's draw_picture)
+    struct PendingPicture { SDL_GPUFence* fence = nullptr; SDL_GPUTransferBuffer* tb = nullptr; std::uint32_t bytes = 0; };
+    std::map<int, PendingPicture> pictures_;   // paint3: picture_begin's, until taken
+    int picture_id_ = 0;
     std::vector<Targets> win_views_, off_views_;   // gsoff1 (§29): the split screen's per-view targets
     bool shot_seed_ = false;   // screenshot_begin .. screenshot_end
 };
@@ -4020,10 +4979,27 @@ std::unique_ptr<Device> create_headless(const Options& opt, std::string* err, SD
     return nullptr;
 }
 
+// d3d12 (GRAPHICS API, include/b3gfx/driver_order.h): the drivers in order (Windows: Auto = Vulkan, then D3D12; a named
+// API then the other; elsewhere the one asked for). SDL 3.4.2 alone would take D3D12 first once DXIL is offered. A
+// whole start-up is tried per driver: the device, the window's claim and swapchain, the shaders, the first pipelines
+// (an old Vulkan driver that makes a device but fails after it is the case D3D12 is there for); a failed one is
+// destroyed (its window claim released) before the next. Each fallback logged.
 std::unique_ptr<Device> Device::create(SDL_Window* window, const Options& opt, std::string* err) {
-    auto d = std::make_unique<SdlDevice>();
-    if (!d->init(window, opt, err)) return nullptr;
-    return d;
+    const std::vector<std::string> tries = driver_attempts(opt.driver, windows_build());
+    std::string why;
+    for (std::size_t i = 0; i < tries.size(); ++i) {
+        Options o = opt;
+        o.driver = tries[i];
+        auto d = std::make_unique<SdlDevice>();
+        std::string e;
+        if (d->init(window, o, &e)) return d;
+        d.reset();
+        why += (why.empty() ? "" : "; ") + (tries[i].empty() ? std::string("default") : tries[i]) + ": " + e;
+        if (i + 1 < tries.size())
+            SDL_Log("b3gfx: GRAPHICS API: %s did not start (%s): trying %s", tries[i].c_str(), e.c_str(), tries[i + 1].c_str());
+    }
+    if (err) *err = why;
+    return nullptr;
 }
 
 }  // namespace b3gfx

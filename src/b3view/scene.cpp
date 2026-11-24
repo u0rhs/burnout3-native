@@ -273,6 +273,7 @@ bool sky_item(b3gfx::Device& dev, const b3asset::SkyLayer& l, b3gfx::TextureId t
     it.texture = tex;
     it.shading = b3gfx::Shading::kSky;
     it.blend = l.blend ? b3gfx::Blend::kAlpha : b3gfx::Blend::kOpaque;
+    it.frame_alpha_masked = (l.fbmsk & 0xFF000000u) == 0xFF000000u;   // whitesky: the clouds keep the frame alpha
     it.lighting = 0;
     return true;
 }
@@ -300,10 +301,14 @@ bool build_scene(b3gfx::Device& dev, b3asset::Model&& model, bool prelit, Scene&
     else
         for (const auto& t : m.textures) tex.push_back(upload_texture(dev, t.levels, t.original));   // hdkey: and its original
     out.textures = tex;
-    // hdgpu: compressed HD levels are on the GPU now: their CPU copy goes (the sizes stay: the LOD model's share check)
+    // hdgpu: compressed HD levels are on the GPU now: their CPU copy goes (the sizes stay: the LOD model's share check);
+    // texpack: an HD replacement's RGBA8 levels too (a PNG / BC7 pack at full quality: 16 MB a 2048 texture, kept for the
+    // scene's life before; nothing reads them after the upload)
     for (auto& t : out.model.textures)
-        for (auto& l : t.levels)
+        for (auto& l : t.levels) {
             if (l.bc) l.blocks.reset();
+            if (t.hd && !l.rgba.empty()) std::vector<std::uint8_t>().swap(l.rgba);
+        }
     for (const auto& d : m.draws) {
         b3gfx::DrawItem it;
         it.vertices = vb;

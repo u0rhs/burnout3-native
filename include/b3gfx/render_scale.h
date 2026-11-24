@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 namespace b3gfx {
@@ -17,10 +18,12 @@ namespace b3gfx {
 // blur's two buffers, the depth of field / surface pre-pass (depth + its R8 colour), the depth of field's two half-size
 // buffers, the surface's half-size AO buffer, night mode's copy of the frame (single-sample, with or without MSAA:
 // with MSAA the scene pass resolves into it; nightlights) and, with `motion` (finalfix: photo mode's motion blur can run),
-// its two full-size RGBA16F buffers (the velocity and the accumulation; its tile buffers are a 1/256 of a pixel's).
-inline double scaled_bytes_per_pixel(int msaa, bool lean = false, bool motion = false) {
+// its two full-size RGBA16F buffers (the velocity and the accumulation; its tile buffers are a 1/256 of a pixel's), and with
+// `mirror` (gameopts: MIRROR MODE on in the frame) the picture's reversed RGBA16F copy.
+inline double scaled_bytes_per_pixel(int msaa, bool lean = false, bool motion = false, bool mirror = false) {
     const int s = std::max(1, msaa);
-    return double(s) * (8.0 + 4.0) + (s > 1 ? 8.0 : 0.0) + (s > 1 && lean ? 8.0 : 0.0) + 16.0 + 5.0 + 4.0 + 2.0 + 8.0 + (motion ? 16.0 : 0.0);
+    return double(s) * (8.0 + 4.0) + (s > 1 ? 8.0 : 0.0) + (s > 1 && lean ? 8.0 : 0.0) + 16.0 + 5.0 + 4.0 + 2.0 + 8.0 + (motion ? 16.0 : 0.0) +
+           (mirror ? 8.0 : 0.0);
 }
 
 // finalfix: the sun-shadow map's MB, outside the per-pixel sum (its side is fixed: 1024 / 2048 texels): the R32F map and
@@ -50,6 +53,19 @@ inline double supersample_budget_mb(double device_local_mb) {
 // The scaled target's side for an output side (at least 1)
 inline std::uint32_t scaled_side(std::uint32_t side, float scale) {
     return std::max<std::uint32_t>(1, std::uint32_t(std::floor(float(side) * scale + 0.5f)));
+}
+
+// The 2D stage under RENDER SCALE (b3gfx_sdl.cpp render_scaled): the depth-tested 2D items (DrawItem::overlay_ztest, the
+// World Tour / Crash Nav globe) need the scene's depth, so they are drawn in the scaled pass; the rest goes over the upscaled
+// picture. The list order is the game's draw order (the globe over the 2D backdrop drawn before it), so the scaled pass takes
+// the whole prefix of the list up to and including the last depth-tested 2D item, and the output-size pass the items after
+// it. Returns that prefix's length: 0 when no 2D item tests depth (then every 2D item is drawn at the output's size).
+template <class Items>
+std::size_t scaled_overlay_end(const Items& items) {
+    std::size_t end = 0;
+    for (std::size_t i = 0; i < items.size(); ++i)
+        if (items[i].overlay && items[i].overlay_ztest) end = i + 1;
+    return end;
 }
 
 }  // namespace b3gfx

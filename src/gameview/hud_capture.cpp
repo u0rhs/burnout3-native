@@ -43,6 +43,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <map>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -66,7 +67,7 @@ constexpr std::uint32_t kSlotBase = 0x40100000U, kSlotSize = 0x2000U, kSlots = 1
 
 enum Kind : std::uint32_t { kEvBegin = 1, kEvState = 2, kEvTexture = 3, kEvResume = 4, kEvSuspend = 5, kEvEnd = 6, kEvBatch = 7,
                             kEvBatchRef = 8, kEvScene = 9, kEvObject = 10, kEvMarker = 11, kEvVideo = 12, kEvFeCar = 13,
-                            kEvGlobe = 14, kEvTicker = 15 };
+                            kEvGlobe = 14, kEvTicker = 15, kEvGauge = 16 };
 
 // The front end's 3D (menu1, §22). CB3FrontEnd::Render 0x1312D0 (E map [high]) calls CB3World::RenderFrontEnd 0x275EF0
 // (E map [high]; $a0 gWorld, $a1 the car index) on the car pages, before the menu pages' 2D; it draws the backdrops of
@@ -77,6 +78,13 @@ enum Kind : std::uint32_t { kEvBegin = 1, kEvState = 2, kEvTexture = 3, kEvResum
 // 0x19EA70) [L]: the scene capture's camera already. Recorded at the entry: a FECAR event {index, car, viewport 1's
 // RwCamera}; at the next poll the car is grabbed as a race car (b3scene_grab_vehicle + [0x18E0, 0x19A0)).
 constexpr std::uint32_t kRenderFrontEnd = 0x00275EF0U;
+// gamemods1 (tools/native/car_viewer.h): the retail CAR VIEWER draws the player's race car (*kWorldCars, set up for it)
+// outside RenderFrontEnd (its Render 0x24D520 is reached through dispatch only at its first frame, so it is not
+// watched). Each frame the viewer's Update hook records (b3gv::car_viewer_frame) a FECAR event of its own: index
+// kViewerIndex + the viewer's background (0..14), the car, 0, 0; the car is grabbed at the next poll as the front end's
+// is. The poll then publishes a frame (the viewer draws no 2D of the game's pages), so the renderer draws the car alone,
+// on that background (src/b3replay/view.cpp car_viewer_background).
+constexpr std::uint32_t kViewerIndex = 0x100U;
 constexpr std::uint32_t kWorldCars = 0x00522660U + 0x12AD28U;
 // padpaint: the car select page (tools/native/car_select.h kCarSelectPage: its player at +0x18) and the menus' current
 // page word (tools/native/fast_load.h kMenuCurrentPage)
@@ -223,6 +231,24 @@ void read_bytes(const b3gv::Memory& m, std::uint32_t a, std::uint32_t n, std::ve
     }
 }
 
+// hudmods (src/b3replay/hudmods.h): what the renderer's RPM METER and BOOST BAR SHAKE draw from, read where the
+// game's own HUD reads it, so each view's HUD gets its own player's values in step with the frame it drew. Per listed
+// speedometer (_gSpeedoComponentP1 / P2) and boost bar (_gBoostBarComponentP1 / P2) of the scene, a GAUGE event:
+//   {component, kind 1, the car, engine revs, rev limit, low revs, gear, manual}  for a speedometer: the component's
+//     +0x2C is the car whose speed it shows (CB3HUDSpeedo::Update 0x1A3B30 reads its +0xB0 [C]); its transmission is
+//     at car +0x1448 (func_001C6F90 [C draft]: +0x54 the engine revs, +0x38 the rev limit (the limiter's base), +0x3C
+//     the revs the meter's empty end stands for, +0x80 the gear (-1 reverse, 0 neutral), +0x70 set: no automatic
+//     shifts); the revs are in tenths of the limits' unit (func_001C6F90 compares +0x54 with D_004E0D80 x the limits;
+//     +0x38 is in rpm: it tests it against 6000), so the meter's fill is (10 revs - low) / (limit - low) [L, checked
+//     against a race's values: 0.81 in 2nd gear at the start, 1.0 at the limiter]
+//   {component, kind 2, the car's CB3Score, boosting (0 / 1)}  for a boost bar: +0x68C is the CB3Score (car +0x10C0)
+//     whose CB3Burn (score +0xCC) the bar shows (BarUpdate 0x1A4900: +0x100 the size, +0x104 the boost, +0x11E
+//     boosting [C draft], = tools/native/tuning_console.h kBoosting)
+// Memory reads only (the capture's const view): nothing in the game changes.
+constexpr std::uint32_t kSpeedoP1 = 0x0066AE10U, kSpeedoP2 = 0x0066BFB0U, kBoostBarP1 = 0x0066A610U, kBoostBarP2 = 0x0066B7B0U;
+constexpr std::uint32_t kTransmission = 0x1448U;
+void observe_gauge(Hud& h, const b3gv::Memory& m, std::uint32_t c);
+
 // One HUD scene at CB3HUDManager::Render's entry: {scene, manager ($a0), HUD index, component count, the HUD's rect
 // (+0x48, +0x50), its root frame (+0x28), the align table (18 floats)}, then per component {component, vtable, frame,
 // mode flags, align, player}. Also the completeness check of the object events: the objects the scene will call
@@ -246,6 +272,7 @@ void observe_scene(Hud& h, const b3gv::Memory& m, std::uint32_t manager, std::ui
         }
     }
     event(h, kEvScene, reinterpret_cast<const std::uint8_t*>(w.data()), std::uint32_t(4 * w.size()));
+    for (std::uint32_t k = 0; k < w[3]; ++k) observe_gauge(h, m, w[27 + 6 * k]);   // hudmods: after the scene it belongs to (27 header words)
     const std::uint32_t nl = m.u32(scene + 0x30U), layers = m.u32(scene + 0x2CU);
     for (std::uint32_t l = 0; l < nl && l < 64 && ram(layers + 16U * l, 16); ++l) {
         if (m.u32(layers + 16U * l) & 1U) continue;
@@ -294,6 +321,32 @@ void observe_video(Hud& h, const b3gv::Memory& m, std::uint32_t data) {
     event(h, kEvVideo, reinterpret_cast<const std::uint8_t*>(w), sizeof w);
 }
 
+// 1.3.1: the port's help texts shown in place of the game's own (b3gv::set_ticker_text; guest text address -> display)
+std::map<std::uint32_t, std::u16string>& ticker_texts() { static std::map<std::uint32_t, std::u16string> m; return m; }
+
+void observe_gauge(Hud& h, const b3gv::Memory& m, std::uint32_t c) {   // hudmods (above)
+    if (c == kSpeedoP1 || c == kSpeedoP2) {
+        const std::uint32_t car = m.u32(c + 0x2CU), t = car + kTransmission;
+        if (!ram(t, 0x84)) return;
+        const std::uint32_t w[8] = {c, 1U, car, m.u32(t + 0x54U), m.u32(t + 0x38U), m.u32(t + 0x3CU), m.u32(t + 0x80U), m.u32(t + 0x70U)};
+        event(h, kEvGauge, reinterpret_cast<const std::uint8_t*>(w), sizeof w);
+    } else if (c == kBoostBarP1 || c == kBoostBarP2) {
+        const std::uint32_t score = m.u32(c + 0x68CU);
+        static const bool trace = [] { const char* e = std::getenv("B3_HUDMODS_TRACE"); return e && *e && *e != '0'; }();
+        if (trace) {
+            static std::uint32_t last[2] = {~0U, ~0U};
+            const std::uint32_t w = ram(score, 0x120) ? m.u32(score + 0x11CU) : 0xDEADU;
+            if (last[0] != score || last[1] != w)
+                std::fprintf(stderr, "[B3HUD] hudmods: frame %llu boost bar %08x score %08x boosting %u\n", (unsigned long long)h.frames, c, score, (w >> 16) & 0xFFU);
+            last[0] = score;
+            last[1] = w;
+        }
+        if (!ram(score, 0x120)) return;
+        const std::uint32_t w[4] = {c, 2U, score, (m.u32(score + 0x11CU) >> 16) & 0xFFU ? 1U : 0U};   // +0x11E: byte 2 of the word
+        event(h, kEvGauge, reinterpret_cast<const std::uint8_t*>(w), sizeof w);
+    }
+}
+
 // menu-font: the ticker's render data ($a1 = object + 0x28), for the renderer's wide layout (above, kScrollingTextRender)
 void observe_ticker(Hud& h, const b3gv::Memory& m, std::uint32_t data) {
     if (!ram(data, 16)) return;
@@ -301,13 +354,18 @@ void observe_ticker(Hud& h, const b3gv::Memory& m, std::uint32_t data) {
     std::vector<std::uint32_t> w = {data - 0x28U, text, m.u32(data + 4U), m.u32(data + 8U), m.u32(data + 12U),
                                     m.u32(kHelpBarRecipSize), m.u32(kHelpBarRecipSize + 4U), ram(font, 8) ? m.u32(font + 4U) & 0x01FFFFFFU : 0U, 0U};
     std::vector<std::uint16_t> codes;
-    for (std::uint32_t k = 0; k < 1024U && ram(text + 2U * k, 2); ++k) {
-        const std::uint32_t a = text + 2U * k;
-        const std::uint16_t c = std::uint16_t(m.u32(a & ~3U) >> (8U * (a & 3U)));
-        if (c == 0) break;
-        codes.push_back(c);
+    const auto sub = ticker_texts().find(text);
+    if (sub != ticker_texts().end()) {   // 1.3.1: the port's text for the renderer (the game draws its own; view.cpp)
+        codes.assign(sub->second.begin(), sub->second.begin() + std::ptrdiff_t(std::min<std::size_t>(sub->second.size(), 1024U)));
+    } else {
+        for (std::uint32_t k = 0; k < 1024U && ram(text + 2U * k, 2); ++k) {
+            const std::uint32_t a = text + 2U * k;
+            const std::uint16_t c = std::uint16_t(m.u32(a & ~3U) >> (8U * (a & 3U)));
+            if (c == 0) break;
+            codes.push_back(c);
+        }
     }
-    w[8] = std::uint32_t(codes.size());
+    w[8] = std::uint32_t(codes.size()) | (sub != ticker_texts().end() ? 0x80000000U : 0U);
     if (codes.size() & 1U) codes.push_back(0);
     for (std::size_t k = 0; k < codes.size(); k += 2) w.push_back(std::uint32_t(codes[k]) | std::uint32_t(codes[k + 1]) << 16);
     event(h, kEvTicker, reinterpret_cast<const std::uint8_t*>(w.data()), std::uint32_t(4 * w.size()));
@@ -541,7 +599,18 @@ std::uint32_t b3gv::hud_enable(std::size_t hooked, std::size_t wanted, const cha
 bool b3gv::hud_on() { return hud().on; }
 
 void b3gv::on_entry(std::uint32_t pc, const std::uint32_t arg[8], const b3gv::Memory& m) { observe(pc, arg, m); }
+void b3gv::set_ticker_text(std::uint32_t text, const std::u16string& display) {   // 1.3.1 (pc_menu.h)
+    if (display.empty()) ticker_texts().erase(text & 0x01FFFFFFU);
+    else ticker_texts()[text & 0x01FFFFFFU] = display;
+}
 
+void b3gv::car_viewer_frame(std::uint32_t car, int background) {   // gamemods1 (above)
+    Hud& h = hud();
+    if (!h.on) return;
+    const std::uint32_t w[4] = {kViewerIndex + std::uint32_t(background & 0xFF), car, 0U, 0U};
+    event(h, kEvFeCar, reinterpret_cast<const std::uint8_t*>(w), sizeof w);
+    if (car && std::find(h.fe_cars.begin(), h.fe_cars.end(), car) == h.fe_cars.end()) h.fe_cars.push_back(car);
+}
 void b3gv::set_hud_publish_override(b3gv::PublishHook hook, void* ctx) { g_publish_override = hook; g_publish_ctx = ctx; }
 
 

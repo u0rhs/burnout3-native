@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 #include "b3asset/hdpack.h"
@@ -75,12 +76,19 @@ bool decode_mesh(Bytes f, std::size_t at, VifInterpreter& vif, const Mat& M, Mod
 }
 }  // namespace
 
+bool car_old_layout(Bytes f) {
+    const std::uint32_t first = car_first_lod_block(f.p, f.n);
+    return first && first < kCarFirstLodBlock;
+}
+
+std::string car_file_error(Bytes f) { return car_header_error(f.p, f.n); }
+
 bool read_car(Bytes f, const CarOptions& opt, GsMemory& gs, Model& out, std::string* why) {
     out = Model{};
     // modsec: every offset below comes from the file (a modded car reaches the Showroom, the mod tool and the renderer):
     // each read is checked against its size
-    if (!f.has(0, 0x64)) return fail(why, "too short for a vehicle file header");
-    if (f.u32(0) != 0x17) return fail(why, "not a version 0x17 vehicle file");
+    if (const std::string e = car_file_error(f); !e.empty()) return fail(why, e);
+    if (f.u32(0) != 0x17) out.stats["version"] = int(f.u32(0));
     // Texture atlas: one texture per palette variant would be wasteful; the chosen variant only.
     const std::uint32_t tex_at = f.u32(0x60);
     int tex = -1;
@@ -93,7 +101,7 @@ bool read_car(Bytes f, const CarOptions& opt, GsMemory& gs, Model& out, std::str
         const int npal = f.p[tex_at + 0xA0] ? f.p[tex_at + 0xA0] : 1;
         const HdCompressScope bc;   // hdgpu: the atlas is only uploaded (an HD replacement may stay BC)
         if (!decode_raster(f, tex_at, gs, r, opt.palette, &err)) return fail(why, "car texture: " + err);
-        out.textures.push_back(Texture{r.hdr.name, std::move(r.levels), r.translucent, std::move(r.original)});
+        out.textures.push_back(Texture{r.hdr.name, std::move(r.levels), r.translucent, std::move(r.original), r.hd});
         tex = 0;
         out.stats["palettes"] = npal;
     }
@@ -127,8 +135,13 @@ bool read_car(Bytes f, const CarOptions& opt, GsMemory& gs, Model& out, std::str
             else for (int w = 0; w < nwheel; ++w) frames.push_back(read_mat(f, 0xB80 + 64 * w));
         } else if (li == 0) {
             frames.push_back(ident);
+        } else if (li >= 10 && !opt.bake_frames) {
+            // payloads1: C0-C7, the payload objects (a truck's boat, logs, cars), each in its own space: RenderVehicle
+            // draws C list k at a payload item's matrix (VehicleParams +0x1024 item +0x10 x the main matrix) or at its
+            // released body part's physics matrix [C draft 0x21E6F0]
+            frames.push_back(ident);
         } else {
-            continue;  // C lists: counted, not drawn (payload objects [L]); B1/B2 only with bake_frames off
+            continue;  // C lists with frames baked (no runtime matrix: the Showroom, the exports); B1/B2 only with bake_frames off
         }
         for (std::size_t fi = 0; fi < frames.size(); ++fi)
             for (int i = 0; i < count; ++i) {

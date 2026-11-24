@@ -5,6 +5,8 @@
 
 #include "fast_load.h"
 #include "save_screens.h"
+#include "../src/b3replay/game_behind.h"   // slowcpu
+#include "../src/b3replay/fastforward.h"   // scenewait
 
 #include <cstdint>
 #include <vector>
@@ -146,8 +148,9 @@ TEST(pace_from_first_vblank_unchanged) {
     p.period = kPeriod;
     const FastLoad::Step none;
     CHECK(p.vblank(5, true, true, none) == Pacer::kNow && p.paced == 0);
-    CHECK(p.vblank(7, false, true, none) == Pacer::kNow && p.paced == 1 && p.base == 7);
-    CHECK(p.vblank(8, false, false, none) == 7 + 2 * kPeriod);
+    // stutter: the first paced VBlank is due now (base a period before it), the next a period after it
+    CHECK(p.vblank(7, false, true, none) == Pacer::kNow && p.paced == 1 && p.base == 7 - kPeriod && p.stamp_ns() == 7);
+    CHECK(p.vblank(8, false, false, none) == 7 + kPeriod);
 }
 
 TEST(behind_resyncs) {
@@ -158,6 +161,60 @@ TEST(behind_resyncs) {
     CHECK(p.vblank(kPeriod + 300000000, false, false, none) == Pacer::kNow);   // 300 ms late
     CHECK(p.resyncs == 1);
     CHECK(p.vblank(kPeriod + 300000000, false, false, none) == kPeriod + 300000000 + kPeriod);
+}
+
+// stutter: the polls' latch stamps are the schedule (Pacer::stamp_ns), not the late wake-ups: exactly one period apart
+// whatever the wake-up; 0 unpaced (before --pace-from, a fast load); re-anchored once after a load
+TEST(stamps_are_the_schedule) {
+    Pacer p;
+    p.period = kPeriod;
+    const FastLoad::Step none;
+    CHECK(p.vblank(5, true, true, none) == Pacer::kNow && p.stamp_ns() == 0);   // waiting: unpaced
+    std::int64_t now = 1000000000;
+    p.vblank(now, false, true, none);
+    std::int64_t prev = p.stamp_ns();
+    CHECK(prev == now);   // the first paced VBlank is due now
+    std::uint32_t lcg = 1;
+    for (int v = 0; v < 300; ++v) {
+        const std::int64_t due = p.base + kPeriod * std::int64_t(p.paced + 1);
+        lcg = lcg * 1664525u + 1013904223u;
+        now = std::max(now, due) + std::int64_t(lcg >> 10) % 5000000;   // woken 0..5 ms late
+        p.vblank(now, false, false, none);
+        CHECK(p.stamp_ns() - prev == kPeriod);
+        CHECK(p.behind == now - due && !p.late());   // how late it started; 0..5 ms is not catching up (not marked)
+        prev = p.stamp_ns();
+    }
+    const std::int64_t due = p.base + kPeriod * std::int64_t(p.paced + 1);
+    p.vblank(due + kPeriod + 1, false, false, none);   // more than a period late: catching up, marked
+    CHECK(p.late() && p.behind == kPeriod + 1);
+    now = due + kPeriod + 1;
+    FastLoad::Step fast;
+    fast.fast = true;
+    p.vblank(now + kPeriod, false, false, fast);
+    CHECK(p.stamp_ns() == 0);   // a fast load: unstamped
+    FastLoad::Step end;
+    end.ended = true;
+    const std::int64_t after = now + 5 * kPeriod;
+    p.vblank(after, false, false, end);
+    CHECK(p.stamp_ns() == after);   // re-anchored at the load's end
+    p.vblank(after + kPeriod + 1000000, false, false, none);
+    CHECK(p.stamp_ns() == after + kPeriod);
+}
+
+// trafmem (Fable): a wait for the shot runner's full hold that ran out is not started again for that hold (a stalled
+// renderer would hold the game 2 minutes a VBlank); waiting again once the hold moves
+TEST(feed_wait_not_again_after_running_out) {
+    b3native::FeedWait w;
+    CHECK(!w.should_wait(false, 100));          // not full: no wait
+    CHECK(w.should_wait(true, 100));            // full: wait
+    w.ran_out(100);                             // ... it ran out on hold 100
+    CHECK(!w.should_wait(true, 100));           // the next VBlanks: the same hold, no wait
+    CHECK(!w.should_wait(true, 100));
+    CHECK(w.should_wait(true, 140));            // the hold moved (a shot taken): wait again
+    w.ran_out(140);
+    CHECK(!w.should_wait(true, 140));
+    CHECK(!w.should_wait(false, 180));          // moved and not full: no wait, the give-up forgotten
+    CHECK(w.should_wait(true, 140));            // (back on 140 later: a different stretch, allowed)
 }
 
 TEST(audio_gate_mutes_with_fades) {
@@ -217,6 +274,82 @@ TEST(autosave_page_span) {
         CHECK(s.began == (v == 0) && s.ended == (v == 50));
     }
     CHECK(unpaced == 50 && fl.spans() == 1);
+}
+
+// slowcpu (issue #15, Fable): the behind state: on only for sustained lateness (3 VBlanks more than two VBlanks late
+// within 1 s, or 2 resyncs within 5 s), never one hitch; off after the hold on time (3 s), longer when it comes back
+// within 10 s of a release (10 s, 30 s, then the rest of the race); reset() at a new race; the renderer's limit meanwhile
+TEST(behind_real_time) {
+    using b3native::BehindWatch;
+    const std::int64_t T = 16683350, L = 2 * T + 1;   // L: late enough to count
+    BehindWatch w;
+    std::uint64_t v = 1000;
+    CHECK(!w.step(v++, 10 * L, 0) && !w.behind);           // one hitch, however long: not behind
+    for (int k = 0; k < 30; ++k) CHECK(!w.step(v++, 0, 0));
+    CHECK(!w.step(v++, L, 0) && !w.behind);                // a second late VBlank within 1 s: still not
+    CHECK(w.step(v++, L + 1, 0) && w.behind && w.hold() == 180);   // the third (a new delay) within 1 s: behind, 3 s hold
+    for (int k = 0; k < 179; ++k) CHECK(!w.step(v++, 0, 0));
+    CHECK(w.step(v++, 0, 0) && !w.behind);                 // 3 s on time: released
+    // back within 10 s: the next hold is 10 s, then 30 s, then the rest of the race
+    const std::uint64_t holds[] = {600, 1800, BehindWatch::kForever};
+    for (std::uint64_t want : holds) {
+        for (int k = 0; k < 100; ++k) w.step(v++, 0, 0);
+        w.step(v++, L, 0);
+        w.step(v++, L + 1, 0);
+        CHECK(w.step(v++, L + 2, 0) && w.behind && w.hold() == want);
+        if (want == BehindWatch::kForever) break;
+        for (std::uint64_t k = 0; k + 1 < want; ++k) CHECK(!w.step(v++, 0, 0));
+        CHECK(w.step(v++, 0, 0) && !w.behind);
+    }
+    for (int k = 0; k < 10000; ++k) CHECK(!w.step(v++, 0, 0));   // the rest of the race: held
+    CHECK(w.behind && w.reset() && !w.behind && w.hold() == 180);   // a new race: from 3 s again
+    // resyncs: two within 5 s turn it on; spread wider, they do not
+    BehindWatch r;
+    r.resyncs_seen = 7;
+    v = 50000;
+    CHECK(!r.step(v++, 0, 8));
+    for (int k = 0; k < 400; ++k) CHECK(!r.step(v++, 0, 8));
+    CHECK(!r.step(v++, 0, 9) && !r.behind);                // 401 VBlanks later: not within 5 s
+    for (int k = 0; k < 100; ++k) r.step(v++, 0, 9);
+    CHECK(r.step(v++, 0, 10) && r.behind);                 // the third, 101 after the second: on
+    // (Fable) one stall of 100 ms: the catch-up VBlanks after it are each less late (100, 83, 67, 50 ...): one delay,
+    // no hold; lateness that grows (a game slower than real time) holds within 3
+    BehindWatch st;
+    v = 70000;
+    for (int k = 0; k < 10; ++k) st.step(v++, 0, 0);
+    for (std::int64_t ms = 100; ms > 0; ms -= 17) CHECK(!st.step(v++, ms * 1000000, 0));
+    for (int k = 0; k < 120; ++k) CHECK(!st.step(v++, 0, 0) && !st.behind);
+    BehindWatch gr;
+    v = 80000;
+    CHECK(!gr.step(v++, 35000000, 0) && !gr.step(v++, 40000000, 0) && gr.step(v++, 45000000, 0) && gr.behind);
+    // (Fable) two minutes without a trigger: one step back (a 30 s hold early in a race does not stay)
+    BehindWatch dk;
+    v = 90000;
+    auto trigger = [&](BehindWatch& b) { b.step(v++, 40000000, 0); b.step(v++, 45000000, 0); return b.step(v++, 50000000, 0); };
+    CHECK(trigger(dk) && dk.hold() == 180);
+    for (int k = 0; k < 180; ++k) dk.step(v++, 0, 0);
+    CHECK(!dk.behind && trigger(dk) && dk.hold() == 600);          // back within 10 s: 10 s
+    for (int k = 0; k < 600; ++k) dk.step(v++, 0, 0);
+    CHECK(!dk.behind && trigger(dk) && dk.hold() == 1800);         // again: 30 s
+    for (int k = 0; k < 1800; ++k) dk.step(v++, 0, 0);
+    CHECK(!dk.behind);
+    for (int k = 0; k < 7200; ++k) dk.step(v++, 0, 0);             // two minutes quiet
+    CHECK(dk.level == 1 && trigger(dk) && dk.hold() == 600);       // one step back: 10 s (not the rest of the race)
+    // a late VBlank that is not late enough (one VBlank) never counts
+    BehindWatch q;
+    for (int k = 0; k < 100; ++k) CHECK(!q.step(k, T + 5, 0));
+    using b3replay::behind_limit;
+    CHECK(behind_limit(0, false) == 0 && behind_limit(144, false) == 144);   // the player's
+    CHECK(behind_limit(0, true) == 60 && behind_limit(144, true) == 60 && behind_limit(30, true) == 30 && behind_limit(60, true) == 60);
+}
+
+TEST(scene_wait_goes_on_only_while_the_scene_is_being_built) {
+    using b3replay::scene_wait_more;
+    CHECK(scene_wait_more(100, 3000, false) && scene_wait_more(100, 3000, true));   // within the cap: as before
+    CHECK(!scene_wait_more(3000, 3000, false));                                    // the cap, the scene ready: no more
+    CHECK(scene_wait_more(3000, 3000, true) && scene_wait_more(9999, 3000, true));   // the route / preload still coming
+    CHECK(!scene_wait_more(b3replay::kSceneBuildMaxMs, 3000, true));                // never past 10 s
+    CHECK(scene_wait_more(500, 0, true) && !scene_wait_more(500, 0, false));        // a load slower than real time
 }
 
 TEST_MAIN("test_fast_load (tools/native/fast_load.h)")

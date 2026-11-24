@@ -117,6 +117,10 @@ TEST(playback_sets_the_recorded_choice) {
     CHECK(live.race() == b3native::kRaceTimeDefault && recorded == b3native::kRaceTimeDefault);
     play.set_choice(7);   // a value no build writes: Default
     CHECK(play.choice() == b3native::kRaceTimeDefault);
+    play.set_choice(b3native::kRaceTimeNightRain);   // weather (§38): CONDITIONS' Rain / Night rain play back
+    CHECK(play.choice() == b3native::kRaceTimeNightRain && b3native::race_time_night(play.choice()) && b3native::race_time_rain(play.choice()));
+    CHECK(!b3native::race_time_night(b3native::kRaceTimeRain) && b3native::race_time_rain(b3native::kRaceTimeRain) &&
+          !b3native::race_time_rain(b3native::kRaceTimeNight));
 }
 
 TEST(the_other_track_pages) {

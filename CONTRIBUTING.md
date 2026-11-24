@@ -59,7 +59,9 @@ profile (`SAVES` in `local.env`):
 - **Scenarios**: `STRICT=1 tools/native/race_check.sh build/native_play build/rc_race`, and the other scenarios with
   `SCENARIO=<name>` (the race modes `pause`, `photo`, `music`, `takedown`, `timeattack`, `roadrage`, `crash`,
   `worldtour`; the front-end tours `multiplayer`, `partycrash`, `online`, `ddrewards`, `ddrecords`, `ddsettings`,
-  `crashnav`, `carselect`, `crashresults`, `nfsdemo`; details in the script's header). Each run ends with `race_check: PASS ...`. `STRICT=1` halts if any game function
+  `crashnav`, `carselect`, `crashresults`, `nfsdemo`, `retail` (every EXTRAS row off: the game's own front end; the others run with `B3NATIVE_EXTRAS=all`); details in the script's header). Most players' game data is a disc image
+  (.iso / .bin / .chd), not a folder: run `race` and `SCENARIO=trafficseries` once more with `B3_GAME_DIR` set to your
+  image, since a file read that only works in a folder passes every folder run. Each run ends with `race_check: PASS ...`. `STRICT=1` halts if any game function
   would run as the original PS2 code.
 - **Diagnostic builds with the fallback**: the default build, like every release, has no way to run original PS2 code:
   a call to a function with no native version stops the game (`native_play: STOPPED: the game called <address>
