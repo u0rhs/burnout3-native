@@ -269,7 +269,7 @@ part with its own switch, all off until you turn it on but ELIMINATOR, plus nigh
 | ✅ | **Your own colours** | A paint panel on SELECT CAR (body, decals, wheels, boost glow, colour picker, Chrome finish); the car list's pictures drawn in your paint |
 | ✅ | **Direct3D 12 on Windows** | GRAPHICS API Auto, Vulkan or D3D12 |
 | ✅ | **HD packs in PNG and BC7** | PNG and BC7 replacement files load, with HD TEXTURE MEMORY to keep large packs in check |
-| 🚧 | **Night and rain** ⚙️ | Lit lamps, signs and windows at night; rain, wet roads, puddles and spray. Experimental, for your feedback (EXTRAS) |
+| 🚧 | **Night and rain** ⚙️ | Lit lamps, signs and windows at night; rain, wet roads, puddles and spray. **Experimental: expect bugs, it isn't perfect yet.** Feedback, suggestions and help are very welcome (EXTRAS) |
 
 ### 🧭 Front end & launcher
 

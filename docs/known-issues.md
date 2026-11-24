@@ -33,8 +33,10 @@ game data.
   side, the game's tyre smoke and dust look thin: they are flat sprites turned to the game's own camera (photo mode
   shows the same).
 - DRIVER LABELS show the names the game gives its rivals; on the US disc they are DRIVER1 to DRIVER5.
-- Night and rain (SETTINGS > EXTRAS > EXPERIMENTAL) are experimental: still being finished. They change only the
-  picture and sound, so their races count as usual. Tell us what you think, and what looks wrong.
+- Night and rain (SETTINGS > EXTRAS > EXPERIMENTAL) are experimental: still being finished, so expect bugs. They change
+  only the picture and sound, so their races count as usual. Known so far: distant lamps and headlights can light up late,
+  only once they are close (seen on a Mac). Tell us what you think and what looks wrong; suggestions and help with night
+  mode are very welcome.
 - The Signature Takedown's flash (issue #17) is still being looked into.
 - Cars far ahead fade in over the last stretch of the game's draw distance instead of popping in. Tell us if any
   still pop in.

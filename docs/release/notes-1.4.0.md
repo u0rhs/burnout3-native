@@ -167,7 +167,9 @@ and fixes for stutter in the menus and crashes in heavy traffic.
 
 ## Known limits
 
-- **Night and rain are experimental:** still being finished.
+- **Night and rain are experimental:** still being finished, so expect bugs: it isn't perfect yet. For example, distant lamps and
+  headlights can light up late, only once they are close (seen on a Mac). Feedback, suggestions and help with night mode
+  are very welcome.
 - **The Signature Takedown's flash** is still being looked into. (Issue #17.)
 - **Races with 6 or 7 rivals:** the 6th and 7th rival drive the same cars as two of the others, in another paint, and
   start behind the grid. Single Event Race only.
